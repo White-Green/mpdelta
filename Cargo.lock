@@ -5,3 +5,10 @@ version = 3
 [[package]]
 name = "mpdelta"
 version = "0.1.0"
+dependencies = [
+ "mpdelta_core",
+]
+
+[[package]]
+name = "mpdelta_core"
+version = "0.1.0"

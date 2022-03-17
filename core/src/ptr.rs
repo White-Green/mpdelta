@@ -1,4 +1,5 @@
 use std::fmt::{Debug, Formatter};
+use std::hash::{Hash, Hasher};
 use std::ops::Deref;
 use std::sync::Arc;
 
@@ -61,6 +62,46 @@ impl<T> Deref for StaticPointer<T> {
 
     fn deref(&self) -> &Self::Target {
         &self.0
+    }
+}
+
+impl<T: PartialEq> PartialEq for StaticPointerOwned<T> {
+    fn eq(&self, other: &Self) -> bool {
+        <Arc<T> as PartialEq>::eq(&self.0, &other.0)
+    }
+}
+
+impl<T: PartialEq> PartialEq for StaticPointer<T> {
+    fn eq(&self, other: &Self) -> bool {
+        <Arc<T> as PartialEq>::eq(&self.0, &other.0)
+    }
+}
+
+impl<T: Eq> Eq for StaticPointerOwned<T> {}
+
+impl<T: Eq> Eq for StaticPointer<T> {}
+
+impl<T: PartialEq> PartialEq<StaticPointer<T>> for StaticPointerOwned<T> {
+    fn eq(&self, other: &StaticPointer<T>) -> bool {
+        <Arc<T> as PartialEq>::eq(&self.0, &other.0)
+    }
+}
+
+impl<T: PartialEq> PartialEq<StaticPointerOwned<T>> for StaticPointer<T> {
+    fn eq(&self, other: &StaticPointerOwned<T>) -> bool {
+        <Arc<T> as PartialEq>::eq(&self.0, &other.0)
+    }
+}
+
+impl<T> Hash for StaticPointerOwned<T> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        Arc::as_ptr(&self.0).hash(state)
+    }
+}
+
+impl<T> Hash for StaticPointer<T> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        Arc::as_ptr(&self.0).hash(state)
     }
 }
 

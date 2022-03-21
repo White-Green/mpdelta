@@ -1,11 +1,14 @@
 use std::fmt::{Debug, Formatter};
 use std::hash::{Hash, Hasher};
+use std::marker::PhantomData;
 use std::ops::Deref;
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 
 pub struct StaticPointerOwned<T>(Arc<T>);
 
-pub struct StaticPointer<T>(Arc<T>);
+pub struct StaticPointer<T>(Weak<T>);
+
+pub struct StaticPointerStrongRef<'a, T>(Arc<T>, PhantomData<&'a ()>);
 
 impl<T> StaticPointerOwned<T> {
     pub fn new(value: T) -> Self {
@@ -13,13 +16,17 @@ impl<T> StaticPointerOwned<T> {
     }
 
     pub fn reference(this: &Self) -> StaticPointer<T> {
-        StaticPointer(Arc::clone(&this.0))
+        StaticPointer(Arc::downgrade(&this.0))
     }
 }
 
 impl<T> StaticPointer<T> {
-    pub fn reference(this: &Self) -> StaticPointer<T> {
-        StaticPointer(Arc::clone(&this.0))
+    pub fn reference(&self) -> StaticPointer<T> {
+        StaticPointer(Weak::clone(&self.0))
+    }
+
+    pub fn upgrade(&self) -> Option<StaticPointerStrongRef<'_, T>> {
+        self.0.upgrade().map(|strong_ref| StaticPointerStrongRef(strong_ref, PhantomData::default()))
     }
 }
 
@@ -31,7 +38,7 @@ impl<T: Debug> Debug for StaticPointerOwned<T> {
 
 impl<T: Debug> Debug for StaticPointer<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "StaticPointer: {:p}", self.0)
+        write!(f, "StaticPointer: {:p}", self.0.as_ptr())
     }
 }
 
@@ -47,6 +54,12 @@ impl<'a, T> From<&'a StaticPointer<T>> for StaticPointer<T> {
     }
 }
 
+impl<T> Clone for StaticPointer<T> {
+    fn clone(&self) -> Self {
+        StaticPointer(Weak::clone(&self.0))
+    }
+}
+
 impl<T> Deref for StaticPointerOwned<T> {
     type Target = T;
 
@@ -55,7 +68,7 @@ impl<T> Deref for StaticPointerOwned<T> {
     }
 }
 
-impl<T> Deref for StaticPointer<T> {
+impl<'a, T> Deref for StaticPointerStrongRef<'a, T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -69,27 +82,23 @@ impl<T: PartialEq> PartialEq for StaticPointerOwned<T> {
     }
 }
 
-impl<T: PartialEq> PartialEq for StaticPointer<T> {
+impl<T> PartialEq for StaticPointer<T> {
     fn eq(&self, other: &Self) -> bool {
+        Weak::ptr_eq(&self.0, &other.0)
+    }
+}
+
+impl<'a, 'b, T: PartialEq> PartialEq<StaticPointerStrongRef<'b, T>> for StaticPointerStrongRef<'a, T> {
+    fn eq(&self, other: &StaticPointerStrongRef<'b, T>) -> bool {
         <Arc<T> as PartialEq>::eq(&self.0, &other.0)
     }
 }
 
 impl<T: Eq> Eq for StaticPointerOwned<T> {}
 
-impl<T: Eq> Eq for StaticPointer<T> {}
+impl<T> Eq for StaticPointer<T> {}
 
-impl<T: PartialEq> PartialEq<StaticPointer<T>> for StaticPointerOwned<T> {
-    fn eq(&self, other: &StaticPointer<T>) -> bool {
-        <Arc<T> as PartialEq>::eq(&self.0, &other.0)
-    }
-}
-
-impl<T: PartialEq> PartialEq<StaticPointerOwned<T>> for StaticPointer<T> {
-    fn eq(&self, other: &StaticPointerOwned<T>) -> bool {
-        <Arc<T> as PartialEq>::eq(&self.0, &other.0)
-    }
-}
+impl<'a, T: Eq> Eq for StaticPointerStrongRef<'a, T> {}
 
 impl<T> Hash for StaticPointerOwned<T> {
     fn hash<H: Hasher>(&self, state: &mut H) {
@@ -99,7 +108,7 @@ impl<T> Hash for StaticPointerOwned<T> {
 
 impl<T> Hash for StaticPointer<T> {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        Arc::as_ptr(&self.0).hash(state)
+        Weak::as_ptr(&self.0).hash(state)
     }
 }
 

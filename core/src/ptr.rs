@@ -42,6 +42,12 @@ impl<T: Debug> Debug for StaticPointer<T> {
     }
 }
 
+impl<'a, T: Debug> Debug for StaticPointerStrongRef<'a, T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple(&format!("StaticPointerStrongRef: {:p}", self.0)).field(&*self.0).finish()
+    }
+}
+
 impl<'a, T> From<&'a StaticPointerOwned<T>> for StaticPointer<T> {
     fn from(ptr: &'a StaticPointerOwned<T>) -> Self {
         StaticPointerOwned::reference(ptr)
@@ -123,12 +129,14 @@ mod tests {
 
         let owned = StaticPointerOwned::new(42);
         let ptr = StaticPointerOwned::reference(&owned);
+        let strong_ref = ptr.upgrade().unwrap();
         let ptr_format = format!("{:?}", ptr);
         assert!(regex.is_match(&ptr_format));
         let captures = regex.captures(&ptr_format).unwrap();
         assert_eq!(captures.len(), 2);
         let address = captures.get(1).unwrap().as_str();
         assert_eq!(format!("{:?}", owned), format!("StaticPointerOwned: {}(42)", address));
+        assert_eq!(format!("{:?}", strong_ref), format!("StaticPointerStrongRef: {}(42)", address));
 
         #[derive(Debug)]
         struct TestStruct {
@@ -137,12 +145,14 @@ mod tests {
         }
         let owned = StaticPointerOwned::new(TestStruct { value: 42 });
         let ptr = StaticPointerOwned::reference(&owned);
+        let strong_ref = ptr.upgrade().unwrap();
         let ptr_format = format!("{:?}", ptr);
         assert!(regex.is_match(&ptr_format));
         let captures = regex.captures(&ptr_format).unwrap();
         assert_eq!(captures.len(), 2);
         let address = captures.get(1).unwrap().as_str();
         assert_eq!(format!("{:?}", owned), format!("StaticPointerOwned: {}(TestStruct {{ value: 42 }})", address));
+        assert_eq!(format!("{:?}", strong_ref), format!("StaticPointerStrongRef: {}(TestStruct {{ value: 42 }})", address));
 
         let ptr_format = format!("{:#?}", ptr);
         assert!(regex.is_match(&ptr_format));
@@ -150,17 +160,20 @@ mod tests {
         assert_eq!(captures.len(), 2);
         let address = captures.get(1).unwrap().as_str();
         assert_eq!(format!("{:#?}", owned), format!("StaticPointerOwned: {}(\n    TestStruct {{\n        value: 42,\n    }},\n)", address));
+        assert_eq!(format!("{:#?}", strong_ref), format!("StaticPointerStrongRef: {}(\n    TestStruct {{\n        value: 42,\n    }},\n)", address));
 
         #[derive(Debug)]
         struct TestStructTuple(i32);
         let owned = StaticPointerOwned::new(TestStructTuple(42));
         let ptr = StaticPointerOwned::reference(&owned);
+        let strong_ref = ptr.upgrade().unwrap();
         let ptr_format = format!("{:?}", ptr);
         assert!(regex.is_match(&ptr_format));
         let captures = regex.captures(&ptr_format).unwrap();
         assert_eq!(captures.len(), 2);
         let address = captures.get(1).unwrap().as_str();
         assert_eq!(format!("{:?}", owned), format!("StaticPointerOwned: {}(TestStructTuple(42))", address));
+        assert_eq!(format!("{:?}", strong_ref), format!("StaticPointerStrongRef: {}(TestStructTuple(42))", address));
 
         let ptr_format = format!("{:#?}", ptr);
         assert!(regex.is_match(&ptr_format));
@@ -168,5 +181,6 @@ mod tests {
         assert_eq!(captures.len(), 2);
         let address = captures.get(1).unwrap().as_str();
         assert_eq!(format!("{:#?}", owned), format!("StaticPointerOwned: {}(\n    TestStructTuple(\n        42,\n    ),\n)", address));
+        assert_eq!(format!("{:#?}", strong_ref), format!("StaticPointerStrongRef: {}(\n    TestStructTuple(\n        42,\n    ),\n)", address));
     }
 }

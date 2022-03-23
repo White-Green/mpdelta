@@ -106,9 +106,9 @@ impl<T> Eq for StaticPointer<T> {}
 
 impl<'a, T: Eq> Eq for StaticPointerStrongRef<'a, T> {}
 
-impl<T> Hash for StaticPointerOwned<T> {
+impl<T: Hash> Hash for StaticPointerOwned<T> {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        Arc::as_ptr(&self.0).hash(state)
+        T::hash(&self.0, state)
     }
 }
 

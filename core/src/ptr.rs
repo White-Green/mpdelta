@@ -100,6 +100,18 @@ impl<'a, 'b, T: PartialEq> PartialEq<StaticPointerStrongRef<'b, T>> for StaticPo
     }
 }
 
+impl<'a, T: PartialEq> PartialEq<StaticPointerStrongRef<'a, T>> for StaticPointerOwned<T> {
+    fn eq(&self, other: &StaticPointerStrongRef<'a, T>) -> bool {
+        <Arc<T> as PartialEq>::eq(&self.0, &other.0)
+    }
+}
+
+impl<'a, T: PartialEq> PartialEq<StaticPointerOwned<T>> for StaticPointerStrongRef<'a, T> {
+    fn eq(&self, other: &StaticPointerOwned<T>) -> bool {
+        <Arc<T> as PartialEq>::eq(&self.0, &other.0)
+    }
+}
+
 impl<T: Eq> Eq for StaticPointerOwned<T> {}
 
 impl<T> Eq for StaticPointer<T> {}

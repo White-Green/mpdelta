@@ -28,6 +28,10 @@ impl<T> StaticPointer<T> {
     pub fn upgrade(&self) -> Option<StaticPointerStrongRef<'_, T>> {
         self.0.upgrade().map(|strong_ref| StaticPointerStrongRef(strong_ref, PhantomData::default()))
     }
+
+    pub fn may_upgrade(&self) -> bool {
+        self.0.strong_count() > 0
+    }
 }
 
 impl<T: Debug> Debug for StaticPointerOwned<T> {
@@ -194,5 +198,14 @@ mod tests {
         let address = captures.get(1).unwrap().as_str();
         assert_eq!(format!("{:#?}", owned), format!("StaticPointerOwned: {}(\n    TestStructTuple(\n        42,\n    ),\n)", address));
         assert_eq!(format!("{:#?}", strong_ref), format!("StaticPointerStrongRef: {}(\n    TestStructTuple(\n        42,\n    ),\n)", address));
+    }
+
+    #[test]
+    fn may_can_upgrade() {
+        let owned = StaticPointerOwned::new(());
+        let ptr = StaticPointerOwned::reference(&owned);
+        assert!(ptr.may_upgrade());
+        drop(owned);
+        assert!(!ptr.may_upgrade());
     }
 }

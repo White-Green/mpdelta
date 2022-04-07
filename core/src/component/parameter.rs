@@ -29,6 +29,6 @@ pub enum ParameterValue<Image, Audio> {
     ComponentClass(/* TODO */),
 }
 
-pub struct ImageRequiredParams {}
+pub struct ImageRequiredParams {/* TODO */}
 
-pub struct AudioRequiredParams {}
+pub struct AudioRequiredParams {/* TODO */}

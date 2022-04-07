@@ -1,5 +1,5 @@
 use crate::component::class::ComponentClass;
-use crate::component::marker_pin::{MarkerPin};
+use crate::component::marker_pin::MarkerPin;
 use crate::component::parameter::{AudioRequiredParams, ImageRequiredParams, ParameterValue};
 use crate::ptr::{StaticPointer, StaticPointerOwned};
 use std::sync::RwLock;

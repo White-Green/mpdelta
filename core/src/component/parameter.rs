@@ -1,11 +1,13 @@
 use cgmath::{Vector2, Vector3};
 use std::collections::HashMap;
 use std::ops::Range;
+use std::path::PathBuf;
 
 pub enum ParameterType {
     Image,
     Audio,
     Video,
+    File { extension_filter: Option<Box<[String]>> },
     String { length_range: Option<Range<usize>> },
     Boolean,
     Integer { range: Option<Range<i64>> },
@@ -19,6 +21,7 @@ pub enum ParameterType {
 pub enum ParameterValue<Image, Audio> {
     Image(Image),
     Audio(Audio),
+    File(PathBuf),
     String(String),
     Boolean(bool),
     Integer(i64),

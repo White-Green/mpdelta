@@ -7,6 +7,7 @@ edition = "2021"
 
 [dependencies]
 cgmath = "0.18.0"
+uuid = "1.0.0"
 
 [dev-dependencies]
 regex = "1.5.5"

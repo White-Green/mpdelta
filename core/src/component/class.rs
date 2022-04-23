@@ -22,7 +22,7 @@ impl ComponentClass {
     pub fn parameter_type(&self) -> &HashMap<String, ParameterType> {
         &self.parameter_type
     }
-    pub fn instantiate(&self) -> ComponentInstance<(), ()> {
+    pub fn instantiate(&self) -> ComponentInstance {
         todo!()
     }
 }

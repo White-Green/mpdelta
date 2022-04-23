@@ -1,7 +1,13 @@
+use crate::component::parameter::placeholder::{AudioPlaceholder, ImagePlaceholder};
+use crate::component::parameter::value::TimedValue;
 use cgmath::{Vector2, Vector3};
 use std::collections::HashMap;
 use std::ops::Range;
 use std::path::PathBuf;
+use std::sync::Arc;
+
+pub mod placeholder;
+pub mod value;
 
 pub enum ParameterType {
     Image,
@@ -18,17 +24,17 @@ pub enum ParameterType {
     ComponentClass {/* TODO */},
 }
 
-pub enum ParameterValue<Image, Audio> {
-    Image(Image),
-    Audio(Audio),
-    File(PathBuf),
-    String(String),
-    Boolean(bool),
-    Integer(i64),
-    RealNumber(f64),
-    Vec2(Vector2<f64>),
-    Vec3(Vector3<f64>),
-    Dictionary(HashMap<String, ParameterValue<Image, Audio>>),
+pub enum ParameterValue {
+    Image(ImagePlaceholder),
+    Audio(AudioPlaceholder),
+    File(Arc<dyn TimedValue<PathBuf>>),
+    String(Arc<dyn TimedValue<String>>),
+    Boolean(Arc<dyn TimedValue<bool>>),
+    Integer(Arc<dyn TimedValue<i64>>),
+    RealNumber(Arc<dyn TimedValue<f64>>),
+    Vec2(Arc<dyn TimedValue<Vector2<f64>>>),
+    Vec3(Arc<dyn TimedValue<Vector3<f64>>>),
+    Dictionary(Arc<dyn TimedValue<HashMap<String, ParameterValue>>>),
     ComponentClass(/* TODO */),
 }
 

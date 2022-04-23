@@ -6,18 +6,18 @@ use std::sync::RwLock;
 
 type Cell<T> = RwLock<T>;
 
-pub struct ComponentInstance<Image, Audio> {
+pub struct ComponentInstance {
     component_class: StaticPointer<ComponentClass>,
     marker_left: StaticPointerOwned<Cell<MarkerPin>>,
     marker_right: StaticPointerOwned<Cell<MarkerPin>>,
     markers: Vec<StaticPointerOwned<Cell<MarkerPin>>>,
     image_required_params: Option<ImageRequiredParams>,
     audio_required_params: Option<AudioRequiredParams>,
-    parameters: Vec<ParameterValue<Image, Audio>>,
+    parameters: Vec<ParameterValue>,
     processor: (), // TODO:処理系を詰めないとどういう構成にするか決まらないのでとりあえず無を置いておく
 }
 
-impl<I, A> ComponentInstance<I, A> {
+impl ComponentInstance {
     pub fn component_class(&self) -> &StaticPointer<ComponentClass> {
         &self.component_class
     }
@@ -36,7 +36,7 @@ impl<I, A> ComponentInstance<I, A> {
     pub fn audio_required_params(&self) -> Option<&AudioRequiredParams> {
         self.audio_required_params.as_ref()
     }
-    pub fn parameters(&self) -> &[ParameterValue<I, A>] {
+    pub fn parameters(&self) -> &[ParameterValue] {
         &self.parameters
     }
 }

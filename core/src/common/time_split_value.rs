@@ -1,5 +1,6 @@
 use std::cmp::Ordering;
 use std::fmt::{Debug, Formatter};
+use std::marker::PhantomData;
 use std::mem;
 
 #[derive(Clone, Eq, PartialEq)]
@@ -7,6 +8,15 @@ pub struct TimeSplitValue<Time, Value> {
     data: Vec<(Time, Value)>,
     end: Time,
 }
+
+pub struct TimeSplitValueView<'a, Time, Value, TimeMutability, ValueMutability> {
+    value: &'a mut TimeSplitValue<Time, Value>,
+    phantom: PhantomData<(TimeMutability, ValueMutability)>,
+}
+
+pub struct Immutable;
+
+pub struct Mutable;
 
 impl<Time: Debug, Value: Debug> Debug for TimeSplitValue<Time, Value> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
@@ -81,6 +91,44 @@ impl<Time, Value> TimeSplitValue<Time, Value> {
     }
 }
 
+impl<'a, Time: Debug, Value: Debug, TimeMutability, ValueMutability> Debug for TimeSplitValueView<'a, Time, Value, TimeMutability, ValueMutability> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        Debug::fmt(&self.value, f)
+    }
+}
+
+impl<'a, Time, Value, TimeMutability, ValueMutability> From<&'a mut TimeSplitValue<Time, Value>> for TimeSplitValueView<'a, Time, Value, TimeMutability, ValueMutability> {
+    fn from(value: &'a mut TimeSplitValue<Time, Value>) -> Self {
+        Self::new(value)
+    }
+}
+
+impl<'a, Time, Value, TimeMutability, ValueMutability> TimeSplitValueView<'a, Time, Value, TimeMutability, ValueMutability> {
+    pub fn new(value: &mut TimeSplitValue<Time, Value>) -> TimeSplitValueView<Time, Value, TimeMutability, ValueMutability> {
+        TimeSplitValueView { value, phantom: Default::default() }
+    }
+
+    pub fn get_value(&self, index: usize) -> Option<(&Time, &Value, &Time)> {
+        self.value.get_value(index)
+    }
+
+    pub fn get_time(&self, index: usize) -> Option<(Option<&Value>, &Time, Option<&Value>)> {
+        self.value.get_time(index)
+    }
+}
+
+impl<'a, Time, Value, TimeMutability> TimeSplitValueView<'a, Time, Value, TimeMutability, Mutable> {
+    pub fn get_value_mut(&mut self, index: usize) -> Option<(&Time, &mut Value, &Time)> {
+        self.value.get_value_mut(index)
+    }
+}
+
+impl<'a, Time, Value, ValueMutability> TimeSplitValueView<'a, Time, Value, Mutable, ValueMutability> {
+    pub fn get_time_mut(&mut self, index: usize) -> Option<(Option<&Value>, &mut Time, Option<&Value>)> {
+        self.value.get_time_mut(index)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -115,7 +163,7 @@ mod tests {
             value,
             TimeSplitValue {
                 data: vec![('a', 1), ('b', 2), ('x', 24), ('y', 25)],
-                end: 'z'
+                end: 'z',
             }
         );
         assert_eq!(value.split_value(3, 'α', 100, 200), Some(25));
@@ -123,7 +171,7 @@ mod tests {
             value,
             TimeSplitValue {
                 data: vec![('a', 1), ('b', 2), ('x', 24), ('y', 100), ('α', 200)],
-                end: 'z'
+                end: 'z',
             }
         );
         assert_eq!(value.split_value(5, 'α', 100, 200), None);
@@ -131,7 +179,7 @@ mod tests {
             value,
             TimeSplitValue {
                 data: vec![('a', 1), ('b', 2), ('x', 24), ('y', 100), ('α', 200)],
-                end: 'z'
+                end: 'z',
             }
         );
         assert_eq!(value.merge_two_values(4, 128), Some((100, 'α', 200)));
@@ -139,7 +187,7 @@ mod tests {
             value,
             TimeSplitValue {
                 data: vec![('a', 1), ('b', 2), ('x', 24), ('y', 128)],
-                end: 'z'
+                end: 'z',
             }
         );
         assert_eq!(value.merge_two_values(1, 5), Some((1, 'b', 2)));

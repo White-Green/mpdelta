@@ -1,4 +1,5 @@
-use crate::common::time_split_value::TimeSplitValue;
+use crate::common::general_lifetime::AsGeneralLifetime;
+use crate::common::time_split_value::{Immutable, Mutable, TimeSplitValue, TimeSplitValueView};
 use crate::component::marker_pin::MarkerPin;
 use crate::component::parameter::placeholder::{AudioPlaceholder, ImagePlaceholder};
 use crate::component::parameter::value::EasingValue;
@@ -41,6 +42,46 @@ pub enum ParameterValue {
     ComponentClass(/* TODO */),
 }
 
+pub enum ParameterValueViewForFix<'a> {
+    Image(ImagePlaceholder),
+    Audio(AudioPlaceholder),
+    File(TimeSplitValueView<'a, StaticPointer<RwLock<MarkerPin>>, PathBuf, Immutable, Mutable>),
+    String(TimeSplitValueView<'a, StaticPointer<RwLock<MarkerPin>>, String, Immutable, Mutable>),
+    Boolean(TimeSplitValueView<'a, StaticPointer<RwLock<MarkerPin>>, bool, Immutable, Mutable>),
+    Integer(TimeSplitValueView<'a, StaticPointer<RwLock<MarkerPin>>, i64, Immutable, Mutable>),
+    RealNumber(TimeSplitValueView<'a, StaticPointer<RwLock<MarkerPin>>, EasingValue<f64>, Immutable, Mutable>),
+    Vec2(TimeSplitValueView<'a, StaticPointer<RwLock<MarkerPin>>, EasingValue<Vector2<f64>>, Immutable, Mutable>),
+    Vec3(TimeSplitValueView<'a, StaticPointer<RwLock<MarkerPin>>, EasingValue<Vector3<f64>>, Immutable, Mutable>),
+    Dictionary(TimeSplitValueView<'a, StaticPointer<RwLock<MarkerPin>>, HashMap<String, ParameterValue>, Immutable, Mutable>),
+    ComponentClass(/* TODO */),
+}
+
 pub struct ImageRequiredParams {/* TODO */}
 
 pub struct AudioRequiredParams {/* TODO */}
+
+impl<'a> From<&'a mut ParameterValue> for ParameterValueViewForFix<'a> {
+    fn from(value: &'a mut ParameterValue) -> Self {
+        match value {
+            ParameterValue::Image(a) => ParameterValueViewForFix::Image(*a),
+            ParameterValue::Audio(a) => ParameterValueViewForFix::Audio(*a),
+            ParameterValue::File(a) => ParameterValueViewForFix::File(TimeSplitValueView::new(a)),
+            ParameterValue::String(a) => ParameterValueViewForFix::String(TimeSplitValueView::new(a)),
+            ParameterValue::Boolean(a) => ParameterValueViewForFix::Boolean(TimeSplitValueView::new(a)),
+            ParameterValue::Integer(a) => ParameterValueViewForFix::Integer(TimeSplitValueView::new(a)),
+            ParameterValue::RealNumber(a) => ParameterValueViewForFix::RealNumber(TimeSplitValueView::new(a)),
+            ParameterValue::Vec2(a) => ParameterValueViewForFix::Vec2(TimeSplitValueView::new(a)),
+            ParameterValue::Vec3(a) => ParameterValueViewForFix::Vec3(TimeSplitValueView::new(a)),
+            ParameterValue::Dictionary(a) => ParameterValueViewForFix::Dictionary(TimeSplitValueView::new(a)),
+            ParameterValue::ComponentClass() => ParameterValueViewForFix::ComponentClass(),
+        }
+    }
+}
+
+impl<'a: 'b, 'b> AsGeneralLifetime<'b> for ParameterValueViewForFix<'a> {
+    type GeneralLifetimeType = ParameterValueViewForFix<'b>;
+
+    fn into_general_lifetime(self) -> Self::GeneralLifetimeType {
+        self
+    }
+}

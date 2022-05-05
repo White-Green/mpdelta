@@ -1,5 +1,6 @@
+use crate::common::time_split_value::TimeSplitValue;
 use crate::component::parameter::placeholder::{AudioPlaceholder, ImagePlaceholder};
-use crate::component::parameter::value::{EasingValue, TimeSplitValue};
+use crate::component::parameter::value::EasingValue;
 use cgmath::{Vector2, Vector3};
 use std::collections::HashMap;
 use std::ops::Range;

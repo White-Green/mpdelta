@@ -24,17 +24,17 @@ pub enum ParameterType {
     ComponentClass {/* TODO */},
 }
 
-pub enum ParameterValue<SplitBy> {
+pub enum ParameterValue {
     Image(ImagePlaceholder),
     Audio(AudioPlaceholder),
-    File(TimeSplitValue<SplitBy, PathBuf>),
-    String(TimeSplitValue<SplitBy, String>),
-    Boolean(TimeSplitValue<SplitBy, bool>),
-    Integer(TimeSplitValue<SplitBy, i64>),
-    RealNumber(TimeSplitValue<SplitBy, EasingValue<f64>>),
-    Vec2(TimeSplitValue<SplitBy, EasingValue<Vector2<f64>>>),
-    Vec3(TimeSplitValue<SplitBy, EasingValue<Vector3<f64>>>),
-    Dictionary(TimeSplitValue<SplitBy, HashMap<String, ParameterValue<SplitBy>>>),
+    File(TimeSplitValue<StaticPointer<MarkerPin>, PathBuf>),
+    String(TimeSplitValue<StaticPointer<MarkerPin>, String>),
+    Boolean(TimeSplitValue<StaticPointer<MarkerPin>, bool>),
+    Integer(TimeSplitValue<StaticPointer<MarkerPin>, i64>),
+    RealNumber(TimeSplitValue<StaticPointer<MarkerPin>, EasingValue<f64>>),
+    Vec2(TimeSplitValue<StaticPointer<MarkerPin>, EasingValue<Vector2<f64>>>),
+    Vec3(TimeSplitValue<StaticPointer<MarkerPin>, EasingValue<Vector3<f64>>>),
+    Dictionary(TimeSplitValue<StaticPointer<MarkerPin>, HashMap<String, ParameterValue>>),
     ComponentClass(/* TODO */),
 }
 

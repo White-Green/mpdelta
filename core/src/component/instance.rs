@@ -13,7 +13,7 @@ pub struct ComponentInstance {
     markers: Vec<StaticPointerOwned<Cell<MarkerPin>>>,
     image_required_params: Option<ImageRequiredParams>,
     audio_required_params: Option<AudioRequiredParams>,
-    parameters: Vec<ParameterValue<StaticPointer<MarkerPin>>>,
+    parameters: Vec<ParameterValue>,
     processor: (), // TODO:処理系を詰めないとどういう構成にするか決まらないのでとりあえず無を置いておく
 }
 
@@ -36,7 +36,7 @@ impl ComponentInstance {
     pub fn audio_required_params(&self) -> Option<&AudioRequiredParams> {
         self.audio_required_params.as_ref()
     }
-    pub fn parameters(&self) -> &[ParameterValue<StaticPointer<MarkerPin>>] {
+    pub fn parameters(&self) -> &[ParameterValue] {
         &self.parameters
     }
 }

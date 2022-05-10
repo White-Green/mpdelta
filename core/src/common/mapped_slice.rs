@@ -46,3 +46,19 @@ impl<'a, S, T, U> MappedSliceMut<'a, S, T, U> {
         self.slice.get_mut(index).map(Into::into)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[allow(unused)]
+    fn test_mapped_slice<T>(slice: MappedSlice<'_, T, &T>) {
+        slice.get(0);
+    }
+
+    #[allow(unused)]
+    fn test_mapped_slice_mut<T>(mut slice: MappedSliceMut<'_, T, &T, &mut T>) {
+        slice.get(0);
+        slice.get_mut(0);
+    }
+}

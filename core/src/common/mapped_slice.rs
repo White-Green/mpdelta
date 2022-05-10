@@ -16,12 +16,12 @@ impl<'a, S, T> MappedSlice<'a, S, T> {
         MappedSlice { slice, phantom: Default::default() }
     }
 
-    pub fn get(&self, index: usize) -> Option<<T as AsGeneralLifetime<'_>>::GeneralLifetimeType>
+    pub fn get<'b>(&'b self, index: usize) -> Option<<T as AsGeneralLifetime<'b>>::GeneralLifetimeType>
     where
-        for<'b> &'b S: Into<T>,
-        for<'b> T: AsGeneralLifetime<'b>,
+        T: AsGeneralLifetime<'b>,
+        &'b S: Into<<T as AsGeneralLifetime<'b>>::GeneralLifetimeType>,
     {
-        self.slice.get(index).map(Into::into).map(AsGeneralLifetime::into_general_lifetime)
+        self.slice.get(index).map(Into::into)
     }
 }
 

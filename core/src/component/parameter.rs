@@ -28,6 +28,20 @@ pub enum ParameterType {
     ComponentClass {/* TODO */},
 }
 
+pub enum ParameterValueFixed {
+    Image(ImagePlaceholder),
+    Audio(AudioPlaceholder),
+    File(PathBuf),
+    String(String),
+    Boolean(bool),
+    Integer(i64),
+    RealNumber(f64),
+    Vec2(Vector2<f64>),
+    Vec3(Vector3<f64>),
+    Dictionary(HashMap<String, ParameterValue>),
+    ComponentClass(/* TODO */),
+}
+
 pub enum ParameterValue {
     Image(ImagePlaceholder),
     Audio(AudioPlaceholder),

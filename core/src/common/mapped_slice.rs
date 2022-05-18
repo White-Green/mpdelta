@@ -57,7 +57,18 @@ mod tests {
     }
 
     #[allow(unused)]
+    fn test_mapped_slice_ref<T>(slice: &MappedSlice<'_, T, &T>) {
+        slice.get(0);
+    }
+
+    #[allow(unused)]
     fn test_mapped_slice_mut<T>(mut slice: MappedSliceMut<'_, T, &T, &mut T>) {
+        slice.get(0);
+        slice.get_mut(0);
+    }
+
+    #[allow(unused)]
+    fn test_mapped_slice_ref_mut<T>(slice: &mut MappedSliceMut<'_, T, &T, &mut T>) {
         slice.get(0);
         slice.get_mut(0);
     }

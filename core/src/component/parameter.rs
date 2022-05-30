@@ -43,6 +43,8 @@ pub enum Parameter<'a, Type: ParameterValueType<'a>> {
     ComponentClass(Type::ComponentClass),
 }
 
+pub enum Never {}
+
 pub struct Type;
 pub type ParameterType = Parameter<'static, Type>;
 

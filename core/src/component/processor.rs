@@ -1,6 +1,7 @@
 use crate::common::mapped_slice::MappedSliceMut;
 use crate::common::time_split_value::TimeSplitValue;
 use crate::component::instance::ComponentInstance;
+use crate::component::link::MarkerLink;
 use crate::component::marker_pin::MarkerTime;
 use crate::component::parameter::placeholder::{TimedAudioPlaceholder, TimedImagePlaceholder};
 use crate::component::parameter::value::EasingValue;
@@ -18,13 +19,8 @@ pub struct NativeProcessorExecutable<T> {
 }
 
 pub enum ComponentProcessorOutput<T> {
-    Native {
-        processors: Vec<NativeProcessorExecutable<T>>,
-    },
-    Component {
-        components: Vec<ComponentInstance<T>>,
-        link: (), // TODO: MarkerPin同士のLink
-    },
+    Native { processors: Vec<NativeProcessorExecutable<T>> },
+    Component { components: Vec<ComponentInstance<T>>, link: Vec<MarkerLink> },
 }
 
 pub struct NativeProcessorInput;

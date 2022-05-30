@@ -1,12 +1,14 @@
 use crate::component::instance::ComponentInstance;
 use crate::component::parameter::ParameterType;
 use std::collections::HashMap;
+use std::sync::Arc;
+use crate::component::processor::ComponentProcessor;
 
 pub struct ComponentClass {
     generate_image: bool,
     generate_audio: bool,
     parameter_type: HashMap<String, ParameterType>,
-    processor: (), // TODO:処理系を詰めないとどういう構成にするか決まらないのでとりあえず無を置いておく
+    processor: Arc<dyn ComponentProcessor>,
 }
 
 impl ComponentClass {
@@ -21,6 +23,9 @@ impl ComponentClass {
     }
     pub fn parameter_type(&self) -> &HashMap<String, ParameterType> {
         &self.parameter_type
+    }
+    pub fn processor(&self) -> &Arc<dyn ComponentProcessor> {
+        &self.processor
     }
     pub fn instantiate(&self) -> ComponentInstance {
         todo!()

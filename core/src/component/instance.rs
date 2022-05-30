@@ -2,7 +2,8 @@ use crate::component::class::ComponentClass;
 use crate::component::marker_pin::MarkerPin;
 use crate::component::parameter::{AudioRequiredParams, ImageRequiredParams, ParameterValue};
 use crate::ptr::{StaticPointer, StaticPointerOwned};
-use std::sync::RwLock;
+use std::sync::{Arc, RwLock};
+use crate::component::processor::ComponentProcessor;
 
 type Cell<T> = RwLock<T>;
 
@@ -14,7 +15,7 @@ pub struct ComponentInstance {
     image_required_params: Option<ImageRequiredParams>,
     audio_required_params: Option<AudioRequiredParams>,
     parameters: Vec<ParameterValue>,
-    processor: (), // TODO:処理系を詰めないとどういう構成にするか決まらないのでとりあえず無を置いておく
+    processor: Arc<dyn ComponentProcessor>,
 }
 
 impl ComponentInstance {
@@ -38,5 +39,8 @@ impl ComponentInstance {
     }
     pub fn parameters(&self) -> &[ParameterValue] {
         &self.parameters
+    }
+    pub fn processor(&self) -> &Arc<dyn ComponentProcessor> {
+        &self.processor
     }
 }

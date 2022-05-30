@@ -9,8 +9,8 @@ pub struct ImagePlaceholder {
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct TimedImagePlaceholder {
-    id: ImagePlaceholder,
-    time: Vec<Option<Range<MarkerTime>>>,
+    pub id: ImagePlaceholder,
+    pub time: Vec<Option<Range<MarkerTime>>>,
 }
 
 #[derive(Debug, Clone, Copy, Ord, PartialOrd, Eq, PartialEq, Hash)]
@@ -20,6 +20,6 @@ pub struct AudioPlaceholder {
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct TimedAudioPlaceholder {
-    id: AudioPlaceholder,
-    time: Vec<Option<Range<MarkerTime>>>,
+    pub id: AudioPlaceholder,
+    pub time: Vec<Option<Range<MarkerTime>>>,
 }

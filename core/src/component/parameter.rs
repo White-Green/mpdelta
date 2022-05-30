@@ -63,6 +63,24 @@ impl<'a> ParameterValueType<'a> for Type {
     type ComponentClass = ();
 }
 
+pub struct TypeExceptComponentClass;
+pub type ParameterTypeExceptComponentClass = Parameter<'static, TypeExceptComponentClass>;
+
+impl<'a> ParameterValueType<'a> for TypeExceptComponentClass {
+    type Image = ();
+    type Audio = ();
+    type Video = ();
+    type File = Option<Box<[String]>>;
+    type String = Option<Range<usize>>;
+    type Boolean = ();
+    type Integer = Option<Range<i64>>;
+    type RealNumber = Option<Range<f64>>;
+    type Vec2 = Option<Range<Vector2<f64>>>;
+    type Vec3 = Option<Range<Vector3<f64>>>;
+    type Dictionary = HashMap<String, Parameter<'a, Type>>;
+    type ComponentClass = Never;
+}
+
 pub struct Value;
 pub type ParameterValue = Parameter<'static, Value>;
 
@@ -97,6 +115,24 @@ impl<'a> ParameterValueType<'a> for ValueFixed {
     type Vec3 = Vector3<f64>;
     type Dictionary = HashMap<String, ParameterValue>;
     type ComponentClass = ();
+}
+
+pub struct ValueFixedExceptComponentClass;
+pub type ParameterValueFixedExceptComponentClass = Parameter<'static, ValueFixed>;
+
+impl<'a> ParameterValueType<'a> for ValueFixedExceptComponentClass {
+    type Image = ImagePlaceholder;
+    type Audio = AudioPlaceholder;
+    type Video = (ImagePlaceholder, AudioPlaceholder);
+    type File = PathBuf;
+    type String = String;
+    type Boolean = bool;
+    type Integer = i64;
+    type RealNumber = f64;
+    type Vec2 = Vector2<f64>;
+    type Vec3 = Vector3<f64>;
+    type Dictionary = HashMap<String, ParameterValue>;
+    type ComponentClass = Never;
 }
 
 pub struct ValueViewForFix;

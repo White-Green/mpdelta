@@ -77,7 +77,7 @@ impl<'a> ParameterValueType<'a> for TypeExceptComponentClass {
     type RealNumber = Option<Range<f64>>;
     type Vec2 = Option<Range<Vector2<f64>>>;
     type Vec3 = Option<Range<Vector3<f64>>>;
-    type Dictionary = HashMap<String, Parameter<'a, Type>>;
+    type Dictionary = HashMap<String, Parameter<'a, TypeExceptComponentClass>>;
     type ComponentClass = Never;
 }
 
@@ -96,6 +96,24 @@ impl<'a> ParameterValueType<'a> for Value {
     type Vec2 = TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, EasingValue<Vector2<f64>>>;
     type Vec3 = TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, EasingValue<Vector3<f64>>>;
     type Dictionary = TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, HashMap<String, ParameterValue>>;
+    type ComponentClass = ();
+}
+
+pub struct TypedValue;
+pub type ParameterTypedValue = Parameter<'static, TypedValue>;
+
+impl<'a> ParameterValueType<'a> for TypedValue {
+    type Image = ImagePlaceholder;
+    type Audio = AudioPlaceholder;
+    type Video = (ImagePlaceholder, AudioPlaceholder);
+    type File = (Option<Box<[String]>>, TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, PathBuf>);
+    type String = (Option<Range<usize>>, TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, String>);
+    type Boolean = TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, bool>;
+    type Integer = (Option<Range<i64>>, TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, i64>);
+    type RealNumber = (Option<Range<f64>>, TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, EasingValue<f64>>);
+    type Vec2 = (Option<Range<Vector2<f64>>>, TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, EasingValue<Vector2<f64>>>);
+    type Vec3 = (Option<Range<Vector3<f64>>>, TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, EasingValue<Vector3<f64>>>);
+    type Dictionary = (HashMap<String, Parameter<'a, Type>>, TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, HashMap<String, ParameterValue>>);
     type ComponentClass = ();
 }
 

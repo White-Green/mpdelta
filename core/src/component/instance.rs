@@ -1,6 +1,6 @@
 use crate::component::class::ComponentClass;
 use crate::component::marker_pin::MarkerPin;
-use crate::component::parameter::{AudioRequiredParams, ImageRequiredParams, ParameterValue};
+use crate::component::parameter::{AudioRequiredParams, ImageRequiredParams, ParameterTypedValue};
 use crate::component::processor::ComponentProcessor;
 use crate::ptr::{StaticPointer, StaticPointerOwned};
 use std::sync::{Arc, RwLock};
@@ -14,7 +14,8 @@ pub struct ComponentInstance<T> {
     markers: Vec<StaticPointerOwned<Cell<MarkerPin>>>,
     image_required_params: Option<ImageRequiredParams>,
     audio_required_params: Option<AudioRequiredParams>,
-    parameters: Vec<ParameterValue>,
+    fixed_parameters: Box<[(String, ParameterTypedValue)]>,
+    variable_parameters: Vec<(String, ParameterTypedValue)>,
     processor: Arc<dyn ComponentProcessor<T>>,
 }
 
@@ -37,8 +38,11 @@ impl<T> ComponentInstance<T> {
     pub fn audio_required_params(&self) -> Option<&AudioRequiredParams> {
         self.audio_required_params.as_ref()
     }
-    pub fn parameters(&self) -> &[ParameterValue] {
-        &self.parameters
+    pub fn fixed_parameters(&self) -> &[(String, ParameterTypedValue)] {
+        &self.fixed_parameters
+    }
+    pub fn variable_parameters(&self) -> &[(String, ParameterTypedValue)] {
+        &self.variable_parameters
     }
     pub fn processor(&self) -> &Arc<dyn ComponentProcessor<T>> {
         &self.processor

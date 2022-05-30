@@ -118,7 +118,7 @@ impl<'a> ParameterValueType<'a> for ValueFixed {
 }
 
 pub struct ValueFixedExceptComponentClass;
-pub type ParameterValueFixedExceptComponentClass = Parameter<'static, ValueFixed>;
+pub type ParameterValueFixedExceptComponentClass = Parameter<'static, ValueFixedExceptComponentClass>;
 
 impl<'a> ParameterValueType<'a> for ValueFixedExceptComponentClass {
     type Image = ImagePlaceholder;

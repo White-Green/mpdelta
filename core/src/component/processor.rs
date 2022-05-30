@@ -10,11 +10,14 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::Duration;
 
+pub struct NativeProcessorExecutable {
+    pub processor: (), // TODO: Nativeのprocessorが未定なので無を置いておく
+    pub parameter: Vec<Parameter<'static, ComponentProcessorOutput>>,
+}
+
 pub enum ComponentProcessorOutput {
     Native {
-        processor: (),
-        // TODO: Nativeのprocessorが未定なので無を置いておく
-        parameter: Vec<Parameter<'static, ComponentProcessorOutput>>,
+        processors: Vec<NativeProcessorExecutable>,
     },
     Component {
         components: Vec<ComponentInstance>,

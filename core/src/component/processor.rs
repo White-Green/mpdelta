@@ -4,28 +4,32 @@ use crate::component::instance::ComponentInstance;
 use crate::component::marker_pin::MarkerTime;
 use crate::component::parameter::placeholder::{TimedAudioPlaceholder, TimedImagePlaceholder};
 use crate::component::parameter::value::EasingValue;
-use crate::component::parameter::{Parameter, ParameterType, ParameterValue, ParameterValueFixed, ParameterValueType, ParameterValueViewForFix};
+use crate::component::parameter::{Never, Parameter, ParameterType, ParameterValue, ParameterValueFixed, ParameterValueType, ParameterValueViewForFix};
+use crate::native::processor::NativeProcessor;
 use cgmath::{Vector2, Vector3};
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::Duration;
 
-pub struct NativeProcessorExecutable {
-    pub processor: (), // TODO: Nativeのprocessorが未定なので無を置いておく
-    pub parameter: Vec<Parameter<'static, ComponentProcessorOutput>>,
+pub struct NativeProcessorExecutable<T> {
+    pub processor: Arc<dyn NativeProcessor<T>>,
+    pub parameter: Vec<Parameter<'static, NativeProcessorInput>>,
 }
 
-pub enum ComponentProcessorOutput {
+pub enum ComponentProcessorOutput<T> {
     Native {
-        processors: Vec<NativeProcessorExecutable>,
+        processors: Vec<NativeProcessorExecutable<T>>,
     },
     Component {
-        components: Vec<ComponentInstance>,
+        components: Vec<ComponentInstance<T>>,
         link: (), // TODO: MarkerPin同士のLink
     },
 }
 
-impl<'a> ParameterValueType<'a> for ComponentProcessorOutput {
+pub struct NativeProcessorInput;
+
+impl<'a> ParameterValueType<'a> for NativeProcessorInput {
     type Image = TimedImagePlaceholder;
     type Audio = TimedAudioPlaceholder;
     type Video = (TimedImagePlaceholder, TimedAudioPlaceholder);
@@ -37,12 +41,12 @@ impl<'a> ParameterValueType<'a> for ComponentProcessorOutput {
     type Vec2 = TimeSplitValue<MarkerTime, EasingValue<Vector2<f64>>>;
     type Vec3 = TimeSplitValue<MarkerTime, EasingValue<Vector3<f64>>>;
     type Dictionary = TimeSplitValue<MarkerTime, HashMap<String, ParameterValue>>;
-    type ComponentClass = ();
+    type ComponentClass = Never;
 }
 
-pub trait ComponentProcessor {
+pub trait ComponentProcessor<T> {
     fn update_variable_parameter(&self, fixed_params: &mut [ParameterValueFixed], variable_parameters: &mut Vec<(String, ParameterType)>);
     fn validate_parameter(&self, fixed_params: &[ParameterValueFixed], variable_params: &mut MappedSliceMut<ParameterValue, &ParameterValue, ParameterValueViewForFix>);
     fn natural_length(&self, fixed_params: &[ParameterValueFixed], variable_params: &[ParameterValue]) -> Duration;
-    fn process(&self, fixed_params: &[ParameterValueFixed], variable_params: &[ParameterValue]) -> ComponentProcessorOutput;
+    fn process(&self, fixed_params: &[ParameterValueFixed], variable_params: &[ParameterValue]) -> ComponentProcessorOutput<T>;
 }

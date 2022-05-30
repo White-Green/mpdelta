@@ -1,18 +1,18 @@
 use crate::component::instance::ComponentInstance;
 use crate::component::parameter::ParameterType;
+use crate::component::processor::ComponentProcessor;
 use std::collections::HashMap;
 use std::sync::Arc;
-use crate::component::processor::ComponentProcessor;
 
-pub struct ComponentClass {
+pub struct ComponentClass<T> {
     generate_image: bool,
     generate_audio: bool,
     parameter_type: HashMap<String, ParameterType>,
-    processor: Arc<dyn ComponentProcessor>,
+    processor: Arc<dyn ComponentProcessor<T>>,
 }
 
-impl ComponentClass {
-    pub fn new() -> ComponentClass {
+impl<T> ComponentClass<T> {
+    pub fn new() -> ComponentClass<T> {
         todo!()
     }
     pub fn generate_image(&self) -> bool {
@@ -24,10 +24,10 @@ impl ComponentClass {
     pub fn parameter_type(&self) -> &HashMap<String, ParameterType> {
         &self.parameter_type
     }
-    pub fn processor(&self) -> &Arc<dyn ComponentProcessor> {
+    pub fn processor(&self) -> &Arc<dyn ComponentProcessor<T>> {
         &self.processor
     }
-    pub fn instantiate(&self) -> ComponentInstance {
+    pub fn instantiate(&self) -> ComponentInstance<T> {
         todo!()
     }
 }

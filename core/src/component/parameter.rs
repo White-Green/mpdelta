@@ -184,7 +184,7 @@ pub enum ImageRequiredParams {
         translate: Vector3<TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, EasingValue<f64>>>,
         rotate: TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, EasingValue<Quaternion<f64>>>,
         scale_center: Vector3<TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, EasingValue<f64>>>,
-        rotate_center: TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, EasingValue<Quaternion<f64>>>,
+        rotate_center: Vector3<TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, EasingValue<f64>>>,
     },
     Free {
         left_top: Vector3<TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, EasingValue<f64>>>,
@@ -194,8 +194,28 @@ pub enum ImageRequiredParams {
     },
 }
 
+pub enum ImageRequiredParamsFixed {
+    Params {
+        scale: Vector3<f64>,
+        translate: Vector3<f64>,
+        rotate: Quaternion<f64>,
+        scale_center: Vector3<f64>,
+        rotate_center: Vector3<f64>,
+    },
+    Free {
+        left_top: Vector3<f64>,
+        right_top: Vector3<f64>,
+        left_bottom: Vector3<f64>,
+        right_bottom: Vector3<f64>,
+    },
+}
+
 pub struct AudioRequiredParams {
     pub volume: Vec<TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, EasingValue<f64>>>,
+}
+
+pub struct AudioRequiredParamsFixed {
+    pub volume: Vec<f64>,
 }
 
 impl<'a> From<&'a mut ParameterValue> for ParameterValueViewForFix<'a> {

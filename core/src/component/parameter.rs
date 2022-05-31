@@ -46,6 +46,7 @@ pub enum Parameter<'a, Type: ParameterValueType<'a>> {
 pub enum Never {}
 
 pub struct Type;
+
 pub type ParameterType = Parameter<'static, Type>;
 
 impl<'a> ParameterValueType<'a> for Type {
@@ -64,6 +65,7 @@ impl<'a> ParameterValueType<'a> for Type {
 }
 
 pub struct TypeExceptComponentClass;
+
 pub type ParameterTypeExceptComponentClass = Parameter<'static, TypeExceptComponentClass>;
 
 impl<'a> ParameterValueType<'a> for TypeExceptComponentClass {
@@ -82,6 +84,7 @@ impl<'a> ParameterValueType<'a> for TypeExceptComponentClass {
 }
 
 pub struct Value;
+
 pub type ParameterValue = Parameter<'static, Value>;
 
 impl<'a> ParameterValueType<'a> for Value {
@@ -93,13 +96,14 @@ impl<'a> ParameterValueType<'a> for Value {
     type Boolean = TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, bool>;
     type Integer = TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, i64>;
     type RealNumber = TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, EasingValue<f64>>;
-    type Vec2 = TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, Vector2<EasingValue<f64>>>;
-    type Vec3 = TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, Vector3<EasingValue<f64>>>;
+    type Vec2 = Vector2<TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, EasingValue<f64>>>;
+    type Vec3 = Vector3<TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, EasingValue<f64>>>;
     type Dictionary = TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, HashMap<String, ParameterValue>>;
     type ComponentClass = ();
 }
 
 pub struct TypedValue;
+
 pub type ParameterTypedValue = Parameter<'static, TypedValue>;
 
 impl<'a> ParameterValueType<'a> for TypedValue {
@@ -111,13 +115,14 @@ impl<'a> ParameterValueType<'a> for TypedValue {
     type Boolean = TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, bool>;
     type Integer = (Option<Range<i64>>, TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, i64>);
     type RealNumber = (Option<Range<f64>>, TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, EasingValue<f64>>);
-    type Vec2 = (Option<Range<Vector2<f64>>>, TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, Vector2<EasingValue<f64>>>);
-    type Vec3 = (Option<Range<Vector3<f64>>>, TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, Vector3<EasingValue<f64>>>);
+    type Vec2 = (Option<Range<Vector2<f64>>>, Vector2<TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, EasingValue<f64>>>);
+    type Vec3 = (Option<Range<Vector3<f64>>>, Vector3<TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, EasingValue<f64>>>);
     type Dictionary = (HashMap<String, Parameter<'a, Type>>, TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, HashMap<String, ParameterValue>>);
     type ComponentClass = ();
 }
 
 pub struct ValueFixed;
+
 pub type ParameterValueFixed = Parameter<'static, ValueFixed>;
 
 impl<'a> ParameterValueType<'a> for ValueFixed {
@@ -136,6 +141,7 @@ impl<'a> ParameterValueType<'a> for ValueFixed {
 }
 
 pub struct ValueFixedExceptComponentClass;
+
 pub type ParameterValueFixedExceptComponentClass = Parameter<'static, ValueFixedExceptComponentClass>;
 
 impl<'a> ParameterValueType<'a> for ValueFixedExceptComponentClass {
@@ -154,6 +160,7 @@ impl<'a> ParameterValueType<'a> for ValueFixedExceptComponentClass {
 }
 
 pub struct ValueViewForFix;
+
 pub type ParameterValueViewForFix<'a> = Parameter<'a, ValueViewForFix>;
 
 impl<'a> ParameterValueType<'a> for ValueViewForFix {
@@ -165,8 +172,8 @@ impl<'a> ParameterValueType<'a> for ValueViewForFix {
     type Boolean = TimeSplitValueView<'a, StaticPointer<RwLock<MarkerPin>>, bool, Immutable, Mutable>;
     type Integer = TimeSplitValueView<'a, StaticPointer<RwLock<MarkerPin>>, i64, Immutable, Mutable>;
     type RealNumber = TimeSplitValueView<'a, StaticPointer<RwLock<MarkerPin>>, EasingValue<f64>, Immutable, Mutable>;
-    type Vec2 = TimeSplitValueView<'a, StaticPointer<RwLock<MarkerPin>>, Vector2<EasingValue<f64>>, Immutable, Mutable>;
-    type Vec3 = TimeSplitValueView<'a, StaticPointer<RwLock<MarkerPin>>, Vector3<EasingValue<f64>>, Immutable, Mutable>;
+    type Vec2 = Vector2<TimeSplitValueView<'a, StaticPointer<RwLock<MarkerPin>>, EasingValue<f64>, Immutable, Mutable>>;
+    type Vec3 = Vector3<TimeSplitValueView<'a, StaticPointer<RwLock<MarkerPin>>, EasingValue<f64>, Immutable, Mutable>>;
     type Dictionary = TimeSplitValueView<'a, StaticPointer<RwLock<MarkerPin>>, HashMap<String, ParameterValue>, Immutable, Mutable>;
     type ComponentClass = ();
 }
@@ -194,8 +201,15 @@ impl<'a> From<&'a mut ParameterValue> for ParameterValueViewForFix<'a> {
             ParameterValue::Boolean(a) => ParameterValueViewForFix::Boolean(TimeSplitValueView::new(a)),
             ParameterValue::Integer(a) => ParameterValueViewForFix::Integer(TimeSplitValueView::new(a)),
             ParameterValue::RealNumber(a) => ParameterValueViewForFix::RealNumber(TimeSplitValueView::new(a)),
-            ParameterValue::Vec2(a) => ParameterValueViewForFix::Vec2(TimeSplitValueView::new(a)),
-            ParameterValue::Vec3(a) => ParameterValueViewForFix::Vec3(TimeSplitValueView::new(a)),
+            ParameterValue::Vec2(Vector2 { x, y }) => ParameterValueViewForFix::Vec2(Vector2 {
+                x: TimeSplitValueView::new(x),
+                y: TimeSplitValueView::new(y),
+            }),
+            ParameterValue::Vec3(Vector3 { x, y, z }) => ParameterValueViewForFix::Vec3(Vector3 {
+                x: TimeSplitValueView::new(x),
+                y: TimeSplitValueView::new(y),
+                z: TimeSplitValueView::new(z),
+            }),
             ParameterValue::Dictionary(a) => ParameterValueViewForFix::Dictionary(TimeSplitValueView::new(a)),
             ParameterValue::ComponentClass(a) => ParameterValueViewForFix::ComponentClass(*a),
         }

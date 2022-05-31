@@ -34,8 +34,8 @@ impl<'a> ParameterValueType<'a> for NativeProcessorInput {
     type Boolean = TimeSplitValue<MarkerTime, bool>;
     type Integer = TimeSplitValue<MarkerTime, i64>;
     type RealNumber = TimeSplitValue<MarkerTime, EasingValue<f64>>;
-    type Vec2 = TimeSplitValue<MarkerTime, EasingValue<Vector2<f64>>>;
-    type Vec3 = TimeSplitValue<MarkerTime, EasingValue<Vector3<f64>>>;
+    type Vec2 = TimeSplitValue<MarkerTime, Vector2<EasingValue<f64>>>;
+    type Vec3 = TimeSplitValue<MarkerTime, Vector3<EasingValue<f64>>>;
     type Dictionary = TimeSplitValue<MarkerTime, HashMap<String, ParameterValue>>;
     type ComponentClass = Never;
 }

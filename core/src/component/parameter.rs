@@ -93,8 +93,8 @@ impl<'a> ParameterValueType<'a> for Value {
     type Boolean = TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, bool>;
     type Integer = TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, i64>;
     type RealNumber = TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, EasingValue<f64>>;
-    type Vec2 = TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, EasingValue<Vector2<f64>>>;
-    type Vec3 = TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, EasingValue<Vector3<f64>>>;
+    type Vec2 = TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, Vector2<EasingValue<f64>>>;
+    type Vec3 = TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, Vector3<EasingValue<f64>>>;
     type Dictionary = TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, HashMap<String, ParameterValue>>;
     type ComponentClass = ();
 }
@@ -111,8 +111,8 @@ impl<'a> ParameterValueType<'a> for TypedValue {
     type Boolean = TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, bool>;
     type Integer = (Option<Range<i64>>, TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, i64>);
     type RealNumber = (Option<Range<f64>>, TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, EasingValue<f64>>);
-    type Vec2 = (Option<Range<Vector2<f64>>>, TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, EasingValue<Vector2<f64>>>);
-    type Vec3 = (Option<Range<Vector3<f64>>>, TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, EasingValue<Vector3<f64>>>);
+    type Vec2 = (Option<Range<Vector2<f64>>>, TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, Vector2<EasingValue<f64>>>);
+    type Vec3 = (Option<Range<Vector3<f64>>>, TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, Vector3<EasingValue<f64>>>);
     type Dictionary = (HashMap<String, Parameter<'a, Type>>, TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, HashMap<String, ParameterValue>>);
     type ComponentClass = ();
 }
@@ -165,8 +165,8 @@ impl<'a> ParameterValueType<'a> for ValueViewForFix {
     type Boolean = TimeSplitValueView<'a, StaticPointer<RwLock<MarkerPin>>, bool, Immutable, Mutable>;
     type Integer = TimeSplitValueView<'a, StaticPointer<RwLock<MarkerPin>>, i64, Immutable, Mutable>;
     type RealNumber = TimeSplitValueView<'a, StaticPointer<RwLock<MarkerPin>>, EasingValue<f64>, Immutable, Mutable>;
-    type Vec2 = TimeSplitValueView<'a, StaticPointer<RwLock<MarkerPin>>, EasingValue<Vector2<f64>>, Immutable, Mutable>;
-    type Vec3 = TimeSplitValueView<'a, StaticPointer<RwLock<MarkerPin>>, EasingValue<Vector3<f64>>, Immutable, Mutable>;
+    type Vec2 = TimeSplitValueView<'a, StaticPointer<RwLock<MarkerPin>>, Vector2<EasingValue<f64>>, Immutable, Mutable>;
+    type Vec3 = TimeSplitValueView<'a, StaticPointer<RwLock<MarkerPin>>, Vector3<EasingValue<f64>>, Immutable, Mutable>;
     type Dictionary = TimeSplitValueView<'a, StaticPointer<RwLock<MarkerPin>>, HashMap<String, ParameterValue>, Immutable, Mutable>;
     type ComponentClass = ();
 }

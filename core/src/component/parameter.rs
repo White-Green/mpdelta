@@ -4,7 +4,7 @@ use crate::component::marker_pin::MarkerPin;
 use crate::component::parameter::placeholder::{AudioPlaceholder, ImagePlaceholder};
 use crate::component::parameter::value::EasingValue;
 use crate::ptr::StaticPointer;
-use cgmath::{Vector2, Vector3};
+use cgmath::{Quaternion, Vector2, Vector3};
 use std::collections::HashMap;
 use std::ops::Range;
 use std::path::PathBuf;
@@ -171,9 +171,17 @@ impl<'a> ParameterValueType<'a> for ValueViewForFix {
     type ComponentClass = ();
 }
 
-pub struct ImageRequiredParams {/* TODO */}
+pub struct ImageRequiredParams {
+    pub scale: Vector3<TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, EasingValue<f64>>>,
+    pub translate: Vector3<TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, EasingValue<f64>>>,
+    pub rotate: TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, EasingValue<Quaternion<f64>>>,
+    pub scale_center: Vector3<TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, EasingValue<f64>>>,
+    pub rotate_center: TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, EasingValue<Quaternion<f64>>>,
+}
 
-pub struct AudioRequiredParams {/* TODO */}
+pub struct AudioRequiredParams {
+    pub volume: Vec<TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, EasingValue<f64>>>,
+}
 
 impl<'a> From<&'a mut ParameterValue> for ParameterValueViewForFix<'a> {
     fn from(value: &'a mut ParameterValue) -> Self {

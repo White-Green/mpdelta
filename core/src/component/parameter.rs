@@ -37,7 +37,7 @@ where
     type Audio = (A::Audio, B::Audio);
     type Video = (A::Video, B::Video);
     type File = (A::File, B::File);
-    type String = (A::String, B::File);
+    type String = (A::String, B::String);
     type Boolean = (A::Boolean, B::Boolean);
     type Integer = (A::Integer, B::Integer);
     type RealNumber = (A::RealNumber, B::RealNumber);

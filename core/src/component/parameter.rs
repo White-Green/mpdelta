@@ -28,6 +28,25 @@ pub trait ParameterValueType<'a> {
     type ComponentClass: 'a;
 }
 
+impl<'a, A, B> ParameterValueType<'a> for (A, B)
+where
+    A: ParameterValueType<'a>,
+    B: ParameterValueType<'a>,
+{
+    type Image = (A::Image, B::Image);
+    type Audio = (A::Audio, B::Audio);
+    type Video = (A::Video, B::Video);
+    type File = (A::File, B::File);
+    type String = (A::String, B::File);
+    type Boolean = (A::Boolean, B::Boolean);
+    type Integer = (A::Integer, B::Integer);
+    type RealNumber = (A::RealNumber, B::RealNumber);
+    type Vec2 = (A::Vec2, B::Vec2);
+    type Vec3 = (A::Vec3, B::Vec3);
+    type Dictionary = (A::Dictionary, B::Dictionary);
+    type ComponentClass = (A::ComponentClass, B::ComponentClass);
+}
+
 pub enum Parameter<'a, Type: ParameterValueType<'a>> {
     Image(Type::Image),
     Audio(Type::Audio),

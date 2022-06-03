@@ -1,5 +1,4 @@
-use crate::common::general_lifetime::AsGeneralLifetime;
-use crate::common::time_split_value::{Immutable, Mutable, TimeSplitValue, TimeSplitValueView};
+use crate::common::time_split_value::TimeSplitValue;
 use crate::component::marker_pin::MarkerPin;
 use crate::component::parameter::placeholder::{AudioPlaceholder, ImagePlaceholder};
 use crate::component::parameter::value::EasingValue;
@@ -19,7 +18,9 @@ pub trait ParameterValueType<'a> {
     type Video: 'a;
     type File: 'a;
     type String: 'a;
+    type Select: 'a;
     type Boolean: 'a;
+    type Radio: 'a;
     type Integer: 'a;
     type RealNumber: 'a;
     type Vec2: 'a;
@@ -29,16 +30,18 @@ pub trait ParameterValueType<'a> {
 }
 
 impl<'a, A, B> ParameterValueType<'a> for (A, B)
-    where
-        A: ParameterValueType<'a>,
-        B: ParameterValueType<'a>,
+where
+    A: ParameterValueType<'a>,
+    B: ParameterValueType<'a>,
 {
     type Image = (A::Image, B::Image);
     type Audio = (A::Audio, B::Audio);
     type Video = (A::Video, B::Video);
     type File = (A::File, B::File);
     type String = (A::String, B::String);
+    type Select = (A::Select, B::Select);
     type Boolean = (A::Boolean, B::Boolean);
+    type Radio = (A::Radio, B::Radio);
     type Integer = (A::Integer, B::Integer);
     type RealNumber = (A::RealNumber, B::RealNumber);
     type Vec2 = (A::Vec2, B::Vec2);
@@ -48,12 +51,15 @@ impl<'a, A, B> ParameterValueType<'a> for (A, B)
 }
 
 pub enum Parameter<'a, Type: ParameterValueType<'a>> {
+    None,
     Image(Type::Image),
     Audio(Type::Audio),
     Video(Type::Video),
     File(Type::File),
     String(Type::String),
+    Select(Type::Select),
     Boolean(Type::Boolean),
+    Radio(Type::Radio),
     Integer(Type::Integer),
     RealNumber(Type::RealNumber),
     Vec2(Type::Vec2),
@@ -74,7 +80,9 @@ impl<'a> ParameterValueType<'a> for Type {
     type Video = ();
     type File = Option<Box<[String]>>;
     type String = Option<Range<usize>>;
+    type Select = Box<[String]>;
     type Boolean = ();
+    type Radio = usize;
     type Integer = Option<Range<i64>>;
     type RealNumber = Option<Range<f64>>;
     type Vec2 = Option<Range<Vector2<f64>>>;
@@ -93,7 +101,9 @@ impl<'a> ParameterValueType<'a> for TypeExceptComponentClass {
     type Video = ();
     type File = Option<Box<[String]>>;
     type String = Option<Range<usize>>;
+    type Select = Box<[String]>;
     type Boolean = ();
+    type Radio = usize;
     type Integer = Option<Range<i64>>;
     type RealNumber = Option<Range<f64>>;
     type Vec2 = Option<Range<Vector2<f64>>>;
@@ -112,7 +122,9 @@ impl<'a> ParameterValueType<'a> for Value {
     type Video = (ImagePlaceholder, AudioPlaceholder);
     type File = TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, PathBuf>;
     type String = TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, String>;
+    type Select = TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, usize>;
     type Boolean = TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, bool>;
+    type Radio = TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, bool>;
     type Integer = TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, i64>;
     type RealNumber = TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, EasingValue<f64>>;
     type Vec2 = Vector2<TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, EasingValue<f64>>>;
@@ -131,7 +143,9 @@ impl<'a> ParameterValueType<'a> for TypedValue {
     type Video = (ImagePlaceholder, AudioPlaceholder);
     type File = (Option<Box<[String]>>, TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, PathBuf>);
     type String = (Option<Range<usize>>, TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, String>);
+    type Select = (Box<[String]>, TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, usize>);
     type Boolean = TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, bool>;
+    type Radio = (usize, TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, bool>);
     type Integer = (Option<Range<i64>>, TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, i64>);
     type RealNumber = (Option<Range<f64>>, TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, EasingValue<f64>>);
     type Vec2 = (Option<Range<Vector2<f64>>>, Vector2<TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, EasingValue<f64>>>);
@@ -150,7 +164,9 @@ impl<'a> ParameterValueType<'a> for ValueFixed {
     type Video = (ImagePlaceholder, AudioPlaceholder);
     type File = PathBuf;
     type String = String;
+    type Select = usize;
     type Boolean = bool;
+    type Radio = bool;
     type Integer = i64;
     type RealNumber = f64;
     type Vec2 = Vector2<f64>;
@@ -169,32 +185,15 @@ impl<'a> ParameterValueType<'a> for ValueFixedExceptComponentClass {
     type Video = (ImagePlaceholder, AudioPlaceholder);
     type File = PathBuf;
     type String = String;
+    type Select = usize;
     type Boolean = bool;
+    type Radio = bool;
     type Integer = i64;
     type RealNumber = f64;
     type Vec2 = Vector2<f64>;
     type Vec3 = Vector3<f64>;
     type Dictionary = HashMap<String, ParameterValue>;
     type ComponentClass = Never;
-}
-
-pub struct ValueViewForFix;
-
-pub type ParameterValueViewForFix<'a> = Parameter<'a, ValueViewForFix>;
-
-impl<'a> ParameterValueType<'a> for ValueViewForFix {
-    type Image = ImagePlaceholder;
-    type Audio = AudioPlaceholder;
-    type Video = (ImagePlaceholder, AudioPlaceholder);
-    type File = TimeSplitValueView<'a, StaticPointer<RwLock<MarkerPin>>, PathBuf, Immutable, Mutable>;
-    type String = TimeSplitValueView<'a, StaticPointer<RwLock<MarkerPin>>, String, Immutable, Mutable>;
-    type Boolean = TimeSplitValueView<'a, StaticPointer<RwLock<MarkerPin>>, bool, Immutable, Mutable>;
-    type Integer = TimeSplitValueView<'a, StaticPointer<RwLock<MarkerPin>>, i64, Immutable, Mutable>;
-    type RealNumber = TimeSplitValueView<'a, StaticPointer<RwLock<MarkerPin>>, EasingValue<f64>, Immutable, Mutable>;
-    type Vec2 = Vector2<TimeSplitValueView<'a, StaticPointer<RwLock<MarkerPin>>, EasingValue<f64>, Immutable, Mutable>>;
-    type Vec3 = Vector3<TimeSplitValueView<'a, StaticPointer<RwLock<MarkerPin>>, EasingValue<f64>, Immutable, Mutable>>;
-    type Dictionary = TimeSplitValueView<'a, StaticPointer<RwLock<MarkerPin>>, HashMap<String, ParameterValue>, Immutable, Mutable>;
-    type ComponentClass = ();
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -204,7 +203,9 @@ impl Opacity {
     pub fn new(value: f64) -> Option<Opacity> {
         if 0. <= value && value <= 1. {
             Some(Opacity(if value == -0. { 0. } else { value }))
-        } else { None }
+        } else {
+            None
+        }
     }
 
     pub fn saturating_new(value: f64) -> Opacity {
@@ -311,34 +312,4 @@ pub struct AudioRequiredParams {
 
 pub struct AudioRequiredParamsFixed {
     pub volume: Vec<f64>,
-}
-
-impl<'a> From<&'a mut ParameterValue> for ParameterValueViewForFix<'a> {
-    fn from(value: &'a mut ParameterValue) -> Self {
-        match value {
-            ParameterValue::Image(a) => ParameterValueViewForFix::Image(*a),
-            ParameterValue::Audio(a) => ParameterValueViewForFix::Audio(*a),
-            ParameterValue::Video(a) => ParameterValueViewForFix::Video(*a),
-            ParameterValue::File(a) => ParameterValueViewForFix::File(TimeSplitValueView::new(a)),
-            ParameterValue::String(a) => ParameterValueViewForFix::String(TimeSplitValueView::new(a)),
-            ParameterValue::Boolean(a) => ParameterValueViewForFix::Boolean(TimeSplitValueView::new(a)),
-            ParameterValue::Integer(a) => ParameterValueViewForFix::Integer(TimeSplitValueView::new(a)),
-            ParameterValue::RealNumber(a) => ParameterValueViewForFix::RealNumber(TimeSplitValueView::new(a)),
-            ParameterValue::Vec2(Vector2 { x, y }) => ParameterValueViewForFix::Vec2(Vector2 {
-                x: TimeSplitValueView::new(x),
-                y: TimeSplitValueView::new(y),
-            }),
-            ParameterValue::Vec3(Vector3 { x, y, z }) => ParameterValueViewForFix::Vec3(Vector3 {
-                x: TimeSplitValueView::new(x),
-                y: TimeSplitValueView::new(y),
-                z: TimeSplitValueView::new(z),
-            }),
-            ParameterValue::Dictionary(a) => ParameterValueViewForFix::Dictionary(TimeSplitValueView::new(a)),
-            ParameterValue::ComponentClass(a) => ParameterValueViewForFix::ComponentClass(*a),
-        }
-    }
-}
-
-impl<'a: 'b, 'b> AsGeneralLifetime<'b> for ParameterValueViewForFix<'a> {
-    type GeneralLifetimeType = ParameterValueViewForFix<'b>;
 }

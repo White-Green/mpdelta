@@ -201,7 +201,7 @@ pub struct Opacity(f64);
 
 impl Opacity {
     pub fn new(value: f64) -> Option<Opacity> {
-        if 0. <= value && value <= 1. {
+        if (0.0..=1.).contains(&value) {
             Some(Opacity(if value == -0. { 0. } else { value }))
         } else {
             None

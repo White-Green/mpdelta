@@ -29,9 +29,9 @@ pub trait ParameterValueType<'a> {
 }
 
 impl<'a, A, B> ParameterValueType<'a> for (A, B)
-where
-    A: ParameterValueType<'a>,
-    B: ParameterValueType<'a>,
+    where
+        A: ParameterValueType<'a>,
+        B: ParameterValueType<'a>,
 {
     type Image = (A::Image, B::Image);
     type Audio = (A::Audio, B::Audio);
@@ -197,7 +197,76 @@ impl<'a> ParameterValueType<'a> for ValueViewForFix {
     type ComponentClass = ();
 }
 
-pub enum ImageRequiredParams {
+#[derive(Debug, Clone, Copy)]
+pub struct Opacity(f64);
+
+impl Opacity {
+    pub fn new(value: f64) -> Option<Opacity> {
+        if 0. <= value && value <= 1. {
+            Some(Opacity(if value == -0. { 0. } else { value }))
+        } else { None }
+    }
+
+    pub fn saturating_new(value: f64) -> Opacity {
+        if !value.is_finite() || value <= -0. {
+            Opacity(0.)
+        } else if value > 1. {
+            Opacity(1.)
+        } else {
+            Opacity(value)
+        }
+    }
+
+    pub fn value(self) -> f64 {
+        self.0
+    }
+}
+
+// ref: https://www.w3.org/TR/compositing-1/
+pub enum BlendMode {
+    Clear,
+    Copy,
+    Destination,
+    SourceOver,
+    DestinationOver,
+    SourceIn,
+    DestinationIn,
+    SourceOut,
+    DestinationOut,
+    SourceAtop,
+    DestinationAtop,
+    XOR,
+    Lighter,
+}
+
+// ref: https://www.w3.org/TR/compositing-1/
+pub enum CompositeOperation {
+    Normal,
+    Multiply,
+    Screen,
+    Overlay,
+    Darken,
+    Lighten,
+    ColorDodge,
+    ColorBurn,
+    HardLight,
+    SoftLight,
+    Difference,
+    Exclusion,
+    Hue,
+    Saturation,
+    Color,
+    Luminosity,
+}
+
+pub struct ImageRequiredParams {
+    transform: ImageRequiredParamsTransform,
+    opacity: TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, EasingValue<Opacity>>,
+    blend_mode: TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, BlendMode>,
+    composite_operation: TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, CompositeOperation>,
+}
+
+pub enum ImageRequiredParamsTransform {
     Params {
         scale: Vector3<TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, EasingValue<f64>>>,
         translate: Vector3<TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, EasingValue<f64>>>,
@@ -213,7 +282,14 @@ pub enum ImageRequiredParams {
     },
 }
 
-pub enum ImageRequiredParamsFixed {
+pub struct ImageRequiredParamsFixed {
+    transform: ImageRequiredParamsTransformFixed,
+    opacity: Opacity,
+    blend_mode: BlendMode,
+    composite_operation: CompositeOperation,
+}
+
+pub enum ImageRequiredParamsTransformFixed {
     Params {
         scale: Vector3<f64>,
         translate: Vector3<f64>,

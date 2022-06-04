@@ -1,4 +1,5 @@
 use crate::common::time_split_value::TimeSplitValue;
+use crate::component::instance::ComponentInstance;
 use crate::component::marker_pin::MarkerPin;
 use crate::component::parameter::placeholder::{AudioPlaceholder, ImagePlaceholder};
 use crate::component::parameter::value::EasingValue;
@@ -133,6 +134,27 @@ impl<'a> ParameterValueType<'a> for Value {
     type ComponentClass = ();
 }
 
+pub struct NullableValue;
+
+pub type ParameterNullableValue = Parameter<'static, NullableValue>;
+
+impl<'a> ParameterValueType<'a> for NullableValue {
+    type Image = Option<ImagePlaceholder>;
+    type Audio = Option<AudioPlaceholder>;
+    type Video = Option<(ImagePlaceholder, AudioPlaceholder)>;
+    type File = TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, Option<PathBuf>>;
+    type String = TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, Option<String>>;
+    type Select = TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, Option<usize>>;
+    type Boolean = TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, Option<bool>>;
+    type Radio = TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, Option<bool>>;
+    type Integer = TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, Option<i64>>;
+    type RealNumber = TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, Option<EasingValue<f64>>>;
+    type Vec2 = Vector2<TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, Option<EasingValue<f64>>>>;
+    type Vec3 = Vector3<TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, Option<EasingValue<f64>>>>;
+    type Dictionary = TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, Option<HashMap<String, ParameterValue>>>;
+    type ComponentClass = Option<()>;
+}
+
 pub struct TypedValue;
 
 pub type ParameterTypedValue = Parameter<'static, TypedValue>;
@@ -260,26 +282,42 @@ pub enum CompositeOperation {
     Luminosity,
 }
 
-pub struct ImageRequiredParams {
-    transform: ImageRequiredParamsTransform,
-    opacity: TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, EasingValue<Opacity>>,
-    blend_mode: TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, BlendMode>,
-    composite_operation: TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, CompositeOperation>,
+pub enum VariableParameterPriority {
+    PrioritizeManually,
+    PrioritizeComponent,
 }
 
-pub enum ImageRequiredParamsTransform {
+type PinSplitValue<T> = TimeSplitValue<StaticPointer<MarkerPin>, T>;
+
+pub enum VariableParameterValue<T, Manually, Nullable> {
+    Manually(Manually),
+    MayComponent {
+        params: Nullable,
+        components: Vec<StaticPointer<ComponentInstance<T>>>,
+        priority: VariableParameterPriority,
+    },
+}
+
+pub struct ImageRequiredParams<T> {
+    transform: ImageRequiredParamsTransform<T>,
+    opacity: VariableParameterValue<T, PinSplitValue<EasingValue<Opacity>>, PinSplitValue<Option<EasingValue<Opacity>>>>,
+    blend_mode: VariableParameterValue<T, PinSplitValue<BlendMode>, PinSplitValue<Option<BlendMode>>>,
+    composite_operation: VariableParameterValue<T, PinSplitValue<CompositeOperation>, PinSplitValue<Option<CompositeOperation>>>,
+}
+
+pub enum ImageRequiredParamsTransform<T> {
     Params {
-        scale: Vector3<TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, EasingValue<f64>>>,
-        translate: Vector3<TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, EasingValue<f64>>>,
-        rotate: TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, EasingValue<Quaternion<f64>>>,
-        scale_center: Vector3<TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, EasingValue<f64>>>,
-        rotate_center: Vector3<TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, EasingValue<f64>>>,
+        scale: VariableParameterValue<T, Vector3<PinSplitValue<EasingValue<f64>>>, Vector3<PinSplitValue<Option<EasingValue<f64>>>>>,
+        translate: VariableParameterValue<T, Vector3<PinSplitValue<EasingValue<f64>>>, Vector3<PinSplitValue<Option<EasingValue<f64>>>>>,
+        rotate: VariableParameterValue<T, PinSplitValue<EasingValue<Quaternion<f64>>>, PinSplitValue<Option<EasingValue<Quaternion<f64>>>>>,
+        scale_center: VariableParameterValue<T, Vector3<PinSplitValue<EasingValue<f64>>>, Vector3<PinSplitValue<Option<EasingValue<f64>>>>>,
+        rotate_center: VariableParameterValue<T, Vector3<PinSplitValue<EasingValue<f64>>>, Vector3<PinSplitValue<Option<EasingValue<f64>>>>>,
     },
     Free {
-        left_top: Vector3<TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, EasingValue<f64>>>,
-        right_top: Vector3<TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, EasingValue<f64>>>,
-        left_bottom: Vector3<TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, EasingValue<f64>>>,
-        right_bottom: Vector3<TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, EasingValue<f64>>>,
+        left_top: VariableParameterValue<T, Vector3<PinSplitValue<EasingValue<f64>>>, Vector3<PinSplitValue<Option<EasingValue<f64>>>>>,
+        right_top: VariableParameterValue<T, Vector3<PinSplitValue<EasingValue<f64>>>, Vector3<PinSplitValue<Option<EasingValue<f64>>>>>,
+        left_bottom: VariableParameterValue<T, Vector3<PinSplitValue<EasingValue<f64>>>, Vector3<PinSplitValue<Option<EasingValue<f64>>>>>,
+        right_bottom: VariableParameterValue<T, Vector3<PinSplitValue<EasingValue<f64>>>, Vector3<PinSplitValue<Option<EasingValue<f64>>>>>,
     },
 }
 

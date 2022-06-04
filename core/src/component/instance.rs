@@ -13,7 +13,7 @@ pub struct ComponentInstance<T> {
     marker_right: StaticPointerOwned<Cell<MarkerPin>>,
     markers: Vec<StaticPointerOwned<Cell<MarkerPin>>>,
     image_required_params: Option<ImageRequiredParams<T>>,
-    audio_required_params: Option<AudioRequiredParams>,
+    audio_required_params: Option<AudioRequiredParams<T>>,
     fixed_parameters: Box<[(String, Parameter<'static, (Type, ValueFixed)>)]>,
     variable_parameters: Vec<(String, VariableParameterValue<T, ParameterTypedValue, ParameterNullableValue>)>,
     processor: Arc<dyn ComponentProcessor<T>>,
@@ -35,7 +35,7 @@ impl<T> ComponentInstance<T> {
     pub fn image_required_params(&self) -> Option<&ImageRequiredParams<T>> {
         self.image_required_params.as_ref()
     }
-    pub fn audio_required_params(&self) -> Option<&AudioRequiredParams> {
+    pub fn audio_required_params(&self) -> Option<&AudioRequiredParams<T>> {
         self.audio_required_params.as_ref()
     }
     pub fn fixed_parameters(&self) -> &[(String, Parameter<'static, (Type, ValueFixed)>)] {

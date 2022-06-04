@@ -372,8 +372,8 @@ pub enum ImageRequiredParamsTransformFixed {
     },
 }
 
-pub struct AudioRequiredParams {
-    pub volume: Vec<TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, EasingValue<f64>>>,
+pub struct AudioRequiredParams<T> {
+    pub volume: Vec<VariableParameterValue<T, PinSplitValue<EasingValue<f64>>, PinSplitValue<Option<EasingValue<f64>>>>>,
 }
 
 pub struct AudioRequiredParamsFixed {

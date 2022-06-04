@@ -5,7 +5,9 @@ use crate::component::parameter::placeholder::{AudioPlaceholder, ImagePlaceholde
 use crate::component::parameter::value::EasingValue;
 use crate::ptr::StaticPointer;
 use cgmath::{Quaternion, Vector2, Vector3};
+use std::cmp::Ordering;
 use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
 use std::ops::Range;
 use std::path::PathBuf;
 use std::sync::RwLock;
@@ -231,7 +233,7 @@ impl Opacity {
     }
 
     pub fn saturating_new(value: f64) -> Opacity {
-        if !value.is_finite() || value <= -0. {
+        if value.is_nan() || value <= -0. {
             Opacity(0.)
         } else if value > 1. {
             Opacity(1.)
@@ -242,6 +244,32 @@ impl Opacity {
 
     pub fn value(self) -> f64 {
         self.0
+    }
+}
+
+impl PartialEq for Opacity {
+    fn eq(&self, other: &Self) -> bool {
+        self.0 == other.0
+    }
+}
+
+impl Eq for Opacity {}
+
+impl PartialOrd for Opacity {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self.0.partial_cmp(&other.0)
+    }
+}
+
+impl Ord for Opacity {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.0.partial_cmp(&other.0).unwrap()
+    }
+}
+
+impl Hash for Opacity {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.0.to_be_bytes().hash(state);
     }
 }
 
@@ -350,4 +378,43 @@ pub struct AudioRequiredParams {
 
 pub struct AudioRequiredParamsFixed {
     pub volume: Vec<f64>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::hash_map::DefaultHasher;
+
+    #[test]
+    fn test_opacity() {
+        assert_eq!(Opacity::new(-f64::EPSILON), None);
+        assert_eq!(Opacity::new(-0.0), Some(Opacity(0.0)));
+        assert_eq!(Opacity::new(0.0), Some(Opacity(0.0)));
+        assert_eq!(Opacity::new(0.5), Some(Opacity(0.5)));
+        assert_eq!(Opacity::new(1.0), Some(Opacity(1.0)));
+        assert_eq!(Opacity::new(1.0 + f64::EPSILON), None);
+        assert_eq!(
+            {
+                let mut hasher = DefaultHasher::new();
+                Opacity::new(-0.0).unwrap().hash(&mut hasher);
+                hasher.finish()
+            },
+            {
+                let mut hasher = DefaultHasher::new();
+                Opacity::new(0.0).unwrap().hash(&mut hasher);
+                hasher.finish()
+            }
+        );
+
+        assert_eq!(Opacity::saturating_new(f64::NEG_INFINITY), Opacity(0.0));
+        assert_eq!(Opacity::saturating_new(-f64::EPSILON), Opacity(0.0));
+        assert_eq!(Opacity::saturating_new(-0.0), Opacity(0.0));
+        assert_eq!(Opacity::saturating_new(0.0), Opacity(0.0));
+        assert_eq!(Opacity::saturating_new(0.5), Opacity(0.5));
+        assert_eq!(Opacity::saturating_new(1.0), Opacity(1.0));
+        assert_eq!(Opacity::saturating_new(1.0 + f64::EPSILON), Opacity(1.0));
+        assert_eq!(Opacity::saturating_new(f64::INFINITY), Opacity(1.0));
+        assert_eq!(Opacity::saturating_new(f64::NAN), Opacity(0.0));
+        assert_eq!(Opacity::saturating_new(-f64::NAN), Opacity(0.0));
+    }
 }

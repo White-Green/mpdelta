@@ -42,8 +42,8 @@ pub trait GetRootComponentClassesUsecase {
 }
 
 #[async_trait]
-pub trait GetPeojectPathUsecase {
-    async fn get_peoject_path(self: Arc<Self>, project: StaticPointer<Project>) -> Option<PathBuf>;
+pub trait GetProjectPathUsecase {
+    async fn get_project_path(self: Arc<Self>, project: StaticPointer<Project>) -> Option<PathBuf>;
 }
 
 #[async_trait]

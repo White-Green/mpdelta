@@ -1,5 +1,6 @@
 pub mod common;
 pub mod component;
+pub mod core;
 pub mod edit;
 pub mod native;
 pub mod project;

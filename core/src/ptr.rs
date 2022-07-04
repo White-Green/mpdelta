@@ -21,6 +21,10 @@ impl<T> StaticPointerOwned<T> {
 }
 
 impl<T> StaticPointer<T> {
+    pub fn new() -> StaticPointer<T> {
+        StaticPointer(Weak::new())
+    }
+
     pub fn reference(&self) -> StaticPointer<T> {
         StaticPointer(Weak::clone(&self.0))
     }
@@ -116,6 +120,30 @@ impl<'a, T: PartialEq> PartialEq<StaticPointerOwned<T>> for StaticPointerStrongR
     }
 }
 
+impl<T> PartialEq<StaticPointerOwned<T>> for StaticPointer<T> {
+    fn eq(&self, other: &StaticPointerOwned<T>) -> bool {
+        Weak::as_ptr(&self.0) == Arc::as_ptr(&other.0)
+    }
+}
+
+impl<T> PartialEq<StaticPointer<T>> for StaticPointerOwned<T> {
+    fn eq(&self, other: &StaticPointer<T>) -> bool {
+        Arc::as_ptr(&self.0) == Weak::as_ptr(&other.0)
+    }
+}
+
+impl<'a, T> PartialEq<StaticPointerStrongRef<'a, T>> for StaticPointer<T> {
+    fn eq(&self, other: &StaticPointerStrongRef<'a, T>) -> bool {
+        Weak::as_ptr(&self.0) == Arc::as_ptr(&other.0)
+    }
+}
+
+impl<'a, T> PartialEq<StaticPointer<T>> for StaticPointerStrongRef<'a, T> {
+    fn eq(&self, other: &StaticPointer<T>) -> bool {
+        Arc::as_ptr(&self.0) == Weak::as_ptr(&other.0)
+    }
+}
+
 impl<T: Eq> Eq for StaticPointerOwned<T> {}
 
 impl<T> Eq for StaticPointer<T> {}
@@ -198,6 +226,49 @@ mod tests {
         let address = captures.get(1).unwrap().as_str();
         assert_eq!(format!("{:#?}", owned), format!("StaticPointerOwned: {}(\n    TestStructTuple(\n        42,\n    ),\n)", address));
         assert_eq!(format!("{:#?}", strong_ref), format!("StaticPointerStrongRef: {}(\n    TestStructTuple(\n        42,\n    ),\n)", address));
+    }
+
+    #[test]
+    fn eq() {
+        let owned1 = StaticPointerOwned::new(());
+        let owned2 = StaticPointerOwned::new(());
+        let weak11 = StaticPointerOwned::reference(&owned1);
+        let weak12 = StaticPointerOwned::reference(&owned1);
+        let weak21 = StaticPointerOwned::reference(&owned2);
+        let weak22 = weak21.clone();
+        let strong11 = weak11.upgrade().unwrap();
+        let strong12 = weak12.upgrade().unwrap();
+        let strong21 = weak21.upgrade().unwrap();
+        let strong22 = weak22.upgrade().unwrap();
+        assert_eq!(owned1, weak11);
+        assert_eq!(owned1, weak12);
+        assert_eq!(owned2, weak21);
+        assert_eq!(owned2, weak22);
+        assert_eq!(strong11, weak11);
+        assert_eq!(strong11, weak12);
+        assert_eq!(strong12, weak11);
+        assert_eq!(strong12, weak12);
+        assert_eq!(strong21, weak21);
+        assert_eq!(strong21, weak22);
+        assert_eq!(strong22, weak21);
+        assert_eq!(strong22, weak22);
+        assert_eq!(weak11, weak12);
+        assert_eq!(weak21, weak22);
+
+        assert_ne!(owned1, weak21);
+        assert_ne!(owned1, weak22);
+        assert_ne!(owned2, weak11);
+        assert_ne!(owned2, weak12);
+        assert_ne!(strong21, weak11);
+        assert_ne!(strong21, weak12);
+        assert_ne!(strong22, weak11);
+        assert_ne!(strong22, weak12);
+        assert_ne!(strong11, weak21);
+        assert_ne!(strong11, weak22);
+        assert_ne!(strong12, weak21);
+        assert_ne!(strong12, weak22);
+        assert_ne!(weak11, weak22);
+        assert_ne!(weak12, weak22);
     }
 
     #[test]

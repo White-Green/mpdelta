@@ -41,7 +41,7 @@ impl<'a> ParameterValueType<'a> for NativeProcessorInput {
     type ComponentClass = Never;
 }
 
-pub trait ComponentProcessor<T> {
+pub trait ComponentProcessor<T>: Send + Sync {
     fn update_variable_parameter(&self, fixed_params: &mut [ParameterValueFixed], variable_parameters: &mut Vec<(String, ParameterType)>);
     fn natural_length(&self, fixed_params: &[ParameterValueFixed], variable_params: &[ParameterValue]) -> Duration;
     fn process(&self, fixed_params: &[ParameterValueFixed], variable_params: &[ParameterValue]) -> ComponentProcessorOutput<T>;

@@ -7,6 +7,7 @@ use crate::ptr::StaticPointer;
 use cgmath::{Quaternion, Vector2, Vector3};
 use std::cmp::Ordering;
 use std::collections::HashMap;
+use std::fmt::{Debug, Formatter};
 use std::hash::{Hash, Hasher};
 use std::ops::Range;
 use std::path::PathBuf;
@@ -69,6 +70,28 @@ pub enum Parameter<'a, Type: ParameterValueType<'a>> {
     Vec3(Type::Vec3),
     Dictionary(Type::Dictionary),
     ComponentClass(Type::ComponentClass),
+}
+
+impl<'a, Type: ParameterValueType<'a>> Debug for Parameter<'a, Type> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Parameter::None => f.write_str("None"),
+            Parameter::Image(_) => f.write_str("Image"),
+            Parameter::Audio(_) => f.write_str("Audio"),
+            Parameter::Video(_) => f.write_str("Video"),
+            Parameter::File(_) => f.write_str("File"),
+            Parameter::String(_) => f.write_str("String"),
+            Parameter::Select(_) => f.write_str("Select"),
+            Parameter::Boolean(_) => f.write_str("Boolean"),
+            Parameter::Radio(_) => f.write_str("Radio"),
+            Parameter::Integer(_) => f.write_str("Integer"),
+            Parameter::RealNumber(_) => f.write_str("RealNumber"),
+            Parameter::Vec2(_) => f.write_str("Vec2"),
+            Parameter::Vec3(_) => f.write_str("Vec3"),
+            Parameter::Dictionary(_) => f.write_str("Dictionary"),
+            Parameter::ComponentClass(_) => f.write_str("ComponentClass"),
+        }
+    }
 }
 
 pub enum Never {}
@@ -274,6 +297,7 @@ impl Hash for Opacity {
 }
 
 // ref: https://www.w3.org/TR/compositing-1/
+#[derive(Debug)]
 pub enum BlendMode {
     Clear,
     Copy,
@@ -291,6 +315,7 @@ pub enum BlendMode {
 }
 
 // ref: https://www.w3.org/TR/compositing-1/
+#[derive(Debug)]
 pub enum CompositeOperation {
     Normal,
     Multiply,
@@ -310,6 +335,7 @@ pub enum CompositeOperation {
     Luminosity,
 }
 
+#[derive(Debug)]
 pub enum VariableParameterPriority {
     PrioritizeManually,
     PrioritizeComponent,
@@ -317,6 +343,7 @@ pub enum VariableParameterPriority {
 
 type PinSplitValue<T> = TimeSplitValue<StaticPointer<MarkerPin>, T>;
 
+#[derive(Debug)]
 pub enum VariableParameterValue<T, Manually, Nullable> {
     Manually(Manually),
     MayComponent {
@@ -326,6 +353,7 @@ pub enum VariableParameterValue<T, Manually, Nullable> {
     },
 }
 
+#[derive(Debug)]
 pub struct ImageRequiredParams<T> {
     transform: ImageRequiredParamsTransform<T>,
     opacity: VariableParameterValue<T, PinSplitValue<EasingValue<Opacity>>, PinSplitValue<Option<EasingValue<Opacity>>>>,
@@ -333,6 +361,7 @@ pub struct ImageRequiredParams<T> {
     composite_operation: VariableParameterValue<T, PinSplitValue<CompositeOperation>, PinSplitValue<Option<CompositeOperation>>>,
 }
 
+#[derive(Debug)]
 pub enum ImageRequiredParamsTransform<T> {
     Params {
         scale: VariableParameterValue<T, Vector3<PinSplitValue<EasingValue<f64>>>, Vector3<PinSplitValue<Option<EasingValue<f64>>>>>,
@@ -349,6 +378,7 @@ pub enum ImageRequiredParamsTransform<T> {
     },
 }
 
+#[derive(Debug)]
 pub struct ImageRequiredParamsFixed {
     transform: ImageRequiredParamsTransformFixed,
     opacity: Opacity,
@@ -356,6 +386,7 @@ pub struct ImageRequiredParamsFixed {
     composite_operation: CompositeOperation,
 }
 
+#[derive(Debug)]
 pub enum ImageRequiredParamsTransformFixed {
     Params {
         scale: Vector3<f64>,
@@ -372,10 +403,12 @@ pub enum ImageRequiredParamsTransformFixed {
     },
 }
 
+#[derive(Debug)]
 pub struct AudioRequiredParams<T> {
     pub volume: Vec<VariableParameterValue<T, PinSplitValue<EasingValue<f64>>, PinSplitValue<Option<EasingValue<f64>>>>>,
 }
 
+#[derive(Debug)]
 pub struct AudioRequiredParamsFixed {
     pub volume: Vec<f64>,
 }

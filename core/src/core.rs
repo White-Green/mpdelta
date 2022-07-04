@@ -33,19 +33,19 @@ pub trait IdGenerator: Send + Sync {
 }
 
 #[async_trait]
-pub trait ProjectLoader: Send + Sync {
+pub trait ProjectLoader<T>: Send + Sync {
     type Err: Error + 'static;
-    async fn load_project(&self, path: &Path) -> Result<StaticPointerOwned<RwLock<Project>>, Self::Err>;
+    async fn load_project(&self, path: &Path) -> Result<StaticPointerOwned<RwLock<Project<T>>>, Self::Err>;
 }
 
 #[async_trait]
-pub trait ProjectMemory: Send + Sync {
+pub trait ProjectMemory<T>: Send + Sync {
     async fn contains(&self, path: &Path) -> bool {
         self.get_loaded_project(path).await.is_some()
     }
-    async fn insert_new_project(&self, path: Option<&Path>, project: StaticPointerOwned<RwLock<Project>>);
-    async fn get_loaded_project(&self, path: &Path) -> Option<StaticPointer<RwLock<Project>>>;
-    async fn all_loaded_projects(&self) -> Cow<[StaticPointer<RwLock<Project>>]>;
+    async fn insert_new_project(&self, path: Option<&Path>, project: StaticPointerOwned<RwLock<Project<T>>>);
+    async fn get_loaded_project(&self, path: &Path) -> Option<StaticPointer<RwLock<Project<T>>>>;
+    async fn all_loaded_projects(&self) -> Cow<[StaticPointer<RwLock<Project<T>>>]>;
 }
 
 #[derive(Debug, Error)]
@@ -55,14 +55,14 @@ pub enum LoadProjectError<PLErr> {
 }
 
 #[async_trait]
-impl<T0: Send + Sync, PL: Send + Sync, T2: Send + Sync, PM: Send + Sync, T4: Send + Sync, T5: Send + Sync, T6: Send + Sync, T7: Send + Sync, T8: Send + Sync> LoadProjectUsecase for MPDeltaCore<T0, PL, T2, PM, T4, T5, T6, T7, T8>
+impl<T, T0: Send + Sync, PL: Send + Sync, T2: Send + Sync, PM: Send + Sync, T4: Send + Sync, T5: Send + Sync, T6: Send + Sync, T7: Send + Sync, T8: Send + Sync> LoadProjectUsecase<T> for MPDeltaCore<T0, PL, T2, PM, T4, T5, T6, T7, T8>
 where
-    PL: ProjectLoader,
-    PM: ProjectMemory,
+    PL: ProjectLoader<T>,
+    PM: ProjectMemory<T>,
 {
     type Err = LoadProjectError<PL::Err>;
 
-    async fn load_project(&self, path: impl AsRef<Path> + Send + Sync) -> Result<StaticPointer<RwLock<Project>>, Self::Err> {
+    async fn load_project(&self, path: impl AsRef<Path> + Send + Sync) -> Result<StaticPointer<RwLock<Project<T>>>, Self::Err> {
         let path = path.as_ref();
         match self.project_memory.get_loaded_project(path).await {
             Some(project) => Ok(project),
@@ -77,9 +77,9 @@ where
 }
 
 #[async_trait]
-pub trait ProjectWriter: Send + Sync {
+pub trait ProjectWriter<T>: Send + Sync {
     type Err: Error + 'static;
-    async fn write_project(&self, project: &StaticPointer<RwLock<Project>>, path: &Path) -> Result<(), Self::Err>;
+    async fn write_project(&self, project: &StaticPointer<RwLock<Project<T>>>, path: &Path) -> Result<(), Self::Err>;
 }
 
 #[derive(Debug, Error)]
@@ -89,26 +89,25 @@ pub enum WriteProjectError<PWErr> {
 }
 
 #[async_trait]
-impl<T0: Send + Sync, T1: Send + Sync, PW: Send + Sync, T3: Send + Sync, T4: Send + Sync, T5: Send + Sync, T6: Send + Sync, T7: Send + Sync, T8: Send + Sync> WriteProjectUsecase for MPDeltaCore<T0, T1, PW, T3, T4, T5, T6, T7, T8>
+impl<T, T0: Send + Sync, T1: Send + Sync, PW: Send + Sync, T3: Send + Sync, T4: Send + Sync, T5: Send + Sync, T6: Send + Sync, T7: Send + Sync, T8: Send + Sync> WriteProjectUsecase<T> for MPDeltaCore<T0, T1, PW, T3, T4, T5, T6, T7, T8>
 where
-    PW: ProjectWriter,
+    PW: ProjectWriter<T>,
 {
     type Err = WriteProjectError<PW::Err>;
 
-    async fn write_project(&self, project: &StaticPointer<RwLock<Project>>, path: impl AsRef<Path> + Send + Sync) -> Result<(), Self::Err> {
+    async fn write_project(&self, project: &StaticPointer<RwLock<Project<T>>>, path: impl AsRef<Path> + Send + Sync) -> Result<(), Self::Err> {
         self.project_writer.write_project(project, path.as_ref()).await.map_err(Into::into)
     }
 }
 
 #[async_trait]
-impl<ID: Send + Sync, T1: Send + Sync, T2: Send + Sync, PM: Send + Sync, T4: Send + Sync, T5: Send + Sync, T6: Send + Sync, T7: Send + Sync, T8: Send + Sync> NewProjectUsecase for MPDeltaCore<ID, T1, T2, PM, T4, T5, T6, T7, T8>
+impl<T, ID: Send + Sync, T1: Send + Sync, T2: Send + Sync, PM: Send + Sync, T4: Send + Sync, T5: Send + Sync, T6: Send + Sync, T7: Send + Sync, T8: Send + Sync> NewProjectUsecase<T> for MPDeltaCore<ID, T1, T2, PM, T4, T5, T6, T7, T8>
 where
     ID: IdGenerator,
-    PM: ProjectMemory,
+    PM: ProjectMemory<T>,
 {
-    async fn new_project(&self) -> StaticPointer<RwLock<Project>> {
+    async fn new_project(&self) -> StaticPointer<RwLock<Project<T>>> {
         let project = Project::new_empty(self.id_generator.generate_new().await);
-        let project = StaticPointerOwned::new(RwLock::new(project));
         let pointer = StaticPointerOwned::reference(&project);
         self.project_memory.insert_new_project(None, project).await;
         pointer
@@ -116,23 +115,22 @@ where
 }
 
 #[async_trait]
-pub trait RootComponentClassMemory: Send + Sync {
-    async fn insert_new_root_component_class(&self, parent: Option<&StaticPointer<RwLock<Project>>>, root_component_class: StaticPointerOwned<RwLock<RootComponentClass>>);
-    async fn set_parent(&self, root_component_class: &StaticPointer<RwLock<RootComponentClass>>, parent: Option<&StaticPointer<RwLock<Project>>>);
-    async fn search_by_parent(&self, parent: &StaticPointer<RwLock<Project>>) -> Cow<[StaticPointer<RwLock<RootComponentClass>>]>;
-    async fn get_parent_project(&self, path: &StaticPointer<RwLock<RootComponentClass>>) -> Option<StaticPointer<RwLock<Project>>>;
-    async fn all_loaded_root_component_classes(&self) -> Cow<[StaticPointer<RwLock<RootComponentClass>>]>;
+pub trait RootComponentClassMemory<T>: Send + Sync {
+    async fn insert_new_root_component_class(&self, parent: Option<&StaticPointer<RwLock<Project<T>>>>, root_component_class: StaticPointerOwned<RwLock<RootComponentClass<T>>>);
+    async fn set_parent(&self, root_component_class: &StaticPointer<RwLock<RootComponentClass<T>>>, parent: Option<&StaticPointer<RwLock<Project<T>>>>);
+    async fn search_by_parent(&self, parent: &StaticPointer<RwLock<Project<T>>>) -> Cow<[StaticPointer<RwLock<RootComponentClass<T>>>]>;
+    async fn get_parent_project(&self, path: &StaticPointer<RwLock<RootComponentClass<T>>>) -> Option<StaticPointer<RwLock<Project<T>>>>;
+    async fn all_loaded_root_component_classes(&self) -> Cow<[StaticPointer<RwLock<RootComponentClass<T>>>]>;
 }
 
 #[async_trait]
-impl<ID: Send + Sync, T1: Send + Sync, T2: Send + Sync, T3: Send + Sync, RM: Send + Sync, T5: Send + Sync, T6: Send + Sync, T7: Send + Sync, T8: Send + Sync> NewRootComponentClassUsecase for MPDeltaCore<ID, T1, T2, T3, RM, T5, T6, T7, T8>
+impl<T, ID: Send + Sync, T1: Send + Sync, T2: Send + Sync, T3: Send + Sync, RM: Send + Sync, T5: Send + Sync, T6: Send + Sync, T7: Send + Sync, T8: Send + Sync> NewRootComponentClassUsecase<T> for MPDeltaCore<ID, T1, T2, T3, RM, T5, T6, T7, T8>
 where
     ID: IdGenerator,
-    RM: RootComponentClassMemory,
+    RM: RootComponentClassMemory<T>,
 {
-    async fn new_root_component_class(&self) -> StaticPointer<RwLock<RootComponentClass>> {
+    async fn new_root_component_class(&self) -> StaticPointer<RwLock<RootComponentClass<T>>> {
         let root_component_class = RootComponentClass::new_empty(self.id_generator.generate_new().await);
-        let root_component_class = StaticPointerOwned::new(RwLock::new(root_component_class));
         let pointer = StaticPointerOwned::reference(&root_component_class);
         self.root_component_class_memory.insert_new_root_component_class(None, root_component_class).await;
         pointer
@@ -140,38 +138,38 @@ where
 }
 
 #[async_trait]
-impl<T0: Send + Sync, T1: Send + Sync, T2: Send + Sync, T3: Send + Sync, RM: Send + Sync, T5: Send + Sync, T6: Send + Sync, T7: Send + Sync, T8: Send + Sync> SetOwnerForRootComponentClassUsecase for MPDeltaCore<T0, T1, T2, T3, RM, T5, T6, T7, T8>
+impl<T, T0: Send + Sync, T1: Send + Sync, T2: Send + Sync, T3: Send + Sync, RM: Send + Sync, T5: Send + Sync, T6: Send + Sync, T7: Send + Sync, T8: Send + Sync> SetOwnerForRootComponentClassUsecase<T> for MPDeltaCore<T0, T1, T2, T3, RM, T5, T6, T7, T8>
 where
-    RM: RootComponentClassMemory,
+    RM: RootComponentClassMemory<T>,
 {
-    async fn set_owner_for_root_component_class(&self, component: &StaticPointer<RwLock<RootComponentClass>>, owner: &StaticPointer<RwLock<Project>>) {
+    async fn set_owner_for_root_component_class(&self, component: &StaticPointer<RwLock<RootComponentClass<T>>>, owner: &StaticPointer<RwLock<Project<T>>>) {
         self.root_component_class_memory.set_parent(component, Some(owner)).await;
     }
 }
 
 #[async_trait]
-impl<T0: Send + Sync, T1: Send + Sync, T2: Send + Sync, PM: Send + Sync, T4: Send + Sync, T5: Send + Sync, T6: Send + Sync, T7: Send + Sync, T8: Send + Sync> GetLoadedProjectsUsecase for MPDeltaCore<T0, T1, T2, PM, T4, T5, T6, T7, T8>
+impl<T, T0: Send + Sync, T1: Send + Sync, T2: Send + Sync, PM: Send + Sync, T4: Send + Sync, T5: Send + Sync, T6: Send + Sync, T7: Send + Sync, T8: Send + Sync> GetLoadedProjectsUsecase<T> for MPDeltaCore<T0, T1, T2, PM, T4, T5, T6, T7, T8>
 where
-    PM: ProjectMemory,
+    PM: ProjectMemory<T>,
 {
-    async fn get_loaded_projects(&self) -> Cow<[StaticPointer<RwLock<Project>>]> {
+    async fn get_loaded_projects(&self) -> Cow<[StaticPointer<RwLock<Project<T>>>]> {
         self.project_memory.all_loaded_projects().await
     }
 }
 
 #[async_trait]
-impl<T0: Send + Sync, T1: Send + Sync, T2: Send + Sync, T3: Send + Sync, RM: Send + Sync, T5: Send + Sync, T6: Send + Sync, T7: Send + Sync, T8: Send + Sync> GetRootComponentClassesUsecase for MPDeltaCore<T0, T1, T2, T3, RM, T5, T6, T7, T8>
+impl<T, T0: Send + Sync, T1: Send + Sync, T2: Send + Sync, T3: Send + Sync, RM: Send + Sync, T5: Send + Sync, T6: Send + Sync, T7: Send + Sync, T8: Send + Sync> GetRootComponentClassesUsecase<T> for MPDeltaCore<T0, T1, T2, T3, RM, T5, T6, T7, T8>
 where
-    RM: RootComponentClassMemory,
+    RM: RootComponentClassMemory<T>,
 {
-    async fn get_root_component_classes(&self, project: &StaticPointer<RwLock<Project>>) -> Cow<[StaticPointer<RwLock<RootComponentClass>>]> {
+    async fn get_root_component_classes(&self, project: &StaticPointer<RwLock<Project<T>>>) -> Cow<[StaticPointer<RwLock<RootComponentClass<T>>>]> {
         self.root_component_class_memory.search_by_parent(project).await
     }
 }
 
 #[async_trait]
 pub trait ComponentClassLoader<T>: Send + Sync {
-    async fn get_available_component_classes(&self) -> Cow<[StaticPointer<RwLock<ComponentClass<T>>>]>;
+    async fn get_available_component_classes(&self) -> Cow<[StaticPointer<RwLock<dyn ComponentClass<T>>>]>;
 }
 
 #[async_trait]
@@ -179,7 +177,7 @@ impl<T, T0: Send + Sync, T1: Send + Sync, T2: Send + Sync, T3: Send + Sync, T4: 
 where
     CL: ComponentClassLoader<T>,
 {
-    async fn get_available_component_classes(&self) -> Cow<[StaticPointer<RwLock<ComponentClass<T>>>]> {
+    async fn get_available_component_classes(&self) -> Cow<[StaticPointer<RwLock<dyn ComponentClass<T>>>]> {
         self.component_class_loader.get_available_component_classes().await
     }
 }
@@ -207,17 +205,17 @@ where
 pub trait Editor<T>: Send + Sync {
     type Log: Send + Sync;
     type Err: Error + 'static;
-    async fn edit(&self, target: &StaticPointer<RwLock<RootComponentClass>>, command: RootComponentEditCommand) -> Result<Self::Log, Self::Err>;
-    async fn edit_instance(&self, root: &StaticPointer<RwLock<RootComponentClass>>, target: &StaticPointer<RwLock<ComponentInstance<T>>>, command: InstanceEditCommand) -> Result<Self::Log, Self::Err>;
+    async fn edit(&self, target: &StaticPointer<RwLock<RootComponentClass<T>>>, command: RootComponentEditCommand) -> Result<Self::Log, Self::Err>;
+    async fn edit_instance(&self, root: &StaticPointer<RwLock<RootComponentClass<T>>>, target: &StaticPointer<RwLock<ComponentInstance<T>>>, command: InstanceEditCommand) -> Result<Self::Log, Self::Err>;
     async fn edit_reverse(&self, log: &Self::Log);
     async fn edit_by_log(&self, log: &Self::Log);
 }
 
 #[async_trait]
 pub trait EditHistory<T, Log>: Send + Sync {
-    async fn push_history(&self, root: &StaticPointer<RwLock<RootComponentClass>>, target: Option<&StaticPointer<RwLock<ComponentInstance<T>>>>, log: Log);
-    async fn undo(&self, root: &StaticPointer<RwLock<RootComponentClass>>, target: Option<&StaticPointer<RwLock<ComponentInstance<T>>>>) -> Option<&Log>;
-    async fn redo(&self, root: &StaticPointer<RwLock<RootComponentClass>>, target: Option<&StaticPointer<RwLock<ComponentInstance<T>>>>) -> Option<&Log>;
+    async fn push_history(&self, root: &StaticPointer<RwLock<RootComponentClass<T>>>, target: Option<&StaticPointer<RwLock<ComponentInstance<T>>>>, log: Log);
+    async fn undo(&self, root: &StaticPointer<RwLock<RootComponentClass<T>>>, target: Option<&StaticPointer<RwLock<ComponentInstance<T>>>>) -> Option<&Log>;
+    async fn redo(&self, root: &StaticPointer<RwLock<RootComponentClass<T>>>, target: Option<&StaticPointer<RwLock<ComponentInstance<T>>>>) -> Option<&Log>;
 }
 
 #[async_trait]
@@ -229,13 +227,13 @@ where
 {
     type Err = ED::Err;
 
-    async fn edit(&self, target: &StaticPointer<RwLock<RootComponentClass>>, command: RootComponentEditCommand) -> Result<(), Self::Err> {
+    async fn edit(&self, target: &StaticPointer<RwLock<RootComponentClass<T>>>, command: RootComponentEditCommand) -> Result<(), Self::Err> {
         let log = self.editor.edit(target, command).await?;
         self.edit_history.push_history(target, None, log).await;
         Ok(())
     }
 
-    async fn edit_instance(&self, root: &StaticPointer<RwLock<RootComponentClass>>, target: &StaticPointer<RwLock<ComponentInstance<T>>>, command: InstanceEditCommand) -> Result<(), Self::Err> {
+    async fn edit_instance(&self, root: &StaticPointer<RwLock<RootComponentClass<T>>>, target: &StaticPointer<RwLock<ComponentInstance<T>>>, command: InstanceEditCommand) -> Result<(), Self::Err> {
         let log = self.editor.edit_instance(root, target, command).await?;
         self.edit_history.push_history(root, Some(target), log).await;
         Ok(())
@@ -249,7 +247,7 @@ where
     ED: Editor<T>,
     HS: EditHistory<T, ED::Log>,
 {
-    async fn undo(&self, component: &StaticPointer<RwLock<RootComponentClass>>) -> bool {
+    async fn undo(&self, component: &StaticPointer<RwLock<RootComponentClass<T>>>) -> bool {
         if let Some(log) = self.edit_history.undo(component, None).await {
             self.editor.edit_reverse(log).await;
             true
@@ -258,7 +256,7 @@ where
         }
     }
 
-    async fn undo_instance(&self, root: &StaticPointer<RwLock<RootComponentClass>>, target: &StaticPointer<RwLock<ComponentInstance<T>>>) -> bool {
+    async fn undo_instance(&self, root: &StaticPointer<RwLock<RootComponentClass<T>>>, target: &StaticPointer<RwLock<ComponentInstance<T>>>) -> bool {
         if let Some(log) = self.edit_history.undo(root, Some(target)).await {
             self.editor.edit_reverse(log).await;
             true
@@ -275,7 +273,7 @@ where
     ED: Editor<T>,
     HS: EditHistory<T, ED::Log>,
 {
-    async fn redo(&self, component: &StaticPointer<RwLock<RootComponentClass>>) -> bool {
+    async fn redo(&self, component: &StaticPointer<RwLock<RootComponentClass<T>>>) -> bool {
         if let Some(log) = self.edit_history.redo(component, None).await {
             self.editor.edit_by_log(log).await;
             true
@@ -284,7 +282,7 @@ where
         }
     }
 
-    async fn redo_instance(&self, root: &StaticPointer<RwLock<RootComponentClass>>, target: &StaticPointer<RwLock<ComponentInstance<T>>>) -> bool {
+    async fn redo_instance(&self, root: &StaticPointer<RwLock<RootComponentClass<T>>>, target: &StaticPointer<RwLock<ComponentInstance<T>>>) -> bool {
         if let Some(log) = self.edit_history.redo(root, Some(target)).await {
             self.editor.edit_by_log(log).await;
             true
@@ -320,31 +318,31 @@ mod tests {
         #[derive(Default)]
         struct PL1(RwLock<u128>);
         #[async_trait]
-        impl ProjectLoader for PL1 {
+        impl ProjectLoader<()> for PL1 {
             type Err = EmptyError;
 
-            async fn load_project(&self, _: &Path) -> Result<StaticPointerOwned<RwLock<Project>>, Self::Err> {
+            async fn load_project(&self, _: &Path) -> Result<StaticPointerOwned<RwLock<Project<()>>>, Self::Err> {
                 let mut guard = self.0.write().await;
                 let id = *guard;
                 *guard += 1;
-                Ok(StaticPointerOwned::new(RwLock::new(Project::new_empty(Uuid::from_u128(id)))))
+                Ok(Project::new_empty(Uuid::from_u128(id)))
             }
         }
         #[derive(Default)]
         struct PM {
-            memory: RwLock<Vec<(Option<PathBuf>, StaticPointerOwned<RwLock<Project>>)>>,
+            memory: RwLock<Vec<(Option<PathBuf>, StaticPointerOwned<RwLock<Project<()>>>)>>,
         }
         #[async_trait]
-        impl ProjectMemory for PM {
-            async fn insert_new_project(&self, path: Option<&Path>, project: StaticPointerOwned<RwLock<Project>>) {
+        impl ProjectMemory<()> for PM {
+            async fn insert_new_project(&self, path: Option<&Path>, project: StaticPointerOwned<RwLock<Project<()>>>) {
                 self.memory.write().await.push((path.map(Path::to_path_buf), project));
             }
 
-            async fn get_loaded_project(&self, path: &Path) -> Option<StaticPointer<RwLock<Project>>> {
+            async fn get_loaded_project(&self, path: &Path) -> Option<StaticPointer<RwLock<Project<()>>>> {
                 self.memory.read().await.iter().find(|(p, _)| p.as_deref() == Some(path)).map(|(_, p)| StaticPointerOwned::reference(p))
             }
 
-            async fn all_loaded_projects(&self) -> Cow<[StaticPointer<RwLock<Project>>]> {
+            async fn all_loaded_projects(&self) -> Cow<[StaticPointer<RwLock<Project<()>>>]> {
                 unreachable!()
             }
         }
@@ -359,25 +357,25 @@ mod tests {
             editor: (),
             edit_history: (),
         };
-        assert_eq!(*LoadProjectUsecase::load_project(&core, "1").await.unwrap().upgrade().unwrap().read().await, Project::new_empty(Uuid::from_u128(0)));
-        assert_eq!(*LoadProjectUsecase::load_project(&core, "1").await.unwrap().upgrade().unwrap().read().await, Project::new_empty(Uuid::from_u128(0)));
-        assert_eq!(*LoadProjectUsecase::load_project(&core, "3").await.unwrap().upgrade().unwrap().read().await, Project::new_empty(Uuid::from_u128(1)));
+        assert_eq!(*LoadProjectUsecase::load_project(&core, "1").await.unwrap().upgrade().unwrap().read().await, *Project::new_empty(Uuid::from_u128(0)).read().await);
+        assert_eq!(*LoadProjectUsecase::load_project(&core, "1").await.unwrap().upgrade().unwrap().read().await, *Project::new_empty(Uuid::from_u128(0)).read().await);
+        assert_eq!(*LoadProjectUsecase::load_project(&core, "3").await.unwrap().upgrade().unwrap().read().await, *Project::new_empty(Uuid::from_u128(1)).read().await);
 
         assert_eq!(*core.project_loader.0.read().await, 2);
         let memory = core.project_memory.memory.read().await;
         assert_eq!(memory.len(), 2);
         assert_eq!(memory[0].0.as_deref(), Some("1").map(AsRef::as_ref));
-        assert_eq!(*memory[0].1.read().await, Project::new_empty(Uuid::from_u128(0)));
+        assert_eq!(*memory[0].1.read().await, *Project::new_empty(Uuid::from_u128(0)).read().await);
         assert_eq!(memory[1].0.as_deref(), Some("3").map(AsRef::as_ref));
-        assert_eq!(*memory[1].1.read().await, Project::new_empty(Uuid::from_u128(1)));
+        assert_eq!(*memory[1].1.read().await, *Project::new_empty(Uuid::from_u128(1)).read().await);
 
         #[derive(Default)]
         struct PL2;
         #[async_trait]
-        impl ProjectLoader for PL2 {
+        impl ProjectLoader<()> for PL2 {
             type Err = EmptyError;
 
-            async fn load_project(&self, path: &Path) -> Result<StaticPointerOwned<RwLock<Project>>, Self::Err> {
+            async fn load_project(&self, _: &Path) -> Result<StaticPointerOwned<RwLock<Project<()>>>, Self::Err> {
                 Err(EmptyError)
             }
         }
@@ -400,10 +398,10 @@ mod tests {
         #[derive(Default)]
         struct PW1(AtomicUsize);
         #[async_trait]
-        impl ProjectWriter for PW1 {
+        impl ProjectWriter<()> for PW1 {
             type Err = EmptyError;
 
-            async fn write_project(&self, project: &StaticPointer<RwLock<Project>>, path: &Path) -> Result<(), Self::Err> {
+            async fn write_project(&self, _: &StaticPointer<RwLock<Project<()>>>, _: &Path) -> Result<(), Self::Err> {
                 self.0.fetch_add(1, atomic::Ordering::SeqCst);
                 Ok(())
             }
@@ -419,7 +417,7 @@ mod tests {
             editor: (),
             edit_history: (),
         };
-        let project = StaticPointerOwned::new(RwLock::new(Project::new_empty(Uuid::nil())));
+        let project = Project::new_empty(Uuid::nil());
         let project = StaticPointerOwned::reference(&project);
         assert!(WriteProjectUsecase::write_project(&core, &project, "").await.is_ok());
         assert_eq!(core.project_writer.0.load(atomic::Ordering::SeqCst), 1);
@@ -430,10 +428,10 @@ mod tests {
         #[derive(Default)]
         struct PW2(AtomicUsize);
         #[async_trait]
-        impl ProjectWriter for PW2 {
+        impl ProjectWriter<()> for PW2 {
             type Err = EmptyError;
 
-            async fn write_project(&self, project: &StaticPointer<RwLock<Project>>, path: &Path) -> Result<(), Self::Err> {
+            async fn write_project(&self, _: &StaticPointer<RwLock<Project<()>>>, _: &Path) -> Result<(), Self::Err> {
                 self.0.fetch_add(1, atomic::Ordering::SeqCst);
                 Err(EmptyError)
             }
@@ -460,18 +458,18 @@ mod tests {
     #[tokio::test]
     async fn new_project() {
         #[derive(Default)]
-        struct PM(RwLock<Vec<(Option<PathBuf>, StaticPointerOwned<RwLock<Project>>)>>);
+        struct PM(RwLock<Vec<(Option<PathBuf>, StaticPointerOwned<RwLock<Project<()>>>)>>);
         #[async_trait]
-        impl ProjectMemory for PM {
-            async fn insert_new_project(&self, path: Option<&Path>, project: StaticPointerOwned<RwLock<Project>>) {
+        impl ProjectMemory<()> for PM {
+            async fn insert_new_project(&self, path: Option<&Path>, project: StaticPointerOwned<RwLock<Project<()>>>) {
                 self.0.write().await.push((path.map(Path::to_path_buf), project));
             }
 
-            async fn get_loaded_project(&self, _: &Path) -> Option<StaticPointer<RwLock<Project>>> {
+            async fn get_loaded_project(&self, _: &Path) -> Option<StaticPointer<RwLock<Project<()>>>> {
                 unreachable!()
             }
 
-            async fn all_loaded_projects(&self) -> Cow<[StaticPointer<RwLock<Project>>]> {
+            async fn all_loaded_projects(&self) -> Cow<[StaticPointer<RwLock<Project<()>>>]> {
                 unreachable!()
             }
         }
@@ -486,43 +484,43 @@ mod tests {
             editor: (),
             edit_history: (),
         };
-        assert_eq!(*NewProjectUsecase::new_project(&core).await.upgrade().unwrap().read().await, Project::new_empty(Uuid::from_u128(0)));
-        assert_eq!(*NewProjectUsecase::new_project(&core).await.upgrade().unwrap().read().await, Project::new_empty(Uuid::from_u128(1)));
-        assert_eq!(*NewProjectUsecase::new_project(&core).await.upgrade().unwrap().read().await, Project::new_empty(Uuid::from_u128(2)));
+        assert_eq!(*NewProjectUsecase::new_project(&core).await.upgrade().unwrap().read().await, *Project::new_empty(Uuid::from_u128(0)).read().await);
+        assert_eq!(*NewProjectUsecase::new_project(&core).await.upgrade().unwrap().read().await, *Project::new_empty(Uuid::from_u128(1)).read().await);
+        assert_eq!(*NewProjectUsecase::new_project(&core).await.upgrade().unwrap().read().await, *Project::new_empty(Uuid::from_u128(2)).read().await);
         assert_eq!(core.id_generator.0.load(atomic::Ordering::SeqCst), 3);
         let guard = core.project_memory.0.read().await;
         assert_eq!(guard.len(), 3);
         assert_eq!(guard[0].0, None);
-        assert_eq!(*guard[0].1.read().await, Project::new_empty(Uuid::from_u128(0)));
+        assert_eq!(*guard[0].1.read().await, *Project::new_empty(Uuid::from_u128(0)).read().await);
         assert_eq!(guard[1].0, None);
-        assert_eq!(*guard[1].1.read().await, Project::new_empty(Uuid::from_u128(1)));
+        assert_eq!(*guard[1].1.read().await, *Project::new_empty(Uuid::from_u128(1)).read().await);
         assert_eq!(guard[2].0, None);
-        assert_eq!(*guard[2].1.read().await, Project::new_empty(Uuid::from_u128(2)));
+        assert_eq!(*guard[2].1.read().await, *Project::new_empty(Uuid::from_u128(2)).read().await);
     }
 
     #[tokio::test]
     async fn new_root_component_class() {
         #[derive(Default)]
-        struct RM(RwLock<Vec<(Option<StaticPointer<RwLock<Project>>>, StaticPointerOwned<RwLock<RootComponentClass>>)>>);
+        struct RM(RwLock<Vec<(Option<StaticPointer<RwLock<Project<()>>>>, StaticPointerOwned<RwLock<RootComponentClass<()>>>)>>);
         #[async_trait]
-        impl RootComponentClassMemory for RM {
-            async fn insert_new_root_component_class(&self, parent: Option<&StaticPointer<RwLock<Project>>>, root_component_class: StaticPointerOwned<RwLock<RootComponentClass>>) {
+        impl RootComponentClassMemory<()> for RM {
+            async fn insert_new_root_component_class(&self, parent: Option<&StaticPointer<RwLock<Project<()>>>>, root_component_class: StaticPointerOwned<RwLock<RootComponentClass<()>>>) {
                 self.0.write().await.push((parent.cloned(), root_component_class));
             }
 
-            async fn set_parent(&self, _: &StaticPointer<RwLock<RootComponentClass>>, _: Option<&StaticPointer<RwLock<Project>>>) {
+            async fn set_parent(&self, _: &StaticPointer<RwLock<RootComponentClass<()>>>, _: Option<&StaticPointer<RwLock<Project<()>>>>) {
                 unreachable!()
             }
 
-            async fn search_by_parent(&self, _: &StaticPointer<RwLock<Project>>) -> Cow<[StaticPointer<RwLock<RootComponentClass>>]> {
+            async fn search_by_parent(&self, _: &StaticPointer<RwLock<Project<()>>>) -> Cow<[StaticPointer<RwLock<RootComponentClass<()>>>]> {
                 unreachable!()
             }
 
-            async fn get_parent_project(&self, _: &StaticPointer<RwLock<RootComponentClass>>) -> Option<StaticPointer<RwLock<Project>>> {
+            async fn get_parent_project(&self, _: &StaticPointer<RwLock<RootComponentClass<()>>>) -> Option<StaticPointer<RwLock<Project<()>>>> {
                 unreachable!()
             }
 
-            async fn all_loaded_root_component_classes(&self) -> Cow<[StaticPointer<RwLock<RootComponentClass>>]> {
+            async fn all_loaded_root_component_classes(&self) -> Cow<[StaticPointer<RwLock<RootComponentClass<()>>>]> {
                 unreachable!()
             }
         }
@@ -537,54 +535,54 @@ mod tests {
             editor: (),
             edit_history: (),
         };
-        assert_eq!(*NewRootComponentClassUsecase::new_root_component_class(&core).await.upgrade().unwrap().read().await, RootComponentClass::new_empty(Uuid::from_u128(0)));
-        assert_eq!(*NewRootComponentClassUsecase::new_root_component_class(&core).await.upgrade().unwrap().read().await, RootComponentClass::new_empty(Uuid::from_u128(1)));
-        assert_eq!(*NewRootComponentClassUsecase::new_root_component_class(&core).await.upgrade().unwrap().read().await, RootComponentClass::new_empty(Uuid::from_u128(2)));
+        assert_eq!(*NewRootComponentClassUsecase::new_root_component_class(&core).await.upgrade().unwrap().read().await, *RootComponentClass::new_empty(Uuid::from_u128(0)).read().await);
+        assert_eq!(*NewRootComponentClassUsecase::new_root_component_class(&core).await.upgrade().unwrap().read().await, *RootComponentClass::new_empty(Uuid::from_u128(1)).read().await);
+        assert_eq!(*NewRootComponentClassUsecase::new_root_component_class(&core).await.upgrade().unwrap().read().await, *RootComponentClass::new_empty(Uuid::from_u128(2)).read().await);
         assert_eq!(core.id_generator.0.load(atomic::Ordering::SeqCst), 3);
         let guard = core.root_component_class_memory.0.read().await;
         assert_eq!(guard.len(), 3);
         assert_eq!(guard[0].0, None);
-        assert_eq!(*guard[0].1.read().await, RootComponentClass::new_empty(Uuid::from_u128(0)));
+        assert_eq!(*guard[0].1.read().await, *RootComponentClass::new_empty(Uuid::from_u128(0)).read().await);
         assert_eq!(guard[1].0, None);
-        assert_eq!(*guard[1].1.read().await, RootComponentClass::new_empty(Uuid::from_u128(1)));
+        assert_eq!(*guard[1].1.read().await, *RootComponentClass::new_empty(Uuid::from_u128(1)).read().await);
         assert_eq!(guard[2].0, None);
-        assert_eq!(*guard[2].1.read().await, RootComponentClass::new_empty(Uuid::from_u128(2)));
+        assert_eq!(*guard[2].1.read().await, *RootComponentClass::new_empty(Uuid::from_u128(2)).read().await);
     }
 
     #[tokio::test]
     async fn set_owner_for_root_component_class() {
         #[derive(Default)]
-        struct RM(RwLock<Vec<(Option<StaticPointer<RwLock<Project>>>, StaticPointerOwned<RwLock<RootComponentClass>>)>>);
+        struct RM(RwLock<Vec<(Option<StaticPointer<RwLock<Project<()>>>>, StaticPointerOwned<RwLock<RootComponentClass<()>>>)>>);
         #[async_trait]
-        impl RootComponentClassMemory for RM {
-            async fn insert_new_root_component_class(&self, parent: Option<&StaticPointer<RwLock<Project>>>, root_component_class: StaticPointerOwned<RwLock<RootComponentClass>>) {
+        impl RootComponentClassMemory<()> for RM {
+            async fn insert_new_root_component_class(&self, _: Option<&StaticPointer<RwLock<Project<()>>>>, _: StaticPointerOwned<RwLock<RootComponentClass<()>>>) {
                 unreachable!()
             }
 
-            async fn set_parent(&self, root_component_class: &StaticPointer<RwLock<RootComponentClass>>, parent: Option<&StaticPointer<RwLock<Project>>>) {
+            async fn set_parent(&self, root_component_class: &StaticPointer<RwLock<RootComponentClass<()>>>, parent: Option<&StaticPointer<RwLock<Project<()>>>>) {
                 if let Some((p, _)) = self.0.write().await.iter_mut().find(|(_, c)| c == root_component_class) {
                     *p = parent.cloned();
                 }
             }
 
-            async fn search_by_parent(&self, _: &StaticPointer<RwLock<Project>>) -> Cow<[StaticPointer<RwLock<RootComponentClass>>]> {
+            async fn search_by_parent(&self, _: &StaticPointer<RwLock<Project<()>>>) -> Cow<[StaticPointer<RwLock<RootComponentClass<()>>>]> {
                 unreachable!()
             }
 
-            async fn get_parent_project(&self, _: &StaticPointer<RwLock<RootComponentClass>>) -> Option<StaticPointer<RwLock<Project>>> {
+            async fn get_parent_project(&self, _: &StaticPointer<RwLock<RootComponentClass<()>>>) -> Option<StaticPointer<RwLock<Project<()>>>> {
                 unreachable!()
             }
 
-            async fn all_loaded_root_component_classes(&self) -> Cow<[StaticPointer<RwLock<RootComponentClass>>]> {
+            async fn all_loaded_root_component_classes(&self) -> Cow<[StaticPointer<RwLock<RootComponentClass<()>>>]> {
                 unreachable!()
             }
         }
-        let project0 = StaticPointerOwned::new(RwLock::new(Project::new_empty(Uuid::from_u128(0))));
-        let project1 = StaticPointerOwned::new(RwLock::new(Project::new_empty(Uuid::from_u128(0))));
-        let project2 = StaticPointerOwned::new(RwLock::new(Project::new_empty(Uuid::from_u128(0))));
-        let c0 = StaticPointerOwned::new(RwLock::new(RootComponentClass::new_empty(Uuid::from_u128(0))));
-        let c1 = StaticPointerOwned::new(RwLock::new(RootComponentClass::new_empty(Uuid::from_u128(1))));
-        let c2 = StaticPointerOwned::new(RwLock::new(RootComponentClass::new_empty(Uuid::from_u128(2))));
+        let project0 = Project::new_empty(Uuid::from_u128(0));
+        let project1 = Project::new_empty(Uuid::from_u128(0));
+        let project2 = Project::new_empty(Uuid::from_u128(0));
+        let c0 = RootComponentClass::new_empty(Uuid::from_u128(0));
+        let c1 = RootComponentClass::new_empty(Uuid::from_u128(1));
+        let c2 = RootComponentClass::new_empty(Uuid::from_u128(2));
         let component0 = StaticPointerOwned::reference(&c0);
         let component1 = StaticPointerOwned::reference(&c1);
         let component2 = StaticPointerOwned::reference(&c2);
@@ -615,18 +613,18 @@ mod tests {
 
     #[tokio::test]
     async fn get_loaded_projects() {
-        struct PM(RwLock<Vec<StaticPointerOwned<RwLock<Project>>>>);
+        struct PM(RwLock<Vec<StaticPointerOwned<RwLock<Project<()>>>>>);
         #[async_trait]
-        impl ProjectMemory for PM {
-            async fn insert_new_project(&self, path: Option<&Path>, project: StaticPointerOwned<RwLock<Project>>) {
+        impl ProjectMemory<()> for PM {
+            async fn insert_new_project(&self, _: Option<&Path>, _: StaticPointerOwned<RwLock<Project<()>>>) {
                 unreachable!()
             }
 
-            async fn get_loaded_project(&self, path: &Path) -> Option<StaticPointer<RwLock<Project>>> {
+            async fn get_loaded_project(&self, _: &Path) -> Option<StaticPointer<RwLock<Project<()>>>> {
                 unreachable!()
             }
 
-            async fn all_loaded_projects(&self) -> Cow<[StaticPointer<RwLock<Project>>]> {
+            async fn all_loaded_projects(&self) -> Cow<[StaticPointer<RwLock<Project<()>>>]> {
                 Cow::Owned(self.0.read().await.iter().map(StaticPointerOwned::reference).collect())
             }
         }
@@ -634,11 +632,7 @@ mod tests {
             id_generator: (),
             project_loader: (),
             project_writer: (),
-            project_memory: PM(RwLock::new(vec![
-                StaticPointerOwned::new(RwLock::new(Project::new_empty(Uuid::from_u128(0)))),
-                StaticPointerOwned::new(RwLock::new(Project::new_empty(Uuid::from_u128(1)))),
-                StaticPointerOwned::new(RwLock::new(Project::new_empty(Uuid::from_u128(2)))),
-            ])),
+            project_memory: PM(RwLock::new(vec![Project::new_empty(Uuid::from_u128(0)), Project::new_empty(Uuid::from_u128(1)), Project::new_empty(Uuid::from_u128(2))])),
             root_component_class_memory: (),
             component_class_loader: (),
             component_renderer_builder: (),
@@ -647,50 +641,50 @@ mod tests {
         };
         let projects = GetLoadedProjectsUsecase::get_loaded_projects(&core).await;
         assert_eq!(projects.len(), 3);
-        assert_eq!(*projects[0].upgrade().unwrap().read().await, Project::new_empty(Uuid::from_u128(0)));
-        assert_eq!(*projects[1].upgrade().unwrap().read().await, Project::new_empty(Uuid::from_u128(1)));
-        assert_eq!(*projects[2].upgrade().unwrap().read().await, Project::new_empty(Uuid::from_u128(2)));
+        assert_eq!(*projects[0].upgrade().unwrap().read().await, *Project::new_empty(Uuid::from_u128(0)).read().await);
+        assert_eq!(*projects[1].upgrade().unwrap().read().await, *Project::new_empty(Uuid::from_u128(1)).read().await);
+        assert_eq!(*projects[2].upgrade().unwrap().read().await, *Project::new_empty(Uuid::from_u128(2)).read().await);
     }
 
     #[tokio::test]
     async fn get_root_component_classes() {
-        struct RM(RwLock<Vec<(Option<StaticPointer<RwLock<Project>>>, StaticPointerOwned<RwLock<RootComponentClass>>)>>);
+        struct RM(RwLock<Vec<(Option<StaticPointer<RwLock<Project<()>>>>, StaticPointerOwned<RwLock<RootComponentClass<()>>>)>>);
         #[async_trait]
-        impl RootComponentClassMemory for RM {
-            async fn insert_new_root_component_class(&self, parent: Option<&StaticPointer<RwLock<Project>>>, root_component_class: StaticPointerOwned<RwLock<RootComponentClass>>) {
+        impl RootComponentClassMemory<()> for RM {
+            async fn insert_new_root_component_class(&self, _: Option<&StaticPointer<RwLock<Project<()>>>>, _: StaticPointerOwned<RwLock<RootComponentClass<()>>>) {
                 unreachable!()
             }
 
-            async fn set_parent(&self, root_component_class: &StaticPointer<RwLock<RootComponentClass>>, parent: Option<&StaticPointer<RwLock<Project>>>) {
+            async fn set_parent(&self, _: &StaticPointer<RwLock<RootComponentClass<()>>>, _: Option<&StaticPointer<RwLock<Project<()>>>>) {
                 unreachable!()
             }
 
-            async fn search_by_parent(&self, parent: &StaticPointer<RwLock<Project>>) -> Cow<[StaticPointer<RwLock<RootComponentClass>>]> {
+            async fn search_by_parent(&self, parent: &StaticPointer<RwLock<Project<()>>>) -> Cow<[StaticPointer<RwLock<RootComponentClass<()>>>]> {
                 Cow::Owned(self.0.read().await.iter().filter(|(p, _)| p.as_ref() == Some(parent)).map(|(_, c)| StaticPointerOwned::reference(c)).collect())
             }
 
-            async fn get_parent_project(&self, path: &StaticPointer<RwLock<RootComponentClass>>) -> Option<StaticPointer<RwLock<Project>>> {
+            async fn get_parent_project(&self, _: &StaticPointer<RwLock<RootComponentClass<()>>>) -> Option<StaticPointer<RwLock<Project<()>>>> {
                 unreachable!()
             }
 
-            async fn all_loaded_root_component_classes(&self) -> Cow<[StaticPointer<RwLock<RootComponentClass>>]> {
+            async fn all_loaded_root_component_classes(&self) -> Cow<[StaticPointer<RwLock<RootComponentClass<()>>>]> {
                 unreachable!()
             }
         }
-        let project0 = StaticPointerOwned::new(RwLock::new(Project::new_empty(Uuid::from_u128(0))));
-        let project1 = StaticPointerOwned::new(RwLock::new(Project::new_empty(Uuid::from_u128(0))));
-        let project2 = StaticPointerOwned::new(RwLock::new(Project::new_empty(Uuid::from_u128(0))));
+        let project0 = Project::new_empty(Uuid::from_u128(0));
+        let project1 = Project::new_empty(Uuid::from_u128(0));
+        let project2 = Project::new_empty(Uuid::from_u128(0));
         let core = MPDeltaCore {
             id_generator: (),
             project_loader: (),
             project_writer: (),
             project_memory: (),
             root_component_class_memory: RM(RwLock::new(vec![
-                (None, StaticPointerOwned::new(RwLock::new(RootComponentClass::new_empty(Uuid::from_u128(0))))),
-                (Some(StaticPointerOwned::reference(&project0)), StaticPointerOwned::new(RwLock::new(RootComponentClass::new_empty(Uuid::from_u128(0))))),
-                (Some(StaticPointerOwned::reference(&project0)), StaticPointerOwned::new(RwLock::new(RootComponentClass::new_empty(Uuid::from_u128(1))))),
-                (Some(StaticPointerOwned::reference(&project1)), StaticPointerOwned::new(RwLock::new(RootComponentClass::new_empty(Uuid::from_u128(2))))),
-                (Some(StaticPointerOwned::reference(&project2)), StaticPointerOwned::new(RwLock::new(RootComponentClass::new_empty(Uuid::from_u128(3))))),
+                (None, RootComponentClass::new_empty(Uuid::from_u128(0))),
+                (Some(StaticPointerOwned::reference(&project0)), RootComponentClass::new_empty(Uuid::from_u128(0))),
+                (Some(StaticPointerOwned::reference(&project0)), RootComponentClass::new_empty(Uuid::from_u128(1))),
+                (Some(StaticPointerOwned::reference(&project1)), RootComponentClass::new_empty(Uuid::from_u128(2))),
+                (Some(StaticPointerOwned::reference(&project2)), RootComponentClass::new_empty(Uuid::from_u128(3))),
             ])),
             component_class_loader: (),
             component_renderer_builder: (),
@@ -699,12 +693,12 @@ mod tests {
         };
         let child0 = GetRootComponentClassesUsecase::get_root_component_classes(&core, &StaticPointerOwned::reference(&project0)).await;
         assert_eq!(child0.len(), 2);
-        assert_eq!(*child0[0].upgrade().unwrap().read().await, RootComponentClass::new_empty(Uuid::from_u128(0)));
-        assert_eq!(*child0[1].upgrade().unwrap().read().await, RootComponentClass::new_empty(Uuid::from_u128(1)));
+        assert_eq!(*child0[0].upgrade().unwrap().read().await, *RootComponentClass::new_empty(Uuid::from_u128(0)).read().await);
+        assert_eq!(*child0[1].upgrade().unwrap().read().await, *RootComponentClass::new_empty(Uuid::from_u128(1)).read().await);
         let child1 = GetRootComponentClassesUsecase::get_root_component_classes(&core, &StaticPointerOwned::reference(&project1)).await;
-        assert_eq!(*child1[0].upgrade().unwrap().read().await, RootComponentClass::new_empty(Uuid::from_u128(2)));
+        assert_eq!(*child1[0].upgrade().unwrap().read().await, *RootComponentClass::new_empty(Uuid::from_u128(2)).read().await);
         let child2 = GetRootComponentClassesUsecase::get_root_component_classes(&core, &StaticPointerOwned::reference(&project2)).await;
-        assert_eq!(*child2[0].upgrade().unwrap().read().await, RootComponentClass::new_empty(Uuid::from_u128(3)));
+        assert_eq!(*child2[0].upgrade().unwrap().read().await, *RootComponentClass::new_empty(Uuid::from_u128(3)).read().await);
     }
 
     #[tokio::test]
@@ -712,7 +706,7 @@ mod tests {
         struct CL;
         #[async_trait]
         impl ComponentClassLoader<()> for CL {
-            async fn get_available_component_classes(&self) -> Cow<[StaticPointer<RwLock<ComponentClass<()>>>]> {
+            async fn get_available_component_classes(&self) -> Cow<[StaticPointer<RwLock<dyn ComponentClass<()>>>]> {
                 Cow::Owned(vec![])
             }
         }
@@ -739,7 +733,7 @@ mod tests {
                 unreachable!()
             }
 
-            async fn render_frame(&mut self, frame: usize) -> () {
+            async fn render_frame(&mut self, _: usize) -> () {
                 unreachable!()
             }
 
@@ -747,7 +741,7 @@ mod tests {
                 unreachable!()
             }
 
-            async fn mix_audio(&mut self, offset: usize, length: usize) -> () {
+            async fn mix_audio(&mut self, _: usize, _: usize) -> () {
                 unreachable!()
             }
         }

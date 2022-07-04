@@ -10,45 +10,45 @@ use std::path::Path;
 use tokio::sync::RwLock;
 
 #[async_trait]
-pub trait LoadProjectUsecase {
+pub trait LoadProjectUsecase<T> {
     type Err: Error + 'static;
-    async fn load_project(&self, path: impl AsRef<Path> + Send + Sync) -> Result<StaticPointer<RwLock<Project>>, Self::Err>;
+    async fn load_project(&self, path: impl AsRef<Path> + Send + Sync) -> Result<StaticPointer<RwLock<Project<T>>>, Self::Err>;
 }
 
 #[async_trait]
-pub trait WriteProjectUsecase {
+pub trait WriteProjectUsecase<T> {
     type Err: Error + 'static;
-    async fn write_project(&self, project: &StaticPointer<RwLock<Project>>, path: impl AsRef<Path> + Send + Sync) -> Result<(), Self::Err>;
+    async fn write_project(&self, project: &StaticPointer<RwLock<Project<T>>>, path: impl AsRef<Path> + Send + Sync) -> Result<(), Self::Err>;
 }
 
 #[async_trait]
-pub trait NewProjectUsecase {
-    async fn new_project(&self) -> StaticPointer<RwLock<Project>>;
+pub trait NewProjectUsecase<T> {
+    async fn new_project(&self) -> StaticPointer<RwLock<Project<T>>>;
 }
 
 #[async_trait]
-pub trait NewRootComponentClassUsecase {
-    async fn new_root_component_class(&self) -> StaticPointer<RwLock<RootComponentClass>>;
+pub trait NewRootComponentClassUsecase<T> {
+    async fn new_root_component_class(&self) -> StaticPointer<RwLock<RootComponentClass<T>>>;
 }
 
 #[async_trait]
-pub trait SetOwnerForRootComponentClassUsecase {
-    async fn set_owner_for_root_component_class(&self, component: &StaticPointer<RwLock<RootComponentClass>>, owner: &StaticPointer<RwLock<Project>>);
+pub trait SetOwnerForRootComponentClassUsecase<T> {
+    async fn set_owner_for_root_component_class(&self, component: &StaticPointer<RwLock<RootComponentClass<T>>>, owner: &StaticPointer<RwLock<Project<T>>>);
 }
 
 #[async_trait]
-pub trait GetLoadedProjectsUsecase {
-    async fn get_loaded_projects(&self) -> Cow<[StaticPointer<RwLock<Project>>]>;
+pub trait GetLoadedProjectsUsecase<T> {
+    async fn get_loaded_projects(&self) -> Cow<[StaticPointer<RwLock<Project<T>>>]>;
 }
 
 #[async_trait]
-pub trait GetRootComponentClassesUsecase {
-    async fn get_root_component_classes(&self, project: &StaticPointer<RwLock<Project>>) -> Cow<[StaticPointer<RwLock<RootComponentClass>>]>;
+pub trait GetRootComponentClassesUsecase<T> {
+    async fn get_root_component_classes(&self, project: &StaticPointer<RwLock<Project<T>>>) -> Cow<[StaticPointer<RwLock<RootComponentClass<T>>>]>;
 }
 
 #[async_trait]
 pub trait GetAvailableComponentClassesUsecase<T> {
-    async fn get_available_component_classes(&self) -> Cow<[StaticPointer<RwLock<ComponentClass<T>>>]>;
+    async fn get_available_component_classes(&self) -> Cow<[StaticPointer<RwLock<dyn ComponentClass<T>>>]>;
 }
 
 #[async_trait]
@@ -68,20 +68,20 @@ pub trait RealtimeRenderComponentUsecase<T, F, A> {
 #[async_trait]
 pub trait EditUsecase<T> {
     type Err: Error + 'static;
-    async fn edit(&self, target: &StaticPointer<RwLock<RootComponentClass>>, command: RootComponentEditCommand) -> Result<(), Self::Err>;
-    async fn edit_instance(&self, root: &StaticPointer<RwLock<RootComponentClass>>, target: &StaticPointer<RwLock<ComponentInstance<T>>>, command: InstanceEditCommand) -> Result<(), Self::Err>;
+    async fn edit(&self, target: &StaticPointer<RwLock<RootComponentClass<T>>>, command: RootComponentEditCommand) -> Result<(), Self::Err>;
+    async fn edit_instance(&self, root: &StaticPointer<RwLock<RootComponentClass<T>>>, target: &StaticPointer<RwLock<ComponentInstance<T>>>, command: InstanceEditCommand) -> Result<(), Self::Err>;
 }
 
 #[async_trait]
 pub trait UndoUsecase<T> {
-    async fn undo(&self, component: &StaticPointer<RwLock<RootComponentClass>>) -> bool;
-    async fn undo_instance(&self, root: &StaticPointer<RwLock<RootComponentClass>>, target: &StaticPointer<RwLock<ComponentInstance<T>>>) -> bool;
+    async fn undo(&self, component: &StaticPointer<RwLock<RootComponentClass<T>>>) -> bool;
+    async fn undo_instance(&self, root: &StaticPointer<RwLock<RootComponentClass<T>>>, target: &StaticPointer<RwLock<ComponentInstance<T>>>) -> bool;
 }
 
 #[async_trait]
 pub trait RedoUsecase<T> {
-    async fn redo(&self, component: &StaticPointer<RwLock<RootComponentClass>>) -> bool;
-    async fn redo_instance(&self, root: &StaticPointer<RwLock<RootComponentClass>>, target: &StaticPointer<RwLock<ComponentInstance<T>>>) -> bool;
+    async fn redo(&self, component: &StaticPointer<RwLock<RootComponentClass<T>>>) -> bool;
+    async fn redo_instance(&self, root: &StaticPointer<RwLock<RootComponentClass<T>>>, target: &StaticPointer<RwLock<ComponentInstance<T>>>) -> bool;
 }
 
 // 必須じゃないから後で

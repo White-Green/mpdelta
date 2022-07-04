@@ -6,5 +6,5 @@ pub trait Easing<T> {
 pub struct EasingValue<Value> {
     pub from: Value,
     pub to: Value,
-    pub easing: Box<dyn Easing<Value>>,
+    pub easing: Box<dyn Easing<Value> + Send + Sync>,
 }

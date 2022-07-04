@@ -9,6 +9,8 @@ edition = "2021"
 cgmath = "0.18.0"
 uuid = "1.0.0"
 async-trait = "0.1.56"
+thiserror = "1.0.31"
+tokio = { version = "1.19.2", features = ["full"] }
 
 [dev-dependencies]
 regex = "1.5.5"

@@ -1,1 +1,3 @@
-pub enum EditCommand {/* TODO */}
+pub enum RootComponentEditCommand {/* TODO */}
+
+pub enum InstanceEditCommand {/* TODO */}

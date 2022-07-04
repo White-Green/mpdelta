@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::ops::Range;
 use std::path::PathBuf;
-use std::sync::RwLock;
+use tokio::sync::RwLock;
 
 pub mod placeholder;
 pub mod value;

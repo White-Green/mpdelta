@@ -8,7 +8,7 @@ pub struct ComponentClass<T> {
     generate_audio: bool,
     fixed_parameter_type: Vec<(String, ParameterType)>,
     default_variable_parameter_type: Vec<(String, ParameterType)>,
-    processor: Arc<dyn ComponentProcessor<T>>,
+    processor: Arc<dyn ComponentProcessor<T> + Send + Sync>,
 }
 
 impl<T> ComponentClass<T> {
@@ -27,7 +27,7 @@ impl<T> ComponentClass<T> {
     pub fn default_variable_parameter_type(&self) -> &[(String, ParameterType)] {
         &self.default_variable_parameter_type
     }
-    pub fn processor(&self) -> &Arc<dyn ComponentProcessor<T>> {
+    pub fn processor(&self) -> &Arc<dyn ComponentProcessor<T> + Send + Sync> {
         &self.processor
     }
     pub fn instantiate(&self) -> ComponentInstance<T> {

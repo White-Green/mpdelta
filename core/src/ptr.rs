@@ -20,6 +20,12 @@ impl<T> StaticPointerOwned<T> {
     }
 }
 
+impl<T> Default for StaticPointer<T> {
+    fn default() -> Self {
+        StaticPointer::new()
+    }
+}
+
 impl<T> StaticPointer<T> {
     pub fn new() -> StaticPointer<T> {
         StaticPointer(Weak::new())

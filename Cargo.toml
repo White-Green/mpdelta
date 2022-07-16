@@ -13,4 +13,9 @@ members = [
 ]
 
 [dependencies]
+vulkano = "0.29.0"
+vulkano-win = "0.29.0"
+winit = "0.26.0"
 mpdelta_core = { path = "mpdelta_core" }
+mpdelta_gui = { path = "mpdelta_gui" }
+mpdelta_gui_vulkano = { path = "mpdelta_gui_vulkano" }

@@ -453,8 +453,7 @@ dependencies = [
 [[package]]
 name = "egui_vulkano"
 version = "0.8.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a8b9f32026b6b6d27f8c15d32c695169e3e1a9c52344a6c93bf9646f4ba2cb0c"
+source = "git+https://github.com/White-Green/egui_vulkano?rev=b7bf4c67c541fbe711337cd59cecc8138d768fe3#b7bf4c67c541fbe711337cd59cecc8138d768fe3"
 dependencies = [
  "bytemuck",
  "egui",

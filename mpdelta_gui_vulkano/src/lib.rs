@@ -79,7 +79,7 @@ impl<T: Gui + 'static> MPDeltaGUIVulkano<T> {
             .unwrap()
         };
 
-        let render_pass = vulkano::ordered_passes_renderpass!(
+        let render_pass = vulkano::single_pass_renderpass!(
             Arc::clone(&device),
             attachments: {
                 color: {
@@ -89,10 +89,7 @@ impl<T: Gui + 'static> MPDeltaGUIVulkano<T> {
                     samples: 1,
                 }
             },
-            passes: [
-                { color: [color], depth_stencil: {}, input: [] },
-                { color: [color], depth_stencil: {}, input: [] }
-            ]
+            pass: { color: [color], depth_stencil: {} }
         )
         .unwrap();
 
@@ -179,6 +176,7 @@ impl<T: Gui + 'static> MPDeltaGUIVulkano<T> {
                     let size = surface.window().inner_size();
                     let sf: f32 = surface.window().scale_factor() as f32;
                     builder.begin_render_pass(Arc::clone(&framebuffers[image_num]), SubpassContents::Inline, [ClearValue::Float([1.0; 4])]).unwrap();
+                    builder.set_viewport(0, [viewport.clone()]);
                     egui_painter.draw(&mut builder, [(size.width as f32) / sf, (size.height as f32) / sf], &egui_ctx, egui_output.shapes).unwrap();
 
                     builder.end_render_pass().unwrap();

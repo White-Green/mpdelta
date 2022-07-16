@@ -25,7 +25,7 @@ fn initialize_graphics() -> (Arc<Instance>, Arc<Device>, Arc<Queue>, EventLoop<(
     .unwrap();
 
     let event_loop = EventLoop::new();
-    let surface = WindowBuilder::new().with_title("egui_vulkano demo").build_vk_surface(&event_loop, Arc::clone(&instance)).unwrap();
+    let surface = WindowBuilder::new().with_title("mpdelta").build_vk_surface(&event_loop, Arc::clone(&instance)).unwrap();
 
     let device_extensions = mpdelta_gui_vulkano::device_extensions();
 

@@ -5,3 +5,4 @@
 !/Cargo.toml
 !/mpdelta_core
 !/mpdelta_gui
+!/mpdelta_gui_vulkano

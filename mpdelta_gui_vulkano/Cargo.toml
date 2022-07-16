@@ -1,16 +1,12 @@
 [package]
-name = "mpdelta"
+name = "mpdelta_gui_vulkano"
 version = "0.1.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
-[workspace]
-members = [
-    "mpdelta_core",
-    "mpdelta_gui",
-    "mpdelta_gui_vulkano",
-]
-
 [dependencies]
-mpdelta_core = { path = "mpdelta_core" }
+mpdelta_gui = { path = "../mpdelta_gui" }
+egui_vulkano = "0.8.0"
+vulkano = "0.29.0"
+vulkano-win = "0.29.0"

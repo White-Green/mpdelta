@@ -6,7 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [workspace]
-members = ["core"]
+members = ["mpdelta_core"]
 
 [dependencies]
-mpdelta_core = { path = "core" }
+mpdelta_core = { path = "mpdelta_core" }

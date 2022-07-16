@@ -3,4 +3,5 @@
 !/src
 !/Cargo.lock
 !/Cargo.toml
-!/core
+!/mpdelta_core
+!/mpdelta_gui

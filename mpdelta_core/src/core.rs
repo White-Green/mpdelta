@@ -24,9 +24,6 @@ pub struct MPDeltaCore<IdGenerator, ProjectLoader, ProjectWriter, ProjectMemory,
     edit_history: EditHistory,
 }
 
-#[derive(Debug, Error)]
-pub enum Infallible {}
-
 #[async_trait]
 pub trait IdGenerator: Send + Sync {
     async fn generate_new(&self) -> Uuid;

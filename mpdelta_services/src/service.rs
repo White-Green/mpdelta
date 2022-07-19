@@ -1,7 +1,7 @@
 use async_trait::async_trait;
-use mpdelta_core::core::{IdGenerator, ProjectLoader};
+use mpdelta_core::core::{IdGenerator, ProjectLoader, ProjectWriter};
 use mpdelta_core::project::Project;
-use mpdelta_core::ptr::StaticPointerOwned;
+use mpdelta_core::ptr::{StaticPointer, StaticPointerOwned};
 use std::path::Path;
 use std::sync::atomic;
 use std::sync::atomic::AtomicU64;
@@ -56,6 +56,17 @@ impl<T> ProjectLoader<T> for TemporaryProjectLoader {
     }
 }
 
+pub struct TemporaryProjectWriter;
+
+#[async_trait]
+impl<T> ProjectWriter<T> for TemporaryProjectWriter {
+    type Err = Infallible;
+
+    async fn write_project(&self, _: &StaticPointer<RwLock<Project<T>>>, _: &Path) -> Result<(), Self::Err> {
+        todo!("ProjectWriter is not implemented yet")
+    }
+}
+
 // #[async_trait]
 // impl ProjectMemory<T> for _ {
 //     async fn insert_new_project(&self, path: Option<&Path>, project: StaticPointerOwned<tokio::sync::rwlock::RwLock<Project<T>>>) {
@@ -67,15 +78,6 @@ impl<T> ProjectLoader<T> for TemporaryProjectLoader {
 //     }
 //
 //     async fn all_loaded_projects(&self) -> Cow<[StaticPointer<tokio::sync::rwlock::RwLock<Project<T>>>]> {
-//         todo!()
-//     }
-// }
-//
-// #[async_trait]
-// impl ProjectWriter<T> for _ {
-//     type Err = ();
-//
-//     async fn write_project(&self, project: &StaticPointer<tokio::sync::rwlock::RwLock<Project<T>>>, path: &Path) -> Result<(), Self::Err> {
 //         todo!()
 //     }
 // }

@@ -1,7 +1,9 @@
 use async_trait::async_trait;
-use mpdelta_core::core::{IdGenerator, ProjectLoader, ProjectWriter};
+use mpdelta_core::component::class::ComponentClass;
+use mpdelta_core::core::{ComponentClassLoader, IdGenerator, ProjectLoader, ProjectWriter};
 use mpdelta_core::project::Project;
 use mpdelta_core::ptr::{StaticPointer, StaticPointerOwned};
+use std::borrow::Cow;
 use std::path::Path;
 use std::sync::atomic;
 use std::sync::atomic::AtomicU64;
@@ -67,6 +69,15 @@ impl<T> ProjectWriter<T> for TemporaryProjectWriter {
     }
 }
 
+pub struct TemporaryComponentClassLoader;
+
+#[async_trait]
+impl<T> ComponentClassLoader<T> for TemporaryComponentClassLoader {
+    async fn get_available_component_classes(&self) -> Cow<[StaticPointer<RwLock<dyn ComponentClass<T>>>]> {
+        Cow::Borrowed(&[])
+    }
+}
+
 // #[async_trait]
 // impl ProjectMemory<T> for _ {
 //     async fn insert_new_project(&self, path: Option<&Path>, project: StaticPointerOwned<tokio::sync::rwlock::RwLock<Project<T>>>) {
@@ -101,13 +112,6 @@ impl<T> ProjectWriter<T> for TemporaryProjectWriter {
 //     }
 //
 //     async fn all_loaded_root_component_classes(&self) -> Cow<[StaticPointer<tokio::sync::rwlock::RwLock<RootComponentClass<T>>>]> {
-//         todo!()
-//     }
-// }
-//
-// #[async_trait]
-// impl ComponentClassLoader<T> for _ {
-//     async fn get_available_component_classes(&self) -> Cow<[StaticPointer<tokio::sync::rwlock::RwLock<dyn ComponentClass<T>>>]> {
 //         todo!()
 //     }
 // }

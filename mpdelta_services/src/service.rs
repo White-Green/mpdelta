@@ -141,13 +141,16 @@ impl IdGenerator for UniqueIdGenerator {
 mod tests {
     use super::*;
     use std::collections::HashSet;
+    use std::iter;
+    use std::sync::Arc;
 
     #[tokio::test]
     async fn test_unique_id_generator() {
-        let unique_id_generator = UniqueIdGenerator::new();
+        let unique_id_generator = Arc::new(UniqueIdGenerator::new());
         let mut set = HashSet::new();
-        for _ in 0..1000 {
-            assert!(set.insert(unique_id_generator.generate_new().await));
+        let threads = iter::repeat(unique_id_generator).take(100_000).map(|gen| tokio::spawn(async move { gen.generate_new().await })).collect::<Vec<_>>();
+        for t in threads {
+            assert!(set.insert(t.await.unwrap()));
         }
     }
 }

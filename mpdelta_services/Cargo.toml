@@ -11,3 +11,4 @@ async-trait = "0.1.56"
 uuid = { version = "1.0.0", features = ["v1", "fast-rng"] }
 time = { version = "0.3.11", features = ["std"] }
 tokio = { version = "1.19.2", features = ["full"] }
+thiserror = "1.0.31"

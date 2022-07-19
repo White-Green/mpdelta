@@ -1,7 +1,12 @@
 use async_trait::async_trait;
-use mpdelta_core::core::IdGenerator;
+use mpdelta_core::core::{IdGenerator, ProjectLoader};
+use mpdelta_core::project::Project;
+use mpdelta_core::ptr::StaticPointerOwned;
+use std::path::Path;
 use std::sync::atomic;
 use std::sync::atomic::AtomicU64;
+use thiserror::Error;
+use tokio::sync::RwLock;
 use uuid::v1::Timestamp;
 use uuid::Uuid;
 
@@ -37,15 +42,20 @@ impl IdGenerator for UniqueIdGenerator {
     }
 }
 
-// #[async_trait]
-// impl ProjectLoader<T> for _ {
-//     type Err = ();
-//
-//     async fn load_project(&self, path: &Path) -> Result<StaticPointerOwned<tokio::sync::rwlock::RwLock<Project<T>>>, Self::Err> {
-//         todo!()
-//     }
-// }
-//
+pub struct TemporaryProjectLoader;
+
+#[derive(Debug, Error)]
+pub enum Infallible {}
+
+#[async_trait]
+impl<T> ProjectLoader<T> for TemporaryProjectLoader {
+    type Err = Infallible;
+
+    async fn load_project(&self, _: &Path) -> Result<StaticPointerOwned<RwLock<Project<T>>>, Self::Err> {
+        todo!("ProjectLoader is not implemented yet")
+    }
+}
+
 // #[async_trait]
 // impl ProjectMemory<T> for _ {
 //     async fn insert_new_project(&self, path: Option<&Path>, project: StaticPointerOwned<tokio::sync::rwlock::RwLock<Project<T>>>) {

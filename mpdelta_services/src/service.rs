@@ -1,8 +1,5 @@
 use async_trait::async_trait;
-use mpdelta_core::core::{EditHistory, Editor, IdGenerator, ProjectLoader, ProjectMemory, ProjectWriter, RootComponentClassMemory};
-use mpdelta_core::edit::RootComponentEditCommand;
-use mpdelta_core::project::RootComponentClass;
-use mpdelta_core::ptr::StaticPointerOwned;
+use mpdelta_core::core::IdGenerator;
 use std::sync::atomic;
 use std::sync::atomic::AtomicU64;
 use uuid::v1::Timestamp;

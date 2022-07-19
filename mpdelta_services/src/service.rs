@@ -1,10 +1,12 @@
 use async_trait::async_trait;
 use mpdelta_core::component::class::ComponentClass;
-use mpdelta_core::core::{ComponentClassLoader, IdGenerator, ProjectLoader, ProjectWriter};
-use mpdelta_core::project::Project;
+use mpdelta_core::core::{ComponentClassLoader, IdGenerator, ProjectLoader, ProjectMemory, ProjectWriter, RootComponentClassMemory};
+use mpdelta_core::project::{Project, RootComponentClass};
 use mpdelta_core::ptr::{StaticPointer, StaticPointerOwned};
 use std::borrow::Cow;
-use std::path::Path;
+use std::collections::{HashMap, HashSet};
+use std::hash::Hash;
+use std::path::{Path, PathBuf};
 use std::sync::atomic;
 use std::sync::atomic::AtomicU64;
 use thiserror::Error;
@@ -78,44 +80,112 @@ impl<T> ComponentClassLoader<T> for TemporaryComponentClassLoader {
     }
 }
 
-// #[async_trait]
-// impl ProjectMemory<T> for _ {
-//     async fn insert_new_project(&self, path: Option<&Path>, project: StaticPointerOwned<tokio::sync::rwlock::RwLock<Project<T>>>) {
-//         todo!()
-//     }
-//
-//     async fn get_loaded_project(&self, path: &Path) -> Option<StaticPointer<tokio::sync::rwlock::RwLock<Project<T>>>> {
-//         todo!()
-//     }
-//
-//     async fn all_loaded_projects(&self) -> Cow<[StaticPointer<tokio::sync::rwlock::RwLock<Project<T>>>]> {
-//         todo!()
-//     }
-// }
-//
-// #[async_trait]
-// impl RootComponentClassMemory<T> for _ {
-//     async fn insert_new_root_component_class(&self, parent: Option<&StaticPointer<tokio::sync::rwlock::RwLock<Project<T>>>>, root_component_class: StaticPointerOwned<tokio::sync::rwlock::RwLock<RootComponentClass<T>>>) {
-//         todo!()
-//     }
-//
-//     async fn set_parent(&self, root_component_class: &StaticPointer<tokio::sync::rwlock::RwLock<RootComponentClass<T>>>, parent: Option<&StaticPointer<tokio::sync::rwlock::RwLock<Project<T>>>>) {
-//         todo!()
-//     }
-//
-//     async fn search_by_parent(&self, parent: &StaticPointer<tokio::sync::rwlock::RwLock<Project<T>>>) -> Cow<[StaticPointer<tokio::sync::rwlock::RwLock<RootComponentClass<T>>>]> {
-//         todo!()
-//     }
-//
-//     async fn get_parent_project(&self, path: &StaticPointer<tokio::sync::rwlock::RwLock<RootComponentClass<T>>>) -> Option<StaticPointer<tokio::sync::rwlock::RwLock<Project<T>>>> {
-//         todo!()
-//     }
-//
-//     async fn all_loaded_root_component_classes(&self) -> Cow<[StaticPointer<tokio::sync::rwlock::RwLock<RootComponentClass<T>>>]> {
-//         todo!()
-//     }
-// }
-//
+pub struct ForestMap<RootKey, Root, Child> {
+    root_list: Vec<(Option<RootKey>, StaticPointerOwned<Root>)>,
+    children: Vec<StaticPointerOwned<Child>>,
+    child_root_map: HashMap<StaticPointer<Child>, StaticPointer<Root>>,
+}
+
+impl<RootKey: PartialEq, Root, Child> ForestMap<RootKey, Root, Child> {
+    pub fn new() -> ForestMap<RootKey, Root, Child> {
+        ForestMap {
+            root_list: Vec::new(),
+            children: Vec::new(),
+            child_root_map: HashMap::new(),
+        }
+    }
+
+    pub fn insert_root(&mut self, key: Option<RootKey>, root: StaticPointerOwned<Root>) {
+        self.root_list.push((key, root));
+    }
+
+    pub fn search_root_by_key(&self, key: &impl PartialEq<RootKey>) -> Option<StaticPointer<Root>> {
+        self.root_list.iter().find_map(|(k, value)| (key == k.as_ref()?).then_some(value).map(StaticPointerOwned::reference))
+    }
+
+    pub fn all_root(&self) -> impl Iterator<Item = StaticPointer<Root>> + '_ {
+        self.root_list.iter().map(|(_, root)| StaticPointerOwned::reference(root))
+    }
+
+    pub fn insert_child(&mut self, parent: Option<&StaticPointer<Root>>, child: StaticPointerOwned<Child>) {
+        let child_reference = StaticPointerOwned::reference(&child);
+        self.children.push(child);
+        if let Some(parent) = parent {
+            self.child_root_map.insert(child_reference, parent.clone());
+        }
+    }
+
+    pub fn get_root(&self, child: &StaticPointer<Child>) -> Option<&StaticPointer<Root>> {
+        self.child_root_map.get(child)
+    }
+
+    pub fn set_root(&mut self, child: &StaticPointer<Child>, root: &StaticPointer<Root>) {
+        self.child_root_map.insert(child.clone(), root.clone());
+    }
+
+    pub fn remove_root(&mut self, child: &StaticPointer<Child>) {
+        self.child_root_map.remove(child);
+    }
+
+    pub fn children_by_root<'a>(&'a self, root: &'a StaticPointer<Root>) -> impl Iterator<Item = StaticPointer<Child>> + 'a {
+        self.children.iter().map(StaticPointerOwned::reference).filter(|child| self.child_root_map.get(child) == Some(root))
+    }
+
+    pub fn all_children(&self) -> impl Iterator<Item = StaticPointer<Child>> + '_ {
+        self.children.iter().map(StaticPointerOwned::reference)
+    }
+}
+
+impl<RootKey: PartialEq, Root, Child> Default for ForestMap<RootKey, Root, Child> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+pub struct InMemoryProjectStore<T>(RwLock<ForestMap<PathBuf, RwLock<Project<T>>, RwLock<RootComponentClass<T>>>>);
+
+#[async_trait]
+impl<T> ProjectMemory<T> for InMemoryProjectStore<T> {
+    async fn insert_new_project(&self, path: Option<&Path>, project: StaticPointerOwned<RwLock<Project<T>>>) {
+        self.0.write().await.insert_root(path.map(Path::to_path_buf), project);
+    }
+
+    async fn get_loaded_project(&self, path: &Path) -> Option<StaticPointer<RwLock<Project<T>>>> {
+        self.0.read().await.search_root_by_key(&path)
+    }
+
+    async fn all_loaded_projects(&self) -> Cow<[StaticPointer<RwLock<Project<T>>>]> {
+        Cow::Owned(self.0.read().await.all_root().collect())
+    }
+}
+
+#[async_trait]
+impl<T> RootComponentClassMemory<T> for InMemoryProjectStore<T> {
+    async fn insert_new_root_component_class(&self, parent: Option<&StaticPointer<RwLock<Project<T>>>>, root_component_class: StaticPointerOwned<RwLock<RootComponentClass<T>>>) {
+        self.0.write().await.insert_child(parent, root_component_class);
+    }
+
+    async fn set_parent(&self, root_component_class: &StaticPointer<RwLock<RootComponentClass<T>>>, parent: Option<&StaticPointer<RwLock<Project<T>>>>) {
+        if let Some(parent) = parent {
+            self.0.write().await.set_root(root_component_class, parent);
+        } else {
+            self.0.write().await.remove_root(root_component_class);
+        }
+    }
+
+    async fn search_by_parent(&self, parent: &StaticPointer<RwLock<Project<T>>>) -> Cow<[StaticPointer<RwLock<RootComponentClass<T>>>]> {
+        Cow::Owned(self.0.read().await.children_by_root(parent).collect())
+    }
+
+    async fn get_parent_project(&self, root_component_class: &StaticPointer<RwLock<RootComponentClass<T>>>) -> Option<StaticPointer<RwLock<Project<T>>>> {
+        self.0.read().await.get_root(root_component_class).cloned()
+    }
+
+    async fn all_loaded_root_component_classes(&self) -> Cow<[StaticPointer<RwLock<RootComponentClass<T>>>]> {
+        Cow::Owned(self.0.read().await.all_children().collect())
+    }
+}
+
 // #[async_trait]
 // impl Editor<T> for _ {
 //     type Log = ();

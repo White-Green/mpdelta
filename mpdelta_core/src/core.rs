@@ -8,6 +8,7 @@ use async_trait::async_trait;
 use std::borrow::Cow;
 use std::error::Error;
 use std::path::Path;
+use std::sync::Arc;
 use thiserror::Error;
 use tokio::sync::RwLock;
 use uuid::Uuid;
@@ -211,8 +212,8 @@ pub trait Editor<T>: Send + Sync {
 #[async_trait]
 pub trait EditHistory<T, Log>: Send + Sync {
     async fn push_history(&self, root: &StaticPointer<RwLock<RootComponentClass<T>>>, target: Option<&StaticPointer<RwLock<ComponentInstance<T>>>>, log: Log);
-    async fn undo(&self, root: &StaticPointer<RwLock<RootComponentClass<T>>>, target: Option<&StaticPointer<RwLock<ComponentInstance<T>>>>) -> Option<&Log>;
-    async fn redo(&self, root: &StaticPointer<RwLock<RootComponentClass<T>>>, target: Option<&StaticPointer<RwLock<ComponentInstance<T>>>>) -> Option<&Log>;
+    async fn undo(&self, root: &StaticPointer<RwLock<RootComponentClass<T>>>, target: Option<&StaticPointer<RwLock<ComponentInstance<T>>>>) -> Option<Arc<Log>>;
+    async fn redo(&self, root: &StaticPointer<RwLock<RootComponentClass<T>>>, target: Option<&StaticPointer<RwLock<ComponentInstance<T>>>>) -> Option<Arc<Log>>;
 }
 
 #[async_trait]
@@ -246,7 +247,7 @@ where
 {
     async fn undo(&self, component: &StaticPointer<RwLock<RootComponentClass<T>>>) -> bool {
         if let Some(log) = self.edit_history.undo(component, None).await {
-            self.editor.edit_reverse(log).await;
+            self.editor.edit_reverse(&log).await;
             true
         } else {
             false
@@ -255,7 +256,7 @@ where
 
     async fn undo_instance(&self, root: &StaticPointer<RwLock<RootComponentClass<T>>>, target: &StaticPointer<RwLock<ComponentInstance<T>>>) -> bool {
         if let Some(log) = self.edit_history.undo(root, Some(target)).await {
-            self.editor.edit_reverse(log).await;
+            self.editor.edit_reverse(&log).await;
             true
         } else {
             false
@@ -272,7 +273,7 @@ where
 {
     async fn redo(&self, component: &StaticPointer<RwLock<RootComponentClass<T>>>) -> bool {
         if let Some(log) = self.edit_history.redo(component, None).await {
-            self.editor.edit_by_log(log).await;
+            self.editor.edit_by_log(&log).await;
             true
         } else {
             false
@@ -281,7 +282,7 @@ where
 
     async fn redo_instance(&self, root: &StaticPointer<RwLock<RootComponentClass<T>>>, target: &StaticPointer<RwLock<ComponentInstance<T>>>) -> bool {
         if let Some(log) = self.edit_history.redo(root, Some(target)).await {
-            self.editor.edit_by_log(log).await;
+            self.editor.edit_by_log(&log).await;
             true
         } else {
             false

@@ -1,7 +1,8 @@
 use async_trait::async_trait;
 use mpdelta_core::component::class::ComponentClass;
 use mpdelta_core::component::instance::ComponentInstance;
-use mpdelta_core::core::{ComponentClassLoader, EditHistory, IdGenerator, ProjectLoader, ProjectMemory, ProjectWriter, RootComponentClassMemory};
+use mpdelta_core::core::{ComponentClassLoader, EditHistory, Editor, IdGenerator, ProjectLoader, ProjectMemory, ProjectWriter, RootComponentClassMemory};
+use mpdelta_core::edit::{InstanceEditCommand, RootComponentEditCommand};
 use mpdelta_core::project::{Project, RootComponentClass};
 use mpdelta_core::ptr::{StaticPointer, StaticPointerOwned};
 use std::borrow::Cow;
@@ -212,27 +213,34 @@ impl<T> RootComponentClassMemory<T> for InMemoryProjectStore<T> {
     }
 }
 
-// #[async_trait]
-// impl Editor<T> for _ {
-//     type Log = ();
-//     type Err = ();
-//
-//     async fn edit(&self, target: &StaticPointer<tokio::sync::rwlock::RwLock<RootComponentClass<T>>>, command: RootComponentEditCommand) -> Result<Self::Log, Self::Err> {
-//         todo!()
-//     }
-//
-//     async fn edit_instance(&self, root: &StaticPointer<tokio::sync::rwlock::RwLock<RootComponentClass<T>>>, target: &StaticPointer<tokio::sync::rwlock::RwLock<ComponentInstance<T>>>, command: InstanceEditCommand) -> Result<Self::Log, Self::Err> {
-//         todo!()
-//     }
-//
-//     async fn edit_reverse(&self, log: &Self::Log) {
-//         todo!()
-//     }
-//
-//     async fn edit_by_log(&self, log: &Self::Log) {
-//         todo!()
-//     }
-// }
+pub struct ProjectEditor {}
+
+pub enum ProjectEditLog {}
+
+#[derive(Debug, Error)]
+pub enum ProjectEditError {}
+
+#[async_trait]
+impl<T> Editor<T> for ProjectEditor {
+    type Log = ProjectEditLog;
+    type Err = ProjectEditError;
+
+    async fn edit(&self, target: &StaticPointer<RwLock<RootComponentClass<T>>>, command: RootComponentEditCommand) -> Result<Self::Log, Self::Err> {
+        match command {}
+    }
+
+    async fn edit_instance(&self, root: &StaticPointer<RwLock<RootComponentClass<T>>>, target: &StaticPointer<RwLock<ComponentInstance<T>>>, command: InstanceEditCommand) -> Result<Self::Log, Self::Err> {
+        match command {}
+    }
+
+    async fn edit_reverse(&self, log: &Self::Log) {
+        match *log {}
+    }
+
+    async fn edit_by_log(&self, log: &Self::Log) {
+        match *log {}
+    }
+}
 
 pub struct HistoryStore<Key, Log> {
     max_history: usize,

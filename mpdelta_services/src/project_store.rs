@@ -1,86 +1,11 @@
 use async_trait::async_trait;
-use mpdelta_core::component::class::ComponentClass;
-use mpdelta_core::component::instance::ComponentInstance;
-use mpdelta_core::core::{ComponentClassLoader, EditHistory, Editor, IdGenerator, ProjectLoader, ProjectMemory, ProjectWriter, RootComponentClassMemory};
-use mpdelta_core::edit::{InstanceEditCommand, RootComponentEditCommand};
+use mpdelta_core::core::{ProjectMemory, RootComponentClassMemory};
 use mpdelta_core::project::{Project, RootComponentClass};
 use mpdelta_core::ptr::{StaticPointer, StaticPointerOwned};
 use std::borrow::Cow;
-use std::collections::{HashMap, HashSet, VecDeque};
-use std::hash::Hash;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::AtomicU64;
-use std::sync::{atomic, Arc};
-use thiserror::Error;
-use tokio::sync::{Mutex, RwLock};
-use uuid::v1::Timestamp;
-use uuid::Uuid;
-
-#[derive(Debug)]
-pub struct UniqueIdGenerator {
-    context: uuid::v1::Context,
-    counter: AtomicU64,
-}
-
-impl UniqueIdGenerator {
-    pub fn new() -> UniqueIdGenerator {
-        UniqueIdGenerator {
-            context: uuid::v1::Context::new_random(),
-            counter: AtomicU64::new(0),
-        }
-    }
-}
-
-impl Default for UniqueIdGenerator {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-#[async_trait]
-impl IdGenerator for UniqueIdGenerator {
-    async fn generate_new(&self) -> Uuid {
-        let now = time::OffsetDateTime::now_utc();
-        let secs = now.unix_timestamp();
-        let nanos = now.unix_timestamp_nanos();
-        let counter = self.counter.fetch_add(1, atomic::Ordering::AcqRel);
-        Uuid::new_v1(Timestamp::from_unix(&self.context, secs as u64, (nanos % 1_000_000_000) as u32), <&[u8; 6]>::try_from(&counter.to_be_bytes()[2..]).unwrap())
-    }
-}
-
-pub struct TemporaryProjectLoader;
-
-#[derive(Debug, Error)]
-pub enum Infallible {}
-
-#[async_trait]
-impl<T> ProjectLoader<T> for TemporaryProjectLoader {
-    type Err = Infallible;
-
-    async fn load_project(&self, _: &Path) -> Result<StaticPointerOwned<RwLock<Project<T>>>, Self::Err> {
-        todo!("ProjectLoader is not implemented yet")
-    }
-}
-
-pub struct TemporaryProjectWriter;
-
-#[async_trait]
-impl<T> ProjectWriter<T> for TemporaryProjectWriter {
-    type Err = Infallible;
-
-    async fn write_project(&self, _: &StaticPointer<RwLock<Project<T>>>, _: &Path) -> Result<(), Self::Err> {
-        todo!("ProjectWriter is not implemented yet")
-    }
-}
-
-pub struct TemporaryComponentClassLoader;
-
-#[async_trait]
-impl<T> ComponentClassLoader<T> for TemporaryComponentClassLoader {
-    async fn get_available_component_classes(&self) -> Cow<[StaticPointer<RwLock<dyn ComponentClass<T>>>]> {
-        Cow::Borrowed(&[])
-    }
-}
+use tokio::sync::RwLock;
 
 #[derive(Debug)]
 pub struct ForestMap<RootKey, Root, Child> {
@@ -213,101 +138,10 @@ impl<T> RootComponentClassMemory<T> for InMemoryProjectStore<T> {
     }
 }
 
-pub struct ProjectEditor {}
-
-pub enum ProjectEditLog {}
-
-#[derive(Debug, Error)]
-pub enum ProjectEditError {}
-
-#[async_trait]
-impl<T> Editor<T> for ProjectEditor {
-    type Log = ProjectEditLog;
-    type Err = ProjectEditError;
-
-    async fn edit(&self, target: &StaticPointer<RwLock<RootComponentClass<T>>>, command: RootComponentEditCommand) -> Result<Self::Log, Self::Err> {
-        match command {}
-    }
-
-    async fn edit_instance(&self, root: &StaticPointer<RwLock<RootComponentClass<T>>>, target: &StaticPointer<RwLock<ComponentInstance<T>>>, command: InstanceEditCommand) -> Result<Self::Log, Self::Err> {
-        match command {}
-    }
-
-    async fn edit_reverse(&self, log: &Self::Log) {
-        match *log {}
-    }
-
-    async fn edit_by_log(&self, log: &Self::Log) {
-        match *log {}
-    }
-}
-
-pub struct HistoryStore<Key, Log> {
-    max_history: usize,
-    history_map: HashMap<Key, (VecDeque<Log>, VecDeque<Log>)>,
-}
-
-impl<Key: Hash + Eq, Log> HistoryStore<Key, Log> {
-    pub fn new(max_history: usize) -> HistoryStore<Key, Log> {
-        HistoryStore { max_history, history_map: HashMap::new() }
-    }
-
-    pub fn push_history(&mut self, key: Key, log: Log) {
-        let (history, future) = self.history_map.entry(key).or_default();
-        history.push_back(log);
-        let remove_len = history.len().saturating_sub(self.max_history);
-        history.drain(..remove_len);
-        future.clear();
-    }
-
-    pub fn pop_undo(&mut self, key: &Key) -> Option<&Log> {
-        let (history, future) = self.history_map.get_mut(key)?;
-        let log = history.pop_back()?;
-        future.push_front(log);
-        future.front()
-    }
-
-    pub fn pop_redo(&mut self, key: &Key) -> Option<&Log> {
-        let (history, future) = self.history_map.get_mut(key)?;
-        let log = future.pop_front()?;
-        history.push_back(log);
-        history.back()
-    }
-}
-
-pub struct InMemoryEditHistoryStore<T, Log>(Mutex<HistoryStore<(StaticPointer<RwLock<RootComponentClass<T>>>, Option<StaticPointer<RwLock<ComponentInstance<T>>>>), Arc<Log>>>);
-
-#[async_trait]
-impl<T, Log: Send + Sync> EditHistory<T, Log> for InMemoryEditHistoryStore<T, Log> {
-    async fn push_history(&self, root: &StaticPointer<RwLock<RootComponentClass<T>>>, target: Option<&StaticPointer<RwLock<ComponentInstance<T>>>>, log: Log) {
-        self.0.lock().await.push_history((root.clone(), target.cloned()), Arc::new(log));
-    }
-
-    async fn undo(&self, root: &StaticPointer<RwLock<RootComponentClass<T>>>, target: Option<&StaticPointer<RwLock<ComponentInstance<T>>>>) -> Option<Arc<Log>> {
-        self.0.lock().await.pop_undo(&(root.clone(), target.cloned())).map(Arc::clone)
-    }
-
-    async fn redo(&self, root: &StaticPointer<RwLock<RootComponentClass<T>>>, target: Option<&StaticPointer<RwLock<ComponentInstance<T>>>>) -> Option<Arc<Log>> {
-        self.0.lock().await.pop_redo(&(root.clone(), target.cloned())).map(Arc::clone)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::collections::HashSet;
-    use std::iter;
-    use std::sync::Arc;
-
-    #[tokio::test]
-    async fn test_unique_id_generator() {
-        let unique_id_generator = Arc::new(UniqueIdGenerator::new());
-        let mut set = HashSet::new();
-        let threads = iter::repeat(unique_id_generator).take(100_000).map(|gen| tokio::spawn(async move { gen.generate_new().await })).collect::<Vec<_>>();
-        for t in threads {
-            assert!(set.insert(t.await.unwrap()));
-        }
-    }
 
     #[test]
     fn forest_map() {
@@ -405,46 +239,5 @@ mod tests {
 
         assert_eq!(map.all_root().collect::<HashSet<_>>(), roots.iter().cloned().collect::<HashSet<_>>());
         assert_eq!(map.all_children().collect::<HashSet<_>>(), children.iter().cloned().collect::<HashSet<_>>());
-    }
-
-    #[test]
-    fn history_store() {
-        let mut history_store = HistoryStore::<usize, &str>::new(5);
-        history_store.push_history(0, "0A");
-        history_store.push_history(0, "0B");
-        history_store.push_history(0, "0C");
-        history_store.push_history(0, "0D");
-        history_store.push_history(0, "0E");
-        history_store.push_history(0, "0F");
-        history_store.push_history(1, "1A");
-        history_store.push_history(1, "1B");
-        history_store.push_history(1, "1C");
-
-        assert_eq!(history_store.pop_redo(&0), None);
-        assert_eq!(history_store.pop_undo(&0), Some(&"0F"));
-        assert_eq!(history_store.pop_undo(&0), Some(&"0E"));
-        assert_eq!(history_store.pop_undo(&0), Some(&"0D"));
-        assert_eq!(history_store.pop_undo(&0), Some(&"0C"));
-        assert_eq!(history_store.pop_undo(&0), Some(&"0B"));
-        assert_eq!(history_store.pop_undo(&0), None);
-        assert_eq!(history_store.pop_redo(&0), Some(&"0B"));
-        assert_eq!(history_store.pop_redo(&0), Some(&"0C"));
-
-        history_store.push_history(0, "0G");
-
-        assert_eq!(history_store.pop_redo(&0), None);
-        assert_eq!(history_store.pop_undo(&0), Some(&"0G"));
-        assert_eq!(history_store.pop_undo(&0), Some(&"0C"));
-        assert_eq!(history_store.pop_undo(&0), Some(&"0B"));
-        assert_eq!(history_store.pop_undo(&0), None);
-
-        assert_eq!(history_store.pop_undo(&1), Some(&"1C"));
-        assert_eq!(history_store.pop_undo(&1), Some(&"1B"));
-        assert_eq!(history_store.pop_undo(&1), Some(&"1A"));
-        assert_eq!(history_store.pop_undo(&1), None);
-        assert_eq!(history_store.pop_redo(&1), Some(&"1A"));
-        assert_eq!(history_store.pop_redo(&1), Some(&"1B"));
-        assert_eq!(history_store.pop_redo(&1), Some(&"1C"));
-        assert_eq!(history_store.pop_redo(&1), None);
     }
 }

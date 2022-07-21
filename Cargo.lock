@@ -813,6 +813,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "mpdelta_renderer"
+version = "0.1.0"
+
+[[package]]
 name = "mpdelta_services"
 version = "0.1.0"
 dependencies = [

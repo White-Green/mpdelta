@@ -80,6 +80,7 @@ impl<T> ComponentClassLoader<T> for TemporaryComponentClassLoader {
     }
 }
 
+#[derive(Debug)]
 pub struct ForestMap<RootKey, Root, Child> {
     root_list: Vec<(Option<RootKey>, StaticPointerOwned<Root>)>,
     children: Vec<StaticPointerOwned<Child>>,
@@ -99,6 +100,11 @@ impl<RootKey: PartialEq, Root, Child> ForestMap<RootKey, Root, Child> {
         self.root_list.push((key, root));
     }
 
+    pub fn remove_root(&mut self, root: &StaticPointer<Root>) -> Option<StaticPointerOwned<Root>> {
+        let (i, _) = self.root_list.iter().enumerate().find(|(_, (_, r))| r == root)?;
+        Some(self.root_list.swap_remove(i).1)
+    }
+
     pub fn search_root_by_key(&self, key: &impl PartialEq<RootKey>) -> Option<StaticPointer<Root>> {
         self.root_list.iter().find_map(|(k, value)| (key == k.as_ref()?).then_some(value).map(StaticPointerOwned::reference))
     }
@@ -115,6 +121,12 @@ impl<RootKey: PartialEq, Root, Child> ForestMap<RootKey, Root, Child> {
         }
     }
 
+    pub fn remove_child(&mut self, child: &StaticPointer<Child>) -> Option<StaticPointerOwned<Child>> {
+        let (i, _) = self.children.iter().enumerate().find(|(_, c)| *c == child)?;
+        self.child_root_map.remove(child);
+        Some(self.children.remove(i))
+    }
+
     pub fn get_root(&self, child: &StaticPointer<Child>) -> Option<&StaticPointer<Root>> {
         self.child_root_map.get(child)
     }
@@ -123,7 +135,7 @@ impl<RootKey: PartialEq, Root, Child> ForestMap<RootKey, Root, Child> {
         self.child_root_map.insert(child.clone(), root.clone());
     }
 
-    pub fn remove_root(&mut self, child: &StaticPointer<Child>) {
+    pub fn unset_root(&mut self, child: &StaticPointer<Child>) {
         self.child_root_map.remove(child);
     }
 
@@ -142,7 +154,20 @@ impl<RootKey: PartialEq, Root, Child> Default for ForestMap<RootKey, Root, Child
     }
 }
 
+#[derive(Debug)]
 pub struct InMemoryProjectStore<T>(RwLock<ForestMap<PathBuf, RwLock<Project<T>>, RwLock<RootComponentClass<T>>>>);
+
+impl<T> InMemoryProjectStore<T> {
+    pub fn new() -> InMemoryProjectStore<T> {
+        InMemoryProjectStore(RwLock::new(ForestMap::new()))
+    }
+}
+
+impl<T> Default for InMemoryProjectStore<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 #[async_trait]
 impl<T> ProjectMemory<T> for InMemoryProjectStore<T> {
@@ -169,7 +194,7 @@ impl<T> RootComponentClassMemory<T> for InMemoryProjectStore<T> {
         if let Some(parent) = parent {
             self.0.write().await.set_root(root_component_class, parent);
         } else {
-            self.0.write().await.remove_root(root_component_class);
+            self.0.write().await.unset_root(root_component_class);
         }
     }
 
@@ -238,5 +263,103 @@ mod tests {
         for t in threads {
             assert!(set.insert(t.await.unwrap()));
         }
+    }
+
+    #[test]
+    fn forest_map() {
+        let new_root = StaticPointerOwned::<u32>::new;
+        let new_child = StaticPointerOwned::<i32>::new;
+        let mut map = ForestMap::<String, u32, i32>::new();
+        let mut roots = Vec::new();
+        map.insert_root(Some("A".to_string()), {
+            let root = new_root(0);
+            roots.push(StaticPointerOwned::reference(&root));
+            root
+        });
+        map.insert_root(Some("B".to_string()), {
+            let root = new_root(1);
+            roots.push(StaticPointerOwned::reference(&root));
+            root
+        });
+        map.insert_root(None, {
+            let root = new_root(2);
+            roots.push(StaticPointerOwned::reference(&root));
+            root
+        });
+
+        let mut children = Vec::new();
+        map.insert_child(Some(&roots[0]), {
+            let child = new_child(0);
+            children.push(StaticPointerOwned::reference(&child));
+            child
+        });
+        map.insert_child(Some(&roots[0]), {
+            let child = new_child(1);
+            children.push(StaticPointerOwned::reference(&child));
+            child
+        });
+        map.insert_child(Some(&roots[1]), {
+            let child = new_child(2);
+            children.push(StaticPointerOwned::reference(&child));
+            child
+        });
+        map.insert_child(None, {
+            let child = new_child(3);
+            children.push(StaticPointerOwned::reference(&child));
+            child
+        });
+        map.insert_child(None, {
+            let child = new_child(4);
+            children.push(StaticPointerOwned::reference(&child));
+            child
+        });
+
+        assert_eq!(map.search_root_by_key(&"A"), Some(roots[0].clone()));
+        assert_eq!(map.search_root_by_key(&"B"), Some(roots[1].clone()));
+        assert_eq!(map.search_root_by_key(&"C"), None);
+
+        assert_eq!(map.get_root(&children[0]), Some(&roots[0]));
+        assert_eq!(map.get_root(&children[1]), Some(&roots[0]));
+        assert_eq!(map.get_root(&children[2]), Some(&roots[1]));
+        assert_eq!(map.get_root(&children[3]), None);
+        assert_eq!(map.get_root(&children[4]), None);
+
+        assert_eq!(map.children_by_root(&roots[0]).collect::<HashSet<_>>(), children[..2].iter().cloned().collect::<HashSet<_>>());
+        assert_eq!(map.children_by_root(&roots[1]).collect::<HashSet<_>>(), children[2..3].iter().cloned().collect::<HashSet<_>>());
+        assert_eq!(map.children_by_root(&roots[2]).collect::<HashSet<_>>(), HashSet::new());
+
+        assert_eq!(map.all_root().collect::<HashSet<_>>(), roots.iter().cloned().collect::<HashSet<_>>());
+        assert_eq!(map.all_children().collect::<HashSet<_>>(), children.iter().cloned().collect::<HashSet<_>>());
+
+        map.set_root(&children[3], &roots[2]);
+
+        assert_eq!(map.get_root(&children[0]), Some(&roots[0]));
+        assert_eq!(map.get_root(&children[1]), Some(&roots[0]));
+        assert_eq!(map.get_root(&children[2]), Some(&roots[1]));
+        assert_eq!(map.get_root(&children[3]), Some(&roots[2]));
+        assert_eq!(map.get_root(&children[4]), None);
+
+        assert_eq!(map.children_by_root(&roots[0]).collect::<HashSet<_>>(), children[..2].iter().cloned().collect::<HashSet<_>>());
+        assert_eq!(map.children_by_root(&roots[1]).collect::<HashSet<_>>(), children[2..3].iter().cloned().collect::<HashSet<_>>());
+        assert_eq!(map.children_by_root(&roots[2]).collect::<HashSet<_>>(), children[3..4].iter().cloned().collect::<HashSet<_>>());
+
+        assert_eq!(map.all_root().collect::<HashSet<_>>(), roots.iter().cloned().collect::<HashSet<_>>());
+        assert_eq!(map.all_children().collect::<HashSet<_>>(), children.iter().cloned().collect::<HashSet<_>>());
+
+        map.unset_root(&children[2]);
+        map.unset_root(&children[4]);
+
+        assert_eq!(map.get_root(&children[0]), Some(&roots[0]));
+        assert_eq!(map.get_root(&children[1]), Some(&roots[0]));
+        assert_eq!(map.get_root(&children[2]), None);
+        assert_eq!(map.get_root(&children[3]), Some(&roots[2]));
+        assert_eq!(map.get_root(&children[4]), None);
+
+        assert_eq!(map.children_by_root(&roots[0]).collect::<HashSet<_>>(), children[..2].iter().cloned().collect::<HashSet<_>>());
+        assert_eq!(map.children_by_root(&roots[1]).collect::<HashSet<_>>(), HashSet::new());
+        assert_eq!(map.children_by_root(&roots[2]).collect::<HashSet<_>>(), children[3..4].iter().cloned().collect::<HashSet<_>>());
+
+        assert_eq!(map.all_root().collect::<HashSet<_>>(), roots.iter().cloned().collect::<HashSet<_>>());
+        assert_eq!(map.all_children().collect::<HashSet<_>>(), children.iter().cloned().collect::<HashSet<_>>());
     }
 }

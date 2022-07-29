@@ -9,6 +9,7 @@ use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt::{Debug, Formatter};
 use std::hash::{Hash, Hasher};
+use std::marker::PhantomData;
 use std::ops::Range;
 use std::path::PathBuf;
 use tokio::sync::RwLock;
@@ -241,6 +242,25 @@ impl<'a> ParameterValueType<'a> for ValueFixedExceptComponentClass {
     type Vec3 = Vector3<f64>;
     type Dictionary = HashMap<String, ParameterValue>;
     type ComponentClass = Never;
+}
+
+pub struct ParameterSelect;
+
+impl<'a> ParameterValueType<'a> for ParameterSelect {
+    type Image = ();
+    type Audio = ();
+    type Video = ();
+    type File = ();
+    type String = ();
+    type Select = ();
+    type Boolean = ();
+    type Radio = ();
+    type Integer = ();
+    type RealNumber = ();
+    type Vec2 = ();
+    type Vec3 = ();
+    type Dictionary = ();
+    type ComponentClass = ();
 }
 
 #[derive(Debug, Clone, Copy)]

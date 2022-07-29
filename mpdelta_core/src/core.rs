@@ -1,5 +1,6 @@
 use crate::component::class::ComponentClass;
 use crate::component::instance::ComponentInstance;
+use crate::component::parameter::ParameterValueType;
 use crate::edit::{InstanceEditCommand, RootComponentEditCommand};
 use crate::project::{Project, RootComponentClass};
 use crate::ptr::{StaticPointer, StaticPointerOwned};
@@ -181,16 +182,16 @@ where
 }
 
 #[async_trait]
-pub trait ComponentRendererBuilder<T, F, A>: Send + Sync {
-    type Renderer: RealtimeComponentRenderer<F, A> + Send + Sync;
+pub trait ComponentRendererBuilder<T: ParameterValueType<'static>>: Send + Sync {
+    type Renderer: RealtimeComponentRenderer<T> + Send + Sync;
     async fn create_renderer(&self, component: &StaticPointer<RwLock<ComponentInstance<T>>>) -> Self::Renderer;
 }
 
 #[async_trait]
-impl<T, F, A, T0: Send + Sync, T1: Send + Sync, T2: Send + Sync, T3: Send + Sync, T4: Send + Sync, T5: Send + Sync, CR: Send + Sync, T7: Send + Sync, T8: Send + Sync> RealtimeRenderComponentUsecase<T, F, A> for MPDeltaCore<T0, T1, T2, T3, T4, T5, CR, T7, T8>
+impl<T: ParameterValueType<'static>, T0: Send + Sync, T1: Send + Sync, T2: Send + Sync, T3: Send + Sync, T4: Send + Sync, T5: Send + Sync, CR: Send + Sync, T7: Send + Sync, T8: Send + Sync> RealtimeRenderComponentUsecase<T> for MPDeltaCore<T0, T1, T2, T3, T4, T5, CR, T7, T8>
 where
     StaticPointer<RwLock<ComponentInstance<T>>>: Sync,
-    CR: ComponentRendererBuilder<T, F, A>,
+    CR: ComponentRendererBuilder<T>,
 {
     type Renderer = CR::Renderer;
 
@@ -293,6 +294,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::component::parameter::{Parameter, ParameterSelect};
     use std::path::PathBuf;
     use std::sync::atomic;
     use std::sync::atomic::{AtomicU64, AtomicUsize};
@@ -724,9 +726,27 @@ mod tests {
 
     #[tokio::test]
     async fn realtime_render_component() {
+        struct Temporary;
+        impl ParameterValueType<'static> for Temporary {
+            type Image = ();
+            type Audio = ();
+            type Video = ();
+            type File = ();
+            type String = ();
+            type Select = ();
+            type Boolean = ();
+            type Radio = ();
+            type Integer = ();
+            type RealNumber = ();
+            type Vec2 = ();
+            type Vec3 = ();
+            type Dictionary = ();
+            type ComponentClass = ();
+        }
+
         struct RD;
         #[async_trait]
-        impl RealtimeComponentRenderer<(), ()> for RD {
+        impl RealtimeComponentRenderer<Temporary> for RD {
             fn get_frame_count(&self) -> usize {
                 unreachable!()
             }
@@ -742,13 +762,17 @@ mod tests {
             async fn mix_audio(&mut self, _: usize, _: usize) -> () {
                 unreachable!()
             }
+
+            async fn render_param(&mut self, param: Parameter<'static, ParameterSelect>) -> Parameter<'static, Temporary> {
+                unreachable!()
+            }
         }
         struct CR;
         #[async_trait]
-        impl ComponentRendererBuilder<(), (), ()> for CR {
+        impl ComponentRendererBuilder<Temporary> for CR {
             type Renderer = RD;
 
-            async fn create_renderer(&self, _: &StaticPointer<RwLock<ComponentInstance<()>>>) -> Self::Renderer {
+            async fn create_renderer(&self, _: &StaticPointer<RwLock<ComponentInstance<Temporary>>>) -> Self::Renderer {
                 RD
             }
         }

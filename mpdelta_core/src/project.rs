@@ -99,35 +99,38 @@ mod tests {
         assert!(component0.read().await.parent.is_none());
         assert!(component1.read().await.parent.is_none());
 
-        assert!(RootComponentClass::set_parent(&StaticPointerOwned::reference(&component0), Some(StaticPointerOwned::reference(&project0))).await.is_none());
+        assert!(RootComponentClass::set_parent(StaticPointerOwned::reference(&component0), Some(StaticPointerOwned::reference(&project0).clone())).await.is_none());
         {
             let project0 = project0.read().await;
             assert_eq!(project0.children.len(), 1);
-            assert_eq!(project0.children.iter().collect::<Vec<_>>(), vec![&StaticPointerOwned::reference(&component0)]);
+            assert_eq!(project0.children.iter().collect::<Vec<_>>(), vec![StaticPointerOwned::reference(&component0)]);
         }
-        assert_eq!(component0.read().await.parent, Some(StaticPointerOwned::reference(&project0)));
-        assert!(RootComponentClass::set_parent(&StaticPointerOwned::reference(&component1), Some(StaticPointerOwned::reference(&project1))).await.is_none());
+        assert_eq!(component0.read().await.parent, Some(StaticPointerOwned::reference(&project0).clone()));
+        assert!(RootComponentClass::set_parent(StaticPointerOwned::reference(&component1), Some(StaticPointerOwned::reference(&project1).clone())).await.is_none());
         {
             let project1 = project1.read().await;
             assert_eq!(project1.children.len(), 1);
-            assert_eq!(project1.children.iter().collect::<Vec<_>>(), vec![&StaticPointerOwned::reference(&component1)]);
+            assert_eq!(project1.children.iter().collect::<Vec<_>>(), vec![StaticPointerOwned::reference(&component1)]);
         }
-        assert_eq!(component1.read().await.parent, Some(StaticPointerOwned::reference(&project1)));
+        assert_eq!(component1.read().await.parent, Some(StaticPointerOwned::reference(&project1).clone()));
 
-        assert_eq!(RootComponentClass::set_parent(&StaticPointerOwned::reference(&component0), Some(StaticPointerOwned::reference(&project1))).await, Some(StaticPointerOwned::reference(&project0)));
+        assert_eq!(
+            RootComponentClass::set_parent(StaticPointerOwned::reference(&component0), Some(StaticPointerOwned::reference(&project1).clone())).await,
+            Some(StaticPointerOwned::reference(&project0).clone())
+        );
         {
             let project0 = project0.read().await;
             assert!(project0.children.is_empty());
             let project1 = project1.read().await;
             assert_eq!(project1.children.len(), 2);
             let children = project1.children.iter().collect::<Vec<_>>();
-            assert!(children == vec![&StaticPointerOwned::reference(&component0), &StaticPointerOwned::reference(&component1)] || children == vec![&StaticPointerOwned::reference(&component1), &StaticPointerOwned::reference(&component0)]);
+            assert!(children == vec![StaticPointerOwned::reference(&component0), StaticPointerOwned::reference(&component1)] || children == vec![StaticPointerOwned::reference(&component1), StaticPointerOwned::reference(&component0)]);
         }
-        assert_eq!(RootComponentClass::set_parent(&StaticPointerOwned::reference(&component1), None).await, Some(StaticPointerOwned::reference(&project1)));
+        assert_eq!(RootComponentClass::set_parent(StaticPointerOwned::reference(&component1), None).await, Some(StaticPointerOwned::reference(&project1).clone()));
         {
             let project1 = project1.read().await;
             assert_eq!(project1.children.len(), 1);
-            assert_eq!(project1.children.iter().collect::<Vec<_>>(), vec![&StaticPointerOwned::reference(&component0)]);
+            assert_eq!(project1.children.iter().collect::<Vec<_>>(), vec![StaticPointerOwned::reference(&component0)]);
         }
         assert!(component1.read().await.parent.is_none());
     }

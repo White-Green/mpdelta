@@ -1,8 +1,9 @@
 use crate::component::class::ComponentClass;
 use crate::component::marker_pin::MarkerPin;
-use crate::component::parameter::{AudioRequiredParams, ImageRequiredParams, Parameter, ParameterNullableValue, ParameterTypedValue, Type, ValueFixed, VariableParameterValue};
+use crate::component::parameter::{AudioRequiredParams, ImageRequiredParams, Parameter, ParameterNullableValue, ParameterValue, ParameterValueFixed, Type, ValueFixed, VariableParameterValue};
 use crate::component::processor::ComponentProcessor;
 use crate::ptr::{StaticPointer, StaticPointerOwned};
+use crate::time::TimelineTime;
 use std::fmt::{Debug, Formatter};
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -16,8 +17,12 @@ pub struct ComponentInstance<T> {
     markers: Vec<StaticPointerOwned<Cell<MarkerPin>>>,
     image_required_params: Option<ImageRequiredParams<T>>,
     audio_required_params: Option<AudioRequiredParams<T>>,
-    fixed_parameters: Box<[(String, Parameter<'static, (Type, ValueFixed)>)]>,
-    variable_parameters: Vec<(String, VariableParameterValue<T, ParameterTypedValue, ParameterNullableValue>)>,
+    fixed_parameters_type: Box<[(String, Parameter<'static, Type>)]>,
+    fixed_parameters: Box<[ParameterValueFixed]>,
+    variable_parameters_type: Vec<(String, Parameter<'static, Type>)>,
+    variable_parameters: Vec<VariableParameterValue<T, ParameterValue, ParameterNullableValue>>,
+    cached_begin_time: TimelineTime,
+    cached_end_time: TimelineTime,
     processor: Arc<dyn ComponentProcessor<T>>,
 }
 
@@ -25,7 +30,7 @@ impl<T> Debug for ComponentInstance<T>
 where
     ImageRequiredParams<T>: Debug,
     AudioRequiredParams<T>: Debug,
-    VariableParameterValue<T, ParameterTypedValue, ParameterNullableValue>: Debug,
+    VariableParameterValue<T, ParameterValue, ParameterNullableValue>: Debug,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ComponentInstance")
@@ -35,7 +40,9 @@ where
             .field("markers", &self.markers)
             .field("image_required_params", &self.image_required_params)
             .field("audio_required_params", &self.audio_required_params)
+            .field("fixed_parameters_type", &self.fixed_parameters_type)
             .field("fixed_parameters", &self.fixed_parameters)
+            .field("variable_parameters_type", &self.variable_parameters_type)
             .field("variable_parameters", &self.variable_parameters)
             .finish_non_exhaustive()
     }
@@ -60,11 +67,23 @@ impl<T> ComponentInstance<T> {
     pub fn audio_required_params(&self) -> Option<&AudioRequiredParams<T>> {
         self.audio_required_params.as_ref()
     }
-    pub fn fixed_parameters(&self) -> &[(String, Parameter<'static, (Type, ValueFixed)>)] {
+    pub fn fixed_parameters_type(&self) -> &[(String, Parameter<'static, Type>)] {
+        &self.fixed_parameters_type
+    }
+    pub fn fixed_parameters(&self) -> &[Parameter<'static, ValueFixed>] {
         &self.fixed_parameters
     }
-    pub fn variable_parameters(&self) -> &[(String, VariableParameterValue<T, ParameterTypedValue, ParameterNullableValue>)] {
+    pub fn variable_parameters_type(&self) -> &[(String, Parameter<'static, Type>)] {
+        &self.variable_parameters_type
+    }
+    pub fn variable_parameters(&self) -> &[VariableParameterValue<T, ParameterValue, ParameterNullableValue>] {
         &self.variable_parameters
+    }
+    pub fn cached_begin_time(&self) -> TimelineTime {
+        self.cached_begin_time
+    }
+    pub fn cached_end_time(&self) -> TimelineTime {
+        self.cached_end_time
     }
     pub fn processor(&self) -> &Arc<dyn ComponentProcessor<T>> {
         &self.processor

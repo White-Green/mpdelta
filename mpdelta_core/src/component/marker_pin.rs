@@ -3,7 +3,7 @@ use std::cmp::Ordering;
 use std::hash::{Hash, Hasher};
 
 /// 固定マーカの位置のコンポーネントの長さに対する割合
-/// \[0.0, 1.0\]
+/// \[0.0, ∞)
 #[derive(Debug, Clone, Copy)]
 pub struct MarkerTime(f64);
 
@@ -14,8 +14,10 @@ pub struct MarkerPin {
 }
 
 impl MarkerTime {
+    pub const ZERO: MarkerTime = MarkerTime(0.0);
+
     pub fn new(value: f64) -> Option<MarkerTime> {
-        if value.is_finite() && 0. <= value && value <= 1. {
+        if value.is_finite() && 0. <= value {
             Some(MarkerTime(if value == -0.0 { 0.0 } else { value }))
         } else {
             None
@@ -67,6 +69,14 @@ impl MarkerPin {
             locked_component_time: None,
         }
     }
+
+    pub fn cached_timeline_time(&self) -> TimelineTime {
+        self.cached_timeline_time
+    }
+
+    pub fn locked_component_time(&self) -> Option<MarkerTime> {
+        self.locked_component_time
+    }
 }
 
 #[cfg(test)]
@@ -82,7 +92,8 @@ mod tests {
         assert_eq!(MarkerTime::new(0.), Some(MarkerTime(0.)));
         assert_eq!(MarkerTime::new(0.5), Some(MarkerTime(0.5)));
         assert_eq!(MarkerTime::new(1.), Some(MarkerTime(1.)));
-        assert_eq!(MarkerTime::new(1. + f64::EPSILON), None);
+        assert_eq!(MarkerTime::new(1. + f64::EPSILON), Some(MarkerTime(1. + f64::EPSILON)));
+        assert_eq!(MarkerTime::new(f64::INFINITY), None);
         assert_eq!(MarkerTime::new(f64::NAN), None);
 
         let hash_0 = {

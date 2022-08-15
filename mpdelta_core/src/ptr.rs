@@ -4,21 +4,27 @@ use std::marker::PhantomData;
 use std::ops::Deref;
 use std::sync::{Arc, Weak};
 
-pub struct StaticPointerOwned<T: ?Sized>(Arc<T>);
+pub struct StaticPointerOwned<T: ?Sized>(Arc<(StaticPointer<T>, T)>);
 
-pub struct StaticPointer<T: ?Sized>(Weak<T>);
+pub struct StaticPointer<T: ?Sized>(Weak<(StaticPointer<T>, T)>);
 
-pub struct StaticPointerStrongRef<'a, T: ?Sized>(Arc<T>, PhantomData<&'a ()>);
+pub struct StaticPointerStrongRef<'a, T: ?Sized>(Arc<(StaticPointer<T>, T)>, PhantomData<&'a ()>);
+
+#[derive(Debug)]
+pub enum StaticPointerCow<T: ?Sized> {
+    Owned(StaticPointerOwned<T>),
+    Reference(StaticPointer<T>),
+}
 
 impl<T> StaticPointerOwned<T> {
     pub fn new(value: T) -> Self {
-        StaticPointerOwned(Arc::new(value))
+        StaticPointerOwned(Arc::new_cyclic(|weak| (StaticPointer(weak.clone()), value)))
     }
 }
 
 impl<T: ?Sized> StaticPointerOwned<T> {
-    pub fn reference(this: &Self) -> StaticPointer<T> {
-        StaticPointer(Arc::downgrade(&this.0))
+    pub fn reference(this: &Self) -> &StaticPointer<T> {
+        &this.0 .0
     }
 }
 
@@ -50,7 +56,7 @@ impl<T: ?Sized> StaticPointer<T> {
 
 impl<T: ?Sized + Debug> Debug for StaticPointerOwned<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.debug_tuple(&format!("StaticPointerOwned: {:p}", self.0)).field(&&*self.0).finish()
+        f.debug_tuple(&format!("StaticPointerOwned: {:p}", self.0)).field(&&self.0 .1).finish()
     }
 }
 
@@ -62,13 +68,13 @@ impl<T: ?Sized> Debug for StaticPointer<T> {
 
 impl<'a, T: ?Sized + Debug> Debug for StaticPointerStrongRef<'a, T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.debug_tuple(&format!("StaticPointerStrongRef: {:p}", self.0)).field(&&*self.0).finish()
+        f.debug_tuple(&format!("StaticPointerStrongRef: {:p}", self.0)).field(&&self.0 .1).finish()
     }
 }
 
 impl<'a, T: ?Sized> From<&'a StaticPointerOwned<T>> for StaticPointer<T> {
     fn from(ptr: &'a StaticPointerOwned<T>) -> Self {
-        StaticPointerOwned::reference(ptr)
+        StaticPointerOwned::reference(ptr).clone()
     }
 }
 
@@ -88,7 +94,7 @@ impl<T: ?Sized> Deref for StaticPointerOwned<T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
-        &self.0
+        &self.0 .1
     }
 }
 
@@ -96,13 +102,13 @@ impl<'a, T: ?Sized> Deref for StaticPointerStrongRef<'a, T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
-        &self.0
+        &self.0 .1
     }
 }
 
 impl<T: ?Sized + PartialEq> PartialEq for StaticPointerOwned<T> {
     fn eq(&self, other: &Self) -> bool {
-        <Arc<T> as PartialEq>::eq(&self.0, &other.0)
+        <T as PartialEq>::eq(&self.0 .1, &other.0 .1)
     }
 }
 
@@ -114,19 +120,19 @@ impl<T: ?Sized> PartialEq for StaticPointer<T> {
 
 impl<'a, 'b, T: ?Sized + PartialEq> PartialEq<StaticPointerStrongRef<'b, T>> for StaticPointerStrongRef<'a, T> {
     fn eq(&self, other: &StaticPointerStrongRef<'b, T>) -> bool {
-        <Arc<T> as PartialEq>::eq(&self.0, &other.0)
+        <T as PartialEq>::eq(&self.0 .1, &other.0 .1)
     }
 }
 
 impl<'a, T: ?Sized + PartialEq> PartialEq<StaticPointerStrongRef<'a, T>> for StaticPointerOwned<T> {
     fn eq(&self, other: &StaticPointerStrongRef<'a, T>) -> bool {
-        <Arc<T> as PartialEq>::eq(&self.0, &other.0)
+        <T as PartialEq>::eq(&self.0 .1, &other.0 .1)
     }
 }
 
 impl<'a, T: ?Sized + PartialEq> PartialEq<StaticPointerOwned<T>> for StaticPointerStrongRef<'a, T> {
     fn eq(&self, other: &StaticPointerOwned<T>) -> bool {
-        <Arc<T> as PartialEq>::eq(&self.0, &other.0)
+        <T as PartialEq>::eq(&self.0 .1, &other.0 .1)
     }
 }
 
@@ -162,13 +168,42 @@ impl<'a, T: ?Sized + Eq> Eq for StaticPointerStrongRef<'a, T> {}
 
 impl<T: ?Sized + Hash> Hash for StaticPointerOwned<T> {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        T::hash(&self.0, state)
+        T::hash(&self.0 .1, state)
     }
 }
 
 impl<T: ?Sized> Hash for StaticPointer<T> {
     fn hash<H: Hasher>(&self, state: &mut H) {
         Weak::as_ptr(&self.0).hash(state)
+    }
+}
+
+impl<T> From<StaticPointerOwned<T>> for StaticPointerCow<T> {
+    fn from(value: StaticPointerOwned<T>) -> Self {
+        StaticPointerCow::Owned(value)
+    }
+}
+
+impl<T> From<StaticPointer<T>> for StaticPointerCow<T> {
+    fn from(value: StaticPointer<T>) -> Self {
+        StaticPointerCow::Reference(value)
+    }
+}
+
+impl<T> AsRef<StaticPointer<T>> for StaticPointerCow<T> {
+    fn as_ref(&self) -> &StaticPointer<T> {
+        match self {
+            StaticPointerCow::Owned(value) => StaticPointerOwned::reference(value),
+            StaticPointerCow::Reference(value) => value,
+        }
+    }
+}
+
+impl<T> Deref for StaticPointerCow<T> {
+    type Target = StaticPointer<T>;
+
+    fn deref(&self) -> &Self::Target {
+        self.as_ref()
     }
 }
 
@@ -182,7 +217,7 @@ mod tests {
         let regex = Regex::new("^StaticPointer: (0x[0-9a-f]+)$").unwrap();
 
         let owned = StaticPointerOwned::new(42);
-        let ptr = StaticPointerOwned::reference(&owned);
+        let ptr = StaticPointerOwned::reference(&owned).clone();
         let strong_ref = ptr.upgrade().unwrap();
         let ptr_format = format!("{:?}", ptr);
         assert!(regex.is_match(&ptr_format));
@@ -198,7 +233,7 @@ mod tests {
             value: i32,
         }
         let owned = StaticPointerOwned::new(TestStruct { value: 42 });
-        let ptr = StaticPointerOwned::reference(&owned);
+        let ptr = StaticPointerOwned::reference(&owned).clone();
         let strong_ref = ptr.upgrade().unwrap();
         let ptr_format = format!("{:?}", ptr);
         assert!(regex.is_match(&ptr_format));
@@ -219,7 +254,7 @@ mod tests {
         #[derive(Debug)]
         struct TestStructTuple(i32);
         let owned = StaticPointerOwned::new(TestStructTuple(42));
-        let ptr = StaticPointerOwned::reference(&owned);
+        let ptr = StaticPointerOwned::reference(&owned).clone();
         let strong_ref = ptr.upgrade().unwrap();
         let ptr_format = format!("{:?}", ptr);
         assert!(regex.is_match(&ptr_format));
@@ -242,9 +277,9 @@ mod tests {
     fn eq() {
         let owned1 = StaticPointerOwned::new(());
         let owned2 = StaticPointerOwned::new(());
-        let weak11 = StaticPointerOwned::reference(&owned1);
-        let weak12 = StaticPointerOwned::reference(&owned1);
-        let weak21 = StaticPointerOwned::reference(&owned2);
+        let weak11 = StaticPointerOwned::reference(&owned1).clone();
+        let weak12 = StaticPointerOwned::reference(&owned1).clone();
+        let weak21 = StaticPointerOwned::reference(&owned2).clone();
         let weak22 = weak21.clone();
         let strong11 = weak11.upgrade().unwrap();
         let strong12 = weak12.upgrade().unwrap();
@@ -284,7 +319,7 @@ mod tests {
     #[test]
     fn may_can_upgrade() {
         let owned = StaticPointerOwned::new(());
-        let ptr = StaticPointerOwned::reference(&owned);
+        let ptr = StaticPointerOwned::reference(&owned).clone();
         assert!(ptr.may_upgrade());
         drop(owned);
         assert!(!ptr.may_upgrade());

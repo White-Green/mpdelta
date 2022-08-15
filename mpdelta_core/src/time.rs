@@ -1,3 +1,4 @@
+use crate::component::marker_pin::MarkerTime;
 use std::cmp::Ordering;
 use std::hash::{Hash, Hasher};
 
@@ -17,6 +18,12 @@ impl TimelineTime {
 
     pub fn value(&self) -> f64 {
         self.0
+    }
+}
+
+impl From<MarkerTime> for TimelineTime {
+    fn from(value: MarkerTime) -> Self {
+        TimelineTime(value.value())
     }
 }
 

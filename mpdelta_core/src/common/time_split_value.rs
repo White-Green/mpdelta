@@ -1,5 +1,7 @@
+use futures::prelude::stream::{self, StreamExt};
 use std::cmp::Ordering;
 use std::fmt::{Debug, Formatter};
+use std::future::Future;
 use std::marker::PhantomData;
 use std::mem;
 
@@ -27,6 +29,48 @@ impl<Time: Debug, Value: Debug> Debug for TimeSplitValue<Time, Value> {
 impl<Time, Value> TimeSplitValue<Time, Value> {
     pub fn new(begin: Time, default_value: Value, end: Time) -> TimeSplitValue<Time, Value> {
         TimeSplitValue { data: vec![(begin, default_value)], end }
+    }
+
+    pub fn len_value(&self) -> usize {
+        self.data.len()
+    }
+
+    pub fn len_time(&self) -> usize {
+        self.data.len() + 1
+    }
+
+    pub fn map_time_value<Time2, Value2>(self, mut map_time: impl FnMut(Time) -> Time2, mut map_value: impl FnMut(Value) -> Value2) -> TimeSplitValue<Time2, Value2> {
+        let TimeSplitValue { data, end } = self;
+        TimeSplitValue {
+            data: data.into_iter().map(|(time, value)| (map_time(time), map_value(value))).collect(),
+            end: map_time(end),
+        }
+    }
+
+    pub async fn map_time_value_async<Time2, F1: Future<Output = Time2>, Value2, F2: Future<Output = Value2>>(self, map_time: impl Fn(Time) -> F1, map_value: impl Fn(Value) -> F2) -> TimeSplitValue<Time2, Value2> {
+        let TimeSplitValue { data, end } = self;
+        let map_time = &map_time;
+        let map_value = &map_value;
+        TimeSplitValue {
+            data: stream::iter(data).then(|(time, value)| async move { (map_time(time).await, map_value(value).await) }).collect().await,
+            end: map_time(end).await,
+        }
+    }
+
+    pub fn map_time<Time2>(self, map: impl FnMut(Time) -> Time2) -> TimeSplitValue<Time2, Value> {
+        self.map_time_value(map, |v| v)
+    }
+
+    pub fn map_value<Value2>(self, map: impl FnMut(Value) -> Value2) -> TimeSplitValue<Time, Value2> {
+        self.map_time_value(|v| v, map)
+    }
+
+    pub async fn map_time_async<Time2, F: Future<Output = Time2>>(self, map: impl Fn(Time) -> F) -> TimeSplitValue<Time2, Value> {
+        self.map_time_value_async(map, |v| async move { v }).await
+    }
+
+    pub async fn map_value_async<Value2, F: Future<Output = Value2>>(self, map: impl Fn(Value) -> F) -> TimeSplitValue<Time, Value2> {
+        self.map_time_value_async(|v| async move { v }, map).await
     }
 
     pub fn push(&mut self, value: Value, time: Time) {
@@ -106,6 +150,14 @@ impl<'a, Time, Value, TimeMutability, ValueMutability> From<&'a mut TimeSplitVal
 impl<'a, Time, Value, TimeMutability, ValueMutability> TimeSplitValueView<'a, Time, Value, TimeMutability, ValueMutability> {
     pub fn new(value: &mut TimeSplitValue<Time, Value>) -> TimeSplitValueView<Time, Value, TimeMutability, ValueMutability> {
         TimeSplitValueView { value, phantom: Default::default() }
+    }
+
+    pub fn len_value(&self) -> usize {
+        self.value.len_value()
+    }
+
+    pub fn len_time(&self) -> usize {
+        self.value.len_time()
     }
 
     pub fn get_value(&self, index: usize) -> Option<(&Time, &Value, &Time)> {

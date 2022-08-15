@@ -52,19 +52,19 @@ pub trait GetAvailableComponentClassesUsecase<T> {
     async fn get_available_component_classes(&self) -> Cow<[StaticPointer<RwLock<dyn ComponentClass<T>>>]>;
 }
 
-#[async_trait]
 pub trait RealtimeComponentRenderer<T: ParameterValueType<'static>> {
     fn get_frame_count(&self) -> usize;
-    async fn render_frame(&mut self, frame: usize) -> T::Image;
+    fn render_frame(&self, frame: usize) -> T::Image;
     fn sampling_rate(&self) -> u32;
-    async fn mix_audio(&mut self, offset: usize, length: usize) -> T::Audio;
-    async fn render_param(&mut self, param: Parameter<'static, ParameterSelect>) -> Parameter<'static, T>;
+    fn mix_audio(&self, offset: usize, length: usize) -> T::Audio;
+    fn render_param(&self, param: Parameter<'static, ParameterSelect>) -> Parameter<'static, T>;
 }
 
 #[async_trait]
 pub trait RealtimeRenderComponentUsecase<T: ParameterValueType<'static>> {
+    type Err: Error + 'static;
     type Renderer: RealtimeComponentRenderer<T>;
-    async fn render_component(&self, component: &StaticPointer<RwLock<ComponentInstance<T>>>) -> Self::Renderer;
+    async fn render_component(&self, component: &StaticPointer<RwLock<ComponentInstance<T>>>) -> Result<Self::Renderer, Self::Err>;
 }
 
 #[async_trait]

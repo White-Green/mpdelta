@@ -33,15 +33,15 @@ impl<RootKey: PartialEq, Root, Child> ForestMap<RootKey, Root, Child> {
     }
 
     pub fn search_root_by_key(&self, key: &impl PartialEq<RootKey>) -> Option<StaticPointer<Root>> {
-        self.root_list.iter().find_map(|(k, value)| (key == k.as_ref()?).then_some(value).map(StaticPointerOwned::reference))
+        self.root_list.iter().find_map(|(k, value)| (key == k.as_ref()?).then_some(value).map(StaticPointerOwned::reference).cloned())
     }
 
     pub fn all_root(&self) -> impl Iterator<Item = StaticPointer<Root>> + '_ {
-        self.root_list.iter().map(|(_, root)| StaticPointerOwned::reference(root))
+        self.root_list.iter().map(|(_, root)| StaticPointerOwned::reference(root)).cloned()
     }
 
     pub fn insert_child(&mut self, parent: Option<&StaticPointer<Root>>, child: StaticPointerOwned<Child>) {
-        let child_reference = StaticPointerOwned::reference(&child);
+        let child_reference = StaticPointerOwned::reference(&child).clone();
         self.children.push(child);
         if let Some(parent) = parent {
             self.child_root_map.insert(child_reference, parent.clone());
@@ -67,11 +67,11 @@ impl<RootKey: PartialEq, Root, Child> ForestMap<RootKey, Root, Child> {
     }
 
     pub fn children_by_root<'a>(&'a self, root: &'a StaticPointer<Root>) -> impl Iterator<Item = StaticPointer<Child>> + 'a {
-        self.children.iter().map(StaticPointerOwned::reference).filter(|child| self.child_root_map.get(child) == Some(root))
+        self.children.iter().map(StaticPointerOwned::reference).filter(|child| self.child_root_map.get(child) == Some(root)).cloned()
     }
 
     pub fn all_children(&self) -> impl Iterator<Item = StaticPointer<Child>> + '_ {
-        self.children.iter().map(StaticPointerOwned::reference)
+        self.children.iter().map(StaticPointerOwned::reference).cloned()
     }
 }
 
@@ -151,44 +151,44 @@ mod tests {
         let mut roots = Vec::new();
         map.insert_root(Some("A".to_string()), {
             let root = new_root(0);
-            roots.push(StaticPointerOwned::reference(&root));
+            roots.push(StaticPointerOwned::reference(&root).clone());
             root
         });
         map.insert_root(Some("B".to_string()), {
             let root = new_root(1);
-            roots.push(StaticPointerOwned::reference(&root));
+            roots.push(StaticPointerOwned::reference(&root).clone());
             root
         });
         map.insert_root(None, {
             let root = new_root(2);
-            roots.push(StaticPointerOwned::reference(&root));
+            roots.push(StaticPointerOwned::reference(&root).clone());
             root
         });
 
         let mut children = Vec::new();
         map.insert_child(Some(&roots[0]), {
             let child = new_child(0);
-            children.push(StaticPointerOwned::reference(&child));
+            children.push(StaticPointerOwned::reference(&child).clone());
             child
         });
         map.insert_child(Some(&roots[0]), {
             let child = new_child(1);
-            children.push(StaticPointerOwned::reference(&child));
+            children.push(StaticPointerOwned::reference(&child).clone());
             child
         });
         map.insert_child(Some(&roots[1]), {
             let child = new_child(2);
-            children.push(StaticPointerOwned::reference(&child));
+            children.push(StaticPointerOwned::reference(&child).clone());
             child
         });
         map.insert_child(None, {
             let child = new_child(3);
-            children.push(StaticPointerOwned::reference(&child));
+            children.push(StaticPointerOwned::reference(&child).clone());
             child
         });
         map.insert_child(None, {
             let child = new_child(4);
-            children.push(StaticPointerOwned::reference(&child));
+            children.push(StaticPointerOwned::reference(&child).clone());
             child
         });
 

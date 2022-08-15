@@ -1,4 +1,3 @@
-use async_trait::async_trait;
 use mpdelta_core::core::IdGenerator;
 use std::sync::atomic;
 use std::sync::atomic::AtomicU64;
@@ -26,9 +25,8 @@ impl Default for UniqueIdGenerator {
     }
 }
 
-#[async_trait]
 impl IdGenerator for UniqueIdGenerator {
-    async fn generate_new(&self) -> Uuid {
+    fn generate_new(&self) -> Uuid {
         let now = time::OffsetDateTime::now_utc();
         let secs = now.unix_timestamp();
         let nanos = now.unix_timestamp_nanos();
@@ -48,7 +46,7 @@ mod tests {
     async fn test_unique_id_generator() {
         let unique_id_generator = Arc::new(UniqueIdGenerator::new());
         let mut set = HashSet::new();
-        let threads = iter::repeat(unique_id_generator).take(100_000).map(|gen| tokio::spawn(async move { gen.generate_new().await })).collect::<Vec<_>>();
+        let threads = iter::repeat(unique_id_generator).take(100_000).map(|gen| tokio::spawn(async move { gen.generate_new() })).collect::<Vec<_>>();
         for t in threads {
             assert!(set.insert(t.await.unwrap()));
         }

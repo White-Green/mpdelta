@@ -28,7 +28,7 @@ pub struct MPDeltaCore<IdGenerator, ProjectLoader, ProjectWriter, ProjectMemory,
 
 #[async_trait]
 pub trait IdGenerator: Send + Sync {
-    async fn generate_new(&self) -> Uuid;
+    fn generate_new(&self) -> Uuid;
 }
 
 #[async_trait]
@@ -67,7 +67,7 @@ where
             Some(project) => Ok(project),
             None => {
                 let project = self.project_loader.load_project(path).await?;
-                let result = StaticPointerOwned::reference(&project);
+                let result = StaticPointerOwned::reference(&project).clone();
                 self.project_memory.insert_new_project(Some(path), project).await;
                 Ok(result)
             }
@@ -106,8 +106,8 @@ where
     PM: ProjectMemory<T>,
 {
     async fn new_project(&self) -> StaticPointer<RwLock<Project<T>>> {
-        let project = Project::new_empty(self.id_generator.generate_new().await);
-        let pointer = StaticPointerOwned::reference(&project);
+        let project = Project::new_empty(self.id_generator.generate_new());
+        let pointer = StaticPointerOwned::reference(&project).clone();
         self.project_memory.insert_new_project(None, project).await;
         pointer
     }
@@ -129,8 +129,8 @@ where
     RM: RootComponentClassMemory<T>,
 {
     async fn new_root_component_class(&self) -> StaticPointer<RwLock<RootComponentClass<T>>> {
-        let root_component_class = RootComponentClass::new_empty(self.id_generator.generate_new().await);
-        let pointer = StaticPointerOwned::reference(&root_component_class);
+        let root_component_class = RootComponentClass::new_empty(self.id_generator.generate_new());
+        let pointer = StaticPointerOwned::reference(&root_component_class).clone();
         self.root_component_class_memory.insert_new_root_component_class(None, root_component_class).await;
         pointer
     }
@@ -183,8 +183,9 @@ where
 
 #[async_trait]
 pub trait ComponentRendererBuilder<T: ParameterValueType<'static>>: Send + Sync {
+    type Err: Error + 'static;
     type Renderer: RealtimeComponentRenderer<T> + Send + Sync;
-    async fn create_renderer(&self, component: &StaticPointer<RwLock<ComponentInstance<T>>>) -> Self::Renderer;
+    async fn create_renderer(&self, component: &StaticPointer<RwLock<ComponentInstance<T>>>) -> Result<Self::Renderer, Self::Err>;
 }
 
 #[async_trait]
@@ -193,9 +194,10 @@ where
     StaticPointer<RwLock<ComponentInstance<T>>>: Sync,
     CR: ComponentRendererBuilder<T>,
 {
+    type Err = CR::Err;
     type Renderer = CR::Renderer;
 
-    async fn render_component(&self, component: &StaticPointer<RwLock<ComponentInstance<T>>>) -> Self::Renderer {
+    async fn render_component(&self, component: &StaticPointer<RwLock<ComponentInstance<T>>>) -> Result<Self::Renderer, Self::Err> {
         self.component_renderer_builder.create_renderer(component).await
     }
 }
@@ -306,9 +308,8 @@ mod tests {
     #[derive(Default)]
     struct ID(AtomicU64);
 
-    #[async_trait]
     impl IdGenerator for ID {
-        async fn generate_new(&self) -> Uuid {
+        fn generate_new(&self) -> Uuid {
             Uuid::from_u128(self.0.fetch_add(1, atomic::Ordering::SeqCst) as u128)
         }
     }
@@ -339,7 +340,7 @@ mod tests {
             }
 
             async fn get_loaded_project(&self, path: &Path) -> Option<StaticPointer<RwLock<Project<()>>>> {
-                self.memory.read().await.iter().find(|(p, _)| p.as_deref() == Some(path)).map(|(_, p)| StaticPointerOwned::reference(p))
+                self.memory.read().await.iter().find(|(p, _)| p.as_deref() == Some(path)).map(|(_, p)| StaticPointerOwned::reference(p).clone())
             }
 
             async fn all_loaded_projects(&self) -> Cow<[StaticPointer<RwLock<Project<()>>>]> {
@@ -418,7 +419,7 @@ mod tests {
             edit_history: (),
         };
         let project = Project::new_empty(Uuid::nil());
-        let project = StaticPointerOwned::reference(&project);
+        let project = StaticPointerOwned::reference(&project).clone();
         assert!(WriteProjectUsecase::write_project(&core, &project, "").await.is_ok());
         assert_eq!(core.project_writer.0.load(atomic::Ordering::SeqCst), 1);
         assert!(WriteProjectUsecase::write_project(&core, &project, "").await.is_ok());
@@ -583,31 +584,31 @@ mod tests {
         let c0 = RootComponentClass::new_empty(Uuid::from_u128(0));
         let c1 = RootComponentClass::new_empty(Uuid::from_u128(1));
         let c2 = RootComponentClass::new_empty(Uuid::from_u128(2));
-        let component0 = StaticPointerOwned::reference(&c0);
-        let component1 = StaticPointerOwned::reference(&c1);
-        let component2 = StaticPointerOwned::reference(&c2);
+        let component0 = StaticPointerOwned::reference(&c0).clone();
+        let component1 = StaticPointerOwned::reference(&c1).clone();
+        let component2 = StaticPointerOwned::reference(&c2).clone();
         let core = MPDeltaCore {
             id_generator: (),
             project_loader: (),
             project_writer: (),
             project_memory: (),
-            root_component_class_memory: RM(RwLock::new(vec![(None, c0), (Some(StaticPointerOwned::reference(&project1)), c1), (Some(StaticPointerOwned::reference(&project0)), c2)])),
+            root_component_class_memory: RM(RwLock::new(vec![(None, c0), (Some(StaticPointerOwned::reference(&project1).clone()), c1), (Some(StaticPointerOwned::reference(&project0).clone()), c2)])),
             component_class_loader: (),
             component_renderer_builder: (),
             editor: (),
             edit_history: (),
         };
 
-        SetOwnerForRootComponentClassUsecase::set_owner_for_root_component_class(&core, &component0, &StaticPointerOwned::reference(&project0)).await;
-        SetOwnerForRootComponentClassUsecase::set_owner_for_root_component_class(&core, &component1, &StaticPointerOwned::reference(&project1)).await;
-        SetOwnerForRootComponentClassUsecase::set_owner_for_root_component_class(&core, &component2, &StaticPointerOwned::reference(&project2)).await;
+        SetOwnerForRootComponentClassUsecase::set_owner_for_root_component_class(&core, &component0, StaticPointerOwned::reference(&project0)).await;
+        SetOwnerForRootComponentClassUsecase::set_owner_for_root_component_class(&core, &component1, StaticPointerOwned::reference(&project1)).await;
+        SetOwnerForRootComponentClassUsecase::set_owner_for_root_component_class(&core, &component2, StaticPointerOwned::reference(&project2)).await;
         let guard = core.root_component_class_memory.0.read().await;
         assert_eq!(guard.len(), 3);
-        assert_eq!(guard[0].0, Some(StaticPointerOwned::reference(&project0)));
+        assert_eq!(guard[0].0, Some(StaticPointerOwned::reference(&project0).clone()));
         assert_eq!(guard[0].1, component0);
-        assert_eq!(guard[1].0, Some(StaticPointerOwned::reference(&project1)));
+        assert_eq!(guard[1].0, Some(StaticPointerOwned::reference(&project1).clone()));
         assert_eq!(guard[1].1, component1);
-        assert_eq!(guard[2].0, Some(StaticPointerOwned::reference(&project2)));
+        assert_eq!(guard[2].0, Some(StaticPointerOwned::reference(&project2).clone()));
         assert_eq!(guard[2].1, component2);
     }
 
@@ -625,7 +626,7 @@ mod tests {
             }
 
             async fn all_loaded_projects(&self) -> Cow<[StaticPointer<RwLock<Project<()>>>]> {
-                Cow::Owned(self.0.read().await.iter().map(StaticPointerOwned::reference).collect())
+                Cow::Owned(self.0.read().await.iter().map(StaticPointerOwned::reference).cloned().collect())
             }
         }
         let core = MPDeltaCore {
@@ -660,7 +661,7 @@ mod tests {
             }
 
             async fn search_by_parent(&self, parent: &StaticPointer<RwLock<Project<()>>>) -> Cow<[StaticPointer<RwLock<RootComponentClass<()>>>]> {
-                Cow::Owned(self.0.read().await.iter().filter(|(p, _)| p.as_ref() == Some(parent)).map(|(_, c)| StaticPointerOwned::reference(c)).collect())
+                Cow::Owned(self.0.read().await.iter().filter(|(p, _)| p.as_ref() == Some(parent)).map(|(_, c)| StaticPointerOwned::reference(c).clone()).collect())
             }
 
             async fn get_parent_project(&self, _: &StaticPointer<RwLock<RootComponentClass<()>>>) -> Option<StaticPointer<RwLock<Project<()>>>> {
@@ -681,23 +682,23 @@ mod tests {
             project_memory: (),
             root_component_class_memory: RM(RwLock::new(vec![
                 (None, RootComponentClass::new_empty(Uuid::from_u128(0))),
-                (Some(StaticPointerOwned::reference(&project0)), RootComponentClass::new_empty(Uuid::from_u128(0))),
-                (Some(StaticPointerOwned::reference(&project0)), RootComponentClass::new_empty(Uuid::from_u128(1))),
-                (Some(StaticPointerOwned::reference(&project1)), RootComponentClass::new_empty(Uuid::from_u128(2))),
-                (Some(StaticPointerOwned::reference(&project2)), RootComponentClass::new_empty(Uuid::from_u128(3))),
+                (Some(StaticPointerOwned::reference(&project0).clone()), RootComponentClass::new_empty(Uuid::from_u128(0))),
+                (Some(StaticPointerOwned::reference(&project0).clone()), RootComponentClass::new_empty(Uuid::from_u128(1))),
+                (Some(StaticPointerOwned::reference(&project1).clone()), RootComponentClass::new_empty(Uuid::from_u128(2))),
+                (Some(StaticPointerOwned::reference(&project2).clone()), RootComponentClass::new_empty(Uuid::from_u128(3))),
             ])),
             component_class_loader: (),
             component_renderer_builder: (),
             editor: (),
             edit_history: (),
         };
-        let child0 = GetRootComponentClassesUsecase::get_root_component_classes(&core, &StaticPointerOwned::reference(&project0)).await;
+        let child0 = GetRootComponentClassesUsecase::get_root_component_classes(&core, StaticPointerOwned::reference(&project0)).await;
         assert_eq!(child0.len(), 2);
         assert_eq!(*child0[0].upgrade().unwrap().read().await, *RootComponentClass::new_empty(Uuid::from_u128(0)).read().await);
         assert_eq!(*child0[1].upgrade().unwrap().read().await, *RootComponentClass::new_empty(Uuid::from_u128(1)).read().await);
-        let child1 = GetRootComponentClassesUsecase::get_root_component_classes(&core, &StaticPointerOwned::reference(&project1)).await;
+        let child1 = GetRootComponentClassesUsecase::get_root_component_classes(&core, StaticPointerOwned::reference(&project1)).await;
         assert_eq!(*child1[0].upgrade().unwrap().read().await, *RootComponentClass::new_empty(Uuid::from_u128(2)).read().await);
-        let child2 = GetRootComponentClassesUsecase::get_root_component_classes(&core, &StaticPointerOwned::reference(&project2)).await;
+        let child2 = GetRootComponentClassesUsecase::get_root_component_classes(&core, StaticPointerOwned::reference(&project2)).await;
         assert_eq!(*child2[0].upgrade().unwrap().read().await, *RootComponentClass::new_empty(Uuid::from_u128(3)).read().await);
     }
 
@@ -751,7 +752,7 @@ mod tests {
                 unreachable!()
             }
 
-            async fn render_frame(&mut self, _: usize) -> () {
+            fn render_frame(&self, _: usize) -> () {
                 unreachable!()
             }
 
@@ -759,21 +760,22 @@ mod tests {
                 unreachable!()
             }
 
-            async fn mix_audio(&mut self, _: usize, _: usize) -> () {
+            fn mix_audio(&self, _: usize, _: usize) -> () {
                 unreachable!()
             }
 
-            async fn render_param(&mut self, param: Parameter<'static, ParameterSelect>) -> Parameter<'static, Temporary> {
+            fn render_param(&self, param: Parameter<'static, ParameterSelect>) -> Parameter<'static, Temporary> {
                 unreachable!()
             }
         }
         struct CR;
         #[async_trait]
         impl ComponentRendererBuilder<Temporary> for CR {
+            type Err = std::convert::Infallible;
             type Renderer = RD;
 
-            async fn create_renderer(&self, _: &StaticPointer<RwLock<ComponentInstance<Temporary>>>) -> Self::Renderer {
-                RD
+            async fn create_renderer(&self, _: &StaticPointer<RwLock<ComponentInstance<Temporary>>>) -> Result<Self::Renderer, Self::Err> {
+                Ok(RD)
             }
         }
         let core = MPDeltaCore {
@@ -787,6 +789,6 @@ mod tests {
             editor: (),
             edit_history: (),
         };
-        let _: RD = RealtimeRenderComponentUsecase::render_component(&core, &StaticPointer::new()).await;
+        let _: RD = RealtimeRenderComponentUsecase::render_component(&core, &StaticPointer::new()).await.unwrap();
     }
 }

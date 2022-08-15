@@ -1,7 +1,6 @@
-use egui_vulkano::UpdateTexturesResult;
 use mpdelta_gui::view::Gui;
 use std::sync::Arc;
-use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, PrimaryCommandBuffer, SubpassContents};
+use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, PrimaryCommandBuffer, RenderPassBeginInfo, SubpassContents};
 use vulkano::device::{Device, DeviceExtensions, Queue};
 use vulkano::format::{ClearValue, NumericType};
 use vulkano::image::view::ImageView;
@@ -50,13 +49,13 @@ impl<T: Gui + 'static> MPDeltaGUIVulkano<T> {
                     SurfaceInfo {
                         full_screen_exclusive: FullScreenExclusive::Default,
                         win32_monitor: None,
-                        _ne: Default::default(),
+                        ..SurfaceInfo::default()
                     },
                 )
                 .unwrap();
             let (image_format, _) = supported_formats
                 .into_iter()
-                .max_by_key(|(format, color_space)| match format.type_color() {
+                .max_by_key(|(format, _)| match format.type_color() {
                     Some(NumericType::SRGB) => 1,
                     _ => 0,
                 })
@@ -159,8 +158,6 @@ impl<T: Gui + 'static> MPDeltaGUIVulkano<T> {
                         recreate_swapchain = true;
                     }
 
-                    let mut builder = AutoCommandBufferBuilder::primary(Arc::clone(&device), queue.family(), CommandBufferUsage::OneTimeSubmit).unwrap();
-
                     egui_ctx.begin_frame(egui_winit.take_egui_input(surface.window()));
 
                     gui.ui(&egui_ctx);
@@ -169,13 +166,21 @@ impl<T: Gui + 'static> MPDeltaGUIVulkano<T> {
                     let platform_output = egui_output.platform_output;
                     egui_winit.handle_platform_output(surface.window(), &egui_ctx, platform_output);
 
-                    let result = egui_painter.update_textures(egui_output.textures_delta, &mut builder).expect("egui texture error");
-
-                    let wait_for_last_frame = result == UpdateTexturesResult::Changed;
+                    let update_textures_future = egui_painter.update_textures(egui_output.textures_delta).expect("egui texture error");
 
                     let size = surface.window().inner_size();
                     let sf: f32 = surface.window().scale_factor() as f32;
-                    builder.begin_render_pass(Arc::clone(&framebuffers[image_num]), SubpassContents::Inline, [ClearValue::Float([1.0; 4])]).unwrap();
+
+                    let mut builder = AutoCommandBufferBuilder::primary(Arc::clone(&device), queue.family(), CommandBufferUsage::OneTimeSubmit).unwrap();
+                    builder
+                        .begin_render_pass(
+                            RenderPassBeginInfo {
+                                clear_values: vec![Some(ClearValue::Float([0.; 4]))],
+                                ..RenderPassBeginInfo::framebuffer(Arc::clone(&framebuffers[image_num]))
+                            },
+                            SubpassContents::Inline,
+                        )
+                        .unwrap();
                     builder.set_viewport(0, [viewport.clone()]);
                     egui_painter.draw(&mut builder, [(size.width as f32) / sf, (size.height as f32) / sf], &egui_ctx, egui_output.shapes).unwrap();
 
@@ -183,13 +188,10 @@ impl<T: Gui + 'static> MPDeltaGUIVulkano<T> {
 
                     let command_buffer = builder.build().unwrap();
 
-                    if wait_for_last_frame {
-                        previous_frame_end.wait(None).unwrap();
-                    }
-
                     take_mut::take(&mut previous_frame_end, |previous_frame_end| {
                         let future = previous_frame_end
                             .join(acquire_future)
+                            .join(update_textures_future)
                             .then_execute(Arc::clone(&queue), command_buffer)
                             .unwrap()
                             .then_swapchain_present(Arc::clone(&queue), Arc::clone(&swapchain), image_num)

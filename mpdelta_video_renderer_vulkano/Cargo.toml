@@ -8,3 +8,6 @@ edition = "2021"
 [dependencies]
 mpdelta_core = { path = "../mpdelta_core" }
 mpdelta_renderer = { path = "../mpdelta_renderer" }
+
+[build-dependencies]
+shader_builder = { path = "../mpdelta_build_utils/shader_builder" }

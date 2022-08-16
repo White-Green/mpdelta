@@ -7,6 +7,18 @@ edition = "2021"
 
 [workspace]
 members = [
+    "mpdelta_build_utils/rust_gpu_builder",
+    "mpdelta_build_utils/shader_builder",
+    "mpdelta_core",
+    "mpdelta_gui",
+    "mpdelta_gui_vulkano",
+    "mpdelta_services",
+    "mpdelta_renderer",
+    "mpdelta_video_renderer_vulkano",
+    "mpdelta_video_renderer_vulkano/shaders/texture_drawing_shader",
+]
+default-members = [
+    "mpdelta_build_utils/shader_builder",
     "mpdelta_core",
     "mpdelta_gui",
     "mpdelta_gui_vulkano",

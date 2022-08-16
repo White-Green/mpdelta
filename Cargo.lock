@@ -1061,9 +1061,11 @@ name = "mpdelta_video_renderer_vulkano"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "dashmap",
  "mpdelta_core",
  "mpdelta_renderer",
  "shader_builder",
+ "tokio",
  "vulkano",
 ]
 

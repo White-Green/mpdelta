@@ -56,17 +56,7 @@ impl<T: ParameterValueType<'static> + 'static, ID: IdGenerator + 'static, Video:
                 let right = right.upgrade().unwrap();
                 let (left, right) = futures::join!(left.read(), right.read());
                 let length_secs = (right.cached_timeline_time().value() - left.cached_timeline_time().value());
-                Ok::<_, RendererError>((
-                    video_renderer_builder
-                        .create_renderer(
-                            result.into_image().unwrap(),
-                            60.,
-                            Arc::try_unwrap(image_source_tree).unwrap_or_else(|_| unreachable!()).into_readonly(),
-                            Arc::try_unwrap(audio_source_tree).unwrap_or_else(|_| unreachable!()).into_readonly(),
-                        )
-                        .await,
-                    length_secs,
-                ))
+                Ok::<_, RendererError>((video_renderer_builder.create_renderer(result.into_image().unwrap(), 60., Arc::try_unwrap(image_source_tree).unwrap_or_else(|_| unreachable!()).into_readonly()).await, length_secs))
             })
         });
         let audio_evaluate = tokio::spawn({
@@ -74,18 +64,8 @@ impl<T: ParameterValueType<'static> + 'static, ID: IdGenerator + 'static, Video:
             let image_source_tree = Arc::new(SourceTree::new(Arc::clone(&self.id)));
             let audio_source_tree = Arc::new(SourceTree::new(Arc::clone(&self.id)));
             let audio_mixer_builder = Arc::clone(&self.audio_mixer_builder);
-            evaluate_component(component, ParameterType::Audio(()), Arc::clone(&image_source_tree), Arc::clone(&audio_source_tree), (0u64..).map(|t| TimelineTime::new(t as f64 / 60.).unwrap())).then(|result| async move {
-                Ok::<_, RendererError>(
-                    audio_mixer_builder
-                        .create_mixer(
-                            result?.1.into_audio().unwrap(),
-                            48_000,
-                            Arc::try_unwrap(image_source_tree).unwrap_or_else(|_| unreachable!()).into_readonly(),
-                            Arc::try_unwrap(audio_source_tree).unwrap_or_else(|_| unreachable!()).into_readonly(),
-                        )
-                        .await,
-                )
-            })
+            evaluate_component(component, ParameterType::Audio(()), Arc::clone(&image_source_tree), Arc::clone(&audio_source_tree), (0u64..).map(|t| TimelineTime::new(t as f64 / 60.).unwrap()))
+                .then(|result| async move { Ok::<_, RendererError>(audio_mixer_builder.create_mixer(result?.1.into_audio().unwrap(), 48_000, Arc::try_unwrap(audio_source_tree).unwrap_or_else(|_| unreachable!()).into_readonly()).await) })
         });
         let (video_renderer, audio_mixer) = futures::join!(image_evaluate.map(|join_result| join_result.unwrap()), audio_evaluate.map(|join_result| join_result.unwrap()));
         let (video_renderer, length_secs) = video_renderer?;
@@ -104,13 +84,13 @@ impl<T: ParameterValueType<'static> + 'static, ID: IdGenerator + 'static, Video:
 #[async_trait]
 pub trait VideoRendererBuilder<T: ParameterValueType<'static>> {
     type Renderer: VideoRenderer<T::Image> + Send + Sync;
-    async fn create_renderer(&self, param: Placeholder<TagImage>, frames_per_second: f64, image_source_tree: ReadonlySourceTree<TagImage, ImageNativeTreeNode<T>>, audio_source_tree: ReadonlySourceTree<TagAudio, AudioNativeTreeNode<T>>) -> Self::Renderer;
+    async fn create_renderer(&self, param: Placeholder<TagImage>, frames_per_second: f64, image_source_tree: ReadonlySourceTree<TagImage, ImageNativeTreeNode<T>>) -> Self::Renderer;
 }
 
 #[async_trait]
 pub trait AudioMixerBuilder<T: ParameterValueType<'static>> {
     type Mixer: AudioMixer<T::Audio> + Send + Sync;
-    async fn create_mixer(&self, param: Placeholder<TagAudio>, sampling_rate: u32, image_source_tree: ReadonlySourceTree<TagImage, ImageNativeTreeNode<T>>, audio_source_tree: ReadonlySourceTree<TagAudio, AudioNativeTreeNode<T>>) -> Self::Mixer;
+    async fn create_mixer(&self, param: Placeholder<TagAudio>, sampling_rate: u32, audio_source_tree: ReadonlySourceTree<TagAudio, AudioNativeTreeNode<T>>) -> Self::Mixer;
 }
 
 pub struct MPDeltaRenderer<Video, Audio> {

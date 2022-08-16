@@ -1060,9 +1060,11 @@ dependencies = [
 name = "mpdelta_video_renderer_vulkano"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "mpdelta_core",
  "mpdelta_renderer",
  "shader_builder",
+ "vulkano",
 ]
 
 [[package]]

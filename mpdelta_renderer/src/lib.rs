@@ -145,12 +145,10 @@ impl<T: ParameterValueType<'static>, Video: VideoRenderer<T::Image>, Audio: Audi
 
 #[async_trait]
 pub trait VideoRenderer<Image> {
-    fn get_frame_count(&self) -> usize;
     async fn render_frame(&mut self, frame: usize, timeout: Duration) -> Image;
 }
 
 #[async_trait]
 pub trait AudioMixer<Audio> {
-    fn sampling_range(&self) -> u32;
     async fn mix_audio(&mut self, offset: usize, length: usize, timeout: Duration) -> Audio;
 }

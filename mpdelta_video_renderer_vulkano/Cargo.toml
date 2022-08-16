@@ -8,6 +8,8 @@ edition = "2021"
 [dependencies]
 mpdelta_core = { path = "../mpdelta_core" }
 mpdelta_renderer = { path = "../mpdelta_renderer" }
+vulkano = "0.30.0"
+async-trait = "0.1.56"
 
 [build-dependencies]
 shader_builder = { path = "../mpdelta_build_utils/shader_builder" }

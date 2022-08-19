@@ -18,21 +18,21 @@ use tokio::sync::RwLock;
 pub mod placeholder;
 pub mod value;
 
-pub trait ParameterValueType<'a> {
-    type Image: 'a + Clone;
-    type Audio: 'a + Clone;
-    type Video: 'a + Clone;
-    type File: 'a + Clone;
-    type String: 'a + Clone;
-    type Select: 'a + Clone;
-    type Boolean: 'a + Clone;
-    type Radio: 'a + Clone;
-    type Integer: 'a + Clone;
-    type RealNumber: 'a + Clone;
-    type Vec2: 'a + Clone;
-    type Vec3: 'a + Clone;
-    type Dictionary: 'a + Clone;
-    type ComponentClass: 'a + Clone;
+pub trait ParameterValueType<'a>: 'a {
+    type Image: 'a + Clone + Send + Sync;
+    type Audio: 'a + Clone + Send + Sync;
+    type Video: 'a + Clone + Send + Sync;
+    type File: 'a + Clone + Send + Sync;
+    type String: 'a + Clone + Send + Sync;
+    type Select: 'a + Clone + Send + Sync;
+    type Boolean: 'a + Clone + Send + Sync;
+    type Radio: 'a + Clone + Send + Sync;
+    type Integer: 'a + Clone + Send + Sync;
+    type RealNumber: 'a + Clone + Send + Sync;
+    type Vec2: 'a + Clone + Send + Sync;
+    type Vec3: 'a + Clone + Send + Sync;
+    type Dictionary: 'a + Clone + Send + Sync;
+    type ComponentClass: 'a + Clone + Send + Sync;
 }
 
 impl<'a, A, B> ParameterValueType<'a> for (A, B)
@@ -616,43 +616,53 @@ impl Hash for Opacity {
     }
 }
 
-// ref: https://www.w3.org/TR/compositing-1/
-#[derive(Debug, Clone, Copy)]
-pub enum BlendMode {
-    Clear,
-    Copy,
-    Destination,
-    SourceOver,
-    DestinationOver,
-    SourceIn,
-    DestinationIn,
-    SourceOut,
-    DestinationOut,
-    SourceAtop,
-    DestinationAtop,
-    XOR,
-    Lighter,
+impl Default for Opacity {
+    fn default() -> Self {
+        Opacity::new(1.0).unwrap()
+    }
 }
 
 // ref: https://www.w3.org/TR/compositing-1/
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
+#[repr(u8)]
+pub enum BlendMode {
+    #[default]
+    Normal = 0,
+    Multiply = 1,
+    Screen = 2,
+    Overlay = 3,
+    Darken = 4,
+    Lighten = 5,
+    ColorDodge = 6,
+    ColorBurn = 7,
+    HardLight = 8,
+    SoftLight = 9,
+    Difference = 10,
+    Exclusion = 11,
+    Hue = 12,
+    Saturation = 13,
+    Color = 14,
+    Luminosity = 15,
+}
+
+// ref: https://www.w3.org/TR/compositing-1/
+#[derive(Debug, Clone, Copy, Default)]
+#[repr(u8)]
 pub enum CompositeOperation {
-    Normal,
-    Multiply,
-    Screen,
-    Overlay,
-    Darken,
-    Lighten,
-    ColorDodge,
-    ColorBurn,
-    HardLight,
-    SoftLight,
-    Difference,
-    Exclusion,
-    Hue,
-    Saturation,
-    Color,
-    Luminosity,
+    Clear = 0,
+    Copy = 1,
+    Destination = 2,
+    #[default]
+    SourceOver = 3,
+    DestinationOver = 4,
+    SourceIn = 5,
+    DestinationIn = 6,
+    SourceOut = 7,
+    DestinationOut = 8,
+    SourceAtop = 9,
+    DestinationAtop = 10,
+    XOR = 11,
+    Lighter = 12,
 }
 
 #[derive(Debug, Clone)]
@@ -661,7 +671,7 @@ pub enum VariableParameterPriority {
     PrioritizeComponent,
 }
 
-type PinSplitValue<T> = TimeSplitValue<StaticPointer<MarkerPin>, T>;
+type PinSplitValue<T> = TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, T>;
 
 #[derive(Debug)]
 pub enum VariableParameterValue<T, Manually, Nullable> {
@@ -688,16 +698,24 @@ impl<T, Manually: Clone, Nullable: Clone> Clone for VariableParameterValue<T, Ma
 
 #[derive(Debug)]
 pub struct ImageRequiredParams<T> {
-    transform: ImageRequiredParamsTransform<T>,
-    opacity: VariableParameterValue<T, PinSplitValue<EasingValue<Opacity>>, PinSplitValue<Option<EasingValue<Opacity>>>>,
-    blend_mode: VariableParameterValue<T, PinSplitValue<BlendMode>, PinSplitValue<Option<BlendMode>>>,
-    composite_operation: VariableParameterValue<T, PinSplitValue<CompositeOperation>, PinSplitValue<Option<CompositeOperation>>>,
+    pub aspect_ratio: (u32, u32),
+    pub transform: ImageRequiredParamsTransform<T>,
+    pub opacity: PinSplitValue<EasingValue<Opacity>>,
+    pub blend_mode: PinSplitValue<BlendMode>,
+    pub composite_operation: PinSplitValue<CompositeOperation>,
 }
 
 impl<T> Clone for ImageRequiredParams<T> {
     fn clone(&self) -> Self {
-        let ImageRequiredParams { transform, opacity, blend_mode, composite_operation } = self;
+        let ImageRequiredParams {
+            aspect_ratio,
+            transform,
+            opacity,
+            blend_mode,
+            composite_operation,
+        } = self;
         ImageRequiredParams {
+            aspect_ratio: *aspect_ratio,
             transform: transform.clone(),
             opacity: opacity.clone(),
             blend_mode: blend_mode.clone(),
@@ -709,17 +727,17 @@ impl<T> Clone for ImageRequiredParams<T> {
 #[derive(Debug)]
 pub enum ImageRequiredParamsTransform<T> {
     Params {
-        scale: VariableParameterValue<T, Vector3<PinSplitValue<EasingValue<f64>>>, Vector3<PinSplitValue<Option<EasingValue<f64>>>>>,
-        translate: VariableParameterValue<T, Vector3<PinSplitValue<EasingValue<f64>>>, Vector3<PinSplitValue<Option<EasingValue<f64>>>>>,
-        rotate: VariableParameterValue<T, PinSplitValue<EasingValue<Quaternion<f64>>>, PinSplitValue<Option<EasingValue<Quaternion<f64>>>>>,
-        scale_center: VariableParameterValue<T, Vector3<PinSplitValue<EasingValue<f64>>>, Vector3<PinSplitValue<Option<EasingValue<f64>>>>>,
-        rotate_center: VariableParameterValue<T, Vector3<PinSplitValue<EasingValue<f64>>>, Vector3<PinSplitValue<Option<EasingValue<f64>>>>>,
+        scale: Vector3<VariableParameterValue<T, PinSplitValue<EasingValue<f64>>, PinSplitValue<Option<EasingValue<f64>>>>>,
+        translate: Vector3<VariableParameterValue<T, PinSplitValue<EasingValue<f64>>, PinSplitValue<Option<EasingValue<f64>>>>>,
+        rotate: TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, EasingValue<Quaternion<f64>>>,
+        scale_center: Vector3<VariableParameterValue<T, PinSplitValue<EasingValue<f64>>, PinSplitValue<Option<EasingValue<f64>>>>>,
+        rotate_center: Vector3<VariableParameterValue<T, PinSplitValue<EasingValue<f64>>, PinSplitValue<Option<EasingValue<f64>>>>>,
     },
     Free {
-        left_top: VariableParameterValue<T, Vector3<PinSplitValue<EasingValue<f64>>>, Vector3<PinSplitValue<Option<EasingValue<f64>>>>>,
-        right_top: VariableParameterValue<T, Vector3<PinSplitValue<EasingValue<f64>>>, Vector3<PinSplitValue<Option<EasingValue<f64>>>>>,
-        left_bottom: VariableParameterValue<T, Vector3<PinSplitValue<EasingValue<f64>>>, Vector3<PinSplitValue<Option<EasingValue<f64>>>>>,
-        right_bottom: VariableParameterValue<T, Vector3<PinSplitValue<EasingValue<f64>>>, Vector3<PinSplitValue<Option<EasingValue<f64>>>>>,
+        left_top: Vector3<VariableParameterValue<T, PinSplitValue<EasingValue<f64>>, PinSplitValue<Option<EasingValue<f64>>>>>,
+        right_top: Vector3<VariableParameterValue<T, PinSplitValue<EasingValue<f64>>, PinSplitValue<Option<EasingValue<f64>>>>>,
+        left_bottom: Vector3<VariableParameterValue<T, PinSplitValue<EasingValue<f64>>, PinSplitValue<Option<EasingValue<f64>>>>>,
+        right_bottom: Vector3<VariableParameterValue<T, PinSplitValue<EasingValue<f64>>, PinSplitValue<Option<EasingValue<f64>>>>>,
     },
 }
 
@@ -743,12 +761,78 @@ impl<T> Clone for ImageRequiredParamsTransform<T> {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct ImageRequiredParamsFrameVariable {
+    pub aspect_ratio: (u32, u32),
+    pub transform: ImageRequiredParamsTransformFrameVariable,
+    pub opacity: FrameVariableValue<Opacity>,
+    pub blend_mode: FrameVariableValue<BlendMode>,
+    pub composite_operation: FrameVariableValue<CompositeOperation>,
+}
+
+impl ImageRequiredParamsFrameVariable {
+    pub fn get(&self, at: TimelineTime) -> ImageRequiredParamsFixed {
+        let ImageRequiredParamsFrameVariable {
+            aspect_ratio,
+            transform,
+            opacity,
+            blend_mode,
+            composite_operation,
+        } = self;
+        ImageRequiredParamsFixed {
+            aspect_ratio: *aspect_ratio,
+            transform: transform.get(at),
+            opacity: *opacity.get(at).unwrap(),
+            blend_mode: *blend_mode.get(at).unwrap(),
+            composite_operation: *composite_operation.get(at).unwrap(),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum ImageRequiredParamsTransformFrameVariable {
+    Params {
+        scale: FrameVariableValue<Vector3<f64>>,
+        translate: FrameVariableValue<Vector3<f64>>,
+        rotate: FrameVariableValue<Quaternion<f64>>,
+        scale_center: FrameVariableValue<Vector3<f64>>,
+        rotate_center: FrameVariableValue<Vector3<f64>>,
+    },
+    Free {
+        left_top: FrameVariableValue<Vector3<f64>>,
+        right_top: FrameVariableValue<Vector3<f64>>,
+        left_bottom: FrameVariableValue<Vector3<f64>>,
+        right_bottom: FrameVariableValue<Vector3<f64>>,
+    },
+}
+
+impl ImageRequiredParamsTransformFrameVariable {
+    pub fn get(&self, at: TimelineTime) -> ImageRequiredParamsTransformFixed {
+        match self {
+            ImageRequiredParamsTransformFrameVariable::Params { scale, translate, rotate, scale_center, rotate_center } => ImageRequiredParamsTransformFixed::Params {
+                scale: *scale.get(at).unwrap(),
+                translate: *translate.get(at).unwrap(),
+                rotate: *rotate.get(at).unwrap(),
+                scale_center: *scale_center.get(at).unwrap(),
+                rotate_center: *rotate_center.get(at).unwrap(),
+            },
+            ImageRequiredParamsTransformFrameVariable::Free { left_top, right_top, left_bottom, right_bottom } => ImageRequiredParamsTransformFixed::Free {
+                left_top: *left_top.get(at).unwrap(),
+                right_top: *right_top.get(at).unwrap(),
+                left_bottom: *left_bottom.get(at).unwrap(),
+                right_bottom: *right_bottom.get(at).unwrap(),
+            },
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct ImageRequiredParamsFixed {
-    transform: ImageRequiredParamsTransformFixed,
-    opacity: Opacity,
-    blend_mode: BlendMode,
-    composite_operation: CompositeOperation,
+    pub aspect_ratio: (u32, u32),
+    pub transform: ImageRequiredParamsTransformFixed,
+    pub opacity: Opacity,
+    pub blend_mode: BlendMode,
+    pub composite_operation: CompositeOperation,
 }
 
 #[derive(Debug)]

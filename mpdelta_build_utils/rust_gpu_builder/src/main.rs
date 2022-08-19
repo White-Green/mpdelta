@@ -19,6 +19,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     println!("cargo:rerun-if-changed={}", env!("CARGO_MANIFEST_DIR"));
     let Args { base, out_dir, crates } = Args::parse();
     for crate_path in crates {
+        println!("cargo:rerun-if-changed={}", base.join(&crate_path).display());
         let result = SpirvBuilder::new(base.join(&crate_path), "spirv-unknown-spv1.5").print_metadata(MetadataPrintout::Full).build()?;
         let spv_file = result.module.unwrap_single();
         fs::copy(spv_file, out_dir.join(Path::new(&crate_path).iter().next_back().unwrap()).with_extension("spv"))?;

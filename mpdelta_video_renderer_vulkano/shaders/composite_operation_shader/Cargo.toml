@@ -1,5 +1,5 @@
 [package]
-name = "texture_drawing_shader"
+name = "composite_operation_shader"
 version = "0.1.0"
 edition = "2021"
 

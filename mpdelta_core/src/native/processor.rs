@@ -14,7 +14,7 @@ pub struct NativeProcessorInputFixed<Image, Audio>(PhantomData<(Image, Audio)>);
 
 pub type ParameterNativeProcessorInputFixed<Image, Audio> = Parameter<'static, NativeProcessorInputFixed<Image, Audio>>;
 
-impl<'a, Image: Clone + 'a, Audio: Clone + 'a> ParameterValueType<'a> for NativeProcessorInputFixed<Image, Audio> {
+impl<'a, Image: Clone + Send + Sync + 'a, Audio: Clone + Send + Sync + 'a> ParameterValueType<'a> for NativeProcessorInputFixed<Image, Audio> {
     type Image = Image;
     type Audio = Audio;
     type Video = (Image, Audio);

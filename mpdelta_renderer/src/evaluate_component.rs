@@ -1,15 +1,16 @@
 use crate::{stream, StreamExt};
 use async_recursion::async_recursion;
-use cgmath::{Vector2, Vector3};
+use cgmath::{Quaternion, Vector2, Vector3};
 use dashmap::DashMap;
 use either::Either;
 use mpdelta_core::common::time_split_value::TimeSplitValue;
 use mpdelta_core::component::instance::ComponentInstance;
 use mpdelta_core::component::marker_pin::{MarkerPin, MarkerTime};
 use mpdelta_core::component::parameter::placeholder::{Placeholder, TagAudio, TagImage};
-use mpdelta_core::component::parameter::value::{EasingValue, FrameVariableValue};
+use mpdelta_core::component::parameter::value::{DefaultEasing, EasingValue, FrameVariableValue};
 use mpdelta_core::component::parameter::{
-    AudioRequiredParams, ComponentProcessorInputValue, ImageRequiredParams, Parameter, ParameterFrameVariableValue, ParameterNullableValue, ParameterType, ParameterTypeExceptComponentClass, ParameterValue, ParameterValueType, VariableParameterPriority, VariableParameterValue,
+    AudioRequiredParams, ComponentProcessorInputValue, ImageRequiredParams, ImageRequiredParamsFrameVariable, ImageRequiredParamsTransform, ImageRequiredParamsTransformFrameVariable, Opacity, Parameter, ParameterFrameVariableValue, ParameterNullableValue, ParameterType,
+    ParameterTypeExceptComponentClass, ParameterValue, ParameterValueType, VariableParameterPriority, VariableParameterValue,
 };
 use mpdelta_core::component::processor::{ComponentProcessorBody, NativeProcessorExecutable};
 use mpdelta_core::core::IdGenerator;
@@ -17,7 +18,9 @@ use mpdelta_core::native::processor::ParameterNativeProcessorInputFixed;
 use mpdelta_core::ptr::{StaticPointer, StaticPointerOwned};
 use mpdelta_core::time::TimelineTime;
 use std::collections::{BTreeMap, HashMap};
-use std::ops::Range;
+use std::future::Future;
+use std::iter::{Peekable, SkipWhile, TakeWhile};
+use std::ops::{Deref, Range};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::{array, iter};
@@ -361,7 +364,13 @@ pub struct ReadonlySourceTree<T, U> {
     tree: DashMap<Placeholder<T>, Either<(Vec<Placeholder<T>>, Option<Arc<[(Range<TimelineTime>, Range<MarkerTime>)]>>), U>>,
 }
 
-pub type ImageNativeTreeNode<T> = (ImageRequiredParams<T>, NativeProcessorExecutable<T>);
+impl<T, U> ReadonlySourceTree<T, U> {
+    pub fn get(&self, key: Placeholder<T>) -> Option<impl Deref<Target = Either<(Vec<Placeholder<T>>, Option<Arc<[(Range<TimelineTime>, Range<MarkerTime>)]>>), U>> + '_> {
+        self.tree.get(&key)
+    }
+}
+
+pub type ImageNativeTreeNode<T> = (ImageRequiredParamsFrameVariable, NativeProcessorExecutable<T>);
 pub type AudioNativeTreeNode<T> = (AudioRequiredParams<T>, NativeProcessorExecutable<T>);
 
 fn unwrap_or_default<ID: IdGenerator, T: ParameterValueType<'static>>(
@@ -454,7 +463,7 @@ fn frame_values<T: Default + Clone>(value: TimeSplitValue<TimelineTime, Option<E
                         match value {
                             None => Some(T::default()),
                             Some(Either::Left(value)) => Some(value.clone()),
-                            Some(Either::Right(value)) => Some(value.get(&time).unwrap().clone()),
+                            Some(Either::Right(value)) => Some(value.get(time).unwrap().clone()),
                         }
                     } else {
                         None
@@ -467,7 +476,7 @@ fn frame_values<T: Default + Clone>(value: TimeSplitValue<TimelineTime, Option<E
         .into()
 }
 
-fn frame_values_easing<T: Default + Clone, U, F: Fn([T; N]) -> U, const N: usize>(value: [TimeSplitValue<TimelineTime, Option<Either<EasingValue<T>, FrameVariableValue<T>>>>; N], f: F, frames: impl Iterator<Item = TimelineTime>) -> FrameVariableValue<U> {
+fn frame_values_easing<T: Clone, U, F: Fn([T; N]) -> U, const N: usize>(value: [TimeSplitValue<TimelineTime, Option<Either<EasingValue<T>, FrameVariableValue<T>>>>; N], f: F, frames: impl Iterator<Item = TimelineTime>, default: impl Fn() -> T) -> FrameVariableValue<U> {
     // TODO: 計算量が論外
     frames
         .map(|time| {
@@ -477,12 +486,12 @@ fn frame_values_easing<T: Default + Clone, U, F: Fn([T; N]) -> U, const N: usize
                         let (&left, value, &right) = value[j].get_value(i).unwrap();
                         if left <= time && time < right {
                             match value {
-                                None => Some(T::default()),
+                                None => Some(default()),
                                 Some(Either::Left(value)) => {
                                     let p = if right.value() - left.value() < f64::EPSILON { 0. } else { (time.value() - left.value()) / (right.value() - left.value()) };
                                     Some(value.easing.easing(&value.from, &value.to, p))
                                 }
-                                Some(Either::Right(value)) => Some(value.get(&time).unwrap().clone()),
+                                Some(Either::Right(value)) => Some(value.get(time).unwrap().clone()),
                             }
                         } else {
                             None
@@ -513,9 +522,9 @@ fn into_frame_variable_value<T, ID: IdGenerator>(
         Parameter::Boolean(value) => ParameterFrameVariableValue::Boolean(frame_values(value, frames)),
         Parameter::Radio(value) => ParameterFrameVariableValue::Radio(frame_values(value, frames)),
         Parameter::Integer(value) => ParameterFrameVariableValue::Integer(frame_values(value, frames)),
-        Parameter::RealNumber(value) => ParameterFrameVariableValue::RealNumber(frame_values_easing([value], |[v]| v, frames)),
-        Parameter::Vec2(value) => ParameterFrameVariableValue::Vec2(frame_values_easing(value.into(), From::from, frames)),
-        Parameter::Vec3(value) => ParameterFrameVariableValue::Vec3(frame_values_easing(value.into(), From::from, frames)),
+        Parameter::RealNumber(value) => ParameterFrameVariableValue::RealNumber(frame_values_easing([value], |[v]| v, frames, Default::default)),
+        Parameter::Vec2(value) => ParameterFrameVariableValue::Vec2(frame_values_easing(value.into(), From::from, frames, Default::default)),
+        Parameter::Vec3(value) => ParameterFrameVariableValue::Vec3(frame_values_easing(value.into(), From::from, frames, Default::default)),
         Parameter::Dictionary(value) => todo!(),
         Parameter::ComponentClass(()) => todo!(),
     }
@@ -540,9 +549,9 @@ async fn shift_time<T, ID: IdGenerator>(
         Parameter::Boolean(value) => Parameter::Boolean(frame_values(value.map_time(|time| map_time.map_time(time)), frames)),
         Parameter::Radio(value) => Parameter::Radio(frame_values(value.map_time(|time| map_time.map_time(time)), frames)),
         Parameter::Integer(value) => Parameter::Integer(frame_values(value.map_time(|time| map_time.map_time(time)), frames)),
-        Parameter::RealNumber(value) => Parameter::RealNumber(frame_values_easing([value.map_time(|time| map_time.map_time(time))], |[v]| v, frames)),
-        Parameter::Vec2(value) => Parameter::Vec2(frame_values_easing(value.map(|value| value.map_time(|time| map_time.map_time(time))).into(), From::from, frames)),
-        Parameter::Vec3(value) => Parameter::Vec3(frame_values_easing(value.map(|value| value.map_time(|time| map_time.map_time(time))).into(), From::from, frames)),
+        Parameter::RealNumber(value) => Parameter::RealNumber(frame_values_easing([value.map_time(|time| map_time.map_time(time))], |[v]| v, frames, Default::default)),
+        Parameter::Vec2(value) => Parameter::Vec2(frame_values_easing(value.map(|value| value.map_time(|time| map_time.map_time(time))).into(), From::from, frames, Default::default)),
+        Parameter::Vec3(value) => Parameter::Vec3(frame_values_easing(value.map(|value| value.map_time(|time| map_time.map_time(time))).into(), From::from, frames, Default::default)),
         Parameter::Dictionary(value) => todo!(),
         Parameter::ComponentClass(()) => todo!(),
     }
@@ -574,7 +583,7 @@ pub enum RendererError {
     RequiredParamsIsNone,
     #[error("NativeProcessor output type mismatch")]
     NativeProcessorOutputTypeMismatch,
-    #[error("NaticeProcessor not found")]
+    #[error("NativeProcessor not found")]
     NativeProcessorNotFound,
     #[error("invalid component")]
     InvalidComponent,
@@ -583,7 +592,7 @@ pub enum RendererError {
 fn evaluate_processor_executable<T: ParameterValueType<'static>, ID: IdGenerator>(
     processor_executable: NativeProcessorExecutable<T>,
     frames: impl Iterator<Item = TimelineTime>,
-    image_required_params: Option<&ImageRequiredParams<T>>,
+    image_required_params: Option<&ImageRequiredParamsFrameVariable>,
     audio_required_params: Option<&AudioRequiredParams<T>>,
     image_source_tree: &SourceTree<TagImage, ImageNativeTreeNode<T>, ID>,
     audio_source_tree: &SourceTree<TagAudio, AudioNativeTreeNode<T>, ID>,
@@ -597,15 +606,15 @@ fn evaluate_processor_executable<T: ParameterValueType<'static>, ID: IdGenerator
                 Parameter::Image(value) => unimplemented!(),
                 Parameter::Audio(value) => unimplemented!(),
                 Parameter::Video(value) => unimplemented!(),
-                Parameter::File(value) => ParameterNativeProcessorInputFixed::<T::Image, T::Audio>::File(value.get(&time).unwrap().clone()),
-                Parameter::String(value) => ParameterNativeProcessorInputFixed::<T::Image, T::Audio>::String(value.get(&time).unwrap().clone()),
-                Parameter::Select(value) => ParameterNativeProcessorInputFixed::<T::Image, T::Audio>::Select(*value.get(&time).unwrap()),
-                Parameter::Boolean(value) => ParameterNativeProcessorInputFixed::<T::Image, T::Audio>::Boolean(*value.get(&time).unwrap()),
-                Parameter::Radio(value) => ParameterNativeProcessorInputFixed::<T::Image, T::Audio>::Radio(*value.get(&time).unwrap()),
-                Parameter::Integer(value) => ParameterNativeProcessorInputFixed::<T::Image, T::Audio>::Integer(*value.get(&time).unwrap()),
-                Parameter::RealNumber(value) => ParameterNativeProcessorInputFixed::<T::Image, T::Audio>::RealNumber(*value.get(&time).unwrap()),
-                Parameter::Vec2(value) => ParameterNativeProcessorInputFixed::<T::Image, T::Audio>::Vec2(*value.get(&time).unwrap()),
-                Parameter::Vec3(value) => ParameterNativeProcessorInputFixed::<T::Image, T::Audio>::Vec3(*value.get(&time).unwrap()),
+                Parameter::File(value) => ParameterNativeProcessorInputFixed::<T::Image, T::Audio>::File(value.get(time).unwrap().clone()),
+                Parameter::String(value) => ParameterNativeProcessorInputFixed::<T::Image, T::Audio>::String(value.get(time).unwrap().clone()),
+                Parameter::Select(value) => ParameterNativeProcessorInputFixed::<T::Image, T::Audio>::Select(*value.get(time).unwrap()),
+                Parameter::Boolean(value) => ParameterNativeProcessorInputFixed::<T::Image, T::Audio>::Boolean(*value.get(time).unwrap()),
+                Parameter::Radio(value) => ParameterNativeProcessorInputFixed::<T::Image, T::Audio>::Radio(*value.get(time).unwrap()),
+                Parameter::Integer(value) => ParameterNativeProcessorInputFixed::<T::Image, T::Audio>::Integer(*value.get(time).unwrap()),
+                Parameter::RealNumber(value) => ParameterNativeProcessorInputFixed::<T::Image, T::Audio>::RealNumber(*value.get(time).unwrap()),
+                Parameter::Vec2(value) => ParameterNativeProcessorInputFixed::<T::Image, T::Audio>::Vec2(*value.get(time).unwrap()),
+                Parameter::Vec3(value) => ParameterNativeProcessorInputFixed::<T::Image, T::Audio>::Vec3(*value.get(time).unwrap()),
                 Parameter::Dictionary(value) => todo!(),
                 Parameter::ComponentClass(_) => unreachable!(),
             })
@@ -721,38 +730,7 @@ pub(crate) async fn evaluate_component<T: ParameterValueType<'static> + 'static,
                 let audio_source_tree = Arc::clone(&audio_source_tree);
                 async move {
                     let mut acc = acc?;
-                    acc.push(match param {
-                        VariableParameterValue::Manually(param) => value_as_input_buffer(param).await,
-                        VariableParameterValue::MayComponent { params, components, priority } => {
-                            let component_values = components
-                                .iter()
-                                .cloned()
-                                .map(|comp| {
-                                    let param_type = param_type.clone();
-                                    let frames = frames.clone();
-                                    let image_source_tree = Arc::clone(&image_source_tree);
-                                    let audio_source_tree = Arc::clone(&audio_source_tree);
-                                    tokio::spawn(async move { evaluate_component(comp, param_type, image_source_tree, audio_source_tree, frames).await })
-                                })
-                                .collect::<Vec<_>>();
-                            let component_values = stream::iter(component_values).then(|task| async move {
-                                let (left, value, right) = task.await.unwrap()?;
-                                let left = left.upgrade().unwrap().read().await.cached_timeline_time();
-                                let right = right.upgrade().unwrap().read().await.cached_timeline_time();
-                                Ok(frame_variable_value_into_input_buffer(value, left, right))
-                            });
-                            match priority {
-                                VariableParameterPriority::PrioritizeManually => {
-                                    combine_params(
-                                        component_values.fold(Ok(empty_input_buffer(&param_type, left_time, right_time)), |acc, value| async move { Ok(combine_params(acc?, value?).await) }).await?,
-                                        nullable_value_as_input_buffer(params).await,
-                                    )
-                                    .await
-                                }
-                                VariableParameterPriority::PrioritizeComponent => component_values.fold(Ok(nullable_value_as_input_buffer(params).await), |acc, value| async move { Ok(combine_params(acc?, value?).await) }).await?,
-                            }
-                        }
-                    });
+                    acc.push(evaluate_parameter(left_time, right_time, param, param_type, frames, &image_source_tree, &audio_source_tree).await?);
                     Ok(acc)
                 }
             },
@@ -800,6 +778,55 @@ pub(crate) async fn evaluate_component<T: ParameterValueType<'static> + 'static,
     // 時間シフト
     let marker_ranges = marker_ranges.into();
     let mut map_time = get_map_time(Arc::clone(&marker_ranges));
+    let image_required_params = if let Some(image_required_params) = image_required_params {
+        let transform = async {
+            match &image_required_params.transform {
+                ImageRequiredParamsTransform::Params { scale, translate, rotate, scale_center, rotate_center } => {
+                    let (scale, translate, rotate, scale_center, rotate_center) = tokio::join!(
+                        evaluate_variable(left_time, right_time, scale.clone(), &image_source_tree, &audio_source_tree, frames.clone(), map_time.clone()),
+                        evaluate_variable(left_time, right_time, translate.clone(), &image_source_tree, &audio_source_tree, frames.clone(), map_time.clone()),
+                        evaluate_variable_easing(rotate.clone(), frames.clone(), map_time.clone()),
+                        evaluate_variable(left_time, right_time, scale_center.clone(), &image_source_tree, &audio_source_tree, frames.clone(), map_time.clone()),
+                        evaluate_variable(left_time, right_time, rotate_center.clone(), &image_source_tree, &audio_source_tree, frames.clone(), map_time.clone()),
+                    );
+                    Ok(ImageRequiredParamsTransformFrameVariable::Params {
+                        scale: scale?,
+                        translate: translate?,
+                        rotate,
+                        scale_center: scale_center?,
+                        rotate_center: rotate_center?,
+                    })
+                }
+                ImageRequiredParamsTransform::Free { left_top, right_top, left_bottom, right_bottom } => {
+                    let (left_top, right_top, left_bottom, right_bottom) = tokio::join!(
+                        evaluate_variable(left_time, right_time, left_top.clone(), &image_source_tree, &audio_source_tree, frames.clone(), map_time.clone()),
+                        evaluate_variable(left_time, right_time, right_top.clone(), &image_source_tree, &audio_source_tree, frames.clone(), map_time.clone()),
+                        evaluate_variable(left_time, right_time, left_bottom.clone(), &image_source_tree, &audio_source_tree, frames.clone(), map_time.clone()),
+                        evaluate_variable(left_time, right_time, right_bottom.clone(), &image_source_tree, &audio_source_tree, frames.clone(), map_time.clone()),
+                    );
+                    Ok(ImageRequiredParamsTransformFrameVariable::Free {
+                        left_top: left_top?,
+                        right_top: right_top?,
+                        left_bottom: left_bottom?,
+                        right_bottom: right_bottom?,
+                    })
+                }
+            }
+        };
+        let opacity = evaluate_variable_easing(image_required_params.opacity.clone(), frames.clone(), map_time.clone());
+        let blend_mode = evaluate_variable_all(image_required_params.blend_mode.clone(), frames.clone(), map_time.clone());
+        let composite_operation = evaluate_variable_all(image_required_params.composite_operation.clone(), frames.clone(), map_time.clone());
+        let (transform, opacity, blend_mode, composite_operation) = tokio::join!(transform, opacity, blend_mode, composite_operation);
+        Some(ImageRequiredParamsFrameVariable {
+            aspect_ratio: image_required_params.aspect_ratio,
+            transform: transform?,
+            opacity,
+            blend_mode,
+            composite_operation,
+        })
+    } else {
+        None
+    };
     let value = match processor.get_processor() {
         ComponentProcessorBody::Native(native_processor) => {
             let variable_parameter_tasks = variable_parameters
@@ -821,7 +848,7 @@ pub(crate) async fn evaluate_component<T: ParameterValueType<'static> + 'static,
                     if !processor_executable.processor.return_type().equals_type(&value_type) {
                         return None;
                     }
-                    Some(evaluate_processor_executable(processor_executable, frames.clone(), image_required_params, audio_required_params, &image_source_tree, &audio_source_tree))
+                    Some(evaluate_processor_executable(processor_executable, frames.clone(), image_required_params.as_ref(), audio_required_params, &image_source_tree, &audio_source_tree))
                 })
                 .ok_or(RendererError::NativeProcessorNotFound)??
         }
@@ -869,6 +896,122 @@ pub(crate) async fn evaluate_component<T: ParameterValueType<'static> + 'static,
     // 時間シフトを戻す
     let value = map_time_reverse(value, map_time);
     Ok((left.clone(), value, right.clone()))
+}
+
+async fn evaluate_variable<T: ParameterValueType<'static>, ID: IdGenerator + 'static>(
+    left_time: TimelineTime,
+    right_time: TimelineTime,
+    param: Vector3<VariableParameterValue<T, TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, EasingValue<f64>>, TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, Option<EasingValue<f64>>>>>,
+    image_source_tree: &Arc<SourceTree<TagImage, ImageNativeTreeNode<T>, ID>>,
+    audio_source_tree: &Arc<SourceTree<TagAudio, AudioNativeTreeNode<T>, ID>>,
+    frames: impl Iterator<Item = TimelineTime> + Send + Sync + Clone + 'static,
+    mut map_time: impl MapTime,
+) -> Result<FrameVariableValue<Vector3<f64>>, RendererError> {
+    let value = {
+        let frames_ref = &frames;
+        let param = param.map(|param| async move {
+            match param {
+                VariableParameterValue::Manually(param) => Ok(param.map_time_value_async(|t| async move { t.upgrade().unwrap().read().await.cached_timeline_time() }, |v| async move { Some(Either::Left(v)) }).await),
+                VariableParameterValue::MayComponent { params, components, priority } => {
+                    let component_values = components
+                        .iter()
+                        .cloned()
+                        .map(|comp| {
+                            let frames = frames_ref.clone();
+                            let image_source_tree = Arc::clone(image_source_tree);
+                            let audio_source_tree = Arc::clone(audio_source_tree);
+                            tokio::spawn(async move { evaluate_component(comp, ParameterType::RealNumber(None), image_source_tree, audio_source_tree, frames).await })
+                        })
+                        .collect::<Vec<_>>();
+                    let component_values = stream::iter(component_values).then(|task| async move {
+                        let (left, value, right) = task.await.unwrap()?;
+                        let value = value.into_real_number().map_err(|_| RendererError::InvalidComponent)?;
+                        let left = left.upgrade().unwrap().read().await.cached_timeline_time();
+                        let right = right.upgrade().unwrap().read().await.cached_timeline_time();
+                        Ok(TimeSplitValue::new(left, Some(Either::Right(value)), right))
+                    });
+                    Ok(match priority {
+                        VariableParameterPriority::PrioritizeManually => {
+                            // override_time_split_value(value1, value2.into_real_number().unwrap()).await
+                            override_time_split_value(
+                                component_values.fold(Ok(TimeSplitValue::new(left_time, None, right_time)), |acc, value| async move { Ok(override_time_split_value(acc?, value?).await) }).await?,
+                                params.map_time_value_async(|t| async move { t.upgrade().unwrap().read().await.cached_timeline_time() }, |v| async move { v.map(Either::Left) }).await,
+                            )
+                            .await
+                        }
+                        VariableParameterPriority::PrioritizeComponent => {
+                            component_values
+                                .fold(
+                                    Ok(params.map_time_value_async(|t| async move { t.upgrade().unwrap().read().await.cached_timeline_time() }, |v| async move { v.map(Either::Left) }).await),
+                                    |acc, value| async move { Ok(override_time_split_value(acc?, value?).await) },
+                                )
+                                .await?
+                        }
+                    })
+                }
+            }
+        });
+        Vector3 {
+            x: param.x.await?,
+            y: param.y.await?,
+            z: param.z.await?,
+        }
+    };
+    Ok(frame_values_easing(value.map(|value| value.map_time(|time| map_time.map_time(time))).into(), Vector3::from, frames, Default::default))
+}
+
+async fn evaluate_variable_easing<T: Clone>(param: TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, EasingValue<T>>, frames: impl Iterator<Item = TimelineTime> + Send + Sync + Clone + 'static, mut map_time: impl MapTime) -> FrameVariableValue<T> {
+    let value = param.map_time_value_async(|t| async move { t.upgrade().unwrap().read().await.cached_timeline_time() }, |v| async move { Some(Either::Left(v)) }).await;
+    frame_values_easing([value.map_time(|time| map_time.map_time(time))], |[v]| v, frames, || unreachable!())
+}
+
+async fn evaluate_variable_all<Value: Default + Clone>(param: TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, Value>, frames: impl Iterator<Item = TimelineTime> + Send + Sync + Clone + 'static, mut map_time: impl MapTime) -> FrameVariableValue<Value> {
+    let value = param.map_time_value_async(|t| async move { t.upgrade().unwrap().read().await.cached_timeline_time() }, |v| async move { Some(Either::Left(v)) }).await;
+    frame_values(value.map_time(|time| map_time.map_time(time)), frames)
+}
+
+async fn evaluate_parameter<ID: IdGenerator + 'static, T: ParameterValueType<'static>>(
+    left_time: TimelineTime,
+    right_time: TimelineTime,
+    param: &VariableParameterValue<T, ParameterValue, ParameterNullableValue>,
+    param_type: &ParameterType,
+    frames: impl Iterator<Item = TimelineTime> + Send + Sync + Clone + 'static,
+    image_source_tree: &Arc<SourceTree<TagImage, ImageNativeTreeNode<T>, ID>>,
+    audio_source_tree: &Arc<SourceTree<TagAudio, AudioNativeTreeNode<T>, ID>>,
+) -> Result<Parameter<'static, ComponentProcessorInputBuffer>, RendererError> {
+    let param = match param {
+        VariableParameterValue::Manually(param) => value_as_input_buffer(param).await,
+        VariableParameterValue::MayComponent { params, components, priority } => {
+            let component_values = components
+                .iter()
+                .cloned()
+                .map(|comp| {
+                    let param_type = param_type.clone();
+                    let frames = frames.clone();
+                    let image_source_tree = Arc::clone(&image_source_tree);
+                    let audio_source_tree = Arc::clone(&audio_source_tree);
+                    tokio::spawn(async move { evaluate_component(comp, param_type, image_source_tree, audio_source_tree, frames).await })
+                })
+                .collect::<Vec<_>>();
+            let component_values = stream::iter(component_values).then(|task| async move {
+                let (left, value, right) = task.await.unwrap()?;
+                let left = left.upgrade().unwrap().read().await.cached_timeline_time();
+                let right = right.upgrade().unwrap().read().await.cached_timeline_time();
+                Ok(frame_variable_value_into_input_buffer(value, left, right))
+            });
+            match priority {
+                VariableParameterPriority::PrioritizeManually => {
+                    combine_params(
+                        component_values.fold(Ok(empty_input_buffer(&param_type, left_time, right_time)), |acc, value| async move { Ok(combine_params(acc?, value?).await) }).await?,
+                        nullable_value_as_input_buffer(params).await,
+                    )
+                    .await
+                }
+                VariableParameterPriority::PrioritizeComponent => component_values.fold(Ok(nullable_value_as_input_buffer(params).await), |acc, value| async move { Ok(combine_params(acc?, value?).await) }).await?,
+            }
+        }
+    };
+    Ok(param)
 }
 
 async fn collect_cached_time<T>(components: &[impl AsRef<StaticPointer<RwLock<ComponentInstance<T>>>>]) {

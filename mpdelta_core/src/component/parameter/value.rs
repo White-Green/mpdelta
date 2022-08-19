@@ -45,7 +45,7 @@ impl<Value> FrameVariableValue<Value> {
         FrameVariableValue { values: BTreeMap::new() }
     }
 
-    pub fn get(&self, time: &TimelineTime) -> Option<&Value> {
+    pub fn get(&self, time: TimelineTime) -> Option<&Value> {
         match (self.values.range(..time).next_back(), self.values.range(time..).next()) {
             (Some((time1, value1)), Some((time2, value2))) => Some(if time.value() - time1.value() < time2.value() - time.value() { value1 } else { value2 }),
             (Some((_, value1)), _) => Some(value1),

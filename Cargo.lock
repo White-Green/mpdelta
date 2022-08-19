@@ -337,6 +337,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "composite_operation_shader"
+version = "0.1.0"
+dependencies = [
+ "spirv-std",
+]
+
+[[package]]
 name = "core-foundation"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1060,11 +1067,18 @@ dependencies = [
 name = "mpdelta_video_renderer_vulkano"
 version = "0.1.0"
 dependencies = [
+ "async-recursion",
  "async-trait",
+ "cgmath",
+ "composite_operation_shader",
  "dashmap",
+ "either",
+ "futures",
+ "glam",
  "mpdelta_core",
  "mpdelta_renderer",
  "shader_builder",
+ "texture_drawing_shader",
  "tokio",
  "vulkano",
 ]

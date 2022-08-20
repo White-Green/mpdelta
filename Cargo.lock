@@ -1015,6 +1015,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "mpdelta_core_vulkano"
+version = "0.1.0"
+dependencies = [
+ "vulkano",
+]
+
+[[package]]
 name = "mpdelta_gui"
 version = "0.1.0"
 dependencies = [
@@ -1076,6 +1083,7 @@ dependencies = [
  "futures",
  "glam",
  "mpdelta_core",
+ "mpdelta_core_vulkano",
  "mpdelta_renderer",
  "shader_builder",
  "texture_drawing_shader",

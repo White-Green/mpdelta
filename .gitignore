@@ -5,6 +5,7 @@
 !/Cargo.toml
 !/mpdelta_build_utils
 !/mpdelta_core
+!/mpdelta_core_vulkano
 !/mpdelta_gui
 !/mpdelta_gui_vulkano
 !/mpdelta_services

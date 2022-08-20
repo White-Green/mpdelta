@@ -14,6 +14,7 @@ use mpdelta_core::component::parameter::{BlendMode, CompositeOperation, ImageReq
 use mpdelta_core::component::processor::{NativeProcessorExecutable, NativeProcessorInput};
 use mpdelta_core::native::processor::ParameterNativeProcessorInputFixed;
 use mpdelta_core::time::TimelineTime;
+use mpdelta_core_vulkano::ImageType;
 use mpdelta_renderer::evaluate_component::{AudioNativeTreeNode, ImageNativeTreeNode, ReadonlySourceTree};
 use mpdelta_renderer::{VideoRenderer, VideoRendererBuilder};
 use std::cmp::Ordering;
@@ -42,9 +43,6 @@ use vulkano::sampler::{Sampler, SamplerCreateInfo};
 use vulkano::shader::ShaderModule;
 use vulkano::single_pass_renderpass;
 use vulkano::sync::GpuFuture;
-
-#[derive(Debug, Clone)]
-pub struct ImageType(pub Arc<dyn ImageAccess + 'static>);
 
 #[derive(Debug, Clone)]
 struct SharedResource {

@@ -7,6 +7,7 @@ edition = "2021"
 
 [dependencies]
 mpdelta_core = { path = "../mpdelta_core" }
+mpdelta_core_vulkano = { path = "../mpdelta_core_vulkano" }
 mpdelta_renderer = { path = "../mpdelta_renderer" }
 composite_operation_shader = { path = "shaders/composite_operation_shader" }
 texture_drawing_shader = { path = "shaders/texture_drawing_shader" }

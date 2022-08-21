@@ -1,14 +1,40 @@
+use crate::viewmodel::{MPDeltaViewModel, ViewModelParams};
 use egui::{Context, Frame, ScrollArea, Style};
+use mpdelta_core::component::parameter::ParameterValueType;
+use mpdelta_core::usecase::{
+    EditUsecase, GetAvailableComponentClassesUsecase, GetLoadedProjectsUsecase, GetRootComponentClassesUsecase, LoadProjectUsecase, NewProjectUsecase, NewRootComponentClassUsecase, RealtimeRenderComponentUsecase, RedoUsecase, SetOwnerForRootComponentClassUsecase, UndoUsecase, WriteProjectUsecase,
+};
 
 pub trait Gui {
     fn ui(&mut self, ctx: &Context);
 }
 
-pub struct MPDeltaGUI {}
+pub struct MPDeltaGUI {
+    view_model: MPDeltaViewModel,
+}
 
 impl MPDeltaGUI {
-    pub fn new() -> MPDeltaGUI {
-        MPDeltaGUI {}
+    pub fn new<T, Edit, GetAvailableComponentClasses, GetLoadedProjects, GetRootComponentClasses, LoadProject, NewProject, NewRootComponentClass, RealtimeRenderComponent, Redo, SetOwnerForRootComponentClass, Undo, WriteProject>(
+        view_model_params: ViewModelParams<Edit, GetAvailableComponentClasses, GetLoadedProjects, GetRootComponentClasses, LoadProject, NewProject, NewRootComponentClass, RealtimeRenderComponent, Redo, SetOwnerForRootComponentClass, Undo, WriteProject>,
+    ) -> MPDeltaGUI
+    where
+        T: ParameterValueType<'static>,
+        Edit: EditUsecase<T>,
+        GetAvailableComponentClasses: GetAvailableComponentClassesUsecase<T>,
+        GetLoadedProjects: GetLoadedProjectsUsecase<T>,
+        GetRootComponentClasses: GetRootComponentClassesUsecase<T>,
+        LoadProject: LoadProjectUsecase<T>,
+        NewProject: NewProjectUsecase<T>,
+        NewRootComponentClass: NewRootComponentClassUsecase<T>,
+        RealtimeRenderComponent: RealtimeRenderComponentUsecase<T>,
+        Redo: RedoUsecase<T>,
+        SetOwnerForRootComponentClass: SetOwnerForRootComponentClassUsecase<T>,
+        Undo: UndoUsecase<T>,
+        WriteProject: WriteProjectUsecase<T>,
+    {
+        MPDeltaGUI {
+            view_model: MPDeltaViewModel::new::<T, Edit, GetAvailableComponentClasses, GetLoadedProjects, GetRootComponentClasses, LoadProject, NewProject, NewRootComponentClass, RealtimeRenderComponent, Redo, SetOwnerForRootComponentClass, Undo, WriteProject>(view_model_params),
+        }
     }
 }
 

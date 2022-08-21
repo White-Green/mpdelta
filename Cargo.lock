@@ -993,8 +993,13 @@ name = "mpdelta"
 version = "0.1.0"
 dependencies = [
  "mpdelta_core",
+ "mpdelta_core_vulkano",
  "mpdelta_gui",
  "mpdelta_gui_vulkano",
+ "mpdelta_renderer",
+ "mpdelta_services",
+ "mpdelta_video_renderer_vulkano",
+ "tokio",
  "vulkano",
  "vulkano-win",
  "winit",
@@ -1027,6 +1032,7 @@ version = "0.1.0"
 dependencies = [
  "egui",
  "mpdelta_core",
+ "tokio",
 ]
 
 [[package]]

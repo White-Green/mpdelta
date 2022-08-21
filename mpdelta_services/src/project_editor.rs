@@ -9,6 +9,12 @@ use tokio::sync::RwLock;
 
 pub struct ProjectEditor {}
 
+impl ProjectEditor {
+    pub fn new() -> ProjectEditor {
+        ProjectEditor {}
+    }
+}
+
 pub enum ProjectEditLog {}
 
 #[derive(Debug, Error)]

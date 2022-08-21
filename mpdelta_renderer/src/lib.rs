@@ -39,6 +39,12 @@ pub struct MPDeltaRendererBuilder<ID, Video, Audio> {
     audio_mixer_builder: Arc<Audio>,
 }
 
+impl<ID, Video, Audio> MPDeltaRendererBuilder<ID, Video, Audio> {
+    pub fn new(id: Arc<ID>, video_renderer_builder: Arc<Video>, audio_mixer_builder: Arc<Audio>) -> MPDeltaRendererBuilder<ID, Video, Audio> {
+        MPDeltaRendererBuilder { id, video_renderer_builder, audio_mixer_builder }
+    }
+}
+
 #[async_trait]
 impl<T: ParameterValueType<'static> + 'static, ID: IdGenerator + 'static, Video: VideoRendererBuilder<T> + Send + Sync + 'static, Audio: AudioMixerBuilder<T> + Send + Sync + 'static> ComponentRendererBuilder<T> for MPDeltaRendererBuilder<ID, Video, Audio> {
     type Err = RendererError;
@@ -91,6 +97,22 @@ pub trait VideoRendererBuilder<T: ParameterValueType<'static>> {
 pub trait AudioMixerBuilder<T: ParameterValueType<'static>> {
     type Mixer: AudioMixer<T::Audio> + Send + Sync;
     async fn create_mixer(&self, param: Placeholder<TagAudio>, sampling_rate: u32, audio_source_tree: ReadonlySourceTree<TagAudio, AudioNativeTreeNode<T>>) -> Self::Mixer;
+}
+
+#[async_trait]
+impl<T: ParameterValueType<'static>> AudioMixerBuilder<T> for () {
+    type Mixer = ();
+
+    async fn create_mixer(&self, _: Placeholder<TagAudio>, _: u32, _: ReadonlySourceTree<TagAudio, AudioNativeTreeNode<T>>) -> Self::Mixer {
+        ()
+    }
+}
+
+#[async_trait]
+impl<T> AudioMixer<T> for () {
+    async fn mix_audio(&mut self, _: usize, _: usize, _: Duration) -> T {
+        unimplemented!()
+    }
 }
 
 pub struct MPDeltaRenderer<Video, Audio> {

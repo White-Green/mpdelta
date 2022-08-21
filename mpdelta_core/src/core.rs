@@ -14,16 +14,45 @@ use thiserror::Error;
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
+#[derive(Debug)]
 pub struct MPDeltaCore<IdGenerator, ProjectLoader, ProjectWriter, ProjectMemory, RootComponentClassMemory, ComponentClassLoader, ComponentRendererBuilder, Editor, EditHistory> {
-    id_generator: IdGenerator,
-    project_loader: ProjectLoader,
-    project_writer: ProjectWriter,
-    project_memory: ProjectMemory,
-    root_component_class_memory: RootComponentClassMemory,
-    component_class_loader: ComponentClassLoader,
-    component_renderer_builder: ComponentRendererBuilder,
-    editor: Editor,
-    edit_history: EditHistory,
+    id_generator: Arc<IdGenerator>,
+    project_loader: Arc<ProjectLoader>,
+    project_writer: Arc<ProjectWriter>,
+    project_memory: Arc<ProjectMemory>,
+    root_component_class_memory: Arc<RootComponentClassMemory>,
+    component_class_loader: Arc<ComponentClassLoader>,
+    component_renderer_builder: Arc<ComponentRendererBuilder>,
+    editor: Arc<Editor>,
+    edit_history: Arc<EditHistory>,
+}
+
+impl<IdGenerator, ProjectLoader, ProjectWriter, ProjectMemory, RootComponentClassMemory, ComponentClassLoader, ComponentRendererBuilder, Editor, EditHistory>
+    MPDeltaCore<IdGenerator, ProjectLoader, ProjectWriter, ProjectMemory, RootComponentClassMemory, ComponentClassLoader, ComponentRendererBuilder, Editor, EditHistory>
+{
+    pub fn new(
+        id_generator: Arc<IdGenerator>,
+        project_loader: Arc<ProjectLoader>,
+        project_writer: Arc<ProjectWriter>,
+        project_memory: Arc<ProjectMemory>,
+        root_component_class_memory: Arc<RootComponentClassMemory>,
+        component_class_loader: Arc<ComponentClassLoader>,
+        component_renderer_builder: Arc<ComponentRendererBuilder>,
+        editor: Arc<Editor>,
+        edit_history: Arc<EditHistory>,
+    ) -> MPDeltaCore<IdGenerator, ProjectLoader, ProjectWriter, ProjectMemory, RootComponentClassMemory, ComponentClassLoader, ComponentRendererBuilder, Editor, EditHistory> {
+        MPDeltaCore {
+            id_generator,
+            project_loader,
+            project_writer,
+            project_memory,
+            root_component_class_memory,
+            component_class_loader,
+            component_renderer_builder,
+            editor,
+            edit_history,
+        }
+    }
 }
 
 #[async_trait]
@@ -348,15 +377,15 @@ mod tests {
             }
         }
         let core = MPDeltaCore {
-            id_generator: (),
-            project_loader: PL1::default(),
-            project_writer: (),
-            project_memory: PM::default(),
-            root_component_class_memory: (),
-            component_class_loader: (),
-            component_renderer_builder: (),
-            editor: (),
-            edit_history: (),
+            id_generator: Arc::new(()),
+            project_loader: Arc::new(PL1::default()),
+            project_writer: Arc::new(()),
+            project_memory: Arc::new(PM::default()),
+            root_component_class_memory: Arc::new(()),
+            component_class_loader: Arc::new(()),
+            component_renderer_builder: Arc::new(()),
+            editor: Arc::new(()),
+            edit_history: Arc::new(()),
         };
         assert_eq!(*LoadProjectUsecase::load_project(&core, "1").await.unwrap().upgrade().unwrap().read().await, *Project::new_empty(Uuid::from_u128(0)).read().await);
         assert_eq!(*LoadProjectUsecase::load_project(&core, "1").await.unwrap().upgrade().unwrap().read().await, *Project::new_empty(Uuid::from_u128(0)).read().await);
@@ -381,15 +410,15 @@ mod tests {
             }
         }
         let core = MPDeltaCore {
-            id_generator: (),
-            project_loader: PL2::default(),
-            project_writer: (),
-            project_memory: PM::default(),
-            root_component_class_memory: (),
-            component_class_loader: (),
-            component_renderer_builder: (),
-            editor: (),
-            edit_history: (),
+            id_generator: Arc::new(()),
+            project_loader: Arc::new(PL2::default()),
+            project_writer: Arc::new(()),
+            project_memory: Arc::new(PM::default()),
+            root_component_class_memory: Arc::new(()),
+            component_class_loader: Arc::new(()),
+            component_renderer_builder: Arc::new(()),
+            editor: Arc::new(()),
+            edit_history: Arc::new(()),
         };
         assert!(LoadProjectUsecase::load_project(&core, "1").await.is_err());
     }
@@ -408,15 +437,15 @@ mod tests {
             }
         }
         let core = MPDeltaCore {
-            id_generator: (),
-            project_loader: (),
-            project_writer: PW1::default(),
-            project_memory: (),
-            root_component_class_memory: (),
-            component_class_loader: (),
-            component_renderer_builder: (),
-            editor: (),
-            edit_history: (),
+            id_generator: Arc::new(()),
+            project_loader: Arc::new(()),
+            project_writer: Arc::new(PW1::default()),
+            project_memory: Arc::new(()),
+            root_component_class_memory: Arc::new(()),
+            component_class_loader: Arc::new(()),
+            component_renderer_builder: Arc::new(()),
+            editor: Arc::new(()),
+            edit_history: Arc::new(()),
         };
         let project = Project::new_empty(Uuid::nil());
         let project = StaticPointerOwned::reference(&project).clone();
@@ -438,15 +467,15 @@ mod tests {
             }
         }
         let core = MPDeltaCore {
-            id_generator: (),
-            project_loader: (),
-            project_writer: PW2::default(),
-            project_memory: (),
-            root_component_class_memory: (),
-            component_class_loader: (),
-            component_renderer_builder: (),
-            editor: (),
-            edit_history: (),
+            id_generator: Arc::new(()),
+            project_loader: Arc::new(()),
+            project_writer: Arc::new(PW2::default()),
+            project_memory: Arc::new(()),
+            root_component_class_memory: Arc::new(()),
+            component_class_loader: Arc::new(()),
+            component_renderer_builder: Arc::new(()),
+            editor: Arc::new(()),
+            edit_history: Arc::new(()),
         };
         assert!(WriteProjectUsecase::write_project(&core, &project, "").await.is_err());
         assert_eq!(core.project_writer.0.load(atomic::Ordering::SeqCst), 1);
@@ -475,15 +504,15 @@ mod tests {
             }
         }
         let core = MPDeltaCore {
-            id_generator: ID::default(),
-            project_loader: (),
-            project_writer: (),
-            project_memory: PM::default(),
-            root_component_class_memory: (),
-            component_class_loader: (),
-            component_renderer_builder: (),
-            editor: (),
-            edit_history: (),
+            id_generator: Arc::new(ID::default()),
+            project_loader: Arc::new(()),
+            project_writer: Arc::new(()),
+            project_memory: Arc::new(PM::default()),
+            root_component_class_memory: Arc::new(()),
+            component_class_loader: Arc::new(()),
+            component_renderer_builder: Arc::new(()),
+            editor: Arc::new(()),
+            edit_history: Arc::new(()),
         };
         assert_eq!(*NewProjectUsecase::new_project(&core).await.upgrade().unwrap().read().await, *Project::new_empty(Uuid::from_u128(0)).read().await);
         assert_eq!(*NewProjectUsecase::new_project(&core).await.upgrade().unwrap().read().await, *Project::new_empty(Uuid::from_u128(1)).read().await);
@@ -526,15 +555,15 @@ mod tests {
             }
         }
         let core = MPDeltaCore {
-            id_generator: ID::default(),
-            project_loader: (),
-            project_writer: (),
-            project_memory: (),
-            root_component_class_memory: RM::default(),
-            component_class_loader: (),
-            component_renderer_builder: (),
-            editor: (),
-            edit_history: (),
+            id_generator: Arc::new(ID::default()),
+            project_loader: Arc::new(()),
+            project_writer: Arc::new(()),
+            project_memory: Arc::new(()),
+            root_component_class_memory: Arc::new(RM::default()),
+            component_class_loader: Arc::new(()),
+            component_renderer_builder: Arc::new(()),
+            editor: Arc::new(()),
+            edit_history: Arc::new(()),
         };
         assert_eq!(*NewRootComponentClassUsecase::new_root_component_class(&core).await.upgrade().unwrap().read().await, *RootComponentClass::new_empty(Uuid::from_u128(0)).read().await);
         assert_eq!(*NewRootComponentClassUsecase::new_root_component_class(&core).await.upgrade().unwrap().read().await, *RootComponentClass::new_empty(Uuid::from_u128(1)).read().await);
@@ -588,15 +617,15 @@ mod tests {
         let component1 = StaticPointerOwned::reference(&c1).clone();
         let component2 = StaticPointerOwned::reference(&c2).clone();
         let core = MPDeltaCore {
-            id_generator: (),
-            project_loader: (),
-            project_writer: (),
-            project_memory: (),
-            root_component_class_memory: RM(RwLock::new(vec![(None, c0), (Some(StaticPointerOwned::reference(&project1).clone()), c1), (Some(StaticPointerOwned::reference(&project0).clone()), c2)])),
-            component_class_loader: (),
-            component_renderer_builder: (),
-            editor: (),
-            edit_history: (),
+            id_generator: Arc::new(()),
+            project_loader: Arc::new(()),
+            project_writer: Arc::new(()),
+            project_memory: Arc::new(()),
+            root_component_class_memory: Arc::new(RM(RwLock::new(vec![(None, c0), (Some(StaticPointerOwned::reference(&project1).clone()), c1), (Some(StaticPointerOwned::reference(&project0).clone()), c2)]))),
+            component_class_loader: Arc::new(()),
+            component_renderer_builder: Arc::new(()),
+            editor: Arc::new(()),
+            edit_history: Arc::new(()),
         };
 
         SetOwnerForRootComponentClassUsecase::set_owner_for_root_component_class(&core, &component0, StaticPointerOwned::reference(&project0)).await;
@@ -630,15 +659,15 @@ mod tests {
             }
         }
         let core = MPDeltaCore {
-            id_generator: (),
-            project_loader: (),
-            project_writer: (),
-            project_memory: PM(RwLock::new(vec![Project::new_empty(Uuid::from_u128(0)), Project::new_empty(Uuid::from_u128(1)), Project::new_empty(Uuid::from_u128(2))])),
-            root_component_class_memory: (),
-            component_class_loader: (),
-            component_renderer_builder: (),
-            editor: (),
-            edit_history: (),
+            id_generator: Arc::new(()),
+            project_loader: Arc::new(()),
+            project_writer: Arc::new(()),
+            project_memory: Arc::new(PM(RwLock::new(vec![Project::new_empty(Uuid::from_u128(0)), Project::new_empty(Uuid::from_u128(1)), Project::new_empty(Uuid::from_u128(2))]))),
+            root_component_class_memory: Arc::new(()),
+            component_class_loader: Arc::new(()),
+            component_renderer_builder: Arc::new(()),
+            editor: Arc::new(()),
+            edit_history: Arc::new(()),
         };
         let projects = GetLoadedProjectsUsecase::get_loaded_projects(&core).await;
         assert_eq!(projects.len(), 3);
@@ -676,21 +705,21 @@ mod tests {
         let project1 = Project::new_empty(Uuid::from_u128(0));
         let project2 = Project::new_empty(Uuid::from_u128(0));
         let core = MPDeltaCore {
-            id_generator: (),
-            project_loader: (),
-            project_writer: (),
-            project_memory: (),
-            root_component_class_memory: RM(RwLock::new(vec![
+            id_generator: Arc::new(()),
+            project_loader: Arc::new(()),
+            project_writer: Arc::new(()),
+            project_memory: Arc::new(()),
+            root_component_class_memory: Arc::new(RM(RwLock::new(vec![
                 (None, RootComponentClass::new_empty(Uuid::from_u128(0))),
                 (Some(StaticPointerOwned::reference(&project0).clone()), RootComponentClass::new_empty(Uuid::from_u128(0))),
                 (Some(StaticPointerOwned::reference(&project0).clone()), RootComponentClass::new_empty(Uuid::from_u128(1))),
                 (Some(StaticPointerOwned::reference(&project1).clone()), RootComponentClass::new_empty(Uuid::from_u128(2))),
                 (Some(StaticPointerOwned::reference(&project2).clone()), RootComponentClass::new_empty(Uuid::from_u128(3))),
-            ])),
-            component_class_loader: (),
-            component_renderer_builder: (),
-            editor: (),
-            edit_history: (),
+            ]))),
+            component_class_loader: Arc::new(()),
+            component_renderer_builder: Arc::new(()),
+            editor: Arc::new(()),
+            edit_history: Arc::new(()),
         };
         let child0 = GetRootComponentClassesUsecase::get_root_component_classes(&core, StaticPointerOwned::reference(&project0)).await;
         assert_eq!(child0.len(), 2);
@@ -712,15 +741,15 @@ mod tests {
             }
         }
         let core = MPDeltaCore {
-            id_generator: (),
-            project_loader: (),
-            project_writer: (),
-            project_memory: (),
-            root_component_class_memory: (),
-            component_class_loader: CL,
-            component_renderer_builder: (),
-            editor: (),
-            edit_history: (),
+            id_generator: Arc::new(()),
+            project_loader: Arc::new(()),
+            project_writer: Arc::new(()),
+            project_memory: Arc::new(()),
+            root_component_class_memory: Arc::new(()),
+            component_class_loader: Arc::new(CL),
+            component_renderer_builder: Arc::new(()),
+            editor: Arc::new(()),
+            edit_history: Arc::new(()),
         };
         assert_eq!(GetAvailableComponentClassesUsecase::get_available_component_classes(&core).await.len(), 0);
     }
@@ -779,15 +808,15 @@ mod tests {
             }
         }
         let core = MPDeltaCore {
-            id_generator: (),
-            project_loader: (),
-            project_writer: (),
-            project_memory: (),
-            root_component_class_memory: (),
-            component_class_loader: (),
-            component_renderer_builder: CR,
-            editor: (),
-            edit_history: (),
+            id_generator: Arc::new(()),
+            project_loader: Arc::new(()),
+            project_writer: Arc::new(()),
+            project_memory: Arc::new(()),
+            root_component_class_memory: Arc::new(()),
+            component_class_loader: Arc::new(()),
+            component_renderer_builder: Arc::new(CR),
+            editor: Arc::new(()),
+            edit_history: Arc::new(()),
         };
         let _: RD = RealtimeRenderComponentUsecase::render_component(&core, &StaticPointer::new()).await.unwrap();
     }

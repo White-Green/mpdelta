@@ -8,3 +8,4 @@ edition = "2021"
 [dependencies]
 mpdelta_core = { path = "../mpdelta_core" }
 egui = "0.18.1"
+tokio = { version = "1.19.2", features = ["full"] }

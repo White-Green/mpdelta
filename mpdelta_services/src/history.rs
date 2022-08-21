@@ -43,6 +43,12 @@ impl<Key: Hash + Eq, Log> HistoryStore<Key, Log> {
 
 pub struct InMemoryEditHistoryStore<T, Log>(Mutex<HistoryStore<(StaticPointer<RwLock<RootComponentClass<T>>>, Option<StaticPointer<RwLock<ComponentInstance<T>>>>), Arc<Log>>>);
 
+impl<T, Log> InMemoryEditHistoryStore<T, Log> {
+    pub fn new(max_history: usize) -> InMemoryEditHistoryStore<T, Log> {
+        InMemoryEditHistoryStore(Mutex::new(HistoryStore::new(max_history)))
+    }
+}
+
 #[async_trait]
 impl<T, Log: Send + Sync> EditHistory<T, Log> for InMemoryEditHistoryStore<T, Log> {
     async fn push_history(&self, root: &StaticPointer<RwLock<RootComponentClass<T>>>, target: Option<&StaticPointer<RwLock<ComponentInstance<T>>>>, log: Log) {

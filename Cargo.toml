@@ -7,6 +7,7 @@ edition = "2021"
 
 [workspace]
 members = [
+    ".",
     "mpdelta_build_utils/rust_gpu_builder",
     "mpdelta_build_utils/shader_builder",
     "mpdelta_core",
@@ -20,6 +21,7 @@ members = [
     "mpdelta_video_renderer_vulkano/shaders/texture_drawing_shader",
 ]
 default-members = [
+    ".",
     "mpdelta_build_utils/shader_builder",
     "mpdelta_core",
     "mpdelta_core_vulkano",
@@ -35,8 +37,13 @@ vulkano = "0.30.0"
 vulkano-win = "0.30.0"
 winit = "0.26.0"
 mpdelta_core = { path = "mpdelta_core" }
+mpdelta_core_vulkano = { path = "mpdelta_core_vulkano" }
+mpdelta_services = { path = "mpdelta_services" }
+mpdelta_renderer = { path = "mpdelta_renderer" }
+mpdelta_video_renderer_vulkano = { path = "mpdelta_video_renderer_vulkano" }
 mpdelta_gui = { path = "mpdelta_gui" }
 mpdelta_gui_vulkano = { path = "mpdelta_gui_vulkano" }
+tokio = { version = "1.19.2", features = ["full"] }
 
 [profile.dev]
 incremental = false

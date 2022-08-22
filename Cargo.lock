@@ -1095,6 +1095,7 @@ dependencies = [
  "texture_drawing_shader",
  "tokio",
  "vulkano",
+ "vulkano-shaders",
 ]
 
 [[package]]

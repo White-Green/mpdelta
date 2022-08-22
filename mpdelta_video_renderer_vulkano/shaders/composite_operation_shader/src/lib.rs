@@ -14,28 +14,28 @@ pub struct CompositeOperationConstant {
 #[cfg(feature = "shader")]
 pub mod shader {
     use crate::CompositeOperationConstant;
-    use spirv_std::glam::{UVec2, Vec4, Vec4Swizzles};
+    use spirv_std::glam::{UVec2, UVec3, Vec3Swizzles, Vec4, Vec4Swizzles};
     #[cfg(not(target_arch = "spirv"))]
     use spirv_std::macros::spirv;
     use spirv_std::Image;
 
-    #[spirv(compute(threads(32, 32)))]
+    #[spirv(compute(threads(32, 32, 1)))]
     pub fn main(
-        #[spirv(global_invocation_id)] id: UVec2,
-        #[spirv(descriptor_set = 0, binding = 0)] result_image: &Image!(2D, format=rgba8),
-        #[spirv(descriptor_set = 1, binding = 0)] image: &Image!(2D, format=rgba8),
-        #[spirv(descriptor_set = 1, binding = 0)] stencil: &Image!(2D, format=r32ui),
+        #[spirv(global_invocation_id)] id: UVec3,
+        #[spirv(descriptor_set = 0, binding = 0)] result_image: &mut Image!(2D, format=rgba8, sampled=false),
+        #[spirv(descriptor_set = 1, binding = 0)] image: &Image!(2D, format=rgba8, sampled=false),
+        #[spirv(descriptor_set = 1, binding = 1)] stencil: &Image!(2D, format=r32ui, sampled=false),
         #[spirv(push_constant)] constant: &CompositeOperationConstant,
     ) {
         if constant.image_width <= id.x || constant.image_height <= id.y {
             return;
         }
-        let stencil: UVec2 = stencil.read(id);
+        let stencil: UVec2 = stencil.read(id.xy());
         if stencil.x == 0 {
             return;
         }
-        let dest_color: Vec4 = result_image.read(id);
-        let src_color: Vec4 = image.read(id);
+        let dest_color: Vec4 = result_image.read(id.xy());
+        let src_color: Vec4 = image.read(id.xy());
         let c_s = src_color.xyz();
         let a_s = src_color.w;
         let c_b = dest_color.xyz();
@@ -79,6 +79,6 @@ pub mod shader {
         let co = a_s * fa * c_s + a_b * fb * c_b;
         let ao = (a_s * fa + a_b * fb).clamp(0.0, 1.0);
         let result_color = if ao == 0.0 { Vec4::new(0., 0., 0., 0.) } else { (co / ao).extend(ao) };
-        unsafe { result_image.write(id, result_color) };
+        unsafe { result_image.write(id.xy(), result_color) };
     }
 }

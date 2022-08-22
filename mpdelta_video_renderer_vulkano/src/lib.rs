@@ -34,15 +34,19 @@ use vulkano::device::{Device, Queue};
 use vulkano::format::ClearValue;
 use vulkano::format::Format;
 use vulkano::image::view::{ImageView, ImageViewCreateInfo};
-use vulkano::image::{AttachmentImage, ImageAccess, ImageAspects, ImageDimensions, ImageSubresourceRange, ImmutableImage, MipmapsCount, StorageImage};
+use vulkano::image::{AttachmentImage, ImageAccess, ImageAspects, ImageDimensions, ImageLayout, ImageSubresourceRange, ImmutableImage, MipmapsCount, StorageImage};
+use vulkano::pipeline::cache::PipelineCache;
+use vulkano::pipeline::graphics::color_blend::ColorBlendState;
 use vulkano::pipeline::graphics::depth_stencil::{CompareOp, DepthStencilState, StencilOp, StencilOpState, StencilOps, StencilState};
 use vulkano::pipeline::graphics::input_assembly::{InputAssemblyState, PrimitiveTopology};
+use vulkano::pipeline::graphics::vertex_input::{BuffersDefinition, VertexInputAttributeDescription, VertexInputBindingDescription, VertexInputRate, VertexInputState};
+use vulkano::pipeline::graphics::viewport::{Scissor, Viewport, ViewportState};
 use vulkano::pipeline::{ComputePipeline, GraphicsPipeline, PartialStateMode, Pipeline, PipelineBindPoint, StateMode};
-use vulkano::render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass};
+use vulkano::render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass};
 use vulkano::sampler::{Sampler, SamplerCreateInfo};
-use vulkano::shader::ShaderModule;
-use vulkano::single_pass_renderpass;
+use vulkano::shader::{ShaderExecution, ShaderModule};
 use vulkano::sync::GpuFuture;
+use vulkano::{impl_vertex, single_pass_renderpass};
 
 #[derive(Debug, Clone)]
 struct SharedResource {
@@ -60,7 +64,7 @@ pub struct MPDeltaVideoRendererBuilder {
 
 impl MPDeltaVideoRendererBuilder {
     pub fn new(device: Arc<Device>, queue: Arc<Queue>) -> MPDeltaVideoRendererBuilder {
-        let (default_image, image_creation_future) = ImmutableImage::from_iter([0u32], ImageDimensions::Dim2d { width: 1, height: 1, array_layers: 0 }, MipmapsCount::One, Format::R8G8B8A8_UNORM, Arc::clone(&queue)).unwrap();
+        let (default_image, image_creation_future) = ImmutableImage::from_iter([0u32], ImageDimensions::Dim2d { width: 1, height: 1, array_layers: 1 }, MipmapsCount::One, Format::R8G8B8A8_UNORM, Arc::clone(&queue)).unwrap();
         let render_pass = single_pass_renderpass!(
             Arc::clone(&device),
             attachments: {
@@ -78,42 +82,32 @@ impl MPDeltaVideoRendererBuilder {
                 }
             },
             pass: {
-                color: [color],
-                depth_stencil: {stencil}
+                color: [color, stencil],
+                depth_stencil: {}
             }
         )
         .unwrap();
         let texture_drawing_shader = unsafe { ShaderModule::from_bytes(Arc::clone(&device), include_bytes!(concat!(env!("OUT_DIR"), "/texture_drawing_shader.spv"))).unwrap() };
+        let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
         let texture_drawing_pipeline = GraphicsPipeline::start()
+            .render_pass(subpass.clone())
             .vertex_shader(texture_drawing_shader.entry_point("shader::main_vs").unwrap(), ())
-            .fragment_shader(texture_drawing_shader.entry_point("shader::main_fs").unwrap(), ()) //StencilとTopology
-            .depth_stencil_state(DepthStencilState {
-                depth: None,
-                depth_bounds: None,
-                stencil: Some(StencilState {
-                    enable_dynamic: false,
-                    front: StencilOpState {
-                        ops: StateMode::Fixed(StencilOps {
-                            fail_op: StencilOp::Keep,
-                            pass_op: StencilOp::IncrementAndClamp,
-                            depth_fail_op: StencilOp::Keep,
-                            compare_op: CompareOp::Always,
-                        }),
-                        compare_mask: StateMode::Fixed(1),
-                        write_mask: StateMode::Fixed(1),
-                        reference: StateMode::Fixed(1),
-                    },
-                    back: StencilOpState::default(),
-                }),
-            })
+            .fragment_shader(texture_drawing_shader.entry_point("shader::main_fs").unwrap(), ())
             .input_assembly_state(InputAssemblyState {
                 topology: PartialStateMode::Fixed(PrimitiveTopology::TriangleStrip),
                 primitive_restart_enable: StateMode::Fixed(false),
             })
+            .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
+            .vertex_input_state(
+                VertexInputState::new()
+                    .binding(0, VertexInputBindingDescription { stride: 1, input_rate: VertexInputRate::Vertex })
+                    .attribute(0, VertexInputAttributeDescription { binding: 0, format: Format::R32G32_SFLOAT, offset: 0 }),
+            )
             .build(Arc::clone(&device))
             .unwrap();
         let composite_operation_shader = unsafe { ShaderModule::from_bytes(Arc::clone(&device), include_bytes!(concat!(env!("OUT_DIR"), "/composite_operation_shader.spv"))).unwrap() };
-        let composite_operation_pipeline = ComputePipeline::new(Arc::clone(&device), composite_operation_shader.entry_point("shader::main").unwrap(), &(), None, |_| {}).unwrap();
+
+        let composite_operation_pipeline = ComputePipeline::new(Arc::clone(&device), (composite_operation_shader.entry_point_with_execution("shader::main", vulkano::shader::spirv::ExecutionModel::GLCompute).unwrap()), &(), None, |_| {}).unwrap();
         image_creation_future.then_signal_fence().wait(None).unwrap();
         MPDeltaVideoRendererBuilder {
             default_image: ImageType(default_image),
@@ -334,6 +328,14 @@ fn render<Audio: Clone + Send + Sync + 'static, T: ParameterValueType<'static, I
                     )
                     .unwrap();
                 builder.bind_pipeline_graphics(Arc::clone(&shared_resource.texture_drawing_pipeline));
+                builder.set_viewport(
+                    0,
+                    [Viewport {
+                        origin: [0., 0.],
+                        dimensions: [required_size.0 as f32, required_size.1 as f32],
+                        depth_range: 0.0..1.0,
+                    }],
+                );
                 builder.push_constants(Arc::clone(shared_resource.texture_drawing_pipeline.layout()), 0, TextureDrawingConstant { transform_matrix });
                 builder.bind_descriptor_sets(
                     PipelineBindPoint::Graphics,

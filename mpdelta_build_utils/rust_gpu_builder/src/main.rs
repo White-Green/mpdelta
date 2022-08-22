@@ -1,28 +1,31 @@
 use clap::Parser;
-use spirv_builder::{MetadataPrintout, SpirvBuilder};
+use spirv_builder::{Capability, MetadataPrintout, SpirvBuilder};
 use std::error::Error;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
 struct Args {
-    #[clap(short, long)]
+    #[clap(long)]
     base: PathBuf,
-    #[clap(short, long)]
+    #[clap(long)]
     out_dir: PathBuf,
-    #[clap(short, long = "crate")]
-    crates: Vec<String>,
+    #[clap(long = "crate")]
+    crate_path: PathBuf,
+    #[clap(long = "capability")]
+    capabilities: Vec<String>,
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
     println!("cargo:rerun-if-changed={}", env!("CARGO_MANIFEST_DIR"));
-    let Args { base, out_dir, crates } = Args::parse();
-    for crate_path in crates {
-        println!("cargo:rerun-if-changed={}", base.join(&crate_path).display());
-        let result = SpirvBuilder::new(base.join(&crate_path), "spirv-unknown-spv1.5").print_metadata(MetadataPrintout::Full).build()?;
-        let spv_file = result.module.unwrap_single();
-        fs::copy(spv_file, out_dir.join(Path::new(&crate_path).iter().next_back().unwrap()).with_extension("spv"))?;
-    }
+    let Args { base, out_dir, crate_path, capabilities } = Args::parse();
+    println!("cargo:rerun-if-changed={}", base.join(&crate_path).display());
+    let spirv_builder = SpirvBuilder::new(base.join(&crate_path), "spirv-unknown-spv1.3");
+    let spirv_builder = capabilities.into_iter().fold(Ok(spirv_builder), |builder, capability| Ok(builder?.capability(Capability::from_str(&capability)?))).map_err(|()| "Capability parse error")?;
+    let result = spirv_builder.print_metadata(MetadataPrintout::Full).build()?;
+    let spv_file = result.module.unwrap_single();
+    fs::copy(spv_file, out_dir.join(Path::new(&crate_path).iter().next_back().unwrap()).with_extension("spv"))?;
     Ok(())
 }

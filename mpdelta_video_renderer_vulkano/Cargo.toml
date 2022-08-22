@@ -12,6 +12,7 @@ mpdelta_renderer = { path = "../mpdelta_renderer" }
 composite_operation_shader = { path = "shaders/composite_operation_shader" }
 texture_drawing_shader = { path = "shaders/texture_drawing_shader" }
 vulkano = "0.30.0"
+vulkano-shaders = { version = "0.30.0", features = ["shaderc-build-from-source"] }
 async-trait = "0.1.56"
 tokio = { version = "1.19.2", features = ["full"] }
 dashmap = "5.3.4"

@@ -15,9 +15,10 @@ use mpdelta_video_renderer_vulkano::MPDeltaVideoRendererBuilder;
 use std::sync::Arc;
 use tokio::runtime::Runtime;
 use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
-use vulkano::device::{Device, DeviceCreateInfo, Queue, QueueCreateInfo};
+use vulkano::device::{Device, DeviceCreateInfo, Features, Queue, QueueCreateInfo};
 use vulkano::instance::{Instance, InstanceCreateInfo};
 use vulkano::swapchain::Surface;
+use vulkano::Version;
 use vulkano_win::VkSurfaceBuild;
 use winit::event_loop::EventLoop;
 use winit::window::{Window, WindowBuilder};
@@ -89,6 +90,7 @@ fn initialize_graphics() -> (Arc<Instance>, Arc<Device>, Arc<Queue>, EventLoop<(
     let required_extensions = vulkano_win::required_extensions().union(&mpdelta_gui_vulkano::required_extensions());
     let instance = Instance::new(InstanceCreateInfo {
         enabled_extensions: required_extensions,
+        max_api_version: Some(Version::V1_1),
         ..Default::default()
     })
     .unwrap();
@@ -114,6 +116,7 @@ fn initialize_graphics() -> (Arc<Instance>, Arc<Device>, Arc<Queue>, EventLoop<(
         physical_device,
         DeviceCreateInfo {
             enabled_extensions: device_extensions,
+            enabled_features: Features { ..Features::none() },
             queue_create_infos: vec![QueueCreateInfo::family(queue_family)],
             ..Default::default()
         },

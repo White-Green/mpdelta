@@ -71,6 +71,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "arc-swap"
+version = "1.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "983cd8b9d4b02a6dc6ffa557262eb5858a27a0038ffffe21a0f133eaa819a164"
+
+[[package]]
 name = "ash"
 version = "0.37.0+1.3.209"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1030,6 +1036,8 @@ dependencies = [
 name = "mpdelta_gui"
 version = "0.1.0"
 dependencies = [
+ "arc-swap",
+ "bitflags",
  "egui",
  "mpdelta_core",
  "tokio",

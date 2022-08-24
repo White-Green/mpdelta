@@ -1,22 +1,26 @@
 use crate::viewmodel::{MPDeltaViewModel, ViewModelParams};
-use egui::{Button, Context, Frame, ScrollArea, Style};
+use crate::ImageRegister;
+use egui::{Button, Context, Frame, ScrollArea, Style, TextureId, Vec2, Widget};
 use mpdelta_core::component::parameter::ParameterValueType;
 use mpdelta_core::usecase::{
-    EditUsecase, GetAvailableComponentClassesUsecase, GetLoadedProjectsUsecase, GetRootComponentClassesUsecase, LoadProjectUsecase, NewProjectUsecase, NewRootComponentClassUsecase, RealtimeRenderComponentUsecase, RedoUsecase, SetOwnerForRootComponentClassUsecase, UndoUsecase, WriteProjectUsecase,
+    EditUsecase, GetAvailableComponentClassesUsecase, GetLoadedProjectsUsecase, GetRootComponentClassesUsecase, LoadProjectUsecase, NewProjectUsecase, NewRootComponentClassUsecase, RealtimeComponentRenderer, RealtimeRenderComponentUsecase, RedoUsecase, SetOwnerForRootComponentClassUsecase,
+    UndoUsecase, WriteProjectUsecase,
 };
+use std::hash::SipHasher;
 
-pub trait Gui {
-    fn ui(&mut self, ctx: &Context);
+pub trait Gui<T> {
+    fn ui(&mut self, ctx: &Context, image: &mut impl ImageRegister<T>);
 }
 
-pub struct MPDeltaGUI<T> {
-    view_model: MPDeltaViewModel<T>,
+pub struct MPDeltaGUI<T, R> {
+    view_model: MPDeltaViewModel<T, R>,
+    previous_preview: Option<TextureId>,
 }
 
-impl<T> MPDeltaGUI<T> {
+impl<T> MPDeltaGUI<T, ()> {
     pub fn new<Edit, GetAvailableComponentClasses, GetLoadedProjects, GetRootComponentClasses, LoadProject, NewProject, NewRootComponentClass, RealtimeRenderComponent, Redo, SetOwnerForRootComponentClass, Undo, WriteProject>(
         view_model_params: ViewModelParams<Edit, GetAvailableComponentClasses, GetLoadedProjects, GetRootComponentClasses, LoadProject, NewProject, NewRootComponentClass, RealtimeRenderComponent, Redo, SetOwnerForRootComponentClass, Undo, WriteProject>,
-    ) -> MPDeltaGUI<T>
+    ) -> MPDeltaGUI<T, RealtimeRenderComponent::Renderer>
     where
         T: ParameterValueType<'static>,
         Edit: EditUsecase<T> + Send + Sync + 'static,
@@ -27,6 +31,7 @@ impl<T> MPDeltaGUI<T> {
         NewProject: NewProjectUsecase<T> + Send + Sync + 'static,
         NewRootComponentClass: NewRootComponentClassUsecase<T> + Send + Sync + 'static,
         RealtimeRenderComponent: RealtimeRenderComponentUsecase<T> + Send + Sync + 'static,
+        RealtimeRenderComponent::Renderer: Send + Sync + 'static,
         Redo: RedoUsecase<T> + Send + Sync + 'static,
         SetOwnerForRootComponentClass: SetOwnerForRootComponentClassUsecase<T> + Send + Sync + 'static,
         Undo: UndoUsecase<T> + Send + Sync + 'static,
@@ -34,12 +39,13 @@ impl<T> MPDeltaGUI<T> {
     {
         MPDeltaGUI {
             view_model: MPDeltaViewModel::new::<Edit, GetAvailableComponentClasses, GetLoadedProjects, GetRootComponentClasses, LoadProject, NewProject, NewRootComponentClass, RealtimeRenderComponent, Redo, SetOwnerForRootComponentClass, Undo, WriteProject>(view_model_params),
+            previous_preview: None,
         }
     }
 }
 
-impl<T> Gui for MPDeltaGUI<T> {
-    fn ui(&mut self, ctx: &Context) {
+impl<T: ParameterValueType<'static>, R: RealtimeComponentRenderer<T>> Gui<T::Image> for MPDeltaGUI<T, R> {
+    fn ui(&mut self, ctx: &Context, image: &mut impl ImageRegister<T::Image>) {
         egui::TopBottomPanel::top("menu").show(ctx, |ui| {
             egui::menu::bar(ui, |ui| {
                 ui.menu_button("File", |ui| {
@@ -110,7 +116,18 @@ impl<T> Gui for MPDeltaGUI<T> {
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.label("Preview");
+            if let Some(img) = self.previous_preview {
+                image.unregister_image(img);
+            }
+            if let Some(img) = self.view_model.get_preview_image() {
+                let texture_id = image.register_image(img);
+                let Vec2 { x, y } = ui.available_size();
+                let (x, y) = (x.max(y * 16. / 9.), y.max(x * 9. / 16.));
+                ui.image(texture_id, Vec2 { x, y });
+                self.previous_preview = Some(texture_id);
+            } else {
+                self.previous_preview = None;
+            }
         });
     }
 }

@@ -1184,6 +1184,7 @@ dependencies = [
  "egui",
  "egui-winit",
  "egui_winit_vulkano",
+ "mpdelta_core_vulkano",
  "mpdelta_gui",
  "take_mut",
  "vulkano",

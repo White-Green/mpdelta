@@ -1,10 +1,11 @@
-use arc_swap::ArcSwap;
+use arc_swap::{ArcSwap, ArcSwapOption};
 use bitflags::bitflags;
 use mpdelta_core::component::parameter::ParameterValueType;
 use mpdelta_core::project::{Project, RootComponentClass};
 use mpdelta_core::ptr::StaticPointer;
 use mpdelta_core::usecase::{
-    EditUsecase, GetAvailableComponentClassesUsecase, GetLoadedProjectsUsecase, GetRootComponentClassesUsecase, LoadProjectUsecase, NewProjectUsecase, NewRootComponentClassUsecase, RealtimeRenderComponentUsecase, RedoUsecase, SetOwnerForRootComponentClassUsecase, UndoUsecase, WriteProjectUsecase,
+    EditUsecase, GetAvailableComponentClassesUsecase, GetLoadedProjectsUsecase, GetRootComponentClassesUsecase, LoadProjectUsecase, NewProjectUsecase, NewRootComponentClassUsecase, RealtimeComponentRenderer, RealtimeRenderComponentUsecase, RedoUsecase, SetOwnerForRootComponentClassUsecase,
+    UndoUsecase, WriteProjectUsecase,
 };
 use std::ops::Deref;
 use std::sync::atomic::AtomicUsize;
@@ -66,18 +67,17 @@ impl<Edit, GetAvailableComponentClasses, GetLoadedProjects, GetRootComponentClas
     }
 }
 
-pub struct MPDeltaViewModel<T> {
+pub struct MPDeltaViewModel<T, R> {
     handle: JoinHandle<()>,
     message_sender: UnboundedSender<ViewModelMessage>,
-    inner: Arc<ViewModelInner<T>>,
+    inner: Arc<ViewModelInner<T, R>>,
 }
 
-impl<T> MPDeltaViewModel<T> {
+impl<T: ParameterValueType<'static>> MPDeltaViewModel<T, ()> {
     pub fn new<Edit, GetAvailableComponentClasses, GetLoadedProjects, GetRootComponentClasses, LoadProject, NewProject, NewRootComponentClass, RealtimeRenderComponent, Redo, SetOwnerForRootComponentClass, Undo, WriteProject>(
         params: ViewModelParams<Edit, GetAvailableComponentClasses, GetLoadedProjects, GetRootComponentClasses, LoadProject, NewProject, NewRootComponentClass, RealtimeRenderComponent, Redo, SetOwnerForRootComponentClass, Undo, WriteProject>,
-    ) -> MPDeltaViewModel<T>
+    ) -> MPDeltaViewModel<T, RealtimeRenderComponent::Renderer>
     where
-        T: ParameterValueType<'static>,
         Edit: EditUsecase<T> + Send + Sync + 'static,
         GetAvailableComponentClasses: GetAvailableComponentClassesUsecase<T> + Send + Sync + 'static,
         GetLoadedProjects: GetLoadedProjectsUsecase<T> + Send + Sync + 'static,
@@ -86,6 +86,7 @@ impl<T> MPDeltaViewModel<T> {
         NewProject: NewProjectUsecase<T> + Send + Sync + 'static,
         NewRootComponentClass: NewRootComponentClassUsecase<T> + Send + Sync + 'static,
         RealtimeRenderComponent: RealtimeRenderComponentUsecase<T> + Send + Sync + 'static,
+        RealtimeRenderComponent::Renderer: Send + Sync + 'static,
         Redo: RedoUsecase<T> + Send + Sync + 'static,
         SetOwnerForRootComponentClass: SetOwnerForRootComponentClassUsecase<T> + Send + Sync + 'static,
         Undo: UndoUsecase<T> + Send + Sync + 'static,
@@ -97,7 +98,9 @@ impl<T> MPDeltaViewModel<T> {
         let handle = runtime.spawn(view_model_loop(params, message_receiver, Arc::clone(&inner)));
         MPDeltaViewModel { handle, message_sender, inner }
     }
+}
 
+impl<T: ParameterValueType<'static>, R: RealtimeComponentRenderer<T>> MPDeltaViewModel<T, R> {
     pub fn new_project(&self) {
         self.message_sender.send(ViewModelMessage::NewProject).unwrap();
     }
@@ -129,6 +132,10 @@ impl<T> MPDeltaViewModel<T> {
     pub fn selected_root_component_class(&self) -> usize {
         self.inner.selected_root_component_class.load(atomic::Ordering::Relaxed)
     }
+
+    pub fn get_preview_image(&self) -> Option<T::Image> {
+        self.inner.realtime_renderer.load().as_ref().map(|renderer| renderer.render_frame(0))
+    }
 }
 
 #[derive(Debug)]
@@ -140,25 +147,27 @@ enum ViewModelMessage {
 }
 
 #[derive(Debug)]
-struct ViewModelInner<T> {
+struct ViewModelInner<T, R> {
     projects: ArcSwap<Vec<(StaticPointer<RwLock<Project<T>>>, String)>>,
     selected_project: AtomicUsize,
     root_component_classes: ArcSwap<Vec<(StaticPointer<RwLock<RootComponentClass<T>>>, String)>>,
     selected_root_component_class: AtomicUsize,
+    realtime_renderer: ArcSwapOption<R>,
 }
 
-impl<T> ViewModelInner<T> {
-    fn new() -> ViewModelInner<T> {
+impl<T, R> ViewModelInner<T, R> {
+    fn new() -> ViewModelInner<T, R> {
         ViewModelInner {
             projects: Default::default(),
             selected_project: Default::default(),
             root_component_classes: Default::default(),
             selected_root_component_class: Default::default(),
+            realtime_renderer: Default::default(),
         }
     }
 }
 
-impl<T> Default for ViewModelInner<T> {
+impl<T, R> Default for ViewModelInner<T, R> {
     fn default() -> Self {
         ViewModelInner::new()
     }
@@ -176,7 +185,7 @@ bitflags! {
 async fn view_model_loop<T, Edit, GetAvailableComponentClasses, GetLoadedProjects, GetRootComponentClasses, LoadProject, NewProject, NewRootComponentClass, RealtimeRenderComponent, Redo, SetOwnerForRootComponentClass, Undo, WriteProject>(
     params: ViewModelParams<Edit, GetAvailableComponentClasses, GetLoadedProjects, GetRootComponentClasses, LoadProject, NewProject, NewRootComponentClass, RealtimeRenderComponent, Redo, SetOwnerForRootComponentClass, Undo, WriteProject>,
     mut message_receiver: UnboundedReceiver<ViewModelMessage>,
-    inner: Arc<ViewModelInner<T>>,
+    inner: Arc<ViewModelInner<T, RealtimeRenderComponent::Renderer>>,
 ) where
     T: ParameterValueType<'static>,
     Edit: EditUsecase<T> + Send + Sync + 'static,
@@ -212,6 +221,7 @@ async fn view_model_loop<T, Edit, GetAvailableComponentClasses, GetLoadedProject
         selected_project,
         root_component_classes,
         selected_root_component_class,
+        realtime_renderer,
     } = &*inner;
     while let Some(message) = message_receiver.recv().await {
         let mut update_flags = DataUpdateFlags::empty();

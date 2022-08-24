@@ -1,4 +1,7 @@
+use egui::TextureId;
+use mpdelta_core_vulkano::ImageType;
 use mpdelta_gui::view::Gui;
+use mpdelta_gui::ImageRegister;
 use std::sync::Arc;
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, PrimaryCommandBuffer, RenderPassBeginInfo, SubpassContents};
 use vulkano::device::{Device, DeviceExtensions, Queue};
@@ -13,6 +16,18 @@ use vulkano::sync::{FlushError, GpuFuture};
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::Window;
+
+struct ImageRegisterWrapper<'a>(&'a mut egui_winit_vulkano::Gui);
+
+impl<'a> ImageRegister<ImageType> for ImageRegisterWrapper<'a> {
+    fn register_image(&mut self, texture: ImageType) -> TextureId {
+        self.0.register_user_image_view(ImageView::new_default(texture.0).unwrap())
+    }
+
+    fn unregister_image(&mut self, id: TextureId) {
+        self.0.unregister_user_image(id);
+    }
+}
 
 pub struct MPDeltaGUIVulkano<T> {
     gui: T,
@@ -31,7 +46,7 @@ pub fn device_extensions() -> DeviceExtensions {
     DeviceExtensions { khr_swapchain: true, ..DeviceExtensions::none() }
 }
 
-impl<T: Gui + 'static> MPDeltaGUIVulkano<T> {
+impl<T: Gui<ImageType> + 'static> MPDeltaGUIVulkano<T> {
     pub fn new(device: Arc<Device>, queue: Arc<Queue>, event_loop: EventLoop<()>, surface: Arc<Surface<Window>>, gui: T) -> MPDeltaGUIVulkano<T> {
         let vulkano_gui = egui_winit_vulkano::Gui::new(Arc::clone(&surface), None, Arc::clone(&queue), false);
         MPDeltaGUIVulkano { gui, vulkano_gui, device, queue, event_loop, surface }
@@ -146,7 +161,8 @@ impl<T: Gui + 'static> MPDeltaGUIVulkano<T> {
                         recreate_swapchain = true;
                     }
 
-                    vulkano_gui.immediate_ui(|egui_winit_vulkano::Gui { egui_ctx, .. }| gui.ui(egui_ctx));
+                    vulkano_gui.begin_frame();
+                    gui.ui(&vulkano_gui.context(), &mut ImageRegisterWrapper(&mut vulkano_gui));
 
                     take_mut::take(&mut previous_frame_end, |previous_frame_end| {
                         let future = vulkano_gui.draw_on_image(previous_frame_end.join(acquire_future), Arc::clone(&framebuffers[image_num]) as Arc<_>);

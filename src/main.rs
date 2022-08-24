@@ -80,7 +80,7 @@ fn main() {
         Arc::clone(&core),
     );
     let gui = MPDeltaGUI::new(params);
-    let gui = MPDeltaGUIVulkano::new(instance, device, queue, event_loop, surface, gui);
+    let gui = MPDeltaGUIVulkano::new(device, queue, event_loop, surface, gui);
     gui.main();
     drop(core);
     drop(runtime);

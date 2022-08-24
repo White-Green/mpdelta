@@ -16,7 +16,7 @@ use winit::window::Window;
 
 pub struct MPDeltaGUIVulkano<T> {
     gui: T,
-    instance: Arc<Instance>,
+    vulkano_gui: egui_winit_vulkano::Gui,
     device: Arc<Device>,
     queue: Arc<Queue>,
     event_loop: EventLoop<()>,
@@ -32,12 +32,20 @@ pub fn device_extensions() -> DeviceExtensions {
 }
 
 impl<T: Gui + 'static> MPDeltaGUIVulkano<T> {
-    pub fn new(instance: Arc<Instance>, device: Arc<Device>, queue: Arc<Queue>, event_loop: EventLoop<()>, surface: Arc<Surface<Window>>, gui: T) -> MPDeltaGUIVulkano<T> {
-        MPDeltaGUIVulkano { gui, instance, device, queue, event_loop, surface }
+    pub fn new(device: Arc<Device>, queue: Arc<Queue>, event_loop: EventLoop<()>, surface: Arc<Surface<Window>>, gui: T) -> MPDeltaGUIVulkano<T> {
+        let vulkano_gui = egui_winit_vulkano::Gui::new(Arc::clone(&surface), None, Arc::clone(&queue), false);
+        MPDeltaGUIVulkano { gui, vulkano_gui, device, queue, event_loop, surface }
     }
 
     pub fn main(self) {
-        let MPDeltaGUIVulkano { mut gui, device, queue, event_loop, surface, .. } = self;
+        let MPDeltaGUIVulkano {
+            mut gui,
+            mut vulkano_gui,
+            device,
+            queue,
+            event_loop,
+            surface,
+        } = self;
         let (mut swapchain, images) = {
             let physical_device = device.physical_device();
             let caps = physical_device.surface_capabilities(&surface, Default::default()).unwrap();
@@ -78,38 +86,18 @@ impl<T: Gui + 'static> MPDeltaGUIVulkano<T> {
             .unwrap()
         };
 
-        let render_pass = vulkano::single_pass_renderpass!(
-            Arc::clone(&device),
-            attachments: {
-                color: {
-                    load: Clear,
-                    store: Store,
-                    format: swapchain.image_format(),
-                    samples: 1,
-                }
-            },
-            pass: { color: [color], depth_stencil: {} }
-        )
-        .unwrap();
-
         let mut viewport = Viewport {
             origin: [0.0, 0.0],
             dimensions: [0.0, 0.0],
             depth_range: 0.0..1.0,
         };
 
-        let mut framebuffers = window_size_dependent_setup(&images, render_pass.clone(), &mut viewport);
+        let mut framebuffers = window_size_dependent_setup(&images, &mut viewport);
 
         let mut recreate_swapchain = false;
 
         let none_command = AutoCommandBufferBuilder::primary(Arc::clone(&device), queue.family(), CommandBufferUsage::OneTimeSubmit).unwrap().build().unwrap();
         let mut previous_frame_end = none_command.execute(Arc::clone(&queue)).unwrap().boxed().then_signal_fence();
-
-        let window = surface.window();
-        let egui_ctx = egui::Context::default();
-        let mut egui_winit = egui_winit::State::new(4096, window);
-
-        let mut egui_painter = egui_vulkano::Painter::new(Arc::clone(&device), Arc::clone(&queue), Subpass::from(render_pass.clone(), 0).unwrap()).unwrap();
 
         event_loop.run(move |event, _, control_flow| {
             match event {
@@ -120,7 +108,7 @@ impl<T: Gui + 'static> MPDeltaGUIVulkano<T> {
                     recreate_swapchain = true;
                 }
                 Event::WindowEvent { event, .. } => {
-                    let egui_consumed_event = egui_winit.on_event(&egui_ctx, &event);
+                    let egui_consumed_event = vulkano_gui.update(&event);
                     if !egui_consumed_event {
                         // 必要ならここでイベントハンドリングをする
                     };
@@ -140,7 +128,7 @@ impl<T: Gui + 'static> MPDeltaGUIVulkano<T> {
                         };
 
                         swapchain = new_swapchain;
-                        framebuffers = window_size_dependent_setup(&new_images, render_pass.clone(), &mut viewport);
+                        framebuffers = window_size_dependent_setup(&new_images, &mut viewport);
                         viewport.dimensions = [dimensions[0] as f32, dimensions[1] as f32];
                         recreate_swapchain = false;
                     }
@@ -158,45 +146,11 @@ impl<T: Gui + 'static> MPDeltaGUIVulkano<T> {
                         recreate_swapchain = true;
                     }
 
-                    egui_ctx.begin_frame(egui_winit.take_egui_input(surface.window()));
-
-                    gui.ui(&egui_ctx);
-
-                    let egui_output = egui_ctx.end_frame();
-                    let platform_output = egui_output.platform_output;
-                    egui_winit.handle_platform_output(surface.window(), &egui_ctx, platform_output);
-
-                    let update_textures_future = egui_painter.update_textures(egui_output.textures_delta).expect("egui texture error");
-
-                    let size = surface.window().inner_size();
-                    let sf: f32 = surface.window().scale_factor() as f32;
-
-                    let mut builder = AutoCommandBufferBuilder::primary(Arc::clone(&device), queue.family(), CommandBufferUsage::OneTimeSubmit).unwrap();
-                    builder
-                        .begin_render_pass(
-                            RenderPassBeginInfo {
-                                clear_values: vec![Some(ClearValue::Float([0.; 4]))],
-                                ..RenderPassBeginInfo::framebuffer(Arc::clone(&framebuffers[image_num]))
-                            },
-                            SubpassContents::Inline,
-                        )
-                        .unwrap();
-                    builder.set_viewport(0, [viewport.clone()]);
-                    egui_painter.draw(&mut builder, [(size.width as f32) / sf, (size.height as f32) / sf], &egui_ctx, egui_output.shapes).unwrap();
-
-                    builder.end_render_pass().unwrap();
-
-                    let command_buffer = builder.build().unwrap();
+                    vulkano_gui.immediate_ui(|egui_winit_vulkano::Gui { egui_ctx, .. }| gui.ui(egui_ctx));
 
                     take_mut::take(&mut previous_frame_end, |previous_frame_end| {
-                        let future = previous_frame_end
-                            .join(acquire_future)
-                            .join(update_textures_future)
-                            .then_execute(Arc::clone(&queue), command_buffer)
-                            .unwrap()
-                            .then_swapchain_present(Arc::clone(&queue), Arc::clone(&swapchain), image_num)
-                            .boxed()
-                            .then_signal_fence_and_flush();
+                        let future = vulkano_gui.draw_on_image(previous_frame_end.join(acquire_future), Arc::clone(&framebuffers[image_num]) as Arc<_>);
+                        let future = future.then_swapchain_present(Arc::clone(&queue), Arc::clone(&swapchain), image_num).boxed().then_signal_fence_and_flush();
 
                         match future {
                             Ok(future) => future,
@@ -217,15 +171,9 @@ impl<T: Gui + 'static> MPDeltaGUIVulkano<T> {
     }
 }
 
-fn window_size_dependent_setup(images: &[Arc<SwapchainImage<Window>>], render_pass: Arc<RenderPass>, viewport: &mut Viewport) -> Vec<Arc<Framebuffer>> {
+fn window_size_dependent_setup(images: &[Arc<SwapchainImage<Window>>], viewport: &mut Viewport) -> Vec<Arc<ImageView<SwapchainImage<Window>>>> {
     let dimensions = images[0].dimensions().width_height();
     viewport.dimensions = [dimensions[0] as f32, dimensions[1] as f32];
 
-    images
-        .iter()
-        .map(|image| {
-            let view = ImageView::new_default(image.clone()).unwrap();
-            Framebuffer::new(render_pass.clone(), FramebufferCreateInfo { attachments: vec![view], ..Default::default() }).unwrap()
-        })
-        .collect::<Vec<_>>()
+    images.iter().map(|image| ImageView::new_default(image.clone()).unwrap()).collect::<Vec<_>>()
 }

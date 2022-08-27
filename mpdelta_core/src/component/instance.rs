@@ -21,8 +21,6 @@ pub struct ComponentInstance<T> {
     fixed_parameters: Box<[ParameterValueFixed]>,
     variable_parameters_type: Vec<(String, Parameter<'static, Type>)>,
     variable_parameters: Vec<VariableParameterValue<T, ParameterValue, ParameterNullableValue>>,
-    cached_begin_time: TimelineTime,
-    cached_end_time: TimelineTime,
     processor: Arc<dyn ComponentProcessor<T>>,
 }
 
@@ -78,12 +76,6 @@ impl<T> ComponentInstance<T> {
     }
     pub fn variable_parameters(&self) -> &[VariableParameterValue<T, ParameterValue, ParameterNullableValue>] {
         &self.variable_parameters
-    }
-    pub fn cached_begin_time(&self) -> TimelineTime {
-        self.cached_begin_time
-    }
-    pub fn cached_end_time(&self) -> TimelineTime {
-        self.cached_end_time
     }
     pub fn processor(&self) -> &Arc<dyn ComponentProcessor<T>> {
         &self.processor

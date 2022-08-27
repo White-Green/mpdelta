@@ -28,6 +28,19 @@ impl<T: ?Sized> StaticPointerOwned<T> {
     }
 }
 
+impl<T: Clone> Clone for StaticPointerOwned<T> {
+    fn clone(&self) -> Self {
+        let value = T::clone(self);
+        StaticPointerOwned::new(value)
+    }
+}
+
+impl<T: ?Sized> AsRef<StaticPointer<T>> for StaticPointerOwned<T> {
+    fn as_ref(&self) -> &StaticPointer<T> {
+        &self.0 .0
+    }
+}
+
 impl<T> Default for StaticPointer<T> {
     fn default() -> Self {
         StaticPointer::new()

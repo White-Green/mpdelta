@@ -1,10 +1,20 @@
+use crate::common::time_split_value::TimeSplitValue;
+use crate::component::class::ComponentClass;
 use crate::component::instance::ComponentInstance;
 use crate::component::link::MarkerLink;
-use crate::ptr::{StaticPointer, StaticPointerOwned};
+use crate::component::marker_pin::{MarkerPin, MarkerTime};
+use crate::component::parameter::value::{DefaultEasing, EasingValue};
+use crate::component::parameter::{AudioRequiredParams, ImageRequiredParams, ImageRequiredParamsTransform, Opacity, ParameterType, ParameterValueFixed, VariableParameterValue};
+use crate::component::processor::{ComponentProcessor, ComponentProcessorBody};
+use crate::ptr::{StaticPointer, StaticPointerCow, StaticPointerOwned};
+use crate::time::TimelineTime;
+use async_trait::async_trait;
+use cgmath::{One, Quaternion, Vector3};
 use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
 use std::mem;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
@@ -36,15 +46,102 @@ impl<T> Project<T> {
 
 #[derive(Debug)]
 struct RootComponentClassItem<T> {
+    left: StaticPointerOwned<RwLock<MarkerPin>>,
+    right: StaticPointerOwned<RwLock<MarkerPin>>,
     component: Vec<StaticPointerOwned<RwLock<ComponentInstance<T>>>>,
     link: Vec<StaticPointerOwned<RwLock<MarkerLink>>>,
 }
 
 #[derive(Debug)]
+struct RootComponentClassItemWrapper<T>(RwLock<RootComponentClassItem<T>>);
+
+#[derive(Debug)]
 pub struct RootComponentClass<T> {
     id: Uuid,
     parent: Option<StaticPointer<RwLock<Project<T>>>>,
-    item: Arc<RwLock<RootComponentClassItem<T>>>,
+    item: Arc<RootComponentClassItemWrapper<T>>,
+}
+
+#[async_trait]
+impl<T: 'static> ComponentClass<T> for RootComponentClass<T> {
+    async fn generate_image(&self) -> bool {
+        true
+    }
+
+    async fn generate_audio(&self) -> bool {
+        true
+    }
+
+    async fn fixed_parameter_type(&self) -> &[(String, ParameterType)] {
+        &[]
+    }
+
+    async fn default_variable_parameter_type(&self) -> &[(String, ParameterType)] {
+        &[]
+    }
+
+    async fn instantiate(&self, this: &StaticPointer<RwLock<dyn ComponentClass<T>>>) -> ComponentInstance<T> {
+        let guard = self.item.0.read().await;
+        let marker_left = StaticPointerOwned::reference(&guard.left).clone();
+        let marker_right = StaticPointerOwned::reference(&guard.right).clone();
+        let one = TimeSplitValue::new(marker_left.clone(), EasingValue { from: 1., to: 1., easing: Arc::new(DefaultEasing) }, marker_right.clone());
+        let one_value = VariableParameterValue::Manually(one);
+        let zero = VariableParameterValue::Manually(TimeSplitValue::new(marker_left.clone(), EasingValue { from: 0., to: 0., easing: Arc::new(DefaultEasing) }, marker_right.clone()));
+        let image_required_params = ImageRequiredParams {
+            aspect_ratio: (16, 9),
+            transform: ImageRequiredParamsTransform::Params {
+                scale: Vector3 {
+                    x: one_value.clone(),
+                    y: one_value.clone(),
+                    z: one_value.clone(),
+                },
+                translate: Vector3 { x: zero.clone(), y: zero.clone(), z: zero.clone() },
+                rotate: TimeSplitValue::new(
+                    marker_left.clone(),
+                    EasingValue {
+                        from: Quaternion::one(),
+                        to: Quaternion::one(),
+                        easing: Arc::new(DefaultEasing),
+                    },
+                    marker_right.clone(),
+                ),
+                scale_center: Vector3 { x: zero.clone(), y: zero.clone(), z: zero.clone() },
+                rotate_center: Vector3 { x: zero.clone(), y: zero.clone(), z: zero },
+            },
+            opacity: TimeSplitValue::new(
+                marker_left.clone(),
+                EasingValue {
+                    from: Opacity::OPAQUE,
+                    to: Opacity::OPAQUE,
+                    easing: Arc::new(DefaultEasing),
+                },
+                marker_right.clone(),
+            ),
+            blend_mode: TimeSplitValue::new(marker_left.clone(), Default::default(), marker_right.clone()),
+            composite_operation: TimeSplitValue::new(marker_left.clone(), Default::default(), marker_right.clone()),
+        };
+        let audio_required_params = AudioRequiredParams { volume: vec![one_value.clone(), one_value] };
+        let processor = Arc::clone(&self.item) as _;
+        ComponentInstance::new_no_param(this.clone(), StaticPointerCow::Reference(marker_left), StaticPointerCow::Reference(marker_right), Some(image_required_params), Some(audio_required_params), processor)
+    }
+}
+
+#[async_trait]
+impl<T> ComponentProcessor<T> for RootComponentClassItemWrapper<T> {
+    async fn update_variable_parameter(&self, _: &mut [ParameterValueFixed], _: &mut Vec<(String, ParameterType)>) {}
+
+    async fn natural_length(&self, _: &[ParameterValueFixed]) -> Duration {
+        let guard = self.0.read().await;
+        let time = guard.right.read().await.cached_timeline_time().value() - guard.left.read().await.cached_timeline_time().value();
+        Duration::from_secs_f64(time)
+    }
+
+    async fn get_processor(&self) -> ComponentProcessorBody<'_, T> {
+        let guard = self.0.read().await;
+        let components = guard.component.iter().map(Into::into).collect::<Vec<_>>();
+        let link = guard.link.iter().map(Into::into).collect::<Vec<_>>();
+        ComponentProcessorBody::Component(Arc::new(move |_, _| (components.clone(), link.clone())))
+    }
 }
 
 impl<T> PartialEq for RootComponentClass<T> {
@@ -66,7 +163,12 @@ impl<T> RootComponentClass<T> {
         StaticPointerOwned::new(RwLock::new(RootComponentClass {
             id,
             parent: None,
-            item: Arc::new(RwLock::new(RootComponentClassItem { component: Vec::new(), link: Vec::new() })),
+            item: Arc::new(RootComponentClassItemWrapper(RwLock::new(RootComponentClassItem {
+                left: StaticPointerOwned::new(RwLock::new(MarkerPin::new(TimelineTime::new(0.).unwrap(), MarkerTime::new(0.).unwrap()))),
+                right: StaticPointerOwned::new(RwLock::new(MarkerPin::new(TimelineTime::new(10.).unwrap(), MarkerTime::new(10.).unwrap()))),
+                component: Vec::new(),
+                link: Vec::new(),
+            }))),
         }))
     }
 

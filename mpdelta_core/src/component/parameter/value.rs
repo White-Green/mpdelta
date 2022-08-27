@@ -12,13 +12,13 @@ pub trait Easing<T>: Send + Sync {
 
 pub struct DefaultEasing;
 
-impl<T: Default> Easing<T> for DefaultEasing {
+impl<T: Clone> Easing<T> for DefaultEasing {
     fn id(&self) -> &str {
         "default"
     }
 
-    fn easing(&self, _: &T, _: &T, _: f64) -> T {
-        T::default()
+    fn easing(&self, left: &T, _: &T, _: f64) -> T {
+        left.clone()
     }
 }
 

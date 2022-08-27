@@ -8,6 +8,8 @@ use std::hash::{Hash, Hasher};
 pub struct TimelineTime(f64);
 
 impl TimelineTime {
+    pub const ZERO: TimelineTime = TimelineTime(0.0);
+
     pub fn new(time: f64) -> Option<TimelineTime> {
         if time.is_finite() {
             Some(TimelineTime(if time == -0.0 { 0.0 } else { time }))

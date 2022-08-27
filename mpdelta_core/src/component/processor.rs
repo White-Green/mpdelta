@@ -5,6 +5,7 @@ use crate::component::parameter::value::FrameVariableValue;
 use crate::component::parameter::{ComponentProcessorInputValue, Never, Parameter, ParameterFrameVariableValue, ParameterType, ParameterValueFixed, ParameterValueFixedExceptComponentClass, ParameterValueType};
 use crate::native::processor::NativeProcessor;
 use crate::ptr::StaticPointerCow;
+use async_trait::async_trait;
 use cgmath::{Vector2, Vector3};
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -51,8 +52,9 @@ impl<'a> ParameterValueType<'a> for NativeProcessorInput {
     type ComponentClass = Never;
 }
 
+#[async_trait]
 pub trait ComponentProcessor<T>: Send + Sync {
-    fn update_variable_parameter(&self, fixed_params: &mut [ParameterValueFixed], variable_parameters: &mut Vec<(String, ParameterType)>);
-    fn natural_length(&self, fixed_params: &[ParameterValueFixed]) -> Duration;
-    fn get_processor(&self) -> ComponentProcessorBody<'_, T>;
+    async fn update_variable_parameter(&self, fixed_params: &mut [ParameterValueFixed], variable_parameters: &mut Vec<(String, ParameterType)>);
+    async fn natural_length(&self, fixed_params: &[ParameterValueFixed]) -> Duration;
+    async fn get_processor(&self) -> ComponentProcessorBody<'_, T>;
 }

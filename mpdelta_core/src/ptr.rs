@@ -191,19 +191,41 @@ impl<T: ?Sized> Hash for StaticPointer<T> {
     }
 }
 
-impl<T> From<StaticPointerOwned<T>> for StaticPointerCow<T> {
+impl<T: ?Sized> StaticPointerCow<T> {
+    pub fn ptr(&self) -> &StaticPointer<T> {
+        self.as_ref()
+    }
+}
+
+impl<T: ?Sized> From<StaticPointerOwned<T>> for StaticPointerCow<T> {
     fn from(value: StaticPointerOwned<T>) -> Self {
         StaticPointerCow::Owned(value)
     }
 }
 
-impl<T> From<StaticPointer<T>> for StaticPointerCow<T> {
+impl<'a, T: ?Sized> From<&'a StaticPointerOwned<T>> for StaticPointerCow<T> {
+    fn from(value: &'a StaticPointerOwned<T>) -> Self {
+        StaticPointerCow::Reference(StaticPointerOwned::reference(value).clone())
+    }
+}
+
+impl<T: ?Sized> From<StaticPointer<T>> for StaticPointerCow<T> {
     fn from(value: StaticPointer<T>) -> Self {
         StaticPointerCow::Reference(value)
     }
 }
 
-impl<T> AsRef<StaticPointer<T>> for StaticPointerCow<T> {
+impl<T: ?Sized> Clone for StaticPointerCow<T> {
+    fn clone(&self) -> Self {
+        let ptr = match self {
+            StaticPointerCow::Owned(owned) => StaticPointerOwned::reference(owned),
+            StaticPointerCow::Reference(ptr) => ptr,
+        };
+        StaticPointerCow::Reference(ptr.clone())
+    }
+}
+
+impl<T: ?Sized> AsRef<StaticPointer<T>> for StaticPointerCow<T> {
     fn as_ref(&self) -> &StaticPointer<T> {
         match self {
             StaticPointerCow::Owned(value) => StaticPointerOwned::reference(value),
@@ -212,7 +234,7 @@ impl<T> AsRef<StaticPointer<T>> for StaticPointerCow<T> {
     }
 }
 
-impl<T> Deref for StaticPointerCow<T> {
+impl<T: ?Sized> Deref for StaticPointerCow<T> {
     type Target = StaticPointer<T>;
 
     fn deref(&self) -> &Self::Target {

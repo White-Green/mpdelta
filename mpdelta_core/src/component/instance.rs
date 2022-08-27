@@ -2,7 +2,7 @@ use crate::component::class::ComponentClass;
 use crate::component::marker_pin::MarkerPin;
 use crate::component::parameter::{AudioRequiredParams, ImageRequiredParams, Parameter, ParameterNullableValue, ParameterValue, ParameterValueFixed, Type, ValueFixed, VariableParameterValue};
 use crate::component::processor::ComponentProcessor;
-use crate::ptr::{StaticPointer, StaticPointerOwned};
+use crate::ptr::{StaticPointer, StaticPointerCow, StaticPointerOwned};
 use crate::time::TimelineTime;
 use std::fmt::{Debug, Formatter};
 use std::sync::Arc;
@@ -12,8 +12,8 @@ type Cell<T> = RwLock<T>;
 
 pub struct ComponentInstance<T> {
     component_class: StaticPointer<RwLock<dyn ComponentClass<T>>>,
-    marker_left: StaticPointerOwned<Cell<MarkerPin>>,
-    marker_right: StaticPointerOwned<Cell<MarkerPin>>,
+    marker_left: StaticPointerCow<Cell<MarkerPin>>,
+    marker_right: StaticPointerCow<Cell<MarkerPin>>,
     markers: Vec<StaticPointerOwned<Cell<MarkerPin>>>,
     image_required_params: Option<ImageRequiredParams<T>>,
     audio_required_params: Option<AudioRequiredParams<T>>,
@@ -47,13 +47,35 @@ where
 }
 
 impl<T> ComponentInstance<T> {
+    pub fn new_no_param(
+        component_class: StaticPointer<RwLock<dyn ComponentClass<T>>>,
+        marker_left: StaticPointerCow<Cell<MarkerPin>>,
+        marker_right: StaticPointerCow<Cell<MarkerPin>>,
+        image_required_params: Option<ImageRequiredParams<T>>,
+        audio_required_params: Option<AudioRequiredParams<T>>,
+        processor: Arc<dyn ComponentProcessor<T>>,
+    ) -> ComponentInstance<T> {
+        ComponentInstance {
+            component_class,
+            marker_left,
+            marker_right,
+            markers: Vec::new(),
+            image_required_params,
+            audio_required_params,
+            fixed_parameters_type: Vec::new().into_boxed_slice(),
+            fixed_parameters: Vec::new().into_boxed_slice(),
+            variable_parameters_type: Vec::new(),
+            variable_parameters: Vec::new(),
+            processor,
+        }
+    }
     pub fn component_class(&self) -> &StaticPointer<RwLock<dyn ComponentClass<T>>> {
         &self.component_class
     }
-    pub fn marker_left(&self) -> &StaticPointerOwned<Cell<MarkerPin>> {
+    pub fn marker_left(&self) -> &StaticPointerCow<Cell<MarkerPin>> {
         &self.marker_left
     }
-    pub fn marker_right(&self) -> &StaticPointerOwned<Cell<MarkerPin>> {
+    pub fn marker_right(&self) -> &StaticPointerCow<Cell<MarkerPin>> {
         &self.marker_right
     }
     pub fn markers(&self) -> &[StaticPointerOwned<Cell<MarkerPin>>] {

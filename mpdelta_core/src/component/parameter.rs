@@ -567,6 +567,9 @@ impl<'a> ParameterValueType<'a> for ParameterSelect {
 pub struct Opacity(f64);
 
 impl Opacity {
+    pub const OPAQUE: Opacity = Opacity(1.0);
+    pub const TRANSPARENT: Opacity = Opacity(0.0);
+
     pub fn new(value: f64) -> Option<Opacity> {
         if (0.0..=1.).contains(&value) {
             Some(Opacity(if value == -0. { 0. } else { value }))

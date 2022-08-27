@@ -708,12 +708,10 @@ pub(crate) async fn evaluate_component<T: ParameterValueType<'static> + 'static,
 ) -> Result<(StaticPointer<RwLock<MarkerPin>>, ParameterFrameVariableValue, StaticPointer<RwLock<MarkerPin>>), RendererError> {
     let component = component.upgrade().ok_or(RendererError::InvalidComponent)?;
     let component = component.read().await;
-    let marker_left = component.marker_left();
-    let marker_right = component.marker_right();
-    let left = StaticPointerOwned::reference(marker_left);
-    let right = StaticPointerOwned::reference(marker_right);
-    let left_time = marker_left.read().await.cached_timeline_time();
-    let right_time = marker_right.read().await.cached_timeline_time();
+    let left = component.marker_left().ptr().clone();
+    let right = component.marker_right().ptr().clone();
+    let left_time = left.upgrade().unwrap().read().await.cached_timeline_time();
+    let right_time = right.upgrade().unwrap().read().await.cached_timeline_time();
     let mut frames = frames.skip_while(move |&time| time < left_time).take_while(move |&time| time < right_time).peekable();
     let _ = frames.peek();
     let image_required_params = component.image_required_params();
@@ -738,16 +736,24 @@ pub(crate) async fn evaluate_component<T: ParameterValueType<'static> + 'static,
         .await?;
     // TODO: 同一時間のフレームを複数回見る場合は別系統にする必要がある
     let processor = component.processor();
-    let natural_length = processor.natural_length(fixed_parameters);
-    let markers = stream::once(async move { marker_left })
-        .chain(stream::iter(component.markers()))
-        .chain(stream::once(async move { marker_right }))
-        .filter_map(|marker| async {
-            let marker = marker.read().await;
-            Some((marker.cached_timeline_time(), marker.locked_component_time()?))
-        })
-        .collect::<Vec<(TimelineTime, MarkerTime)>>()
-        .await;
+    let natural_length = processor.natural_length(fixed_parameters).await;
+    let markers = stream::once(async {
+        let left = left.upgrade().unwrap();
+        let marker = left.read().await;
+        (marker.cached_timeline_time(), marker.locked_component_time())
+    })
+    .chain(stream::iter(component.markers()).then(|marker| async move {
+        let marker = marker.read().await;
+        (marker.cached_timeline_time(), marker.locked_component_time())
+    }))
+    .chain(stream::once(async {
+        let right = right.upgrade().unwrap();
+        let marker = right.read().await;
+        (marker.cached_timeline_time(), marker.locked_component_time())
+    }))
+    .filter_map(|(cached_timeline_time, locked_component_time)| async move { Some((cached_timeline_time, locked_component_time?)) })
+    .collect::<Vec<(TimelineTime, MarkerTime)>>()
+    .await;
     let marker_ranges = match *markers.as_slice() {
         [] => vec![(left_time..right_time, MarkerTime::ZERO..MarkerTime::new(natural_length.as_secs_f64()).unwrap())],
         [(timeline_time, marker_time)] => vec![
@@ -827,7 +833,7 @@ pub(crate) async fn evaluate_component<T: ParameterValueType<'static> + 'static,
     } else {
         None
     };
-    let value = match processor.get_processor() {
+    let value = match processor.get_processor().await {
         ComponentProcessorBody::Native(native_processor) => {
             let variable_parameter_tasks = variable_parameters
                 .into_iter()

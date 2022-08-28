@@ -38,6 +38,7 @@ default-members = [
 vulkano = "0.30.0"
 vulkano-win = "0.30.0"
 winit = "0.26.0"
+mpdelta_components = { path = "mpdelta_components" }
 mpdelta_core = { path = "mpdelta_core" }
 mpdelta_core_vulkano = { path = "mpdelta_core_vulkano" }
 mpdelta_services = { path = "mpdelta_services" }

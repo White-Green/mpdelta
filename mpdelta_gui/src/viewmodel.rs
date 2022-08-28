@@ -1,8 +1,9 @@
 use arc_swap::{ArcSwap, ArcSwapOption};
 use bitflags::bitflags;
+use mpdelta_core::component::class::ComponentClass;
 use mpdelta_core::component::parameter::ParameterValueType;
 use mpdelta_core::project::{Project, RootComponentClass};
-use mpdelta_core::ptr::StaticPointer;
+use mpdelta_core::ptr::{StaticPointer, StaticPointerOwned};
 use mpdelta_core::usecase::{
     EditUsecase, GetAvailableComponentClassesUsecase, GetLoadedProjectsUsecase, GetRootComponentClassesUsecase, LoadProjectUsecase, NewProjectUsecase, NewRootComponentClassUsecase, RealtimeComponentRenderer, RealtimeRenderComponentUsecase, RedoUsecase, SetOwnerForRootComponentClassUsecase,
     UndoUsecase, WriteProjectUsecase,
@@ -182,6 +183,7 @@ bitflags! {
     }
 }
 
+#[inline(never)]
 async fn view_model_loop<T, Edit, GetAvailableComponentClasses, GetLoadedProjects, GetRootComponentClasses, LoadProject, NewProject, NewRootComponentClass, RealtimeRenderComponent, Redo, SetOwnerForRootComponentClass, Undo, WriteProject>(
     params: ViewModelParams<Edit, GetAvailableComponentClasses, GetLoadedProjects, GetRootComponentClasses, LoadProject, NewProject, NewRootComponentClass, RealtimeRenderComponent, Redo, SetOwnerForRootComponentClass, Undo, WriteProject>,
     mut message_receiver: UnboundedReceiver<ViewModelMessage>,
@@ -267,6 +269,24 @@ async fn view_model_loop<T, Edit, GetAvailableComponentClasses, GetLoadedProject
             };
             root_component_classes.store(Arc::new(new_root_component_classes));
         }
-        if update_flags.contains(DataUpdateFlags::ROOT_COMPONENT_SELECT) {}
+        if update_flags.contains(DataUpdateFlags::ROOT_COMPONENT_SELECT) {
+            if let Some((class, _)) = root_component_classes.load().get(selected_root_component_class.load(atomic::Ordering::Relaxed)) {
+                if let Some(class_ref) = class.upgrade() {
+                    let class = class.clone().map(|weak| weak as _);
+                    let instance = StaticPointerOwned::new(RwLock::new(class_ref.read().await.instantiate(&class).await));
+                    let instance_reference = StaticPointerOwned::reference(&instance).clone();
+                    match realtime_render_component.render_component(&instance_reference).await {
+                        Ok(renderer) => {
+                            realtime_renderer.store(Some(Arc::new(renderer)));
+                        }
+                        Err(e) => {
+                            eprintln!("failed to create renderer by {e}");
+                        }
+                    }
+                } else {
+                    eprintln!("upgrade failed");
+                }
+            }
+        }
     }
 }

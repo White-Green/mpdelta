@@ -56,7 +56,7 @@ impl<T: ParameterValueType<'static> + 'static, ID: IdGenerator + 'static, Video:
             let image_source_tree = Arc::new(SourceTree::new(Arc::clone(&self.id)));
             let audio_source_tree = Arc::new(SourceTree::new(Arc::clone(&self.id)));
             let video_renderer_builder = Arc::clone(&self.video_renderer_builder);
-            evaluate_component(component, ParameterType::Image(()), Arc::clone(&image_source_tree), Arc::clone(&audio_source_tree), (0u64..).map(|t| TimelineTime::new(t as f64 / 60.).unwrap())).then(|result| async move {
+            evaluate_component(component, ParameterType::Image(()), Arc::clone(&image_source_tree), Arc::clone(&audio_source_tree), Box::new((0u64..).map(|t| TimelineTime::new(t as f64 / 60.).unwrap()))).then(|result| async move {
                 let (left, result, right) = result?;
                 let left = left.upgrade().unwrap();
                 let right = right.upgrade().unwrap();
@@ -70,7 +70,7 @@ impl<T: ParameterValueType<'static> + 'static, ID: IdGenerator + 'static, Video:
             let image_source_tree = Arc::new(SourceTree::new(Arc::clone(&self.id)));
             let audio_source_tree = Arc::new(SourceTree::new(Arc::clone(&self.id)));
             let audio_mixer_builder = Arc::clone(&self.audio_mixer_builder);
-            evaluate_component(component, ParameterType::Audio(()), Arc::clone(&image_source_tree), Arc::clone(&audio_source_tree), (0u64..).map(|t| TimelineTime::new(t as f64 / 60.).unwrap()))
+            evaluate_component(component, ParameterType::Audio(()), Arc::clone(&image_source_tree), Arc::clone(&audio_source_tree), Box::new((0u64..).map(|t| TimelineTime::new(t as f64 / 60.).unwrap())))
                 .then(|result| async move { Ok::<_, RendererError>(audio_mixer_builder.create_mixer(result?.1.into_audio().unwrap(), 48_000, Arc::try_unwrap(audio_source_tree).unwrap_or_else(|_| unreachable!()).into_readonly()).await) })
         });
         let (video_renderer, audio_mixer) = futures::join!(image_evaluate.map(|join_result| join_result.unwrap()), audio_evaluate.map(|join_result| join_result.unwrap()));

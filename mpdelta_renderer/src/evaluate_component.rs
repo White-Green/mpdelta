@@ -698,13 +698,29 @@ fn evaluate_processor_executable<T: ParameterValueType<'static>, ID: IdGenerator
     Ok(value)
 }
 
+pub(crate) trait CloneableIterator: Iterator {
+    fn clone_dyn(&self) -> Box<dyn CloneableIterator<Item = Self::Item> + Send + Sync + 'static>;
+}
+
+impl<T: Iterator + Clone + Send + Sync + 'static> CloneableIterator for T {
+    fn clone_dyn(&self) -> Box<dyn CloneableIterator<Item = Self::Item> + Send + Sync + 'static> {
+        Box::new(self.clone())
+    }
+}
+
+impl<T: 'static> Clone for Box<dyn CloneableIterator<Item = T> + Send + Sync + 'static> {
+    fn clone(&self) -> Self {
+        CloneableIterator::clone_dyn(self)
+    }
+}
+
 #[async_recursion]
 pub(crate) async fn evaluate_component<T: ParameterValueType<'static> + 'static, ID: IdGenerator + 'static>(
     component: StaticPointer<RwLock<ComponentInstance<T>>>,
     value_type: ParameterType,
     image_source_tree: Arc<SourceTree<TagImage, ImageNativeTreeNode<T>, ID>>,
     audio_source_tree: Arc<SourceTree<TagAudio, AudioNativeTreeNode<T>, ID>>,
-    frames: impl Iterator<Item = TimelineTime> + Send + Sync + Clone + 'static,
+    frames: Box<dyn CloneableIterator<Item = TimelineTime> + Send + Sync + 'static>,
 ) -> Result<(StaticPointer<RwLock<MarkerPin>>, ParameterFrameVariableValue, StaticPointer<RwLock<MarkerPin>>), RendererError> {
     let component = component.upgrade().ok_or(RendererError::InvalidComponent)?;
     let component = component.read().await;
@@ -882,7 +898,7 @@ pub(crate) async fn evaluate_component<T: ParameterValueType<'static> + 'static,
                     let value_type = value_type.clone();
                     let image_source_tree = Arc::clone(&image_source_tree);
                     let audio_source_tree = Arc::clone(&audio_source_tree);
-                    tokio::spawn(async move { evaluate_component(component, value_type, image_source_tree, audio_source_tree, frames).await })
+                    tokio::spawn(async move { evaluate_component(component, value_type, image_source_tree, audio_source_tree, Box::new(frames)).await })
                 })
                 .collect::<Vec<_>>();
             let result = stream::iter(component_evaluate_tasks)
@@ -926,7 +942,7 @@ async fn evaluate_variable<T: ParameterValueType<'static>, ID: IdGenerator + 'st
                             let frames = frames_ref.clone();
                             let image_source_tree = Arc::clone(image_source_tree);
                             let audio_source_tree = Arc::clone(audio_source_tree);
-                            tokio::spawn(async move { evaluate_component(comp, ParameterType::RealNumber(None), image_source_tree, audio_source_tree, frames).await })
+                            tokio::spawn(async move { evaluate_component(comp, ParameterType::RealNumber(None), image_source_tree, audio_source_tree, Box::new(frames)).await })
                         })
                         .collect::<Vec<_>>();
                     let component_values = stream::iter(component_values).then(|task| async move {
@@ -996,7 +1012,7 @@ async fn evaluate_parameter<ID: IdGenerator + 'static, T: ParameterValueType<'st
                     let frames = frames.clone();
                     let image_source_tree = Arc::clone(&image_source_tree);
                     let audio_source_tree = Arc::clone(&audio_source_tree);
-                    tokio::spawn(async move { evaluate_component(comp, param_type, image_source_tree, audio_source_tree, frames).await })
+                    tokio::spawn(async move { evaluate_component(comp, param_type, image_source_tree, audio_source_tree, Box::new(frames)).await })
                 })
                 .collect::<Vec<_>>();
             let component_values = stream::iter(component_values).then(|task| async move {

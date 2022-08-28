@@ -4,11 +4,11 @@ use std::marker::PhantomData;
 use std::ops::Deref;
 use std::sync::{Arc, Weak};
 
-pub struct StaticPointerOwned<T: ?Sized>(Arc<(StaticPointer<T>, T)>);
+pub struct StaticPointerOwned<T: ?Sized>(Arc<T>, StaticPointer<T>);
 
-pub struct StaticPointer<T: ?Sized>(Weak<(StaticPointer<T>, T)>);
+pub struct StaticPointer<T: ?Sized>(Weak<T>);
 
-pub struct StaticPointerStrongRef<'a, T: ?Sized>(Arc<(StaticPointer<T>, T)>, PhantomData<&'a ()>);
+pub struct StaticPointerStrongRef<'a, T: ?Sized>(Arc<T>, PhantomData<&'a ()>);
 
 #[derive(Debug)]
 pub enum StaticPointerCow<T: ?Sized> {
@@ -18,13 +18,15 @@ pub enum StaticPointerCow<T: ?Sized> {
 
 impl<T> StaticPointerOwned<T> {
     pub fn new(value: T) -> Self {
-        StaticPointerOwned(Arc::new_cyclic(|weak| (StaticPointer(weak.clone()), value)))
+        let inner = Arc::new(value);
+        let weak = Arc::downgrade(&inner);
+        StaticPointerOwned(inner, StaticPointer(weak))
     }
 }
 
 impl<T: ?Sized> StaticPointerOwned<T> {
     pub fn reference(this: &Self) -> &StaticPointer<T> {
-        &this.0 .0
+        &this.1
     }
 }
 
@@ -37,7 +39,7 @@ impl<T: Clone> Clone for StaticPointerOwned<T> {
 
 impl<T: ?Sized> AsRef<StaticPointer<T>> for StaticPointerOwned<T> {
     fn as_ref(&self) -> &StaticPointer<T> {
-        &self.0 .0
+        &self.1
     }
 }
 
@@ -58,6 +60,10 @@ impl<T: ?Sized> StaticPointer<T> {
         StaticPointer(Weak::clone(&self.0))
     }
 
+    pub fn map<U: ?Sized>(self, map: fn(Weak<T>) -> Weak<U>) -> StaticPointer<U> {
+        StaticPointer(map(self.0))
+    }
+
     pub fn upgrade(&self) -> Option<StaticPointerStrongRef<'_, T>> {
         self.0.upgrade().map(|strong_ref| StaticPointerStrongRef(strong_ref, PhantomData::default()))
     }
@@ -69,7 +75,7 @@ impl<T: ?Sized> StaticPointer<T> {
 
 impl<T: ?Sized + Debug> Debug for StaticPointerOwned<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.debug_tuple(&format!("StaticPointerOwned: {:p}", self.0)).field(&&self.0 .1).finish()
+        f.debug_tuple(&format!("StaticPointerOwned: {:p}", self.0)).field(&&self.0).finish()
     }
 }
 
@@ -81,7 +87,7 @@ impl<T: ?Sized> Debug for StaticPointer<T> {
 
 impl<'a, T: ?Sized + Debug> Debug for StaticPointerStrongRef<'a, T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.debug_tuple(&format!("StaticPointerStrongRef: {:p}", self.0)).field(&&self.0 .1).finish()
+        f.debug_tuple(&format!("StaticPointerStrongRef: {:p}", self.0)).field(&&self.0).finish()
     }
 }
 
@@ -107,7 +113,7 @@ impl<T: ?Sized> Deref for StaticPointerOwned<T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
-        &self.0 .1
+        &self.0
     }
 }
 
@@ -115,13 +121,13 @@ impl<'a, T: ?Sized> Deref for StaticPointerStrongRef<'a, T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
-        &self.0 .1
+        &self.0
     }
 }
 
 impl<T: ?Sized + PartialEq> PartialEq for StaticPointerOwned<T> {
     fn eq(&self, other: &Self) -> bool {
-        <T as PartialEq>::eq(&self.0 .1, &other.0 .1)
+        <T as PartialEq>::eq(&self.0, &other.0)
     }
 }
 
@@ -133,19 +139,19 @@ impl<T: ?Sized> PartialEq for StaticPointer<T> {
 
 impl<'a, 'b, T: ?Sized + PartialEq> PartialEq<StaticPointerStrongRef<'b, T>> for StaticPointerStrongRef<'a, T> {
     fn eq(&self, other: &StaticPointerStrongRef<'b, T>) -> bool {
-        <T as PartialEq>::eq(&self.0 .1, &other.0 .1)
+        <T as PartialEq>::eq(&self.0, &other.0)
     }
 }
 
 impl<'a, T: ?Sized + PartialEq> PartialEq<StaticPointerStrongRef<'a, T>> for StaticPointerOwned<T> {
     fn eq(&self, other: &StaticPointerStrongRef<'a, T>) -> bool {
-        <T as PartialEq>::eq(&self.0 .1, &other.0 .1)
+        <T as PartialEq>::eq(&self.0, &other.0)
     }
 }
 
 impl<'a, T: ?Sized + PartialEq> PartialEq<StaticPointerOwned<T>> for StaticPointerStrongRef<'a, T> {
     fn eq(&self, other: &StaticPointerOwned<T>) -> bool {
-        <T as PartialEq>::eq(&self.0 .1, &other.0 .1)
+        <T as PartialEq>::eq(&self.0, &other.0)
     }
 }
 
@@ -181,7 +187,7 @@ impl<'a, T: ?Sized + Eq> Eq for StaticPointerStrongRef<'a, T> {}
 
 impl<T: ?Sized + Hash> Hash for StaticPointerOwned<T> {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        T::hash(&self.0 .1, state)
+        T::hash(&self.0, state)
     }
 }
 

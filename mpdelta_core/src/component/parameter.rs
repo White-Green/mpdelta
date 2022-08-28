@@ -676,7 +676,6 @@ pub enum VariableParameterPriority {
 
 type PinSplitValue<T> = TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, T>;
 
-#[derive(Debug)]
 pub enum VariableParameterValue<T, Manually, Nullable> {
     Manually(Manually),
     MayComponent {
@@ -684,6 +683,15 @@ pub enum VariableParameterValue<T, Manually, Nullable> {
         components: Vec<StaticPointer<RwLock<ComponentInstance<T>>>>,
         priority: VariableParameterPriority,
     },
+}
+
+impl<T, Manually: Debug, Nullable: Debug> Debug for VariableParameterValue<T, Manually, Nullable> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            VariableParameterValue::Manually(manually) => f.debug_tuple("Manually").field(manually).finish(),
+            VariableParameterValue::MayComponent { params, components, priority } => f.debug_struct("MayComponent").field("params", params).field("components", components).field("priority", priority).finish(),
+        }
+    }
 }
 
 impl<T, Manually: Clone, Nullable: Clone> Clone for VariableParameterValue<T, Manually, Nullable> {

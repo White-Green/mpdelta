@@ -194,7 +194,7 @@ async fn render_loop<T: ParameterValueType<'static, Image = ImageType> + 'static
     let image_source_tree = Arc::new(image_source_tree);
     loop {
         match request_receiver.try_recv() {
-            Ok(RenderRequest::Render(f)) => frame = f,
+            Ok(RenderRequest::Render(f)) => frame = dbg!(f),
             Err(TryRecvError::Empty) => {}
             Ok(RenderRequest::Shutdown) | Err(TryRecvError::Disconnected) => break,
         }
@@ -365,14 +365,24 @@ fn render<Audio: Clone + Send + Sync + 'static, T: ParameterValueType<'static, I
                             timeline_time_range.start
                         } else {
                             let p = (marker_time_range.start.value() - at.value()) / (marker_time_range.end.value() - marker_time_range.start.value());
-                            TimelineTime::new(timeline_time_range.start.value() * p + timeline_time_range.end.value() * (1. - p)).unwrap()
+                            TimelineTime::new(timeline_time_range.start.value() * (1. - p) + timeline_time_range.end.value() * p).unwrap()
                         }
                     } else {
                         at
                     }
                 });
                 let tasks = images.iter().map(|&image| tokio::spawn(render(Arc::clone(&shared_resource), required_size, image, Arc::clone(&image_source_tree), at))).collect::<Vec<_>>();
-                let result_image = AttachmentImage::new(Arc::clone(&shared_resource.device), [required_size.0, required_size.1], Format::R8G8B8A8_UNORM).unwrap();
+                let result_image = StorageImage::new(
+                    Arc::clone(&shared_resource.device),
+                    ImageDimensions::Dim2d {
+                        width: required_size.0,
+                        height: required_size.1,
+                        array_layers: 1,
+                    },
+                    Format::R8G8B8A8_UNORM,
+                    [shared_resource.queue.family()],
+                )
+                .unwrap();
                 let result_image_view = ImageView::new(
                     Arc::clone(&result_image),
                     ImageViewCreateInfo {

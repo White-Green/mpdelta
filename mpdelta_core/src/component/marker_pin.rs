@@ -74,6 +74,10 @@ impl MarkerPin {
         self.cached_timeline_time
     }
 
+    pub fn cache_timeline_time(&mut self, time: TimelineTime) {
+        self.cached_timeline_time = time;
+    }
+
     pub fn locked_component_time(&self) -> Option<MarkerTime> {
         self.locked_component_time
     }

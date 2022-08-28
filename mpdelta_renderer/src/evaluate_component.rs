@@ -5,6 +5,7 @@ use dashmap::DashMap;
 use either::Either;
 use mpdelta_core::common::time_split_value::TimeSplitValue;
 use mpdelta_core::component::instance::ComponentInstance;
+use mpdelta_core::component::link::MarkerLink;
 use mpdelta_core::component::marker_pin::{MarkerPin, MarkerTime};
 use mpdelta_core::component::parameter::placeholder::{Placeholder, TagAudio, TagImage};
 use mpdelta_core::component::parameter::value::{DefaultEasing, EasingValue, FrameVariableValue};
@@ -23,7 +24,7 @@ use std::iter::{Peekable, SkipWhile, TakeWhile};
 use std::ops::{Deref, Range};
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::{array, iter};
+use std::{array, iter, mem};
 use tokio::sync::RwLock;
 
 pub struct ComponentProcessorInputBuffer;
@@ -427,7 +428,7 @@ fn get_map_time(time: Arc<[(Range<TimelineTime>, Range<MarkerTime>)]>) -> impl M
                     marker_time_range.start.into()
                 } else {
                     let p = (t.value() - timeline_time_range.start.value()) / (timeline_time_range.end.value() - timeline_time_range.start.value());
-                    MarkerTime::new(marker_time_range.start.value() * p + marker_time_range.end.value() * (1. - p)).unwrap().into()
+                    MarkerTime::new(marker_time_range.start.value() * (1. - p) + marker_time_range.end.value() * p).unwrap().into()
                 }
             } else if t < time1.first().unwrap().0.start {
                 time1.first().unwrap().1.start.into()
@@ -441,7 +442,7 @@ fn get_map_time(time: Arc<[(Range<TimelineTime>, Range<MarkerTime>)]>) -> impl M
                     timeline_time_range.start.into()
                 } else {
                     let p = (t.value() - marker_time_range.start.value()) / (marker_time_range.end.value() - marker_time_range.start.value());
-                    MarkerTime::new(timeline_time_range.start.value() * p + timeline_time_range.end.value() * (1. - p)).unwrap().into()
+                    MarkerTime::new(timeline_time_range.start.value() * (1. - p) + timeline_time_range.end.value() * p).unwrap().into()
                 }
             } else if t < time.first().unwrap().0.start {
                 time.first().unwrap().1.start.into()
@@ -806,12 +807,12 @@ pub(crate) async fn evaluate_component<T: ParameterValueType<'static> + 'static,
         let transform = async {
             match &image_required_params.transform {
                 ImageRequiredParamsTransform::Params { scale, translate, rotate, scale_center, rotate_center } => {
-                    let (scale, translate, rotate, scale_center, rotate_center) = tokio::join!(
-                        evaluate_variable(left_time, right_time, scale.clone(), &image_source_tree, &audio_source_tree, frames.clone(), map_time.clone()),
-                        evaluate_variable(left_time, right_time, translate.clone(), &image_source_tree, &audio_source_tree, frames.clone(), map_time.clone()),
-                        evaluate_variable_easing(rotate.clone(), frames.clone(), map_time.clone()),
-                        evaluate_variable(left_time, right_time, scale_center.clone(), &image_source_tree, &audio_source_tree, frames.clone(), map_time.clone()),
-                        evaluate_variable(left_time, right_time, rotate_center.clone(), &image_source_tree, &audio_source_tree, frames.clone(), map_time.clone()),
+                    let (scale, translate, rotate, scale_center, rotate_center) = (
+                        evaluate_variable(left_time, right_time, scale.clone(), &image_source_tree, &audio_source_tree, frames.clone(), map_time.clone()).await,
+                        evaluate_variable(left_time, right_time, translate.clone(), &image_source_tree, &audio_source_tree, frames.clone(), map_time.clone()).await,
+                        evaluate_variable_easing(rotate.clone(), frames.clone(), map_time.clone()).await,
+                        evaluate_variable(left_time, right_time, scale_center.clone(), &image_source_tree, &audio_source_tree, frames.clone(), map_time.clone()).await,
+                        evaluate_variable(left_time, right_time, rotate_center.clone(), &image_source_tree, &audio_source_tree, frames.clone(), map_time.clone()).await,
                     );
                     Ok(ImageRequiredParamsTransformFrameVariable::Params {
                         scale: scale?,
@@ -888,7 +889,7 @@ pub(crate) async fn evaluate_component<T: ParameterValueType<'static> + 'static,
                 .collect::<Vec<_>>();
             let variable_parameters = stream::iter(variable_parameter_tasks).then(|task| async move { task.await.unwrap() }).collect::<Vec<_>>().await;
             let (components, links) = component_processor(fixed_parameters, &variable_parameters);
-            collect_cached_time(&components).await;
+            collect_cached_time(&components, &links).await;
             let mut map_time = map_time.clone();
             let frames = frames.map(move |time| map_time.map_time(time));
             let component_evaluate_tasks = components
@@ -956,7 +957,6 @@ async fn evaluate_variable<T: ParameterValueType<'static>, ID: IdGenerator + 'st
                     });
                     Ok(match priority {
                         VariableParameterPriority::PrioritizeManually => {
-                            // override_time_split_value(value1, value2.into_real_number().unwrap()).await
                             override_time_split_value(
                                 component_values.fold(Ok(TimeSplitValue::new(left_time, None, right_time)), |acc, value| async move { Ok(override_time_split_value(acc?, value?).await) }).await?,
                                 params.map_time_value_async(|t| async move { t.upgrade().unwrap().read().await.cached_timeline_time() }, |v| async move { v.map(Either::Left) }).await,
@@ -1038,6 +1038,30 @@ async fn evaluate_parameter<ID: IdGenerator + 'static, T: ParameterValueType<'st
     Ok(param)
 }
 
-async fn collect_cached_time<T>(components: &[impl AsRef<StaticPointer<RwLock<ComponentInstance<T>>>>]) {
-    todo!()
+async fn collect_cached_time<T>(components: &[impl AsRef<StaticPointer<RwLock<ComponentInstance<T>>>>], links: &[impl AsRef<StaticPointer<RwLock<MarkerLink>>>]) {
+    let links = links.iter().map(AsRef::as_ref).filter_map(StaticPointer::upgrade).collect::<Vec<_>>();
+    let links = stream::iter(links.iter()).then(|link| link.read()).collect::<Vec<_>>().await;
+    loop {
+        let mut flg = true;
+        for link in &links {
+            let equals = link.from == link.to;
+            if let Some((from, to)) = link.from.upgrade().zip(link.to.upgrade()) {
+                let from = {
+                    let guard = from.read().await;
+                    let time = guard.cached_timeline_time();
+                    drop(guard);
+                    time
+                };
+                let len = link.len.value();
+                let mut guard = to.write().await;
+                if ((from.value() + len) - guard.cached_timeline_time().value()).abs() > 1e-6 {
+                    guard.cache_timeline_time(TimelineTime::new(from.value() + len).unwrap());
+                    flg = false;
+                }
+            }
+        }
+        if flg {
+            break;
+        }
+    }
 }

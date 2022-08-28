@@ -165,7 +165,8 @@ impl<T: Gui<ImageType> + 'static> MPDeltaGUIVulkano<T> {
                     gui.ui(&vulkano_gui.context(), &mut ImageRegisterWrapper(&mut vulkano_gui));
 
                     take_mut::take(&mut previous_frame_end, |previous_frame_end| {
-                        let future = vulkano_gui.draw_on_image(previous_frame_end.join(acquire_future), Arc::clone(&framebuffers[image_num]) as Arc<_>);
+                        previous_frame_end.wait(None).unwrap();
+                        let future = vulkano_gui.draw_on_image(acquire_future, Arc::clone(&framebuffers[image_num]) as Arc<_>);
                         let future = future.then_swapchain_present(Arc::clone(&queue), Arc::clone(&swapchain), image_num).boxed().then_signal_fence_and_flush();
 
                         match future {

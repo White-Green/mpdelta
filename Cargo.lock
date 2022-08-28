@@ -1146,6 +1146,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "mpdelta_components"
+version = "0.1.0"
+dependencies = [
+ "mpdelta_core",
+ "mpdelta_core_vulkano",
+ "vulkano",
+]
+
+[[package]]
 name = "mpdelta_core"
 version = "0.1.0"
 dependencies = [

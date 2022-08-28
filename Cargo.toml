@@ -10,6 +10,7 @@ members = [
     ".",
     "mpdelta_build_utils/rust_gpu_builder",
     "mpdelta_build_utils/shader_builder",
+    "mpdelta_components",
     "mpdelta_core",
     "mpdelta_core_vulkano",
     "mpdelta_gui",
@@ -23,6 +24,7 @@ members = [
 default-members = [
     ".",
     "mpdelta_build_utils/shader_builder",
+    "mpdelta_components",
     "mpdelta_core",
     "mpdelta_core_vulkano",
     "mpdelta_gui",

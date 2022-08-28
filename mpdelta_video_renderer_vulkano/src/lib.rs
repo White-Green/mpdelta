@@ -27,12 +27,12 @@ use tokio::sync::mpsc::error::TryRecvError;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use tokio::sync::{mpsc, Notify};
 use tokio::task::JoinHandle;
-use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, PrimaryCommandBuffer, RenderPassBeginInfo, SubpassContents};
+use vulkano::command_buffer::{AutoCommandBufferBuilder, ClearColorImageInfo, CommandBufferUsage, PrimaryCommandBuffer, RenderPassBeginInfo, SubpassContents};
 use vulkano::descriptor_set::layout::DescriptorSetLayout;
 use vulkano::descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet};
 use vulkano::device::{Device, Queue};
-use vulkano::format::ClearValue;
 use vulkano::format::Format;
+use vulkano::format::{ClearColorValue, ClearValue};
 use vulkano::image::view::{ImageView, ImageViewCreateInfo};
 use vulkano::image::{AttachmentImage, ImageAccess, ImageAspects, ImageDimensions, ImageLayout, ImageSubresourceRange, ImmutableImage, MipmapsCount, StorageImage};
 use vulkano::pipeline::cache::PipelineCache;
@@ -322,7 +322,7 @@ fn render<Audio: Clone + Send + Sync + 'static, T: ParameterValueType<'static, I
                 builder
                     .begin_render_pass(
                         RenderPassBeginInfo {
-                            clear_values: vec![Some(ClearValue::Int([0; 4])), Some(ClearValue::Stencil(0))],
+                            clear_values: vec![Some(ClearValue::Int(image_params.background_color.map(Into::into))), Some(ClearValue::Stencil(0))],
                             ..RenderPassBeginInfo::framebuffer(frame_buffer)
                         },
                         SubpassContents::Inline,

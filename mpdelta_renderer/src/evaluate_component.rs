@@ -845,6 +845,7 @@ pub(crate) async fn evaluate_component<T: ParameterValueType<'static> + 'static,
         Some(ImageRequiredParamsFrameVariable {
             aspect_ratio: image_required_params.aspect_ratio,
             transform: transform?,
+            background_color: image_required_params.background_color,
             opacity,
             blend_mode,
             composite_operation,

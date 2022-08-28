@@ -711,6 +711,7 @@ impl<T, Manually: Clone, Nullable: Clone> Clone for VariableParameterValue<T, Ma
 pub struct ImageRequiredParams<T> {
     pub aspect_ratio: (u32, u32),
     pub transform: ImageRequiredParamsTransform<T>,
+    pub background_color: [u8; 4],
     pub opacity: PinSplitValue<EasingValue<Opacity>>,
     pub blend_mode: PinSplitValue<BlendMode>,
     pub composite_operation: PinSplitValue<CompositeOperation>,
@@ -721,6 +722,7 @@ impl<T> Clone for ImageRequiredParams<T> {
         let ImageRequiredParams {
             aspect_ratio,
             transform,
+            background_color,
             opacity,
             blend_mode,
             composite_operation,
@@ -728,6 +730,7 @@ impl<T> Clone for ImageRequiredParams<T> {
         ImageRequiredParams {
             aspect_ratio: *aspect_ratio,
             transform: transform.clone(),
+            background_color: *background_color,
             opacity: opacity.clone(),
             blend_mode: blend_mode.clone(),
             composite_operation: composite_operation.clone(),
@@ -776,6 +779,7 @@ impl<T> Clone for ImageRequiredParamsTransform<T> {
 pub struct ImageRequiredParamsFrameVariable {
     pub aspect_ratio: (u32, u32),
     pub transform: ImageRequiredParamsTransformFrameVariable,
+    pub background_color: [u8; 4],
     pub opacity: FrameVariableValue<Opacity>,
     pub blend_mode: FrameVariableValue<BlendMode>,
     pub composite_operation: FrameVariableValue<CompositeOperation>,
@@ -786,6 +790,7 @@ impl ImageRequiredParamsFrameVariable {
         let ImageRequiredParamsFrameVariable {
             aspect_ratio,
             transform,
+            background_color,
             opacity,
             blend_mode,
             composite_operation,
@@ -793,6 +798,7 @@ impl ImageRequiredParamsFrameVariable {
         ImageRequiredParamsFixed {
             aspect_ratio: *aspect_ratio,
             transform: transform.get(at),
+            background_color: *background_color,
             opacity: *opacity.get(at).unwrap(),
             blend_mode: *blend_mode.get(at).unwrap(),
             composite_operation: *composite_operation.get(at).unwrap(),
@@ -841,6 +847,7 @@ impl ImageRequiredParamsTransformFrameVariable {
 pub struct ImageRequiredParamsFixed {
     pub aspect_ratio: (u32, u32),
     pub transform: ImageRequiredParamsTransformFixed,
+    pub background_color: [u8; 4],
     pub opacity: Opacity,
     pub blend_mode: BlendMode,
     pub composite_operation: CompositeOperation,

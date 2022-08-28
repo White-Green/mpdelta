@@ -108,6 +108,7 @@ impl<T: 'static> ComponentClass<T> for RootComponentClass<T> {
                 scale_center: Vector3 { x: zero.clone(), y: zero.clone(), z: zero.clone() },
                 rotate_center: Vector3 { x: zero.clone(), y: zero.clone(), z: zero },
             },
+            background_color: [0; 4],
             opacity: TimeSplitValue::new(
                 marker_left.clone(),
                 EasingValue {

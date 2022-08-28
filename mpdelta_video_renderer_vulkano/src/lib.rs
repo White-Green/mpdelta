@@ -158,20 +158,22 @@ pub struct MPDeltaVideoRenderer {
 #[async_trait]
 impl VideoRenderer<ImageType> for MPDeltaVideoRenderer {
     async fn render_frame(&mut self, frame: usize, timeout: Duration) -> ImageType {
-        tokio::time::timeout(timeout, async {
-            if let Some(frame) = self.cache.get(&frame) {
+        let frame = tokio::time::timeout(timeout, async {
+            if let Some((_, frame)) = self.cache.remove(&frame) {
                 return frame.clone();
             }
             let _ = self.request_sender.send(RenderRequest::Render(frame));
             loop {
                 self.notifier.notified().await;
-                if let Some(frame) = self.cache.get(&frame) {
+                if let Some((_, frame)) = self.cache.remove(&frame) {
                     return frame.clone();
                 }
             }
         })
         .await
-        .unwrap_or_else(|_| self.last.clone())
+        .unwrap_or_else(|_| self.last.clone());
+        self.last = frame.clone();
+        frame
     }
 }
 
@@ -193,10 +195,9 @@ async fn render_loop<T: ParameterValueType<'static, Image = ImageType> + 'static
     let mut frame = 0;
     let image_source_tree = Arc::new(image_source_tree);
     loop {
-        match request_receiver.try_recv() {
-            Ok(RenderRequest::Render(f)) => frame = dbg!(f),
-            Err(TryRecvError::Empty) => {}
-            Ok(RenderRequest::Shutdown) | Err(TryRecvError::Disconnected) => break,
+        match request_receiver.recv().await {
+            Some(RenderRequest::Render(f)) => frame = dbg!(f),
+            None | Some(RenderRequest::Shutdown) => break,
         }
         cache.insert(frame, render(Arc::clone(&shared_resource), (1920, 1080), param, Arc::clone(&image_source_tree), TimelineTime::new(frame as f64 / frames_per_second).unwrap()).await.0);
         notifier.notify_one();

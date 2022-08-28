@@ -703,14 +703,16 @@ pub(crate) trait CloneableIterator: Iterator {
 }
 
 impl<T: Iterator + Clone + Send + Sync + 'static> CloneableIterator for T {
+    #[inline(never)]
     fn clone_dyn(&self) -> Box<dyn CloneableIterator<Item = Self::Item> + Send + Sync + 'static> {
         Box::new(self.clone())
     }
 }
 
 impl<T: 'static> Clone for Box<dyn CloneableIterator<Item = T> + Send + Sync + 'static> {
+    #[inline(never)]
     fn clone(&self) -> Self {
-        CloneableIterator::clone_dyn(self)
+        <dyn CloneableIterator<Item = T> + Send + Sync + 'static as CloneableIterator>::clone_dyn(self.deref())
     }
 }
 

@@ -1223,6 +1223,7 @@ name = "mpdelta_services"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "futures",
  "mpdelta_core",
  "thiserror",
  "time",

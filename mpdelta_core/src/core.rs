@@ -235,7 +235,7 @@ where
 pub trait Editor<T>: Send + Sync {
     type Log: Send + Sync;
     type Err: Error + 'static;
-    async fn edit(&self, target: &StaticPointer<RwLock<RootComponentClass<T>>>, command: RootComponentEditCommand) -> Result<Self::Log, Self::Err>;
+    async fn edit(&self, target: &StaticPointer<RwLock<RootComponentClass<T>>>, command: RootComponentEditCommand<T>) -> Result<Self::Log, Self::Err>;
     async fn edit_instance(&self, root: &StaticPointer<RwLock<RootComponentClass<T>>>, target: &StaticPointer<RwLock<ComponentInstance<T>>>, command: InstanceEditCommand) -> Result<Self::Log, Self::Err>;
     async fn edit_reverse(&self, log: &Self::Log);
     async fn edit_by_log(&self, log: &Self::Log);
@@ -257,7 +257,7 @@ where
 {
     type Err = ED::Err;
 
-    async fn edit(&self, target: &StaticPointer<RwLock<RootComponentClass<T>>>, command: RootComponentEditCommand) -> Result<(), Self::Err> {
+    async fn edit(&self, target: &StaticPointer<RwLock<RootComponentClass<T>>>, command: RootComponentEditCommand<T>) -> Result<(), Self::Err> {
         let log = self.editor.edit(target, command).await?;
         self.edit_history.push_history(target, None, log).await;
         Ok(())

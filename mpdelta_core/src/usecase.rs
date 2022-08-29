@@ -70,7 +70,7 @@ pub trait RealtimeRenderComponentUsecase<T: ParameterValueType<'static>> {
 #[async_trait]
 pub trait EditUsecase<T> {
     type Err: Error + 'static;
-    async fn edit(&self, target: &StaticPointer<RwLock<RootComponentClass<T>>>, command: RootComponentEditCommand) -> Result<(), Self::Err>;
+    async fn edit(&self, target: &StaticPointer<RwLock<RootComponentClass<T>>>, command: RootComponentEditCommand<T>) -> Result<(), Self::Err>;
     async fn edit_instance(&self, root: &StaticPointer<RwLock<RootComponentClass<T>>>, target: &StaticPointer<RwLock<ComponentInstance<T>>>, command: InstanceEditCommand) -> Result<(), Self::Err>;
 }
 

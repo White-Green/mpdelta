@@ -1,6 +1,9 @@
 use arc_swap::{ArcSwap, ArcSwapOption};
 use bitflags::bitflags;
+use dashmap::DashMap;
+use egui::{Pos2, Rect, Vec2};
 use mpdelta_core::component::class::ComponentClass;
+use mpdelta_core::component::instance::ComponentInstance;
 use mpdelta_core::component::parameter::ParameterValueType;
 use mpdelta_core::project::{Project, RootComponentClass};
 use mpdelta_core::ptr::{StaticPointer, StaticPointerOwned};
@@ -8,7 +11,9 @@ use mpdelta_core::usecase::{
     EditUsecase, GetAvailableComponentClassesUsecase, GetLoadedProjectsUsecase, GetRootComponentClassesUsecase, LoadProjectUsecase, NewProjectUsecase, NewRootComponentClassUsecase, RealtimeComponentRenderer, RealtimeRenderComponentUsecase, RedoUsecase, SetOwnerForRootComponentClassUsecase,
     UndoUsecase, WriteProjectUsecase,
 };
-use std::ops::Deref;
+use std::collections::HashMap;
+use std::fmt::{Debug, Formatter};
+use std::ops::{Deref, Range};
 use std::sync::atomic::AtomicUsize;
 use std::sync::{atomic, Arc};
 use tokio::runtime::Handle;
@@ -70,7 +75,7 @@ impl<Edit, GetAvailableComponentClasses, GetLoadedProjects, GetRootComponentClas
 
 pub struct MPDeltaViewModel<T, R> {
     handle: JoinHandle<()>,
-    message_sender: UnboundedSender<ViewModelMessage>,
+    message_sender: UnboundedSender<ViewModelMessage<T>>,
     inner: Arc<ViewModelInner<T, R>>,
 }
 
@@ -137,14 +142,52 @@ impl<T: ParameterValueType<'static>, R: RealtimeComponentRenderer<T>> MPDeltaVie
     pub fn get_preview_image(&self) -> Option<T::Image> {
         self.inner.realtime_renderer.load().as_ref().map(|renderer| renderer.render_frame(0))
     }
+
+    pub fn component_instances(&self) -> &DashMap<StaticPointer<RwLock<ComponentInstance<T>>>, ComponentInstanceRect> {
+        &self.inner.component_instances
+    }
+
+    pub fn click_component_instance(&self, handle: &StaticPointer<RwLock<ComponentInstance<T>>>) {
+        self.message_sender.send(ViewModelMessage::ClickComponentInstance(handle.clone())).unwrap();
+    }
+
+    pub fn drag_component_instance(&self, handle: &StaticPointer<RwLock<ComponentInstance<T>>>, delta: Vec2) {
+        self.message_sender.send(ViewModelMessage::DragComponentInstance(handle.clone(), delta)).unwrap();
+    }
+
+    pub fn add_component_instance(&self) {
+        self.message_sender.send(ViewModelMessage::AddComponentInstance).unwrap();
+    }
 }
 
-#[derive(Debug)]
-enum ViewModelMessage {
+#[derive(Debug, Clone)]
+pub struct ComponentInstanceRect {
+    pub layer: f32,
+    pub time: Range<f32>,
+}
+
+enum ViewModelMessage<T> {
     NewProject,
     SelectProject(usize),
     NewRootComponentClass,
     SelectRootComponentClass(usize),
+    ClickComponentInstance(StaticPointer<RwLock<ComponentInstance<T>>>),
+    DragComponentInstance(StaticPointer<RwLock<ComponentInstance<T>>>, Vec2),
+    AddComponentInstance,
+}
+
+impl<T> Debug for ViewModelMessage<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ViewModelMessage::NewProject => write!(f, "NewProject"),
+            ViewModelMessage::SelectProject(v) => f.debug_tuple("SelectProject").field(v).finish(),
+            ViewModelMessage::NewRootComponentClass => write!(f, "NewRootComponentClass"),
+            ViewModelMessage::SelectRootComponentClass(v) => f.debug_tuple("SelectRotComponentClass").field(v).finish(),
+            ViewModelMessage::ClickComponentInstance(v) => f.debug_tuple("ClickComponentInstance").field(v).finish(),
+            ViewModelMessage::DragComponentInstance(v0, v1) => f.debug_tuple("DragComponentInstance").field(v0).field(v1).finish(),
+            ViewModelMessage::AddComponentInstance => write!(f, "AddComponentInstance"),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -154,6 +197,7 @@ struct ViewModelInner<T, R> {
     root_component_classes: ArcSwap<Vec<(StaticPointer<RwLock<RootComponentClass<T>>>, String)>>,
     selected_root_component_class: AtomicUsize,
     realtime_renderer: ArcSwapOption<R>,
+    component_instances: DashMap<StaticPointer<RwLock<ComponentInstance<T>>>, ComponentInstanceRect>,
 }
 
 impl<T, R> ViewModelInner<T, R> {
@@ -164,6 +208,7 @@ impl<T, R> ViewModelInner<T, R> {
             root_component_classes: Default::default(),
             selected_root_component_class: Default::default(),
             realtime_renderer: Default::default(),
+            component_instances: Default::default(),
         }
     }
 }
@@ -176,16 +221,17 @@ impl<T, R> Default for ViewModelInner<T, R> {
 
 bitflags! {
     struct DataUpdateFlags: u32 {
-        const PROJECTS              = 0x1;
-        const PROJECT_SELECT        = 0x2;
-        const ROOT_COMPONENTS       = 0x4;
-        const ROOT_COMPONENT_SELECT = 0x8;
+        const PROJECTS              = 0x01;
+        const PROJECT_SELECT        = 0x02;
+        const ROOT_COMPONENTS       = 0x04;
+        const ROOT_COMPONENT_SELECT = 0x08;
+        const COMPONENT_INSTANCES   = 0x1A;
     }
 }
 
 async fn view_model_loop<T, Edit, GetAvailableComponentClasses, GetLoadedProjects, GetRootComponentClasses, LoadProject, NewProject, NewRootComponentClass, RealtimeRenderComponent, Redo, SetOwnerForRootComponentClass, Undo, WriteProject>(
     params: ViewModelParams<Edit, GetAvailableComponentClasses, GetLoadedProjects, GetRootComponentClasses, LoadProject, NewProject, NewRootComponentClass, RealtimeRenderComponent, Redo, SetOwnerForRootComponentClass, Undo, WriteProject>,
-    mut message_receiver: UnboundedReceiver<ViewModelMessage>,
+    mut message_receiver: UnboundedReceiver<ViewModelMessage<T>>,
     inner: Arc<ViewModelInner<T, RealtimeRenderComponent::Renderer>>,
 ) where
     T: ParameterValueType<'static>,
@@ -223,6 +269,7 @@ async fn view_model_loop<T, Edit, GetAvailableComponentClasses, GetLoadedProject
         root_component_classes,
         selected_root_component_class,
         realtime_renderer,
+        component_instances,
     } = &*inner;
     while let Some(message) = message_receiver.recv().await {
         let mut update_flags = DataUpdateFlags::empty();
@@ -249,6 +296,20 @@ async fn view_model_loop<T, Edit, GetAvailableComponentClasses, GetLoadedProject
             ViewModelMessage::SelectRootComponentClass(i) => {
                 selected_root_component_class.store(i, atomic::Ordering::Relaxed);
                 update_flags |= DataUpdateFlags::ROOT_COMPONENT_SELECT;
+            }
+            ViewModelMessage::ClickComponentInstance(handle) => {
+                // click
+            }
+            ViewModelMessage::DragComponentInstance(handle, delta) => {
+                if let Some(mut rect) = component_instances.get_mut(&handle) {
+                    let Range { start, end } = &mut rect.time;
+                    *start += delta.x;
+                    *end += delta.x;
+                    update_flags |= DataUpdateFlags::COMPONENT_INSTANCES;
+                }
+            }
+            ViewModelMessage::AddComponentInstance => {
+                component_instances.insert(StaticPointer::new(), ComponentInstanceRect { layer: 0., time: 0.0..10.0 });
             }
         }
         if update_flags.contains(DataUpdateFlags::PROJECTS) {
@@ -287,5 +348,6 @@ async fn view_model_loop<T, Edit, GetAvailableComponentClasses, GetLoadedProject
                 }
             }
         }
+        if update_flags.contains(DataUpdateFlags::COMPONENT_INSTANCES) {}
     }
 }

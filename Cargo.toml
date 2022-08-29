@@ -49,7 +49,7 @@ mpdelta_gui_vulkano = { path = "mpdelta_gui_vulkano" }
 tokio = { version = "1.19.2", features = ["full"] }
 
 [profile.dev]
-opt-level = 3
+opt-level = 1
 incremental = false
 
 [profile.release]

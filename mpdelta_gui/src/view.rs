@@ -1,6 +1,7 @@
 use crate::viewmodel::{MPDeltaViewModel, ViewModelParams};
 use crate::ImageRegister;
-use egui::{Button, Context, Frame, ScrollArea, Style, TextureId, Vec2, Widget};
+use egui::style::Margin;
+use egui::{Area, Button, Context, Frame, Id, Label, Pos2, Rect, ScrollArea, Sense, Style, TextureId, Vec2, Visuals, Widget, Window};
 use mpdelta_core::component::parameter::ParameterValueType;
 use mpdelta_core::usecase::{
     EditUsecase, GetAvailableComponentClassesUsecase, GetLoadedProjectsUsecase, GetRootComponentClassesUsecase, LoadProjectUsecase, NewProjectUsecase, NewRootComponentClassUsecase, RealtimeComponentRenderer, RealtimeRenderComponentUsecase, RedoUsecase, SetOwnerForRootComponentClassUsecase,
@@ -108,11 +109,45 @@ impl<T: ParameterValueType<'static>, R: RealtimeComponentRenderer<T>> Gui<T::Ima
         });
 
         egui::TopBottomPanel::bottom("timeline").resizable(true).show(ctx, |ui| {
-            ui.label("timeline");
+            ScrollArea::both().show(ui, |ui| {
+                let (rect, response) = ui.allocate_at_least(ui.available_size(), Sense::click());
+                ui.allocate_ui_at_rect(rect, |ui| {
+                    for item in self.view_model.component_instances().iter() {
+                        let (handle, rect) = item.pair();
+                        let rectangle = Rect::from_min_size(Pos2::new(rect.time.start * 100., rect.layer * 60.), Vec2::new((rect.time.end - rect.time.start) * 100., 50.));
+                        ui.allocate_ui_at_rect(Rect::from_min_size(ui.cursor().min + rectangle.min.to_vec2(), rectangle.size()), |ui| {
+                            Frame::group(&Style::default()).inner_margin(Margin::default()).show(ui, |ui| {
+                                let (rect, response) = ui.allocate_exact_size(rectangle.size(), Sense::drag());
+                                ui.allocate_ui_at_rect(rect, |ui| {
+                                    ui.label("timeline");
+                                });
+                                if response.clicked() {
+                                    self.view_model.click_component_instance(handle);
+                                }
+                                let delta = response.drag_delta();
+                                if delta != Vec2::default() {
+                                    self.view_model.drag_component_instance(handle, Vec2::new(delta.x / 100., delta.y / 60.));
+                                }
+                            });
+                        });
+                    }
+                });
+                response.context_menu(|ui| {
+                    if ui.button("add").clicked() {
+                        self.view_model.add_component_instance();
+                        ui.close_menu();
+                    }
+                });
+            });
         });
 
         egui::SidePanel::left("property").resizable(true).show(ctx, |ui| {
-            ui.label("Component Properties");
+            ScrollArea::both().show(ui, |ui| {
+                let (rect, _) = ui.allocate_at_least(ui.available_size(), Sense::click());
+                ui.allocate_ui_at_rect(rect, |ui| {
+                    ui.label("Component Properties");
+                });
+            });
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {

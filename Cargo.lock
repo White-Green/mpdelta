@@ -1183,6 +1183,7 @@ version = "0.1.0"
 dependencies = [
  "arc-swap",
  "bitflags",
+ "dashmap",
  "egui",
  "mpdelta_core",
  "tokio",

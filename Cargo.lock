@@ -1153,6 +1153,7 @@ dependencies = [
  "async-trait",
  "mpdelta_core",
  "mpdelta_core_vulkano",
+ "tokio",
  "vulkano",
 ]
 

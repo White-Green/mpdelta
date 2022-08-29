@@ -10,3 +10,4 @@ mpdelta_core = { path = "../mpdelta_core" }
 mpdelta_core_vulkano = { path = "../mpdelta_core_vulkano" }
 vulkano = "0.30.0"
 async-trait = "0.1.56"
+tokio = { version = "1.19.2", features = ["full"] }

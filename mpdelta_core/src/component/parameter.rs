@@ -2,10 +2,10 @@ use crate::common::time_split_value::TimeSplitValue;
 use crate::component::instance::ComponentInstance;
 use crate::component::marker_pin::MarkerPin;
 use crate::component::parameter::placeholder::{Placeholder, TagAudio, TagImage};
-use crate::component::parameter::value::{EasingValue, FrameVariableValue};
+use crate::component::parameter::value::{DefaultEasing, EasingValue, FrameVariableValue};
 use crate::ptr::StaticPointer;
 use crate::time::TimelineTime;
-use cgmath::{Quaternion, Vector2, Vector3};
+use cgmath::{One, Quaternion, Vector2, Vector3};
 use either::Either;
 use std::cmp::Ordering;
 use std::collections::HashMap;
@@ -13,6 +13,7 @@ use std::fmt::{Debug, Formatter};
 use std::hash::{Hash, Hasher};
 use std::ops::Range;
 use std::path::PathBuf;
+use std::sync::Arc;
 use tokio::sync::RwLock;
 
 pub mod placeholder;
@@ -715,6 +716,48 @@ pub struct ImageRequiredParams<T> {
     pub opacity: PinSplitValue<EasingValue<Opacity>>,
     pub blend_mode: PinSplitValue<BlendMode>,
     pub composite_operation: PinSplitValue<CompositeOperation>,
+}
+
+impl<T> ImageRequiredParams<T> {
+    pub fn new_default(marker_left: &StaticPointer<RwLock<MarkerPin>>, marker_right: &StaticPointer<RwLock<MarkerPin>>) -> ImageRequiredParams<T> {
+        let one = TimeSplitValue::new(marker_left.clone(), EasingValue { from: 1., to: 1., easing: Arc::new(DefaultEasing) }, marker_right.clone());
+        let one_value = VariableParameterValue::Manually(one);
+        let zero = VariableParameterValue::Manually(TimeSplitValue::new(marker_left.clone(), EasingValue { from: 0., to: 0., easing: Arc::new(DefaultEasing) }, marker_right.clone()));
+        ImageRequiredParams {
+            aspect_ratio: (1, 1),
+            transform: ImageRequiredParamsTransform::Params {
+                scale: Vector3 {
+                    x: one_value.clone(),
+                    y: one_value.clone(),
+                    z: one_value.clone(),
+                },
+                translate: Vector3 { x: zero.clone(), y: zero.clone(), z: zero.clone() },
+                rotate: TimeSplitValue::new(
+                    marker_left.clone(),
+                    EasingValue {
+                        from: Quaternion::one(),
+                        to: Quaternion::one(),
+                        easing: Arc::new(DefaultEasing),
+                    },
+                    marker_right.clone(),
+                ),
+                scale_center: Vector3 { x: zero.clone(), y: zero.clone(), z: zero.clone() },
+                rotate_center: Vector3 { x: zero.clone(), y: zero.clone(), z: zero },
+            },
+            background_color: [0; 4],
+            opacity: TimeSplitValue::new(
+                marker_left.clone(),
+                EasingValue {
+                    from: Opacity::OPAQUE,
+                    to: Opacity::OPAQUE,
+                    easing: Arc::new(DefaultEasing),
+                },
+                marker_right.clone(),
+            ),
+            blend_mode: TimeSplitValue::new(marker_left.clone(), Default::default(), marker_right.clone()),
+            composite_operation: TimeSplitValue::new(marker_left.clone(), Default::default(), marker_right.clone()),
+        }
+    }
 }
 
 impl<T> Clone for ImageRequiredParams<T> {

@@ -1,5 +1,9 @@
+use async_trait::async_trait;
+use mpdelta_components::rectangle::RectangleClass;
+use mpdelta_core::component::class::ComponentClass;
 use mpdelta_core::component::parameter::ParameterValueType;
-use mpdelta_core::core::MPDeltaCore;
+use mpdelta_core::core::{ComponentClassLoader, MPDeltaCore};
+use mpdelta_core::ptr::{StaticPointer, StaticPointerOwned};
 use mpdelta_core_vulkano::ImageType;
 use mpdelta_gui::view::MPDeltaGUI;
 use mpdelta_gui::viewmodel::ViewModelParams;
@@ -12,8 +16,10 @@ use mpdelta_services::project_editor::ProjectEditor;
 use mpdelta_services::project_io::{TemporaryProjectLoader, TemporaryProjectWriter};
 use mpdelta_services::project_store::InMemoryProjectStore;
 use mpdelta_video_renderer_vulkano::MPDeltaVideoRendererBuilder;
+use std::borrow::Cow;
 use std::sync::Arc;
 use tokio::runtime::Runtime;
+use tokio::sync::RwLock;
 use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
 use vulkano::device::{Device, DeviceCreateInfo, Features, Queue, QueueCreateInfo};
 use vulkano::instance::{Instance, InstanceCreateInfo};
@@ -43,6 +49,30 @@ impl<'a> ParameterValueType<'a> for ValueType {
     type ComponentClass = ();
 }
 
+#[derive(Default)]
+struct ComponentClassList(Vec<StaticPointerOwned<RwLock<dyn ComponentClass<ValueType>>>>, Vec<StaticPointer<RwLock<dyn ComponentClass<ValueType>>>>);
+
+impl ComponentClassList {
+    fn new() -> ComponentClassList {
+        Default::default()
+    }
+
+    fn add(&mut self, class: impl ComponentClass<ValueType> + 'static) -> &mut Self {
+        let class = StaticPointerOwned::new(RwLock::new(class)).map(|arc| arc as _, |weak| weak as _);
+        let reference = StaticPointerOwned::reference(&class).clone();
+        self.0.push(class);
+        self.1.push(reference);
+        self
+    }
+}
+
+#[async_trait]
+impl ComponentClassLoader<ValueType> for ComponentClassList {
+    async fn get_available_component_classes(&self) -> Cow<[StaticPointer<RwLock<dyn ComponentClass<ValueType>>>]> {
+        Cow::Borrowed(&self.1)
+    }
+}
+
 fn main() {
     let (instance, device, queue, event_loop, surface) = initialize_graphics();
     let runtime = Runtime::new().unwrap();
@@ -50,7 +80,9 @@ fn main() {
     let project_loader = Arc::new(TemporaryProjectLoader);
     let project_writer = Arc::new(TemporaryProjectWriter);
     let project_memory = Arc::new(InMemoryProjectStore::<ValueType>::new());
-    let component_class_loader = Arc::new(TemporaryComponentClassLoader);
+    let mut component_class_loader = ComponentClassList::new();
+    component_class_loader.add(RectangleClass::new(Arc::clone(&queue)));
+    let component_class_loader = Arc::new(component_class_loader);
     let component_renderer_builder = Arc::new(MPDeltaRendererBuilder::new(Arc::clone(&id_generator), Arc::new(MPDeltaVideoRendererBuilder::new(Arc::clone(&device), Arc::clone(&queue))), Arc::new(())));
     let project_editor = Arc::new(ProjectEditor::new());
     let edit_history = Arc::new(InMemoryEditHistoryStore::new(100));

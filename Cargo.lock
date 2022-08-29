@@ -1132,6 +1132,7 @@ dependencies = [
 name = "mpdelta"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "mpdelta_components",
  "mpdelta_core",
  "mpdelta_core_vulkano",

@@ -22,6 +22,10 @@ impl<T> StaticPointerOwned<T> {
         let weak = Arc::downgrade(&inner);
         StaticPointerOwned(inner, StaticPointer(weak))
     }
+
+    pub fn map<U: ?Sized>(self, map: fn(Arc<T>) -> Arc<U>, map_weak: fn(Weak<T>) -> Weak<U>) -> StaticPointerOwned<U> {
+        StaticPointerOwned(map(self.0), self.1.map(map_weak))
+    }
 }
 
 impl<T: ?Sized> StaticPointerOwned<T> {

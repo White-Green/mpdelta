@@ -47,6 +47,7 @@ mpdelta_video_renderer_vulkano = { path = "mpdelta_video_renderer_vulkano" }
 mpdelta_gui = { path = "mpdelta_gui" }
 mpdelta_gui_vulkano = { path = "mpdelta_gui_vulkano" }
 tokio = { version = "1.19.2", features = ["full"] }
+async-trait = "0.1.56"
 
 [profile.dev]
 opt-level = 1

@@ -82,6 +82,14 @@ impl<Value> FrameVariableValue<Value> {
             values: self.values.into_iter().map(|(k, v)| (map(k), v)).collect(),
         }
     }
+
+    pub fn first_time(&self) -> Option<TimelineTime> {
+        self.values.iter().next().map(|v| *v.0)
+    }
+
+    pub fn last_time(&self) -> Option<TimelineTime> {
+        self.values.iter().next_back().map(|v| *v.0)
+    }
 }
 
 impl<T> From<BTreeMap<TimelineTime, T>> for FrameVariableValue<T> {

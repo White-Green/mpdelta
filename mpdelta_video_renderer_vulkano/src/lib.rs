@@ -195,7 +195,7 @@ async fn render_loop<T: ParameterValueType<'static, Image = ImageType> + 'static
             Some(RenderRequest::Render(f)) => frame = f,
             None | Some(RenderRequest::Shutdown) => break,
         }
-        cache.insert(frame, render(Arc::clone(&shared_resource), (1920, 1080), param, Arc::clone(&image_source_tree), TimelineTime::new(frame as f64 / frames_per_second).unwrap()).await.0);
+        cache.insert(frame, render(Arc::clone(&shared_resource), (1920, 1080), param, Arc::clone(&image_source_tree), TimelineTime::new(frame as f64 / frames_per_second).unwrap()).await.unwrap().0);
         notifier.notify_one();
         frame += 1;
     }
@@ -228,10 +228,15 @@ fn render<Audio: Clone + Send + Sync + 'static, T: ParameterValueType<'static, I
     param: Placeholder<TagImage>,
     image_source_tree: Arc<ReadonlySourceTree<TagImage, ImageNativeTreeNode<T>>>,
     at: TimelineTime,
-) -> BoxFuture<'static, (ImageType, Option<(Arc<AttachmentImage>, BlendMode, CompositeOperation)>)> {
+) -> BoxFuture<'static, Option<(ImageType, Option<(Arc<AttachmentImage>, BlendMode, CompositeOperation)>)>> {
     async move {
         match &*image_source_tree.get(param).unwrap() {
             Either::Right((image_params, native_processor)) => {
+                match (image_params.opacity.first_time(), image_params.opacity.last_time()) {
+                    (Some(first), Some(last)) if at < first || last < at => return None,
+                    (None, _) => return None,
+                    _ => {}
+                }
                 let image_param = image_params.get(at);
                 let image_native_size = match (required_size.0 * image_param.aspect_ratio.1).cmp(&(required_size.1 * image_param.aspect_ratio.0)) {
                     Ordering::Greater => (div_ceil(image_param.aspect_ratio.0 * required_size.1, image_params.aspect_ratio.1), required_size.1),
@@ -353,7 +358,7 @@ fn render<Audio: Clone + Send + Sync + 'static, T: ParameterValueType<'static, I
                 let command_buffer = builder.build().unwrap();
                 let future = command_buffer.execute(Arc::clone(&shared_resource.queue)).unwrap();
                 future.then_signal_fence_and_flush().unwrap().wait(None).unwrap();
-                (ImageType(result_image), Some((depth, image_param.blend_mode, image_param.composite_operation)))
+                Some((ImageType(result_image), Some((depth, image_param.blend_mode, image_param.composite_operation))))
             }
             Either::Left((images, time_shift)) => {
                 let at = time_shift.as_ref().map_or(at, |map| {
@@ -393,7 +398,7 @@ fn render<Audio: Clone + Send + Sync + 'static, T: ParameterValueType<'static, I
                     },
                 )
                 .unwrap();
-                let images = stream::iter(tasks).then(|task| async move { task.await.unwrap() }).collect::<Vec<_>>().await;
+                let images = stream::iter(tasks).filter_map(|task| async move { task.await.unwrap() }).collect::<Vec<_>>().await;
                 let mut builder = AutoCommandBufferBuilder::primary(Arc::clone(&shared_resource.device), shared_resource.queue.family(), CommandBufferUsage::OneTimeSubmit).unwrap();
                 builder
                     .clear_color_image(ClearColorImageInfo {
@@ -460,7 +465,7 @@ fn render<Audio: Clone + Send + Sync + 'static, T: ParameterValueType<'static, I
                 }
                 builder.build().unwrap().execute(Arc::clone(&shared_resource.queue)).unwrap().then_signal_fence_and_flush().unwrap().wait(None).unwrap();
                 // imagesをぜんぶ合成する
-                (ImageType(result_image), None)
+                Some((ImageType(result_image), None))
             }
         }
     }
@@ -477,7 +482,7 @@ async fn get_param<T: ParameterValueType<'static, Image = ImageType> + 'static>(
 ) -> ParameterNativeProcessorInputFixed<ImageType, T::Audio> {
     match &params[index] {
         Parameter::None => Parameter::None,
-        Parameter::Image(image) => Parameter::Image(render(shared_resource, required_size, *image, image_source_tree, at).await.0),
+        Parameter::Image(image) => Parameter::Image(render(shared_resource, required_size, *image, image_source_tree, at).await.unwrap().0),
         Parameter::Audio(_) => todo!(),
         Parameter::Video(_) => todo!(),
         Parameter::File(value) => Parameter::File(value.get(at).unwrap().clone()),

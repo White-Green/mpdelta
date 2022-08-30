@@ -34,7 +34,7 @@ use vulkano::device::{Device, Queue};
 use vulkano::format::Format;
 use vulkano::format::{ClearColorValue, ClearValue};
 use vulkano::image::view::{ImageView, ImageViewCreateInfo};
-use vulkano::image::{AttachmentImage, ImageAccess, ImageAspects, ImageDimensions, ImageLayout, ImageSubresourceRange, ImageUsage, ImmutableImage, MipmapsCount, StorageImage};
+use vulkano::image::{AttachmentImage, ImageAccess, ImageAspects, ImageCreateFlags, ImageDimensions, ImageLayout, ImageSubresourceRange, ImageUsage, ImmutableImage, MipmapsCount, StorageImage};
 use vulkano::pipeline::cache::PipelineCache;
 use vulkano::pipeline::graphics::color_blend::ColorBlendState;
 use vulkano::pipeline::graphics::depth_stencil::{CompareOp, DepthStencilState, StencilOp, StencilOpState, StencilOps, StencilState};
@@ -352,7 +352,7 @@ fn render<Audio: Clone + Send + Sync + 'static, T: ParameterValueType<'static, I
                 builder.end_render_pass().unwrap();
                 let command_buffer = builder.build().unwrap();
                 let future = command_buffer.execute(Arc::clone(&shared_resource.queue)).unwrap();
-                future.then_signal_fence().wait(None).unwrap();
+                future.then_signal_fence_and_flush().unwrap().wait(None).unwrap();
                 (ImageType(result_image), Some((depth, image_param.blend_mode, image_param.composite_operation)))
             }
             Either::Left((images, time_shift)) => {
@@ -395,6 +395,12 @@ fn render<Audio: Clone + Send + Sync + 'static, T: ParameterValueType<'static, I
                 .unwrap();
                 let images = stream::iter(tasks).then(|task| async move { task.await.unwrap() }).collect::<Vec<_>>().await;
                 let mut builder = AutoCommandBufferBuilder::primary(Arc::clone(&shared_resource.device), shared_resource.queue.family(), CommandBufferUsage::OneTimeSubmit).unwrap();
+                builder
+                    .clear_color_image(ClearColorImageInfo {
+                        clear_value: ClearColorValue::Float([0.; 4]),
+                        ..ClearColorImageInfo::image(Arc::clone(&result_image) as _)
+                    })
+                    .unwrap();
                 builder.bind_pipeline_compute(Arc::clone(&shared_resource.composite_operation_pipeline));
                 builder.bind_descriptor_sets(
                     PipelineBindPoint::Compute,
@@ -450,9 +456,9 @@ fn render<Audio: Clone + Send + Sync + 'static, T: ParameterValueType<'static, I
                             image_height: required_size.1,
                         },
                     );
-                    builder.dispatch([div_ceil(required_size.0, 32), div_ceil(required_size.1, 32), 1]).unwrap();
+                    builder.dispatch([div_ceil(required_size.0, 1), div_ceil(required_size.1, 1), 1]).unwrap();
                 }
-                builder.build().unwrap();
+                builder.build().unwrap().execute(Arc::clone(&shared_resource.queue)).unwrap().then_signal_fence_and_flush().unwrap().wait(None).unwrap();
                 // imagesをぜんぶ合成する
                 (ImageType(result_image), None)
             }

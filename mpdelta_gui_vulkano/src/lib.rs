@@ -12,7 +12,7 @@ use vulkano::instance::{Instance, InstanceExtensions};
 use vulkano::pipeline::graphics::viewport::Viewport;
 use vulkano::render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass};
 use vulkano::swapchain::{AcquireError, FullScreenExclusive, Surface, SurfaceInfo, Swapchain, SwapchainCreateInfo, SwapchainCreationError};
-use vulkano::sync::{FlushError, GpuFuture};
+use vulkano::sync::{FenceSignalFuture, FlushError, GpuFuture};
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::Window;
@@ -111,8 +111,7 @@ impl<T: Gui<ImageType> + 'static> MPDeltaGUIVulkano<T> {
 
         let mut recreate_swapchain = false;
 
-        let none_command = AutoCommandBufferBuilder::primary(Arc::clone(&device), queue.family(), CommandBufferUsage::OneTimeSubmit).unwrap().build().unwrap();
-        let mut previous_frame_end = none_command.execute(Arc::clone(&queue)).unwrap().boxed().then_signal_fence();
+        let mut previous_frame_end = None::<FenceSignalFuture<Box<dyn GpuFuture>>>;
 
         event_loop.run(move |event, _, control_flow| {
             match event {
@@ -129,7 +128,9 @@ impl<T: Gui<ImageType> + 'static> MPDeltaGUIVulkano<T> {
                     };
                 }
                 Event::RedrawEventsCleared => {
-                    previous_frame_end.cleanup_finished();
+                    if let Some(previous_frame_end) = &mut previous_frame_end {
+                        previous_frame_end.cleanup_finished();
+                    }
 
                     if recreate_swapchain {
                         let dimensions: [u32; 2] = surface.window().inner_size().into();
@@ -164,23 +165,24 @@ impl<T: Gui<ImageType> + 'static> MPDeltaGUIVulkano<T> {
                     vulkano_gui.begin_frame();
                     gui.ui(&vulkano_gui.context(), &mut ImageRegisterWrapper(&mut vulkano_gui));
 
-                    take_mut::take(&mut previous_frame_end, |previous_frame_end| {
+                    if let Some(previous_frame_end) = previous_frame_end.take() {
                         previous_frame_end.wait(None).unwrap();
-                        let future = vulkano_gui.draw_on_image(acquire_future, Arc::clone(&framebuffers[image_num]) as Arc<_>);
-                        let future = future.then_swapchain_present(Arc::clone(&queue), Arc::clone(&swapchain), image_num).boxed().then_signal_fence_and_flush();
+                    }
 
-                        match future {
-                            Ok(future) => future,
-                            Err(FlushError::OutOfDate) => {
-                                recreate_swapchain = true;
-                                vulkano::sync::now(Arc::clone(&device)).boxed().then_signal_fence()
-                            }
-                            Err(e) => {
-                                println!("Failed to flush future: {:?}", e);
-                                vulkano::sync::now(Arc::clone(&device)).boxed().then_signal_fence()
-                            }
+                    let future = vulkano_gui.draw_on_image(acquire_future, Arc::clone(&framebuffers[image_num]) as Arc<_>);
+                    let future = future.then_swapchain_present(Arc::clone(&queue), Arc::clone(&swapchain), image_num).boxed().then_signal_fence_and_flush();
+
+                    previous_frame_end = match future {
+                        Ok(future) => Some(future),
+                        Err(FlushError::OutOfDate) => {
+                            recreate_swapchain = true;
+                            None
                         }
-                    });
+                        Err(e) => {
+                            println!("Failed to flush future: {:?}", e);
+                            None
+                        }
+                    };
                 }
                 _ => (),
             }

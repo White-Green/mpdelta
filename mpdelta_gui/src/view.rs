@@ -1,5 +1,6 @@
 use crate::viewmodel::{MPDeltaViewModel, ViewModelParams};
 use crate::ImageRegister;
+use egui::epaint::Shadow;
 use egui::style::Margin;
 use egui::{Area, Button, Context, Direction, Frame, Id, Label, Layout, Pos2, Rect, ScrollArea, Sense, Slider, Style, TextureId, Vec2, Visuals, Widget, Window};
 use mpdelta_core::component::parameter::ParameterValueType;
@@ -113,14 +114,20 @@ impl<T: ParameterValueType<'static>, R: RealtimeComponentRenderer<T>> Gui<T::Ima
                 let (rect, response) = ui.allocate_at_least(ui.available_size(), Sense::click());
                 ui.allocate_ui_at_rect(rect, |ui| {
                     let base_point = ui.cursor().min;
+                    let selected = self.view_model.selected_component_instance();
                     for item in self.view_model.component_instances().iter() {
                         let (handle, rect) = item.pair();
                         let rectangle = Rect::from_min_size(Pos2::new(rect.time.start.value() as f32 * 100., rect.layer * 60.), Vec2::new((rect.time.end.value() - rect.time.start.value()) as f32 * 100., 50.));
                         ui.allocate_ui_at_rect(Rect::from_min_size(base_point + rectangle.min.to_vec2(), rectangle.size()), |ui| {
-                            Frame::group(&Style::default()).inner_margin(Margin::default()).show(ui, |ui| {
+                            let frame = Frame::group(&Style::default()).inner_margin(Margin::default());
+                            let frame = match &*selected {
+                                Some(selected) if handle == &**selected => frame.shadow(Shadow::big_light()),
+                                _ => frame,
+                            };
+                            frame.show(ui, |ui| {
                                 let (rect, response) = ui.allocate_exact_size(rectangle.size(), Sense::drag());
                                 ui.allocate_ui_at_rect(rect, |ui| {
-                                    ui.label("timeline");
+                                    ui.label("Rectangle");
                                 });
                                 if response.clicked() {
                                     self.view_model.click_component_instance(handle);

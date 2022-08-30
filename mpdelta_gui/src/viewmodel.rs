@@ -191,6 +191,10 @@ impl<T: ParameterValueType<'static>, R: RealtimeComponentRenderer<T>> MPDeltaVie
         DerefMap::new(self.inner.timeline_item.load(), |guard| &guard.marker_pins)
     }
 
+    pub fn selected_component_instance(&self) -> impl Deref<Target = Option<Arc<StaticPointer<RwLock<ComponentInstance<T>>>>>> {
+        self.inner.selected_component_instance.load()
+    }
+
     pub fn click_component_instance(&self, handle: &StaticPointer<RwLock<ComponentInstance<T>>>) {
         self.message_sender.send(ViewModelMessage::ClickComponentInstance(handle.clone())).unwrap();
     }
@@ -279,6 +283,7 @@ struct ViewModelInner<T, R> {
     selected_root_component_class: AtomicUsize,
     realtime_renderer: ArcSwapOption<R>,
     timeline_item: ArcSwap<TimelineItem<T>>,
+    selected_component_instance: ArcSwapOption<StaticPointer<RwLock<ComponentInstance<T>>>>,
 }
 
 impl<T, R> ViewModelInner<T, R> {
@@ -290,6 +295,7 @@ impl<T, R> ViewModelInner<T, R> {
             selected_root_component_class: Default::default(),
             realtime_renderer: Default::default(),
             timeline_item: Default::default(),
+            selected_component_instance: Default::default(),
         }
     }
 }
@@ -351,6 +357,7 @@ async fn view_model_loop<T, Edit, GetAvailableComponentClasses, GetLoadedProject
         selected_root_component_class,
         realtime_renderer,
         timeline_item,
+        selected_component_instance,
     } = &*inner;
     while let Some(message) = message_receiver.recv().await {
         let mut update_flags = DataUpdateFlags::empty();
@@ -379,7 +386,7 @@ async fn view_model_loop<T, Edit, GetAvailableComponentClasses, GetLoadedProject
                 update_flags |= DataUpdateFlags::ROOT_COMPONENT_SELECT;
             }
             ViewModelMessage::ClickComponentInstance(handle) => {
-                // click
+                selected_component_instance.store(Some(Arc::new(handle)));
             }
             ViewModelMessage::DragComponentInstance(handle, delta) => {
                 if let Some(mut rect) = timeline_item.load().component_instances.get_mut(&handle) {
@@ -463,6 +470,7 @@ async fn view_model_loop<T, Edit, GetAvailableComponentClasses, GetLoadedProject
                     }))
                 }
             }
+            selected_component_instance.store(None);
             update_flags |= DataUpdateFlags::COMPONENT_INSTANCES;
         }
         if update_flags.contains(DataUpdateFlags::COMPONENT_INSTANCES) {

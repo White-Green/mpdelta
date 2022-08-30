@@ -5,6 +5,7 @@ use egui::{Pos2, Rect, Vec2};
 use mpdelta_core::component::class::ComponentClass;
 use mpdelta_core::component::instance::ComponentInstance;
 use mpdelta_core::component::parameter::ParameterValueType;
+use mpdelta_core::edit::RootComponentEditCommand;
 use mpdelta_core::project::{Project, RootComponentClass};
 use mpdelta_core::ptr::{StaticPointer, StaticPointerOwned};
 use mpdelta_core::usecase::{
@@ -225,7 +226,7 @@ bitflags! {
         const PROJECT_SELECT        = 0x02;
         const ROOT_COMPONENTS       = 0x04;
         const ROOT_COMPONENT_SELECT = 0x08;
-        const COMPONENT_INSTANCES   = 0x1A;
+        const COMPONENT_INSTANCES   = 0x10;
     }
 }
 
@@ -309,7 +310,22 @@ async fn view_model_loop<T, Edit, GetAvailableComponentClasses, GetLoadedProject
                 }
             }
             ViewModelMessage::AddComponentInstance => {
-                component_instances.insert(StaticPointer::new(), ComponentInstanceRect { layer: 0., time: 0.0..10.0 });
+                if let Some((target, _)) = root_component_classes.load().get(selected_root_component_class.load(atomic::Ordering::Relaxed)) {
+                    let pointer = &get_available_component_classes.get_available_component_classes().await[0];
+                    let class = pointer.upgrade().unwrap();
+                    let instance = class.read().await.instantiate(pointer).await;
+                    let instance = StaticPointerOwned::new(RwLock::new(instance));
+                    let reference = StaticPointerOwned::reference(&instance).clone();
+                    edit.edit(target, RootComponentEditCommand::AddComponentInstance(instance)).await.unwrap();
+                    component_instances.insert(
+                        reference,
+                        ComponentInstanceRect {
+                            layer: component_instances.len() as f32,
+                            time: 0.0..10.0,
+                        },
+                    );
+                    update_flags |= DataUpdateFlags::COMPONENT_INSTANCES;
+                }
             }
         }
         if update_flags.contains(DataUpdateFlags::PROJECTS) {
@@ -330,6 +346,9 @@ async fn view_model_loop<T, Edit, GetAvailableComponentClasses, GetLoadedProject
             root_component_classes.store(Arc::new(new_root_component_classes));
         }
         if update_flags.contains(DataUpdateFlags::ROOT_COMPONENT_SELECT) {
+            update_flags |= DataUpdateFlags::COMPONENT_INSTANCES;
+        }
+        if update_flags.contains(DataUpdateFlags::COMPONENT_INSTANCES) {
             if let Some((class, _)) = root_component_classes.load().get(selected_root_component_class.load(atomic::Ordering::Relaxed)) {
                 if let Some(class_ref) = class.upgrade() {
                     let class = class.clone().map(|weak| weak as _);
@@ -348,6 +367,5 @@ async fn view_model_loop<T, Edit, GetAvailableComponentClasses, GetLoadedProject
                 }
             }
         }
-        if update_flags.contains(DataUpdateFlags::COMPONENT_INSTANCES) {}
     }
 }

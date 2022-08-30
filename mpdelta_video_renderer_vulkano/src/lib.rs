@@ -196,7 +196,7 @@ async fn render_loop<T: ParameterValueType<'static, Image = ImageType> + 'static
     let image_source_tree = Arc::new(image_source_tree);
     loop {
         match request_receiver.recv().await {
-            Some(RenderRequest::Render(f)) => frame = dbg!(f),
+            Some(RenderRequest::Render(f)) => frame = f,
             None | Some(RenderRequest::Shutdown) => break,
         }
         cache.insert(frame, render(Arc::clone(&shared_resource), (1920, 1080), param, Arc::clone(&image_source_tree), TimelineTime::new(frame as f64 / frames_per_second).unwrap()).await.0);

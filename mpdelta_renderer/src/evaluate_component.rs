@@ -908,10 +908,15 @@ pub(crate) async fn evaluate_component<T: ParameterValueType<'static> + 'static,
             let result = stream::iter(component_evaluate_tasks)
                 .fold(Ok(empty_input_buffer(&value_type, TimelineTime::new(0.).unwrap(), TimelineTime::new(natural_length.as_secs_f64()).unwrap())), |acc, component| async move {
                     let acc = acc?;
-                    let (left, value, right) = component.await.unwrap()?;
-                    let left = left.upgrade().unwrap().read().await.cached_timeline_time();
-                    let right = right.upgrade().unwrap().read().await.cached_timeline_time();
-                    Ok(combine_params(acc, frame_variable_value_into_input_buffer(value, left, right)).await)
+                    match component.await.unwrap() {
+                        Ok((left, value, right)) => {
+                            let left = left.upgrade().unwrap().read().await.cached_timeline_time();
+                            let right = right.upgrade().unwrap().read().await.cached_timeline_time();
+                            Ok(combine_params(acc, frame_variable_value_into_input_buffer(value, left, right)).await)
+                        }
+                        Err(RendererError::NativeProcessorNotFound) => Ok(acc),
+                        Err(e) => Err(e),
+                    }
                 })
                 .await?;
             drop(components);
@@ -949,12 +954,20 @@ async fn evaluate_variable<T: ParameterValueType<'static>, ID: IdGenerator + 'st
                             tokio::spawn(async move { evaluate_component(comp, ParameterType::RealNumber(None), image_source_tree, audio_source_tree, Box::new(frames)).await })
                         })
                         .collect::<Vec<_>>();
-                    let component_values = stream::iter(component_values).then(|task| async move {
-                        let (left, value, right) = task.await.unwrap()?;
-                        let value = value.into_real_number().map_err(|_| RendererError::InvalidComponent)?;
+                    let component_values = stream::iter(component_values).filter_map(|task| async move {
+                        let (left, value, right) = match task.await.unwrap() {
+                            Ok(value) => value,
+                            Err(RendererError::NativeProcessorNotFound) => return None,
+                            Err(e) => return Some(Err(e)),
+                        };
+                        let value = if let Ok(value) = value.into_real_number() {
+                            value
+                        } else {
+                            return Some(Err(RendererError::InvalidComponent));
+                        };
                         let left = left.upgrade().unwrap().read().await.cached_timeline_time();
                         let right = right.upgrade().unwrap().read().await.cached_timeline_time();
-                        Ok(TimeSplitValue::new(left, Some(Either::Right(value)), right))
+                        Some(Ok(TimeSplitValue::new(left, Some(Either::Right(value)), right)))
                     });
                     Ok(match priority {
                         VariableParameterPriority::PrioritizeManually => {
@@ -1018,11 +1031,15 @@ async fn evaluate_parameter<ID: IdGenerator + 'static, T: ParameterValueType<'st
                     tokio::spawn(async move { evaluate_component(comp, param_type, image_source_tree, audio_source_tree, Box::new(frames)).await })
                 })
                 .collect::<Vec<_>>();
-            let component_values = stream::iter(component_values).then(|task| async move {
-                let (left, value, right) = task.await.unwrap()?;
+            let component_values = stream::iter(component_values).filter_map(|task| async move {
+                let (left, value, right) = match task.await.unwrap() {
+                    Ok(value) => value,
+                    Err(RendererError::NativeProcessorNotFound) => return None,
+                    Err(e) => return Some(Err(e)),
+                };
                 let left = left.upgrade().unwrap().read().await.cached_timeline_time();
                 let right = right.upgrade().unwrap().read().await.cached_timeline_time();
-                Ok(frame_variable_value_into_input_buffer(value, left, right))
+                Some(Ok(frame_variable_value_into_input_buffer(value, left, right)))
             });
             match priority {
                 VariableParameterPriority::PrioritizeManually => {

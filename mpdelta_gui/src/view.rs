@@ -112,10 +112,11 @@ impl<T: ParameterValueType<'static>, R: RealtimeComponentRenderer<T>> Gui<T::Ima
             ScrollArea::both().show(ui, |ui| {
                 let (rect, response) = ui.allocate_at_least(ui.available_size(), Sense::click());
                 ui.allocate_ui_at_rect(rect, |ui| {
+                    let base_point = ui.cursor().min;
                     for item in self.view_model.component_instances().iter() {
                         let (handle, rect) = item.pair();
                         let rectangle = Rect::from_min_size(Pos2::new(rect.time.start * 100., rect.layer * 60.), Vec2::new((rect.time.end - rect.time.start) * 100., 50.));
-                        ui.allocate_ui_at_rect(Rect::from_min_size(ui.cursor().min + rectangle.min.to_vec2(), rectangle.size()), |ui| {
+                        ui.allocate_ui_at_rect(Rect::from_min_size(base_point + rectangle.min.to_vec2(), rectangle.size()), |ui| {
                             Frame::group(&Style::default()).inner_margin(Margin::default()).show(ui, |ui| {
                                 let (rect, response) = ui.allocate_exact_size(rectangle.size(), Sense::drag());
                                 ui.allocate_ui_at_rect(rect, |ui| {
@@ -157,7 +158,7 @@ impl<T: ParameterValueType<'static>, R: RealtimeComponentRenderer<T>> Gui<T::Ima
             if let Some(img) = self.view_model.get_preview_image() {
                 let texture_id = image.register_image(img);
                 let Vec2 { x, y } = ui.available_size();
-                let (x, y) = (x.max(y * 16. / 9.), y.max(x * 9. / 16.));
+                let (x, y) = (x.min(y * 16. / 9.), y.min(x * 9. / 16.));
                 ui.image(texture_id, Vec2 { x, y });
                 self.previous_preview = Some(texture_id);
             } else {

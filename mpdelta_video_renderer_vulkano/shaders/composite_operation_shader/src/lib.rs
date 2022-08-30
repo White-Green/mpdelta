@@ -19,7 +19,7 @@ pub mod shader {
     use spirv_std::macros::spirv;
     use spirv_std::Image;
 
-    #[spirv(compute(threads(1, 1, 1)))]
+    #[spirv(compute(threads(32, 32, 1)))]
     pub fn main(
         #[spirv(global_invocation_id)] id: UVec3,
         #[spirv(descriptor_set = 0, binding = 0)] result_image: &mut Image!(2D, format=rgba8, sampled=false, arrayed=false),

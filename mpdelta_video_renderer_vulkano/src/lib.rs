@@ -456,7 +456,7 @@ fn render<Audio: Clone + Send + Sync + 'static, T: ParameterValueType<'static, I
                             image_height: required_size.1,
                         },
                     );
-                    builder.dispatch([div_ceil(required_size.0, 1), div_ceil(required_size.1, 1), 1]).unwrap();
+                    builder.dispatch([div_ceil(required_size.0, 32), div_ceil(required_size.1, 32), 1]).unwrap();
                 }
                 builder.build().unwrap().execute(Arc::clone(&shared_resource.queue)).unwrap().then_signal_fence_and_flush().unwrap().wait(None).unwrap();
                 // imagesをぜんぶ合成する

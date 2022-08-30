@@ -234,9 +234,9 @@ fn render<Audio: Clone + Send + Sync + 'static, T: ParameterValueType<'static, I
             Either::Right((image_params, native_processor)) => {
                 let image_param = image_params.get(at);
                 let image_native_size = match (required_size.0 * image_param.aspect_ratio.1).cmp(&(required_size.1 * image_param.aspect_ratio.0)) {
-                    Ordering::Less => (div_ceil(image_param.aspect_ratio.0 * required_size.1, image_params.aspect_ratio.1), required_size.1),
+                    Ordering::Greater => (div_ceil(image_param.aspect_ratio.0 * required_size.1, image_params.aspect_ratio.1), required_size.1),
                     Ordering::Equal => required_size,
-                    Ordering::Greater => (required_size.0, div_ceil(image_param.aspect_ratio.1 * required_size.0, image_params.aspect_ratio.0)),
+                    Ordering::Less => (required_size.0, div_ceil(image_param.aspect_ratio.1 * required_size.0, image_params.aspect_ratio.0)),
                 };
                 let tasks = (0..native_processor.parameter.len())
                     .map(|i| {

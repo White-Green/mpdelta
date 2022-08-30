@@ -4,10 +4,13 @@ use dashmap::DashMap;
 use egui::{Pos2, Rect, Vec2};
 use mpdelta_core::component::class::ComponentClass;
 use mpdelta_core::component::instance::ComponentInstance;
+use mpdelta_core::component::link::MarkerLink;
+use mpdelta_core::component::marker_pin::MarkerPin;
 use mpdelta_core::component::parameter::ParameterValueType;
 use mpdelta_core::edit::RootComponentEditCommand;
 use mpdelta_core::project::{Project, RootComponentClass};
 use mpdelta_core::ptr::{StaticPointer, StaticPointerOwned};
+use mpdelta_core::time::TimelineTime;
 use mpdelta_core::usecase::{
     EditUsecase, GetAvailableComponentClassesUsecase, GetLoadedProjectsUsecase, GetRootComponentClassesUsecase, LoadProjectUsecase, NewProjectUsecase, NewRootComponentClassUsecase, RealtimeComponentRenderer, RealtimeRenderComponentUsecase, RedoUsecase, SetOwnerForRootComponentClassUsecase,
     UndoUsecase, WriteProjectUsecase,
@@ -82,6 +85,7 @@ pub struct MPDeltaViewModel<T, R> {
     playing: bool,
     play_start: Instant,
     seek: usize,
+    seek_base: usize,
 }
 
 impl<T: ParameterValueType<'static>> MPDeltaViewModel<T, ()> {
@@ -114,7 +118,24 @@ impl<T: ParameterValueType<'static>> MPDeltaViewModel<T, ()> {
             playing: false,
             play_start: Instant::now(),
             seek: 0,
+            seek_base: 0,
         }
+    }
+}
+
+struct DerefMap<S, F>(S, F);
+
+impl<S, O, F: Fn(&S) -> &O> DerefMap<S, F> {
+    fn new(value: S, map: F) -> DerefMap<S, F> {
+        DerefMap(value, map)
+    }
+}
+
+impl<S, O, F: Fn(&S) -> &O> Deref for DerefMap<S, F> {
+    type Target = O;
+
+    fn deref(&self) -> &Self::Target {
+        self.1(&self.0)
     }
 }
 
@@ -153,13 +174,21 @@ impl<T: ParameterValueType<'static>, R: RealtimeComponentRenderer<T>> MPDeltaVie
 
     pub fn get_preview_image(&mut self) -> Option<T::Image> {
         if self.playing {
-            self.seek = (self.play_start.elapsed().as_secs_f64() * 60.).floor() as usize % 600
+            self.seek = (self.seek_base + (self.play_start.elapsed().as_secs_f64() * 60.).floor() as usize) % 600
         }
         self.inner.realtime_renderer.load().as_ref().map(|renderer| renderer.render_frame(self.seek))
     }
 
-    pub fn component_instances(&self) -> &DashMap<StaticPointer<RwLock<ComponentInstance<T>>>, ComponentInstanceRect> {
-        &self.inner.component_instances
+    pub fn component_instances(&self) -> impl Deref<Target = DashMap<StaticPointer<RwLock<ComponentInstance<T>>>, ComponentInstanceRect>> {
+        DerefMap::new(self.inner.timeline_item.load(), |guard| &guard.component_instances)
+    }
+
+    pub fn component_links(&self) -> impl Deref<Target = Vec<MarkerLink>> {
+        DerefMap::new(self.inner.timeline_item.load(), |guard| &guard.component_links)
+    }
+
+    pub fn marker_pins(&self) -> impl Deref<Target = DashMap<StaticPointer<RwLock<MarkerPin>>, (usize, TimelineTime)>> {
+        DerefMap::new(self.inner.timeline_item.load(), |guard| &guard.marker_pins)
     }
 
     pub fn click_component_instance(&self, handle: &StaticPointer<RwLock<ComponentInstance<T>>>) {
@@ -177,6 +206,7 @@ impl<T: ParameterValueType<'static>, R: RealtimeComponentRenderer<T>> MPDeltaVie
     pub fn play(&mut self) {
         if !self.playing {
             self.play_start = Instant::now();
+            self.seek_base = self.seek;
             self.playing = true;
         }
     }
@@ -197,7 +227,7 @@ impl<T: ParameterValueType<'static>, R: RealtimeComponentRenderer<T>> MPDeltaVie
 #[derive(Debug, Clone)]
 pub struct ComponentInstanceRect {
     pub layer: f32,
-    pub time: Range<f32>,
+    pub time: Range<TimelineTime>,
 }
 
 enum ViewModelMessage<T> {
@@ -225,13 +255,30 @@ impl<T> Debug for ViewModelMessage<T> {
 }
 
 #[derive(Debug)]
+struct TimelineItem<T> {
+    component_instances: DashMap<StaticPointer<RwLock<ComponentInstance<T>>>, ComponentInstanceRect>,
+    marker_pins: DashMap<StaticPointer<RwLock<MarkerPin>>, (usize, TimelineTime)>,
+    component_links: Vec<MarkerLink>,
+}
+
+impl<T> Default for TimelineItem<T> {
+    fn default() -> Self {
+        TimelineItem {
+            component_instances: Default::default(),
+            marker_pins: Default::default(),
+            component_links: Default::default(),
+        }
+    }
+}
+
+#[derive(Debug)]
 struct ViewModelInner<T, R> {
     projects: ArcSwap<Vec<(StaticPointer<RwLock<Project<T>>>, String)>>,
     selected_project: AtomicUsize,
     root_component_classes: ArcSwap<Vec<(StaticPointer<RwLock<RootComponentClass<T>>>, String)>>,
     selected_root_component_class: AtomicUsize,
     realtime_renderer: ArcSwapOption<R>,
-    component_instances: DashMap<StaticPointer<RwLock<ComponentInstance<T>>>, ComponentInstanceRect>,
+    timeline_item: ArcSwap<TimelineItem<T>>,
 }
 
 impl<T, R> ViewModelInner<T, R> {
@@ -242,7 +289,7 @@ impl<T, R> ViewModelInner<T, R> {
             root_component_classes: Default::default(),
             selected_root_component_class: Default::default(),
             realtime_renderer: Default::default(),
-            component_instances: Default::default(),
+            timeline_item: Default::default(),
         }
     }
 }
@@ -303,7 +350,7 @@ async fn view_model_loop<T, Edit, GetAvailableComponentClasses, GetLoadedProject
         root_component_classes,
         selected_root_component_class,
         realtime_renderer,
-        component_instances,
+        timeline_item,
     } = &*inner;
     while let Some(message) = message_receiver.recv().await {
         let mut update_flags = DataUpdateFlags::empty();
@@ -335,11 +382,12 @@ async fn view_model_loop<T, Edit, GetAvailableComponentClasses, GetLoadedProject
                 // click
             }
             ViewModelMessage::DragComponentInstance(handle, delta) => {
-                if let Some(mut rect) = component_instances.get_mut(&handle) {
-                    let Range { start, end } = &mut rect.time;
-                    *start += delta.x;
-                    *end += delta.x;
-                    update_flags |= DataUpdateFlags::COMPONENT_INSTANCES;
+                if let Some(mut rect) = timeline_item.load().component_instances.get_mut(&handle) {
+                    // let Range { start, end } = &mut rect.time;
+                    // *start = TimelineTime::new(start.value() + delta.x as f64).unwrap();
+                    // *end = TimelineTime::new(end.value() + delta.x as f64).unwrap();
+                    // //TODO: ここでコンポーネントの移動
+                    // update_flags |= DataUpdateFlags::COMPONENT_INSTANCES;
                 }
             }
             ViewModelMessage::AddComponentInstance => {
@@ -350,11 +398,12 @@ async fn view_model_loop<T, Edit, GetAvailableComponentClasses, GetLoadedProject
                     let instance = StaticPointerOwned::new(RwLock::new(instance));
                     let reference = StaticPointerOwned::reference(&instance).clone();
                     edit.edit(target, RootComponentEditCommand::AddComponentInstance(instance)).await.unwrap();
+                    let component_instances = &timeline_item.load().component_instances;
                     component_instances.insert(
                         reference,
                         ComponentInstanceRect {
                             layer: component_instances.len() as f32,
-                            time: 0.0..10.0,
+                            time: TimelineTime::ZERO..TimelineTime::new(1.0).unwrap(),
                         },
                     );
                     update_flags |= DataUpdateFlags::COMPONENT_INSTANCES;
@@ -368,6 +417,7 @@ async fn view_model_loop<T, Edit, GetAvailableComponentClasses, GetLoadedProject
         }
         if update_flags.contains(DataUpdateFlags::PROJECT_SELECT) {
             update_flags |= DataUpdateFlags::ROOT_COMPONENTS;
+            update_flags |= DataUpdateFlags::ROOT_COMPONENT_SELECT;
         }
         if update_flags.contains(DataUpdateFlags::ROOT_COMPONENTS) {
             let new_root_component_classes = if let Some((project, _)) = projects.load().get(selected_project.load(atomic::Ordering::Relaxed)) {
@@ -379,26 +429,63 @@ async fn view_model_loop<T, Edit, GetAvailableComponentClasses, GetLoadedProject
             root_component_classes.store(Arc::new(new_root_component_classes));
         }
         if update_flags.contains(DataUpdateFlags::ROOT_COMPONENT_SELECT) {
+            if let Some((root_component_class, _)) = root_component_classes.load().get(selected_root_component_class.load(atomic::Ordering::Relaxed)) {
+                if let Some(root_component_class) = root_component_class.upgrade() {
+                    let class = root_component_class.read().await;
+                    let new_component_instances = DashMap::<StaticPointer<RwLock<ComponentInstance<T>>>, ComponentInstanceRect>::new();
+                    let new_marker_pins = DashMap::<StaticPointer<RwLock<MarkerPin>>, (usize, TimelineTime)>::new();
+                    new_marker_pins.insert(class.left().await, (0, TimelineTime::ZERO));
+                    new_marker_pins.insert(class.right().await, (0, TimelineTime::new(10.0).unwrap()));
+                    for component in class.components().await {
+                        if let Some(component_ref) = component.upgrade() {
+                            let guard = component_ref.read().await;
+                            let time_left = guard.marker_left().upgrade().unwrap().read().await.cached_timeline_time();
+                            let time_right = guard.marker_right().upgrade().unwrap().read().await.cached_timeline_time();
+                            let layer = new_component_instances.len();
+                            new_marker_pins.insert(guard.marker_left().reference(), (layer, time_left));
+                            new_marker_pins.insert(guard.marker_right().reference(), (layer, time_right));
+                            for pin in guard.markers() {
+                                let time = pin.read().await.cached_timeline_time();
+                                new_marker_pins.insert(StaticPointerOwned::reference(pin).clone(), (layer, time));
+                            }
+                            drop(guard);
+                            new_component_instances.insert(component, ComponentInstanceRect { layer: layer as f32, time: time_left..time_right });
+                        }
+                    }
+                    let mut new_component_links = Vec::new();
+                    for link in class.links().await {
+                        new_component_links.push(link.upgrade().unwrap().read().await.clone());
+                    }
+                    timeline_item.store(Arc::new(TimelineItem {
+                        component_instances: new_component_instances,
+                        marker_pins: new_marker_pins,
+                        component_links: new_component_links,
+                    }))
+                }
+            }
             update_flags |= DataUpdateFlags::COMPONENT_INSTANCES;
         }
         if update_flags.contains(DataUpdateFlags::COMPONENT_INSTANCES) {
-            if let Some((class, _)) = root_component_classes.load().get(selected_root_component_class.load(atomic::Ordering::Relaxed)) {
+            let renderer = if let Some((class, _)) = root_component_classes.load().get(selected_root_component_class.load(atomic::Ordering::Relaxed)) {
                 if let Some(class_ref) = class.upgrade() {
                     let class = class.clone().map(|weak| weak as _);
                     let instance = StaticPointerOwned::new(RwLock::new(class_ref.read().await.instantiate(&class).await));
                     let instance_reference = StaticPointerOwned::reference(&instance).clone();
                     match realtime_render_component.render_component(&instance_reference).await {
-                        Ok(renderer) => {
-                            realtime_renderer.store(Some(Arc::new(renderer)));
-                        }
+                        Ok(renderer) => Some(Arc::new(renderer)),
                         Err(e) => {
                             eprintln!("failed to create renderer by {e}");
+                            None
                         }
                     }
                 } else {
                     eprintln!("upgrade failed");
+                    None
                 }
-            }
+            } else {
+                None
+            };
+            realtime_renderer.store(renderer);
         }
     }
 }

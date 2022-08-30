@@ -115,7 +115,7 @@ impl<T: ParameterValueType<'static>, R: RealtimeComponentRenderer<T>> Gui<T::Ima
                     let base_point = ui.cursor().min;
                     for item in self.view_model.component_instances().iter() {
                         let (handle, rect) = item.pair();
-                        let rectangle = Rect::from_min_size(Pos2::new(rect.time.start * 100., rect.layer * 60.), Vec2::new((rect.time.end - rect.time.start) * 100., 50.));
+                        let rectangle = Rect::from_min_size(Pos2::new(rect.time.start.value() as f32 * 100., rect.layer * 60.), Vec2::new((rect.time.end.value() - rect.time.start.value()) as f32 * 100., 50.));
                         ui.allocate_ui_at_rect(Rect::from_min_size(base_point + rectangle.min.to_vec2(), rectangle.size()), |ui| {
                             Frame::group(&Style::default()).inner_margin(Margin::default()).show(ui, |ui| {
                                 let (rect, response) = ui.allocate_exact_size(rectangle.size(), Sense::drag());

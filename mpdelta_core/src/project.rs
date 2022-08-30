@@ -13,10 +13,10 @@ use cgmath::{One, Quaternion, Vector3};
 use std::collections::HashSet;
 use std::future::Future;
 use std::hash::{Hash, Hasher};
-use std::mem;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
+use std::{iter, mem};
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
@@ -192,6 +192,34 @@ impl<T> RootComponentClass<T> {
         let mut guard = self.item.0.write().await;
         let item = &mut *guard;
         map(&mut item.component, &mut item.link).await
+    }
+
+    pub async fn left(&self) -> StaticPointer<RwLock<MarkerPin>> {
+        StaticPointerOwned::reference(&self.item.0.read().await.left).clone()
+    }
+
+    pub async fn right(&self) -> StaticPointer<RwLock<MarkerPin>> {
+        StaticPointerOwned::reference(&self.item.0.read().await.right).clone()
+    }
+
+    pub async fn components(&self) -> impl Iterator<Item = StaticPointer<RwLock<ComponentInstance<T>>>> + '_ {
+        let guard = self.item.0.read().await;
+        let mut i = 0;
+        iter::from_fn(move || {
+            let ret = guard.component.get(i).map(|component| StaticPointerOwned::reference(component).clone());
+            i += 1;
+            ret
+        })
+    }
+
+    pub async fn links(&self) -> impl Iterator<Item = StaticPointer<RwLock<MarkerLink>>> + '_ {
+        let guard = self.item.0.read().await;
+        let mut i = 0;
+        iter::from_fn(move || {
+            let ret = guard.link.get(i).map(|component| StaticPointerOwned::reference(component).clone());
+            i += 1;
+            ret
+        })
     }
 }
 

@@ -158,8 +158,9 @@ impl<T: ParameterValueType<'static>, R: RealtimeComponentRenderer<T>> Gui<T::Ima
             if let Some(img) = self.view_model.get_preview_image() {
                 let texture_id = image.register_image(img);
                 let Vec2 { x: area_width, y: area_height } = ui.available_size();
+                let area_height = area_height - 72.;
                 let (image_width, image_height) = (area_width.min(area_height * 16. / 9.), area_height.min(area_width * 9. / 16.) + 66.);
-                let base_pos = ui.cursor().min;
+                let base_pos = ui.cursor().min + Vec2::new(0., 72.);
                 ui.allocate_ui_at_rect(Rect::from_min_size(base_pos + Vec2::new((area_width - image_width) / 2., (area_height - image_height) / 2.), Vec2::new(image_width, image_height)), |ui| {
                     ui.image(texture_id, Vec2 { x: image_width, y: image_height - 66. });
                     ui.horizontal(|ui| {

@@ -17,6 +17,7 @@ use std::fmt::{Debug, Formatter};
 use std::ops::{Deref, Range};
 use std::sync::atomic::AtomicUsize;
 use std::sync::{atomic, Arc};
+use std::time::Instant;
 use tokio::runtime::Handle;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use tokio::sync::{mpsc, RwLock};
@@ -78,6 +79,9 @@ pub struct MPDeltaViewModel<T, R> {
     handle: JoinHandle<()>,
     message_sender: UnboundedSender<ViewModelMessage<T>>,
     inner: Arc<ViewModelInner<T, R>>,
+    playing: bool,
+    play_start: Instant,
+    seek: usize,
 }
 
 impl<T: ParameterValueType<'static>> MPDeltaViewModel<T, ()> {
@@ -103,7 +107,14 @@ impl<T: ParameterValueType<'static>> MPDeltaViewModel<T, ()> {
         let runtime = params.runtime.clone();
         let inner = Arc::new(ViewModelInner::new());
         let handle = runtime.spawn(view_model_loop(params, message_receiver, Arc::clone(&inner)));
-        MPDeltaViewModel { handle, message_sender, inner }
+        MPDeltaViewModel {
+            handle,
+            message_sender,
+            inner,
+            playing: false,
+            play_start: Instant::now(),
+            seek: 0,
+        }
     }
 }
 
@@ -140,8 +151,11 @@ impl<T: ParameterValueType<'static>, R: RealtimeComponentRenderer<T>> MPDeltaVie
         self.inner.selected_root_component_class.load(atomic::Ordering::Relaxed)
     }
 
-    pub fn get_preview_image(&self) -> Option<T::Image> {
-        self.inner.realtime_renderer.load().as_ref().map(|renderer| renderer.render_frame(0))
+    pub fn get_preview_image(&mut self) -> Option<T::Image> {
+        if self.playing {
+            self.seek = (self.play_start.elapsed().as_secs_f64() * 60.).floor() as usize % 600
+        }
+        self.inner.realtime_renderer.load().as_ref().map(|renderer| renderer.render_frame(self.seek))
     }
 
     pub fn component_instances(&self) -> &DashMap<StaticPointer<RwLock<ComponentInstance<T>>>, ComponentInstanceRect> {
@@ -158,6 +172,25 @@ impl<T: ParameterValueType<'static>, R: RealtimeComponentRenderer<T>> MPDeltaVie
 
     pub fn add_component_instance(&self) {
         self.message_sender.send(ViewModelMessage::AddComponentInstance).unwrap();
+    }
+
+    pub fn play(&mut self) {
+        if !self.playing {
+            self.play_start = Instant::now();
+            self.playing = true;
+        }
+    }
+
+    pub fn pause(&mut self) {
+        self.playing = false;
+    }
+
+    pub fn playing(&self) -> bool {
+        self.playing
+    }
+
+    pub fn seek(&mut self) -> &mut usize {
+        &mut self.seek
     }
 }
 

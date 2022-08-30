@@ -1,7 +1,7 @@
 use crate::viewmodel::{MPDeltaViewModel, ViewModelParams};
 use crate::ImageRegister;
 use egui::style::Margin;
-use egui::{Area, Button, Context, Direction, Frame, Id, Label, Layout, Pos2, Rect, ScrollArea, Sense, Style, TextureId, Vec2, Visuals, Widget, Window};
+use egui::{Area, Button, Context, Direction, Frame, Id, Label, Layout, Pos2, Rect, ScrollArea, Sense, Slider, Style, TextureId, Vec2, Visuals, Widget, Window};
 use mpdelta_core::component::parameter::ParameterValueType;
 use mpdelta_core::usecase::{
     EditUsecase, GetAvailableComponentClassesUsecase, GetLoadedProjectsUsecase, GetRootComponentClassesUsecase, LoadProjectUsecase, NewProjectUsecase, NewRootComponentClassUsecase, RealtimeComponentRenderer, RealtimeRenderComponentUsecase, RedoUsecase, SetOwnerForRootComponentClassUsecase,
@@ -158,9 +158,23 @@ impl<T: ParameterValueType<'static>, R: RealtimeComponentRenderer<T>> Gui<T::Ima
             if let Some(img) = self.view_model.get_preview_image() {
                 let texture_id = image.register_image(img);
                 let Vec2 { x: area_width, y: area_height } = ui.available_size();
-                let (image_width, image_height) = (area_width.min(area_height * 16. / 9.), area_height.min(area_width * 9. / 16.));
-                ui.allocate_ui_at_rect(Rect::from_min_size(Pos2::new((area_width - image_width) / 2., (area_height - image_height) / 2.) + ui.cursor().min.to_vec2(), Vec2::new(image_width, image_height)), |ui| {
-                    ui.image(texture_id, Vec2 { x: image_width, y: image_height });
+                let (image_width, image_height) = (area_width.min(area_height * 16. / 9.), area_height.min(area_width * 9. / 16.) + 66.);
+                let base_pos = ui.cursor().min;
+                ui.allocate_ui_at_rect(Rect::from_min_size(base_pos + Vec2::new((area_width - image_width) / 2., (area_height - image_height) / 2.), Vec2::new(image_width, image_height)), |ui| {
+                    ui.image(texture_id, Vec2 { x: image_width, y: image_height - 66. });
+                    ui.horizontal(|ui| {
+                        let start = ui.cursor().min.x;
+                        if self.view_model.playing() {
+                            if ui.button("⏸").clicked() {
+                                self.view_model.pause();
+                            }
+                        } else if ui.button("▶").clicked() {
+                            self.view_model.play();
+                        }
+                        let button_width = ui.cursor().min.x - start;
+                        ui.style_mut().spacing.slider_width = image_width - button_width;
+                        ui.add_enabled(!self.view_model.playing(), Slider::new(self.view_model.seek(), 0..=599).show_value(false));
+                    });
                 });
                 self.previous_preview = Some(texture_id);
             } else {

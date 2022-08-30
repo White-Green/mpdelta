@@ -34,7 +34,7 @@ use vulkano::device::{Device, Queue};
 use vulkano::format::Format;
 use vulkano::format::{ClearColorValue, ClearValue};
 use vulkano::image::view::{ImageView, ImageViewCreateInfo};
-use vulkano::image::{AttachmentImage, ImageAccess, ImageAspects, ImageDimensions, ImageLayout, ImageSubresourceRange, ImmutableImage, MipmapsCount, StorageImage};
+use vulkano::image::{AttachmentImage, ImageAccess, ImageAspects, ImageDimensions, ImageLayout, ImageSubresourceRange, ImageUsage, ImmutableImage, MipmapsCount, StorageImage};
 use vulkano::pipeline::cache::PipelineCache;
 use vulkano::pipeline::graphics::color_blend::ColorBlendState;
 use vulkano::pipeline::graphics::depth_stencil::{CompareOp, DepthStencilState, StencilOp, StencilOpState, StencilOps, StencilState};
@@ -98,11 +98,7 @@ impl MPDeltaVideoRendererBuilder {
                 primitive_restart_enable: StateMode::Fixed(false),
             })
             .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
-            .vertex_input_state(
-                VertexInputState::new()
-                    .binding(0, VertexInputBindingDescription { stride: 1, input_rate: VertexInputRate::Vertex })
-                    .attribute(0, VertexInputAttributeDescription { binding: 0, format: Format::R32G32_SFLOAT, offset: 0 }),
-            )
+            .vertex_input_state(VertexInputState::new())
             .build(Arc::clone(&device))
             .unwrap();
         let composite_operation_shader = unsafe { ShaderModule::from_bytes(Arc::clone(&device), include_bytes!(concat!(env!("OUT_DIR"), "/composite_operation_shader.spv"))).unwrap() };
@@ -281,7 +277,7 @@ fn render<Audio: Clone + Send + Sync + 'static, T: ParameterValueType<'static, I
                     },
                 )
                 .unwrap();
-                let result_image = AttachmentImage::new(Arc::clone(&shared_resource.device), [required_size.0, required_size.1], Format::R8G8B8A8_UNORM).unwrap();
+                let result_image = AttachmentImage::with_usage(Arc::clone(&shared_resource.device), [required_size.0, required_size.1], Format::R8G8B8A8_UNORM, ImageUsage { storage: true, ..ImageUsage::none() }).unwrap();
                 let result_image_view = ImageView::new(
                     Arc::clone(&result_image),
                     ImageViewCreateInfo {
@@ -295,13 +291,13 @@ fn render<Audio: Clone + Send + Sync + 'static, T: ParameterValueType<'static, I
                     },
                 )
                 .unwrap();
-                let depth = AttachmentImage::new(Arc::clone(&shared_resource.device), [required_size.0, required_size.1], Format::R32_SFLOAT).unwrap();
+                let depth = AttachmentImage::with_usage(Arc::clone(&shared_resource.device), [required_size.0, required_size.1], Format::R32_UINT, ImageUsage { storage: true, ..ImageUsage::none() }).unwrap();
                 let depth_view = ImageView::new(
                     Arc::clone(&depth),
                     ImageViewCreateInfo {
                         format: Some(Format::R32_UINT),
                         subresource_range: ImageSubresourceRange {
-                            aspects: ImageAspects { depth: true, ..ImageAspects::default() },
+                            aspects: ImageAspects { color: true, ..ImageAspects::default() },
                             mip_levels: 0..1,
                             array_layers: 0..1,
                         },
@@ -322,7 +318,7 @@ fn render<Audio: Clone + Send + Sync + 'static, T: ParameterValueType<'static, I
                 builder
                     .begin_render_pass(
                         RenderPassBeginInfo {
-                            clear_values: vec![Some(ClearValue::Int(image_params.background_color.map(Into::into))), Some(ClearValue::Stencil(0))],
+                            clear_values: vec![Some(ClearValue::Float(image_params.background_color.map(|i| i as f32 / 255.))), Some(ClearValue::Uint([0; 4]))],
                             ..RenderPassBeginInfo::framebuffer(frame_buffer)
                         },
                         SubpassContents::Inline,
@@ -426,7 +422,7 @@ fn render<Audio: Clone + Send + Sync + 'static, T: ParameterValueType<'static, I
                         ImageViewCreateInfo {
                             format: Some(Format::R32_UINT),
                             subresource_range: ImageSubresourceRange {
-                                aspects: ImageAspects { stencil: true, ..ImageAspects::default() },
+                                aspects: ImageAspects { color: true, ..ImageAspects::default() },
                                 mip_levels: 0..1,
                                 array_layers: 0..1,
                             },
@@ -444,7 +440,6 @@ fn render<Audio: Clone + Send + Sync + 'static, T: ParameterValueType<'static, I
                         )
                         .unwrap(),
                     );
-                    builder.dispatch([div_ceil(required_size.0, 32), div_ceil(required_size.1, 32), 1]).unwrap();
                     builder.push_constants(
                         Arc::clone(shared_resource.composite_operation_pipeline.layout()),
                         0,
@@ -455,6 +450,7 @@ fn render<Audio: Clone + Send + Sync + 'static, T: ParameterValueType<'static, I
                             image_height: required_size.1,
                         },
                     );
+                    builder.dispatch([div_ceil(required_size.0, 32), div_ceil(required_size.1, 32), 1]).unwrap();
                 }
                 builder.build().unwrap();
                 // imagesをぜんぶ合成する

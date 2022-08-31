@@ -13,6 +13,7 @@ use cgmath::{One, Quaternion, Vector3};
 use std::collections::HashSet;
 use std::future::Future;
 use std::hash::{Hash, Hasher};
+use std::ops::DerefMut;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
@@ -47,11 +48,32 @@ impl<T> Project<T> {
 }
 
 #[derive(Debug)]
-struct RootComponentClassItem<T> {
+pub struct RootComponentClassItem<T> {
     left: StaticPointerOwned<RwLock<MarkerPin>>,
     right: StaticPointerOwned<RwLock<MarkerPin>>,
     component: Vec<StaticPointerOwned<RwLock<ComponentInstance<T>>>>,
     link: Vec<StaticPointerOwned<RwLock<MarkerLink>>>,
+}
+
+impl<T> RootComponentClassItem<T> {
+    pub fn left(&self) -> &StaticPointerOwned<RwLock<MarkerPin>> {
+        &self.left
+    }
+    pub fn right(&self) -> &StaticPointerOwned<RwLock<MarkerPin>> {
+        &self.right
+    }
+    pub fn component(&self) -> &[StaticPointerOwned<RwLock<ComponentInstance<T>>>] {
+        &self.component
+    }
+    pub fn component_mut(&mut self) -> &mut Vec<StaticPointerOwned<RwLock<ComponentInstance<T>>>> {
+        &mut self.component
+    }
+    pub fn link(&self) -> &[StaticPointerOwned<RwLock<MarkerLink>>] {
+        &self.link
+    }
+    pub fn link_mut(&mut self) -> &mut Vec<StaticPointerOwned<RwLock<MarkerLink>>> {
+        &mut self.link
+    }
 }
 
 #[derive(Debug)]
@@ -188,10 +210,8 @@ impl<T> RootComponentClass<T> {
         old_parent
     }
 
-    pub async fn map<Out, F: for<'a> FnOnce(&'a mut Vec<StaticPointerOwned<RwLock<ComponentInstance<T>>>>, &'a mut Vec<StaticPointerOwned<RwLock<MarkerLink>>>) -> Pin<Box<dyn Future<Output = Out> + Send + 'a>>>(&self, map: F) -> Out {
-        let mut guard = self.item.0.write().await;
-        let item = &mut *guard;
-        map(&mut item.component, &mut item.link).await
+    pub async fn get_mut(&self) -> impl DerefMut<Target = RootComponentClassItem<T>> + '_ {
+        self.item.0.write().await
     }
 
     pub async fn left(&self) -> StaticPointer<RwLock<MarkerPin>> {

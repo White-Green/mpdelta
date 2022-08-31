@@ -1,9 +1,10 @@
 use crate::viewmodel::{MPDeltaViewModel, ViewModelParams};
 use crate::ImageRegister;
+use cgmath::Vector3;
 use egui::epaint::Shadow;
 use egui::style::Margin;
 use egui::{Area, Button, Color32, Context, Direction, Frame, Id, Label, Layout, Pos2, Rect, Rounding, ScrollArea, Sense, Slider, Stroke, Style, TextEdit, TextureId, Vec2, Visuals, Widget, Window};
-use mpdelta_core::component::parameter::ParameterValueType;
+use mpdelta_core::component::parameter::{ImageRequiredParamsTransform, Opacity, ParameterValueType, VariableParameterValue};
 use mpdelta_core::time::TimelineTime;
 use mpdelta_core::usecase::{
     EditUsecase, GetAvailableComponentClassesUsecase, GetLoadedProjectsUsecase, GetRootComponentClassesUsecase, LoadProjectUsecase, NewProjectUsecase, NewRootComponentClassUsecase, RealtimeComponentRenderer, RealtimeRenderComponentUsecase, RedoUsecase, SetOwnerForRootComponentClassUsecase,
@@ -196,6 +197,87 @@ impl<T: ParameterValueType<'static>, R: RealtimeComponentRenderer<T>> Gui<T::Ima
                 let (rect, _) = ui.allocate_at_least(ui.available_size(), Sense::click());
                 ui.allocate_ui_at_rect(rect, |ui| {
                     ui.label("Component Properties");
+                    let mut image_required_params = self.view_model.image_required_params().blocking_lock();
+                    let mut edited = false;
+                    if let Some(image_required_params) = image_required_params.as_mut() {
+                        if let ImageRequiredParamsTransform::Params {
+                            scale: Vector3 {
+                                x: VariableParameterValue::Manually(scale_x),
+                                y: VariableParameterValue::Manually(scale_y),
+                                ..
+                            },
+                            translate: Vector3 {
+                                x: VariableParameterValue::Manually(translate_x),
+                                y: VariableParameterValue::Manually(translate_y),
+                                ..
+                            },
+                            ..
+                        } = &mut image_required_params.transform
+                        {
+                            ui.label("position - X");
+                            ui.add(Slider::from_get_set(-3.0..=3.0, |new_value| {
+                                let current_value = translate_x.get_value_mut(0).unwrap().1;
+                                if let Some(value) = new_value {
+                                    current_value.from = value;
+                                    current_value.to = value;
+                                    edited = true;
+                                    value
+                                } else {
+                                    current_value.from
+                                }
+                            }));
+                            ui.label("position - Y");
+                            ui.add(Slider::from_get_set(-3.0..=3.0, |new_value| {
+                                let current_value = translate_y.get_value_mut(0).unwrap().1;
+                                if let Some(value) = new_value {
+                                    current_value.from = value;
+                                    current_value.to = value;
+                                    edited = true;
+                                    value
+                                } else {
+                                    current_value.from
+                                }
+                            }));
+                            ui.label("scale - X");
+                            ui.add(Slider::from_get_set(0.0..=2.0, |new_value| {
+                                let current_value = scale_x.get_value_mut(0).unwrap().1;
+                                if let Some(value) = new_value {
+                                    current_value.from = value;
+                                    current_value.to = value;
+                                    edited = true;
+                                    value
+                                } else {
+                                    current_value.from
+                                }
+                            }));
+                            ui.label("scale - Y");
+                            ui.add(Slider::from_get_set(0.0..=2.0, |new_value| {
+                                let current_value = scale_y.get_value_mut(0).unwrap().1;
+                                if let Some(value) = new_value {
+                                    current_value.from = value;
+                                    current_value.to = value;
+                                    edited = true;
+                                    value
+                                } else {
+                                    current_value.from
+                                }
+                            }));
+                            ui.label("opacity");
+                            ui.add(Slider::from_get_set(0.0..=1.0, |new_value| {
+                                let current_value = image_required_params.opacity.get_value_mut(0).unwrap().1;
+                                if let Some(value) = new_value {
+                                    let value = Opacity::new(value).unwrap_or(Opacity::OPAQUE);
+                                    current_value.from = value;
+                                    current_value.to = value;
+                                    edited = true;
+                                    value.value()
+                                } else {
+                                    current_value.from.value()
+                                }
+                            }));
+                        }
+                    }
+                    self.view_model.updated_image_required_params();
                 });
             });
         });

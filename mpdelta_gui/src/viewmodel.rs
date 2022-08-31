@@ -6,7 +6,7 @@ use mpdelta_core::component::class::ComponentClass;
 use mpdelta_core::component::instance::ComponentInstance;
 use mpdelta_core::component::link::MarkerLink;
 use mpdelta_core::component::marker_pin::MarkerPin;
-use mpdelta_core::component::parameter::ParameterValueType;
+use mpdelta_core::component::parameter::{ImageRequiredParams, ParameterValueType};
 use mpdelta_core::edit::RootComponentEditCommand;
 use mpdelta_core::project::{Project, RootComponentClass};
 use mpdelta_core::ptr::{StaticPointer, StaticPointerOwned};
@@ -23,7 +23,7 @@ use std::sync::{atomic, Arc};
 use std::time::Instant;
 use tokio::runtime::Handle;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
-use tokio::sync::{mpsc, RwLock};
+use tokio::sync::{mpsc, Mutex, RwLock};
 use tokio::task::JoinHandle;
 
 pub struct ViewModelParams<Edit, GetAvailableComponentClasses, GetLoadedProjects, GetRootComponentClasses, LoadProject, NewProject, NewRootComponentClass, RealtimeRenderComponent, Redo, SetOwnerForRootComponentClass, Undo, WriteProject> {
@@ -215,6 +215,14 @@ impl<T: ParameterValueType<'static>, R: RealtimeComponentRenderer<T>> MPDeltaVie
         self.message_sender.send(ViewModelMessage::EditMarkerLinkLength(link, new_length)).unwrap();
     }
 
+    pub fn image_required_params(&self) -> &Mutex<Option<ImageRequiredParams<T>>> {
+        &self.inner.image_required_params
+    }
+
+    pub fn updated_image_required_params(&self) {
+        self.message_sender.send(ViewModelMessage::UpdatedImageRequiredParams).unwrap();
+    }
+
     pub fn play(&mut self) {
         if !self.playing {
             self.play_start = Instant::now();
@@ -252,6 +260,7 @@ enum ViewModelMessage<T> {
     AddComponentInstance,
     RemoveMarkerLink(StaticPointer<RwLock<MarkerLink>>),
     EditMarkerLinkLength(StaticPointer<RwLock<MarkerLink>>, TimelineTime),
+    UpdatedImageRequiredParams,
 }
 
 impl<T> Debug for ViewModelMessage<T> {
@@ -266,6 +275,7 @@ impl<T> Debug for ViewModelMessage<T> {
             ViewModelMessage::AddComponentInstance => write!(f, "AddComponentInstance"),
             ViewModelMessage::RemoveMarkerLink(v) => f.debug_tuple("RemoveMarkerLink").field(v).finish(),
             ViewModelMessage::EditMarkerLinkLength(v0, v1) => f.debug_tuple("EditMarkerLinkLength").field(v0).field(v1).finish(),
+            ViewModelMessage::UpdatedImageRequiredParams => write!(f, "UpdatedImageRequiredParams"),
         }
     }
 }
@@ -296,6 +306,7 @@ struct ViewModelInner<T, R> {
     realtime_renderer: ArcSwapOption<R>,
     timeline_item: ArcSwap<TimelineItem<T>>,
     selected_component_instance: ArcSwapOption<StaticPointer<RwLock<ComponentInstance<T>>>>,
+    image_required_params: Mutex<Option<ImageRequiredParams<T>>>,
 }
 
 impl<T, R> ViewModelInner<T, R> {
@@ -308,6 +319,7 @@ impl<T, R> ViewModelInner<T, R> {
             realtime_renderer: Default::default(),
             timeline_item: Default::default(),
             selected_component_instance: Default::default(),
+            image_required_params: Default::default(),
         }
     }
 }
@@ -320,11 +332,12 @@ impl<T, R> Default for ViewModelInner<T, R> {
 
 bitflags! {
     struct DataUpdateFlags: u32 {
-        const PROJECTS              = 0x01;
-        const PROJECT_SELECT        = 0x02;
-        const ROOT_COMPONENTS       = 0x04;
-        const ROOT_COMPONENT_SELECT = 0x08;
-        const COMPONENT_INSTANCES   = 0x10;
+        const PROJECTS                  = 0x01;
+        const PROJECT_SELECT            = 0x02;
+        const ROOT_COMPONENTS           = 0x04;
+        const ROOT_COMPONENT_SELECT     = 0x08;
+        const COMPONENT_INSTANCES       = 0x10;
+        const COMPONENT_INSTANCE_SELECT = 0x20;
     }
 }
 
@@ -370,6 +383,7 @@ async fn view_model_loop<T, Edit, GetAvailableComponentClasses, GetLoadedProject
         realtime_renderer,
         timeline_item,
         selected_component_instance,
+        image_required_params,
     } = &*inner;
     while let Some(message) = message_receiver.recv().await {
         let mut update_flags = DataUpdateFlags::empty();
@@ -399,6 +413,7 @@ async fn view_model_loop<T, Edit, GetAvailableComponentClasses, GetLoadedProject
             }
             ViewModelMessage::ClickComponentInstance(handle) => {
                 selected_component_instance.store(Some(Arc::new(handle)));
+                update_flags |= DataUpdateFlags::COMPONENT_INSTANCE_SELECT;
             }
             ViewModelMessage::DragComponentInstance(handle, delta) => {
                 if let Some(mut rect) = timeline_item.load().component_instances.get_mut(&handle) {
@@ -431,6 +446,16 @@ async fn view_model_loop<T, Edit, GetAvailableComponentClasses, GetLoadedProject
                     update_flags |= DataUpdateFlags::COMPONENT_INSTANCES;
                 }
             }
+            ViewModelMessage::UpdatedImageRequiredParams => {
+                if let Some(instance) = &*selected_component_instance.load() {
+                    if let Some(instance) = instance.upgrade() {
+                        if let Some(params) = image_required_params.lock().await.clone() {
+                            instance.write().await.set_image_required_params(params);
+                            update_flags |= DataUpdateFlags::COMPONENT_INSTANCES;
+                        }
+                    }
+                }
+            }
         }
         if update_flags.contains(DataUpdateFlags::PROJECTS) {
             let new_projects = get_loaded_projects.get_loaded_projects().await;
@@ -453,6 +478,7 @@ async fn view_model_loop<T, Edit, GetAvailableComponentClasses, GetLoadedProject
         if update_flags.contains(DataUpdateFlags::ROOT_COMPONENT_SELECT) {
             selected_component_instance.store(None);
             update_flags |= DataUpdateFlags::COMPONENT_INSTANCES;
+            update_flags |= DataUpdateFlags::COMPONENT_INSTANCE_SELECT;
         }
         if update_flags.contains(DataUpdateFlags::COMPONENT_INSTANCES) {
             if let Some((class, _)) = root_component_classes.load().get(selected_root_component_class.load(atomic::Ordering::Relaxed)) {
@@ -503,6 +529,17 @@ async fn view_model_loop<T, Edit, GetAvailableComponentClasses, GetLoadedProject
                         component_links: new_component_links,
                     }))
                 }
+            }
+        }
+        if update_flags.contains(DataUpdateFlags::COMPONENT_INSTANCE_SELECT) {
+            if let Some(instance) = &*selected_component_instance.load() {
+                if let Some(instance) = instance.upgrade() {
+                    *image_required_params.lock().await = instance.read().await.image_required_params().cloned();
+                } else {
+                    *image_required_params.lock().await = None;
+                }
+            } else {
+                *image_required_params.lock().await = None;
             }
         }
     }

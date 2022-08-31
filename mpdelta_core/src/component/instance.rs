@@ -84,6 +84,11 @@ impl<T> ComponentInstance<T> {
     pub fn image_required_params(&self) -> Option<&ImageRequiredParams<T>> {
         self.image_required_params.as_ref()
     }
+    pub fn set_image_required_params(&mut self, params: ImageRequiredParams<T>) {
+        if let Some(current_params) = self.image_required_params.as_mut() {
+            *current_params = params;
+        }
+    }
     pub fn audio_required_params(&self) -> Option<&AudioRequiredParams<T>> {
         self.audio_required_params.as_ref()
     }

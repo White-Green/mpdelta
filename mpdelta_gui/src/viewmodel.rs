@@ -183,7 +183,7 @@ impl<T: ParameterValueType<'static>, R: RealtimeComponentRenderer<T>> MPDeltaVie
         DerefMap::new(self.inner.timeline_item.load(), |guard| &guard.component_instances)
     }
 
-    pub fn component_links(&self) -> impl Deref<Target = Vec<MarkerLink>> {
+    pub fn component_links(&self) -> impl Deref<Target = Vec<(StaticPointer<RwLock<MarkerLink>>, MarkerLink)>> {
         DerefMap::new(self.inner.timeline_item.load(), |guard| &guard.component_links)
     }
 
@@ -205,6 +205,10 @@ impl<T: ParameterValueType<'static>, R: RealtimeComponentRenderer<T>> MPDeltaVie
 
     pub fn add_component_instance(&self) {
         self.message_sender.send(ViewModelMessage::AddComponentInstance).unwrap();
+    }
+
+    pub fn remove_marker_link(&self, link: StaticPointer<RwLock<MarkerLink>>) {
+        self.message_sender.send(ViewModelMessage::RemoveMarkerLink(link)).unwrap();
     }
 
     pub fn play(&mut self) {
@@ -242,6 +246,7 @@ enum ViewModelMessage<T> {
     ClickComponentInstance(StaticPointer<RwLock<ComponentInstance<T>>>),
     DragComponentInstance(StaticPointer<RwLock<ComponentInstance<T>>>, Vec2),
     AddComponentInstance,
+    RemoveMarkerLink(StaticPointer<RwLock<MarkerLink>>),
 }
 
 impl<T> Debug for ViewModelMessage<T> {
@@ -254,6 +259,7 @@ impl<T> Debug for ViewModelMessage<T> {
             ViewModelMessage::ClickComponentInstance(v) => f.debug_tuple("ClickComponentInstance").field(v).finish(),
             ViewModelMessage::DragComponentInstance(v0, v1) => f.debug_tuple("DragComponentInstance").field(v0).field(v1).finish(),
             ViewModelMessage::AddComponentInstance => write!(f, "AddComponentInstance"),
+            ViewModelMessage::RemoveMarkerLink(v) => f.debug_tuple("RemoveMarkerLink").field(v).finish(),
         }
     }
 }
@@ -262,7 +268,7 @@ impl<T> Debug for ViewModelMessage<T> {
 struct TimelineItem<T> {
     component_instances: DashMap<StaticPointer<RwLock<ComponentInstance<T>>>, ComponentInstanceRect>,
     marker_pins: DashMap<StaticPointer<RwLock<MarkerPin>>, (Option<StaticPointer<RwLock<ComponentInstance<T>>>>, f32, TimelineTime)>,
-    component_links: Vec<MarkerLink>,
+    component_links: Vec<(StaticPointer<RwLock<MarkerLink>>, MarkerLink)>,
 }
 
 impl<T> Default for TimelineItem<T> {
@@ -403,16 +409,13 @@ async fn view_model_loop<T, Edit, GetAvailableComponentClasses, GetLoadedProject
                     let class = pointer.upgrade().unwrap();
                     let instance = class.read().await.instantiate(pointer).await;
                     let instance = StaticPointerOwned::new(RwLock::new(instance));
-                    let reference = StaticPointerOwned::reference(&instance).clone();
                     edit.edit(target, RootComponentEditCommand::AddComponentInstance(instance)).await.unwrap();
-                    let component_instances = &timeline_item.load().component_instances;
-                    component_instances.insert(
-                        reference,
-                        ComponentInstanceRect {
-                            layer: component_instances.len() as f32,
-                            time: TimelineTime::ZERO..TimelineTime::new(1.0).unwrap(),
-                        },
-                    );
+                    update_flags |= DataUpdateFlags::COMPONENT_INSTANCES;
+                }
+            }
+            ViewModelMessage::RemoveMarkerLink(link) => {
+                if let Some((target, _)) = root_component_classes.load().get(selected_root_component_class.load(atomic::Ordering::Relaxed)) {
+                    edit.edit(target, RootComponentEditCommand::RemoveMarkerLink(link)).await.unwrap();
                     update_flags |= DataUpdateFlags::COMPONENT_INSTANCES;
                 }
             }
@@ -436,8 +439,25 @@ async fn view_model_loop<T, Edit, GetAvailableComponentClasses, GetLoadedProject
             root_component_classes.store(Arc::new(new_root_component_classes));
         }
         if update_flags.contains(DataUpdateFlags::ROOT_COMPONENT_SELECT) {
-            if let Some((root_component_class, _)) = root_component_classes.load().get(selected_root_component_class.load(atomic::Ordering::Relaxed)) {
-                if let Some(root_component_class) = root_component_class.upgrade() {
+            selected_component_instance.store(None);
+            update_flags |= DataUpdateFlags::COMPONENT_INSTANCES;
+        }
+        if update_flags.contains(DataUpdateFlags::COMPONENT_INSTANCES) {
+            if let Some((class, _)) = root_component_classes.load().get(selected_root_component_class.load(atomic::Ordering::Relaxed)) {
+                if let Some(class_ref) = class.upgrade() {
+                    let class = class.clone().map(|weak| weak as _);
+                    let instance = StaticPointerOwned::new(RwLock::new(class_ref.read().await.instantiate(&class).await));
+                    let instance_reference = StaticPointerOwned::reference(&instance).clone();
+                    match realtime_render_component.render_component(&instance_reference).await {
+                        Ok(renderer) => realtime_renderer.store(Some(Arc::new(renderer))),
+                        Err(e) => {
+                            eprintln!("failed to create renderer by {e}");
+                        }
+                    }
+                } else {
+                    eprintln!("upgrade failed");
+                }
+                if let Some(root_component_class) = class.upgrade() {
                     let class = root_component_class.read().await;
                     let new_component_instances = DashMap::<StaticPointer<RwLock<ComponentInstance<T>>>, ComponentInstanceRect>::new();
                     let new_marker_pins = DashMap::<StaticPointer<RwLock<MarkerPin>>, (Option<StaticPointer<RwLock<ComponentInstance<T>>>>, f32, TimelineTime)>::new();
@@ -461,7 +481,8 @@ async fn view_model_loop<T, Edit, GetAvailableComponentClasses, GetLoadedProject
                     }
                     let mut new_component_links = Vec::new();
                     for link in class.links().await {
-                        new_component_links.push(link.upgrade().unwrap().read().await.clone());
+                        let link_inner = link.upgrade().unwrap().read().await.clone();
+                        new_component_links.push((link, link_inner));
                     }
                     timeline_item.store(Arc::new(TimelineItem {
                         component_instances: new_component_instances,
@@ -470,30 +491,6 @@ async fn view_model_loop<T, Edit, GetAvailableComponentClasses, GetLoadedProject
                     }))
                 }
             }
-            selected_component_instance.store(None);
-            update_flags |= DataUpdateFlags::COMPONENT_INSTANCES;
-        }
-        if update_flags.contains(DataUpdateFlags::COMPONENT_INSTANCES) {
-            let renderer = if let Some((class, _)) = root_component_classes.load().get(selected_root_component_class.load(atomic::Ordering::Relaxed)) {
-                if let Some(class_ref) = class.upgrade() {
-                    let class = class.clone().map(|weak| weak as _);
-                    let instance = StaticPointerOwned::new(RwLock::new(class_ref.read().await.instantiate(&class).await));
-                    let instance_reference = StaticPointerOwned::reference(&instance).clone();
-                    match realtime_render_component.render_component(&instance_reference).await {
-                        Ok(renderer) => Some(Arc::new(renderer)),
-                        Err(e) => {
-                            eprintln!("failed to create renderer by {e}");
-                            None
-                        }
-                    }
-                } else {
-                    eprintln!("upgrade failed");
-                    None
-                }
-            } else {
-                None
-            };
-            realtime_renderer.store(renderer);
         }
     }
 }

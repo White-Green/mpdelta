@@ -59,6 +59,10 @@ impl<T> Editor<T> for ProjectEditor {
                 item.link_mut().extend([StaticPointerOwned::new(RwLock::new(link_for_zero)), StaticPointerOwned::new(RwLock::new(link_for_length))]);
                 Ok(ProjectEditLog::Unimplemented)
             }
+            RootComponentEditCommand::RemoveMarkerLink(link) => {
+                target.get_mut().await.link_mut().retain(|l| *l != link);
+                Ok(ProjectEditLog::Unimplemented)
+            }
         }
     }
 

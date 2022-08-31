@@ -2,7 +2,7 @@ use crate::viewmodel::{MPDeltaViewModel, ViewModelParams};
 use crate::ImageRegister;
 use egui::epaint::Shadow;
 use egui::style::Margin;
-use egui::{Area, Button, Context, Direction, Frame, Id, Label, Layout, Pos2, Rect, ScrollArea, Sense, Slider, Stroke, Style, TextureId, Vec2, Visuals, Widget, Window};
+use egui::{Area, Button, Color32, Context, Direction, Frame, Id, Label, Layout, Pos2, Rect, ScrollArea, Sense, Slider, Stroke, Style, TextEdit, TextureId, Vec2, Visuals, Widget, Window};
 use mpdelta_core::component::parameter::ParameterValueType;
 use mpdelta_core::usecase::{
     EditUsecase, GetAvailableComponentClassesUsecase, GetLoadedProjectsUsecase, GetRootComponentClassesUsecase, LoadProjectUsecase, NewProjectUsecase, NewRootComponentClassUsecase, RealtimeComponentRenderer, RealtimeRenderComponentUsecase, RedoUsecase, SetOwnerForRootComponentClassUsecase,
@@ -140,9 +140,8 @@ impl<T: ParameterValueType<'static>, R: RealtimeComponentRenderer<T>> Gui<T::Ima
                             });
                         });
                     }
-                    let painter = ui.painter();
                     let pins = &*self.view_model.marker_pins();
-                    for link in self.view_model.component_links().iter() {
+                    for (link_ref, link) in self.view_model.component_links().iter() {
                         let from = if let Some(from) = pins.get(&link.from) {
                             from
                         } else {
@@ -155,10 +154,19 @@ impl<T: ParameterValueType<'static>, R: RealtimeComponentRenderer<T>> Gui<T::Ima
                         };
                         let from = &*from;
                         let to = &*to;
-                        if from.0.as_ref() != selected && to.0.as_ref() != selected {
-                            continue;
+                        if selected.is_some() && (from.0.as_ref() == selected || to.0.as_ref() == selected) {
+                            ui.painter()
+                                .hline(base_point.x + (from.2.value() * 100.) as f32..=base_point.x + (to.2.value() * 100.) as f32, base_point.y + from.1.max(to.1) * 60. + 55., Stroke::new(1., ui.visuals().text_color()));
+                            ui.allocate_ui_at_rect(Rect::from_min_size(base_point + Vec2::new((from.2.value() * 100.) as f32, from.1.max(to.1) * 60. + 56.), Vec2::new(20., 100.)), |ui| {
+                                let mut s = link.len.value().to_string();
+                                ui.add(TextEdit::singleline(&mut s)).context_menu(|ui| {
+                                    if ui.button("remove").clicked() {
+                                        self.view_model.remove_marker_link(link_ref.clone());
+                                        ui.close_menu();
+                                    }
+                                });
+                            });
                         }
-                        painter.hline((from.2.value() * 100.) as f32..=(to.2.value() * 100.) as f32, from.1.max(to.1) * 60. + 50., Stroke::default());
                     }
                 });
                 response.context_menu(|ui| {

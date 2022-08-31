@@ -1,6 +1,6 @@
 use crate::{stream, StreamExt};
 use async_recursion::async_recursion;
-use cgmath::{Quaternion, Vector2, Vector3};
+use cgmath::{One, Quaternion, Vector2, Vector3};
 use dashmap::DashMap;
 use either::Either;
 use mpdelta_core::common::time_split_value::TimeSplitValue;
@@ -456,22 +456,20 @@ fn get_map_time(time: Arc<[(Range<TimelineTime>, Range<MarkerTime>)]>) -> impl M
 fn frame_values<T: Default + Clone>(value: TimeSplitValue<TimelineTime, Option<Either<T, FrameVariableValue<T>>>>, frames: impl Iterator<Item = TimelineTime>) -> FrameVariableValue<T> {
     // TODO: 計算量が論外
     frames
-        .map(|time| {
-            let value = (0..value.len_value())
-                .find_map(|i| {
-                    let (&left, value, &right) = value.get_value(i).unwrap();
-                    if left <= time && time < right {
-                        match value {
-                            None => Some(T::default()),
-                            Some(Either::Left(value)) => Some(value.clone()),
-                            Some(Either::Right(value)) => Some(value.get(time).unwrap().clone()),
-                        }
-                    } else {
-                        None
+        .filter_map(|time| {
+            let value = (0..value.len_value()).find_map(|i| {
+                let (&left, value, &right) = value.get_value(i).unwrap();
+                if left <= time && time < right {
+                    match value {
+                        None => Some(T::default()),
+                        Some(Either::Left(value)) => Some(value.clone()),
+                        Some(Either::Right(value)) => Some(value.get(time).unwrap().clone()),
                     }
-                })
-                .unwrap();
-            (time, value)
+                } else {
+                    None
+                }
+            })?;
+            Some((time, value))
         })
         .collect::<BTreeMap<_, _>>()
         .into()
@@ -485,7 +483,7 @@ fn frame_values_easing<T: Clone, U, F: Fn([T; N]) -> U, const N: usize>(value: [
                 (0..value[j].len_value())
                     .find_map(|i| {
                         let (&left, value, &right) = value[j].get_value(i).unwrap();
-                        if left <= time && time < right {
+                        if left <= time && time <= right {
                             match value {
                                 None => Some(default()),
                                 Some(Either::Left(value)) => {
@@ -498,7 +496,7 @@ fn frame_values_easing<T: Clone, U, F: Fn([T; N]) -> U, const N: usize>(value: [
                             None
                         }
                     })
-                    .unwrap()
+                    .unwrap_or_else(|| panic!("{time:?}"))
             }));
             (time, value)
         })
@@ -802,17 +800,17 @@ pub(crate) async fn evaluate_component<T: ParameterValueType<'static> + 'static,
     // 時間シフトを考えるのはここだけ
     // 時間シフト
     let marker_ranges = marker_ranges.into();
-    let mut map_time = get_map_time(Arc::clone(&marker_ranges));
+    let map_time = get_map_time(Arc::clone(&marker_ranges));
     let image_required_params = if let Some(image_required_params) = image_required_params {
-        let transform = async {
+        let transform = {
             match &image_required_params.transform {
                 ImageRequiredParamsTransform::Params { scale, translate, rotate, scale_center, rotate_center } => {
                     let (scale, translate, rotate, scale_center, rotate_center) = (
-                        evaluate_variable(left_time, right_time, scale.clone(), &image_source_tree, &audio_source_tree, frames.clone(), map_time.clone()).await,
-                        evaluate_variable(left_time, right_time, translate.clone(), &image_source_tree, &audio_source_tree, frames.clone(), map_time.clone()).await,
-                        evaluate_variable_easing(rotate.clone(), frames.clone(), map_time.clone()).await,
-                        evaluate_variable(left_time, right_time, scale_center.clone(), &image_source_tree, &audio_source_tree, frames.clone(), map_time.clone()).await,
-                        evaluate_variable(left_time, right_time, rotate_center.clone(), &image_source_tree, &audio_source_tree, frames.clone(), map_time.clone()).await,
+                        evaluate_variable(left_time, right_time, scale.clone(), &image_source_tree, &audio_source_tree, frames.clone()).await,
+                        evaluate_variable(left_time, right_time, translate.clone(), &image_source_tree, &audio_source_tree, frames.clone()).await,
+                        evaluate_variable_easing(rotate.clone(), frames.clone(), Quaternion::one).await,
+                        evaluate_variable(left_time, right_time, scale_center.clone(), &image_source_tree, &audio_source_tree, frames.clone()).await,
+                        evaluate_variable(left_time, right_time, rotate_center.clone(), &image_source_tree, &audio_source_tree, frames.clone()).await,
                     );
                     Ok(ImageRequiredParamsTransformFrameVariable::Params {
                         scale: scale?,
@@ -824,10 +822,10 @@ pub(crate) async fn evaluate_component<T: ParameterValueType<'static> + 'static,
                 }
                 ImageRequiredParamsTransform::Free { left_top, right_top, left_bottom, right_bottom } => {
                     let (left_top, right_top, left_bottom, right_bottom) = tokio::join!(
-                        evaluate_variable(left_time, right_time, left_top.clone(), &image_source_tree, &audio_source_tree, frames.clone(), map_time.clone()),
-                        evaluate_variable(left_time, right_time, right_top.clone(), &image_source_tree, &audio_source_tree, frames.clone(), map_time.clone()),
-                        evaluate_variable(left_time, right_time, left_bottom.clone(), &image_source_tree, &audio_source_tree, frames.clone(), map_time.clone()),
-                        evaluate_variable(left_time, right_time, right_bottom.clone(), &image_source_tree, &audio_source_tree, frames.clone(), map_time.clone()),
+                        evaluate_variable(left_time, right_time, left_top.clone(), &image_source_tree, &audio_source_tree, frames.clone()),
+                        evaluate_variable(left_time, right_time, right_top.clone(), &image_source_tree, &audio_source_tree, frames.clone()),
+                        evaluate_variable(left_time, right_time, left_bottom.clone(), &image_source_tree, &audio_source_tree, frames.clone()),
+                        evaluate_variable(left_time, right_time, right_bottom.clone(), &image_source_tree, &audio_source_tree, frames.clone()),
                     );
                     Ok(ImageRequiredParamsTransformFrameVariable::Free {
                         left_top: left_top?,
@@ -838,10 +836,10 @@ pub(crate) async fn evaluate_component<T: ParameterValueType<'static> + 'static,
                 }
             }
         };
-        let opacity = evaluate_variable_easing(image_required_params.opacity.clone(), frames.clone(), map_time.clone());
-        let blend_mode = evaluate_variable_all(image_required_params.blend_mode.clone(), frames.clone(), map_time.clone());
-        let composite_operation = evaluate_variable_all(image_required_params.composite_operation.clone(), frames.clone(), map_time.clone());
-        let (transform, opacity, blend_mode, composite_operation) = tokio::join!(transform, opacity, blend_mode, composite_operation);
+        let opacity = evaluate_variable_easing(image_required_params.opacity.clone(), frames.clone(), || Opacity::OPAQUE).await;
+        let blend_mode = evaluate_variable_all(image_required_params.blend_mode.clone(), frames.clone()).await;
+        let composite_operation = evaluate_variable_all(image_required_params.composite_operation.clone(), frames.clone()).await;
+        // let (transform, opacity, blend_mode, composite_operation) = tokio::join!(transform, opacity, blend_mode, composite_operation);
         Some(ImageRequiredParamsFrameVariable {
             aspect_ratio: image_required_params.aspect_ratio,
             transform: transform?,
@@ -936,7 +934,6 @@ async fn evaluate_variable<T: ParameterValueType<'static>, ID: IdGenerator + 'st
     image_source_tree: &Arc<SourceTree<TagImage, ImageNativeTreeNode<T>, ID>>,
     audio_source_tree: &Arc<SourceTree<TagAudio, AudioNativeTreeNode<T>, ID>>,
     frames: impl Iterator<Item = TimelineTime> + Send + Sync + Clone + 'static,
-    mut map_time: impl MapTime,
 ) -> Result<FrameVariableValue<Vector3<f64>>, RendererError> {
     let value = {
         let frames_ref = &frames;
@@ -995,17 +992,17 @@ async fn evaluate_variable<T: ParameterValueType<'static>, ID: IdGenerator + 'st
             z: param.z.await?,
         }
     };
-    Ok(frame_values_easing(value.map(|value| value.map_time(|time| map_time.map_time(time))).into(), Vector3::from, frames, Default::default))
+    Ok(frame_values_easing(value.into(), Vector3::from, frames, Default::default))
 }
 
-async fn evaluate_variable_easing<T: Clone>(param: TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, EasingValue<T>>, frames: impl Iterator<Item = TimelineTime> + Send + Sync + Clone + 'static, mut map_time: impl MapTime) -> FrameVariableValue<T> {
+async fn evaluate_variable_easing<T: Clone>(param: TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, EasingValue<T>>, frames: impl Iterator<Item = TimelineTime> + Send + Sync + Clone + 'static, default: impl Fn() -> T) -> FrameVariableValue<T> {
     let value = param.map_time_value_async(|t| async move { t.upgrade().unwrap().read().await.cached_timeline_time() }, |v| async move { Some(Either::Left(v)) }).await;
-    frame_values_easing([value.map_time(|time| map_time.map_time(time))], |[v]| v, frames, || unreachable!())
+    frame_values_easing([value], |[v]| v, frames, default)
 }
 
-async fn evaluate_variable_all<Value: Default + Clone>(param: TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, Value>, frames: impl Iterator<Item = TimelineTime> + Send + Sync + Clone + 'static, mut map_time: impl MapTime) -> FrameVariableValue<Value> {
+async fn evaluate_variable_all<Value: Default + Clone>(param: TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, Value>, frames: impl Iterator<Item = TimelineTime> + Send + Sync + Clone + 'static) -> FrameVariableValue<Value> {
     let value = param.map_time_value_async(|t| async move { t.upgrade().unwrap().read().await.cached_timeline_time() }, |v| async move { Some(Either::Left(v)) }).await;
-    frame_values(value.map_time(|time| map_time.map_time(time)), frames)
+    frame_values(value, frames)
 }
 
 async fn evaluate_parameter<ID: IdGenerator + 'static, T: ParameterValueType<'static>>(

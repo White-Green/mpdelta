@@ -42,15 +42,21 @@ impl<T> Editor<T> for ProjectEditor {
                 let zero = target.left().await;
                 let guard = instance.read().await;
                 let left = guard.marker_left();
-                let link = MarkerLink {
+                let right = guard.marker_right();
+                let link_for_zero = MarkerLink {
                     from: zero,
                     to: left.reference(),
+                    len: TimelineTime::new(1.0).unwrap(),
+                };
+                let link_for_length = MarkerLink {
+                    from: left.reference(),
+                    to: right.reference(),
                     len: TimelineTime::new(1.0).unwrap(),
                 };
                 drop(guard);
                 let mut item = target.get_mut().await;
                 item.component_mut().push(instance);
-                item.link_mut().push(StaticPointerOwned::new(RwLock::new(link)));
+                item.link_mut().extend([StaticPointerOwned::new(RwLock::new(link_for_zero)), StaticPointerOwned::new(RwLock::new(link_for_length))]);
                 Ok(ProjectEditLog::Unimplemented)
             }
         }

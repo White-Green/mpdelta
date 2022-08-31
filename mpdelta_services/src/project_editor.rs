@@ -39,12 +39,12 @@ impl<T> Editor<T> for ProjectEditor {
         let target = target.read().await;
         match command {
             RootComponentEditCommand::AddComponentInstance(instance) => {
-                let zero = target.left().await;
+                let base = if let Some(base) = target.get().await.component().last() { base.read().await.marker_left().reference() } else { target.left().await };
                 let guard = instance.read().await;
                 let left = guard.marker_left();
                 let right = guard.marker_right();
                 let link_for_zero = MarkerLink {
-                    from: zero,
+                    from: base,
                     to: left.reference(),
                     len: TimelineTime::new(1.0).unwrap(),
                 };

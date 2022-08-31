@@ -120,6 +120,8 @@ impl<T: ParameterValueType<'static>, R: RealtimeComponentRenderer<T>> Gui<T::Ima
                 let (rect, response) = ui.allocate_at_least(ui.available_size(), Sense::click());
                 ui.allocate_ui_at_rect(rect, |ui| {
                     let base_point = ui.cursor().min;
+                    let frame = *self.view_model.seek();
+                    ui.painter().vline(base_point.x + frame as f32 / 60. * 100., ui.cursor().min.y..=ui.cursor().min.y + ui.ctx().available_rect().height(), Stroke::new(1., Color32::RED));
                     let selected = self.view_model.selected_component_instance();
                     let selected = selected.as_deref();
                     for item in self.view_model.component_instances().iter() {
@@ -260,19 +262,6 @@ impl<T: ParameterValueType<'static>, R: RealtimeComponentRenderer<T>> Gui<T::Ima
                                     value
                                 } else {
                                     current_value.from
-                                }
-                            }));
-                            ui.label("opacity");
-                            ui.add(Slider::from_get_set(0.0..=1.0, |new_value| {
-                                let current_value = image_required_params.opacity.get_value_mut(0).unwrap().1;
-                                if let Some(value) = new_value {
-                                    let value = Opacity::new(value).unwrap_or(Opacity::OPAQUE);
-                                    current_value.from = value;
-                                    current_value.to = value;
-                                    edited = true;
-                                    value.value()
-                                } else {
-                                    current_value.from.value()
                                 }
                             }));
                         }

@@ -2,7 +2,7 @@ use crate::viewmodel::{MPDeltaViewModel, ViewModelParams};
 use crate::ImageRegister;
 use egui::epaint::Shadow;
 use egui::style::Margin;
-use egui::{Area, Button, Color32, Context, Direction, Frame, Id, Label, Layout, Pos2, Rect, ScrollArea, Sense, Slider, Stroke, Style, TextEdit, TextureId, Vec2, Visuals, Widget, Window};
+use egui::{Area, Button, Color32, Context, Direction, Frame, Id, Label, Layout, Pos2, Rect, Rounding, ScrollArea, Sense, Slider, Stroke, Style, TextEdit, TextureId, Vec2, Visuals, Widget, Window};
 use mpdelta_core::component::parameter::ParameterValueType;
 use mpdelta_core::time::TimelineTime;
 use mpdelta_core::usecase::{
@@ -203,7 +203,9 @@ impl<T: ParameterValueType<'static>, R: RealtimeComponentRenderer<T>> Gui<T::Ima
                 let (image_width, image_height) = (area_width.min(area_height * 16. / 9.), area_height.min(area_width * 9. / 16.) + 66.);
                 let base_pos = ui.cursor().min + Vec2::new(0., 72.);
                 ui.allocate_ui_at_rect(Rect::from_min_size(base_pos + Vec2::new((area_width - image_width) / 2., (area_height - image_height) / 2.), Vec2::new(image_width, image_height)), |ui| {
-                    ui.image(texture_id, Vec2 { x: image_width, y: image_height - 66. });
+                    let image_size = Vec2 { x: image_width, y: image_height - 66. };
+                    ui.painter().rect(Rect::from_min_size(ui.cursor().min, image_size), Rounding::none(), Color32::BLACK, Stroke::default());
+                    ui.image(texture_id, image_size);
                     ui.horizontal(|ui| {
                         let start = ui.cursor().min.x;
                         if self.view_model.playing() {

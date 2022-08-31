@@ -529,6 +529,9 @@ async fn view_model_loop<T, Edit, GetAvailableComponentClasses, GetLoadedProject
                         component_links: new_component_links,
                     }))
                 }
+            } else {
+                realtime_renderer.store(None);
+                timeline_item.store(Default::default());
             }
         }
         if update_flags.contains(DataUpdateFlags::COMPONENT_INSTANCE_SELECT) {

@@ -13,7 +13,7 @@ use cgmath::{One, Quaternion, Vector3};
 use std::collections::HashSet;
 use std::future::Future;
 use std::hash::{Hash, Hasher};
-use std::ops::DerefMut;
+use std::ops::{Deref, DerefMut};
 use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
@@ -208,6 +208,10 @@ impl<T> RootComponentClass<T> {
             old_parent.write().await.children.remove(this);
         }
         old_parent
+    }
+
+    pub async fn get(&self) -> impl Deref<Target = RootComponentClassItem<T>> + '_ {
+        self.item.0.read().await
     }
 
     pub async fn get_mut(&self) -> impl DerefMut<Target = RootComponentClassItem<T>> + '_ {

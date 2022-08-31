@@ -63,6 +63,12 @@ impl<T> Editor<T> for ProjectEditor {
                 target.get_mut().await.link_mut().retain(|l| *l != link);
                 Ok(ProjectEditLog::Unimplemented)
             }
+            RootComponentEditCommand::EditMarkerLinkLength(link, len) => {
+                if let Some(link) = link.upgrade() {
+                    link.write().await.len = len;
+                }
+                Ok(ProjectEditLog::Unimplemented)
+            }
         }
     }
 

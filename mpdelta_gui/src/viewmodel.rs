@@ -211,6 +211,10 @@ impl<T: ParameterValueType<'static>, R: RealtimeComponentRenderer<T>> MPDeltaVie
         self.message_sender.send(ViewModelMessage::RemoveMarkerLink(link)).unwrap();
     }
 
+    pub fn edit_marker_link_length(&self, link: StaticPointer<RwLock<MarkerLink>>, new_length: TimelineTime) {
+        self.message_sender.send(ViewModelMessage::EditMarkerLinkLength(link, new_length)).unwrap();
+    }
+
     pub fn play(&mut self) {
         if !self.playing {
             self.play_start = Instant::now();
@@ -247,6 +251,7 @@ enum ViewModelMessage<T> {
     DragComponentInstance(StaticPointer<RwLock<ComponentInstance<T>>>, Vec2),
     AddComponentInstance,
     RemoveMarkerLink(StaticPointer<RwLock<MarkerLink>>),
+    EditMarkerLinkLength(StaticPointer<RwLock<MarkerLink>>, TimelineTime),
 }
 
 impl<T> Debug for ViewModelMessage<T> {
@@ -260,6 +265,7 @@ impl<T> Debug for ViewModelMessage<T> {
             ViewModelMessage::DragComponentInstance(v0, v1) => f.debug_tuple("DragComponentInstance").field(v0).field(v1).finish(),
             ViewModelMessage::AddComponentInstance => write!(f, "AddComponentInstance"),
             ViewModelMessage::RemoveMarkerLink(v) => f.debug_tuple("RemoveMarkerLink").field(v).finish(),
+            ViewModelMessage::EditMarkerLinkLength(v0, v1) => f.debug_tuple("EditMarkerLinkLength").field(v0).field(v1).finish(),
         }
     }
 }
@@ -416,6 +422,12 @@ async fn view_model_loop<T, Edit, GetAvailableComponentClasses, GetLoadedProject
             ViewModelMessage::RemoveMarkerLink(link) => {
                 if let Some((target, _)) = root_component_classes.load().get(selected_root_component_class.load(atomic::Ordering::Relaxed)) {
                     edit.edit(target, RootComponentEditCommand::RemoveMarkerLink(link)).await.unwrap();
+                    update_flags |= DataUpdateFlags::COMPONENT_INSTANCES;
+                }
+            }
+            ViewModelMessage::EditMarkerLinkLength(link, new_length) => {
+                if let Some((target, _)) = root_component_classes.load().get(selected_root_component_class.load(atomic::Ordering::Relaxed)) {
+                    edit.edit(target, RootComponentEditCommand::EditMarkerLinkLength(link, new_length)).await.unwrap();
                     update_flags |= DataUpdateFlags::COMPONENT_INSTANCES;
                 }
             }

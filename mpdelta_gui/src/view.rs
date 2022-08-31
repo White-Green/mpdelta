@@ -4,11 +4,13 @@ use egui::epaint::Shadow;
 use egui::style::Margin;
 use egui::{Area, Button, Color32, Context, Direction, Frame, Id, Label, Layout, Pos2, Rect, ScrollArea, Sense, Slider, Stroke, Style, TextEdit, TextureId, Vec2, Visuals, Widget, Window};
 use mpdelta_core::component::parameter::ParameterValueType;
+use mpdelta_core::time::TimelineTime;
 use mpdelta_core::usecase::{
     EditUsecase, GetAvailableComponentClassesUsecase, GetLoadedProjectsUsecase, GetRootComponentClassesUsecase, LoadProjectUsecase, NewProjectUsecase, NewRootComponentClassUsecase, RealtimeComponentRenderer, RealtimeRenderComponentUsecase, RedoUsecase, SetOwnerForRootComponentClassUsecase,
     UndoUsecase, WriteProjectUsecase,
 };
 use std::hash::SipHasher;
+use std::str::FromStr;
 
 pub trait Gui<T> {
     fn ui(&mut self, ctx: &Context, image: &mut impl ImageRegister<T>);
@@ -157,14 +159,17 @@ impl<T: ParameterValueType<'static>, R: RealtimeComponentRenderer<T>> Gui<T::Ima
                         if selected.is_some() && (from.0.as_ref() == selected || to.0.as_ref() == selected) {
                             ui.painter()
                                 .hline(base_point.x + (from.2.value() * 100.) as f32..=base_point.x + (to.2.value() * 100.) as f32, base_point.y + from.1.max(to.1) * 60. + 55., Stroke::new(1., ui.visuals().text_color()));
-                            ui.allocate_ui_at_rect(Rect::from_min_size(base_point + Vec2::new((from.2.value() * 100.) as f32, from.1.max(to.1) * 60. + 56.), Vec2::new(20., 100.)), |ui| {
-                                let mut s = link.len.value().to_string();
-                                ui.add(TextEdit::singleline(&mut s)).context_menu(|ui| {
-                                    if ui.button("remove").clicked() {
-                                        self.view_model.remove_marker_link(link_ref.clone());
-                                        ui.close_menu();
+                            ui.allocate_ui_at_rect(Rect::from_min_size(base_point + Vec2::new((from.2.value() * 100.) as f32, to.1.max(to.1) * 60. + 57.), Vec2::new(20., 100.)), |ui| {
+                                let s = link.len.value().to_string();
+                                let mut edit = s.clone();
+                                ui.add(TextEdit::singleline(&mut edit));
+                                if s != edit {
+                                    if let Ok(new_value) = f64::from_str(&edit) {
+                                        if let Some(new_value) = TimelineTime::new(new_value) {
+                                            self.view_model.edit_marker_link_length(link_ref.clone(), new_value);
+                                        }
                                     }
-                                });
+                                }
                             });
                         }
                     }

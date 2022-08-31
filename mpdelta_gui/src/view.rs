@@ -9,8 +9,11 @@ use mpdelta_core::usecase::{
     EditUsecase, GetAvailableComponentClassesUsecase, GetLoadedProjectsUsecase, GetRootComponentClassesUsecase, LoadProjectUsecase, NewProjectUsecase, NewRootComponentClassUsecase, RealtimeComponentRenderer, RealtimeRenderComponentUsecase, RedoUsecase, SetOwnerForRootComponentClassUsecase,
     UndoUsecase, WriteProjectUsecase,
 };
+use once_cell::sync::Lazy;
+use regex::Regex;
 use std::hash::SipHasher;
 use std::str::FromStr;
+use std::sync::Arc;
 
 pub trait Gui<T> {
     fn ui(&mut self, ctx: &Context, image: &mut impl ImageRegister<T>);
@@ -143,7 +146,7 @@ impl<T: ParameterValueType<'static>, R: RealtimeComponentRenderer<T>> Gui<T::Ima
                         });
                     }
                     let pins = &*self.view_model.marker_pins();
-                    for (link_ref, link) in self.view_model.component_links().iter() {
+                    for (link_ref, link, len_str) in self.view_model.component_links().iter() {
                         let from = if let Some(from) = pins.get(&link.from) {
                             from
                         } else {
@@ -160,13 +163,18 @@ impl<T: ParameterValueType<'static>, R: RealtimeComponentRenderer<T>> Gui<T::Ima
                             ui.painter()
                                 .hline(base_point.x + (from.2.value() * 100.) as f32..=base_point.x + (to.2.value() * 100.) as f32, base_point.y + from.1.max(to.1) * 60. + 55., Stroke::new(1., ui.visuals().text_color()));
                             ui.allocate_ui_at_rect(Rect::from_min_size(base_point + Vec2::new((from.2.value() * 100.) as f32, to.1.max(to.1) * 60. + 57.), Vec2::new(20., 100.)), |ui| {
-                                let s = link.len.value().to_string();
-                                let mut edit = s.clone();
-                                ui.add(TextEdit::singleline(&mut edit));
-                                if s != edit {
-                                    if let Ok(new_value) = f64::from_str(&edit) {
-                                        if let Some(new_value) = TimelineTime::new(new_value) {
-                                            self.view_model.edit_marker_link_length(link_ref.clone(), new_value);
+                                let len = &**len_str.load();
+                                let mut s = len.clone();
+                                ui.add(TextEdit::singleline(&mut s));
+                                s.retain(|c| c.is_ascii_digit() || c == '.');
+                                static REGEX: Lazy<Regex> = Lazy::new(|| Regex::new("^\\d+(?:\\.\\d+)?$").unwrap());
+                                if s != *len {
+                                    len_str.store(Arc::new(s.clone()));
+                                    if REGEX.is_match(&s) {
+                                        if let Ok(new_value) = f64::from_str(&s) {
+                                            if let Some(new_value) = TimelineTime::new(new_value) {
+                                                self.view_model.edit_marker_link_length(link_ref.clone(), new_value);
+                                            }
                                         }
                                     }
                                 }

@@ -183,7 +183,7 @@ impl<T: ParameterValueType<'static>, R: RealtimeComponentRenderer<T>> MPDeltaVie
         DerefMap::new(self.inner.timeline_item.load(), |guard| &guard.component_instances)
     }
 
-    pub fn component_links(&self) -> impl Deref<Target = Vec<(StaticPointer<RwLock<MarkerLink>>, MarkerLink)>> {
+    pub fn component_links(&self) -> impl Deref<Target = Vec<(StaticPointer<RwLock<MarkerLink>>, MarkerLink, ArcSwap<String>)>> {
         DerefMap::new(self.inner.timeline_item.load(), |guard| &guard.component_links)
     }
 
@@ -274,7 +274,7 @@ impl<T> Debug for ViewModelMessage<T> {
 struct TimelineItem<T> {
     component_instances: DashMap<StaticPointer<RwLock<ComponentInstance<T>>>, ComponentInstanceRect>,
     marker_pins: DashMap<StaticPointer<RwLock<MarkerPin>>, (Option<StaticPointer<RwLock<ComponentInstance<T>>>>, f32, TimelineTime)>,
-    component_links: Vec<(StaticPointer<RwLock<MarkerLink>>, MarkerLink)>,
+    component_links: Vec<(StaticPointer<RwLock<MarkerLink>>, MarkerLink, ArcSwap<String>)>,
 }
 
 impl<T> Default for TimelineItem<T> {
@@ -494,7 +494,8 @@ async fn view_model_loop<T, Edit, GetAvailableComponentClasses, GetLoadedProject
                     let mut new_component_links = Vec::new();
                     for link in class.links().await {
                         let link_inner = link.upgrade().unwrap().read().await.clone();
-                        new_component_links.push((link, link_inner));
+                        let length = link_inner.len.value().to_string();
+                        new_component_links.push((link, link_inner, ArcSwap::new(Arc::new(length))));
                     }
                     timeline_item.store(Arc::new(TimelineItem {
                         component_instances: new_component_instances,

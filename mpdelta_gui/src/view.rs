@@ -222,6 +222,15 @@ impl<T: ParameterValueType<'static>, R: RealtimeComponentRenderer<T>> Gui<T::Ima
                 });
                 self.previous_preview = Some(texture_id);
             } else {
+                if self.view_model.projects().get(self.view_model.selected_project()).is_none() {
+                    if ui.button("create new project").clicked() {
+                        self.view_model.new_project()
+                    }
+                } else if self.view_model.root_component_classes().get(self.view_model.selected_root_component_class()).is_none() {
+                    if ui.button("add new root component class").clicked() {
+                        self.view_model.new_root_component_class();
+                    }
+                }
                 self.previous_preview = None;
             }
         });

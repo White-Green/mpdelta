@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use mpdelta_core::component::class::ComponentClass;
 use mpdelta_core::component::instance::ComponentInstance;
 use mpdelta_core::component::marker_pin::{MarkerPin, MarkerTime};
-use mpdelta_core::component::parameter::{ImageRequiredParams, ParameterType, ParameterTypeExceptComponentClass, ParameterValueFixed, ParameterValueType, ValueFixed};
+use mpdelta_core::component::parameter::{ImageRequiredParams, ParameterType, ParameterTypeExceptComponentClass, ParameterValueFixed, ParameterValueType};
 use mpdelta_core::component::processor::{ComponentProcessor, ComponentProcessorBody, NativeProcessorExecutable};
 use mpdelta_core::native::processor::{NativeProcessor, ParameterNativeProcessorInputFixed};
 use mpdelta_core::ptr::{StaticPointer, StaticPointerCow, StaticPointerOwned};

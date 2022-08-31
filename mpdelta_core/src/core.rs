@@ -793,7 +793,7 @@ mod tests {
                 unreachable!()
             }
 
-            fn render_param(&self, param: Parameter<'static, ParameterSelect>) -> Parameter<'static, Temporary> {
+            fn render_param(&self, _param: Parameter<'static, ParameterSelect>) -> Parameter<'static, Temporary> {
                 unreachable!()
             }
         }

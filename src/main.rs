@@ -9,7 +9,7 @@ use mpdelta_gui::view::MPDeltaGUI;
 use mpdelta_gui::viewmodel::ViewModelParams;
 use mpdelta_gui_vulkano::MPDeltaGUIVulkano;
 use mpdelta_renderer::MPDeltaRendererBuilder;
-use mpdelta_services::component_class_loader::TemporaryComponentClassLoader;
+
 use mpdelta_services::history::InMemoryEditHistoryStore;
 use mpdelta_services::id_generator::UniqueIdGenerator;
 use mpdelta_services::project_editor::ProjectEditor;
@@ -74,7 +74,7 @@ impl ComponentClassLoader<ValueType> for ComponentClassList {
 }
 
 fn main() {
-    let (instance, device, queue, event_loop, surface) = initialize_graphics();
+    let (_instance, device, queue, event_loop, surface) = initialize_graphics();
     let runtime = Runtime::new().unwrap();
     let id_generator = Arc::new(UniqueIdGenerator::new());
     let project_loader = Arc::new(TemporaryProjectLoader);

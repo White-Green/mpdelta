@@ -1,33 +1,25 @@
 use crate::evaluate_component::{evaluate_component, AudioNativeTreeNode, ImageNativeTreeNode, ReadonlySourceTree, RendererError, SourceTree};
-use async_recursion::async_recursion;
+
 use async_trait::async_trait;
-use cgmath::{Vector2, Vector3};
-use dashmap::DashMap;
-use either::Either;
-use futures::prelude::future::{join_all, BoxFuture, FutureExt};
+
+use futures::prelude::future::FutureExt;
 use futures::prelude::stream::{self, StreamExt};
-use mpdelta_core::common::time_split_value::TimeSplitValue;
+
 use mpdelta_core::component::instance::ComponentInstance;
-use mpdelta_core::component::marker_pin::{MarkerPin, MarkerTime};
+
 use mpdelta_core::component::parameter::placeholder::{Placeholder, TagAudio, TagImage};
-use mpdelta_core::component::parameter::value::{DefaultEasing, EasingValue, FrameVariableValue};
-use mpdelta_core::component::parameter::{
-    AudioRequiredParams, ComponentProcessorInput, ComponentProcessorInputValue, ImageRequiredParams, Parameter, ParameterFrameVariableValue, ParameterNullableValue, ParameterSelect, ParameterType, ParameterTypeExceptComponentClass, ParameterValue, ParameterValueType, Type,
-    VariableParameterPriority, VariableParameterValue,
-};
-use mpdelta_core::component::processor::{ComponentProcessorBody, NativeProcessorExecutable, NativeProcessorInput};
+
+use mpdelta_core::component::parameter::{Parameter, ParameterSelect, ParameterType, ParameterValueType};
+
 use mpdelta_core::core::{ComponentRendererBuilder, IdGenerator};
-use mpdelta_core::native::processor::ParameterNativeProcessorInputFixed;
-use mpdelta_core::ptr::{StaticPointer, StaticPointerOwned};
+
+use mpdelta_core::ptr::StaticPointer;
 use mpdelta_core::time::TimelineTime;
 use mpdelta_core::usecase::RealtimeComponentRenderer;
-use std::collections::{btree_map::BTreeMap, hash_map::HashMap};
-use std::hash::Hash;
-use std::ops::Range;
-use std::path::PathBuf;
+
 use std::sync::Arc;
 use std::time::Duration;
-use std::{array, iter, mem};
+
 use tokio::runtime::Handle;
 use tokio::sync::RwLock;
 
@@ -61,7 +53,7 @@ impl<T: ParameterValueType<'static> + 'static, ID: IdGenerator + 'static, Video:
                 let left = left.upgrade().unwrap();
                 let right = right.upgrade().unwrap();
                 let (left, right) = futures::join!(left.read(), right.read());
-                let length_secs = (right.cached_timeline_time().value() - left.cached_timeline_time().value());
+                let length_secs = right.cached_timeline_time().value() - left.cached_timeline_time().value();
                 Ok::<_, RendererError>((video_renderer_builder.create_renderer(result.into_image().unwrap(), 60., Arc::try_unwrap(image_source_tree).unwrap_or_else(|_| unreachable!()).into_readonly()).await, length_secs))
             })
         });
@@ -140,7 +132,7 @@ impl<T: ParameterValueType<'static>, Video: VideoRenderer<T::Image>, Audio: Audi
         self.runtime.block_on(async { self.audio_mixer.write().await.mix_audio(offset, length, Duration::MAX).await })
     }
 
-    fn render_param(&self, param: Parameter<'static, ParameterSelect>) -> Parameter<'static, T> {
+    fn render_param(&self, _param: Parameter<'static, ParameterSelect>) -> Parameter<'static, T> {
         todo!()
     }
 }

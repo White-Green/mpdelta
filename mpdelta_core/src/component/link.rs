@@ -2,7 +2,7 @@ use crate::component::marker_pin::MarkerPin;
 use crate::ptr::StaticPointer;
 use crate::time::TimelineTime;
 use std::mem;
-use std::time::Duration;
+
 use tokio::sync::RwLock;
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]

@@ -1,7 +1,7 @@
 use arc_swap::{ArcSwap, ArcSwapOption};
 use bitflags::bitflags;
 use dashmap::DashMap;
-use egui::{Pos2, Rect, Vec2};
+use egui::Vec2;
 use mpdelta_core::component::class::ComponentClass;
 use mpdelta_core::component::instance::ComponentInstance;
 use mpdelta_core::component::link::MarkerLink;
@@ -15,7 +15,7 @@ use mpdelta_core::usecase::{
     EditUsecase, GetAvailableComponentClassesUsecase, GetLoadedProjectsUsecase, GetRootComponentClassesUsecase, LoadProjectUsecase, NewProjectUsecase, NewRootComponentClassUsecase, RealtimeComponentRenderer, RealtimeRenderComponentUsecase, RedoUsecase, SetOwnerForRootComponentClassUsecase,
     UndoUsecase, WriteProjectUsecase,
 };
-use std::collections::HashMap;
+
 use std::fmt::{Debug, Formatter};
 use std::ops::{Deref, Range};
 use std::sync::atomic::AtomicUsize;
@@ -361,19 +361,19 @@ async fn view_model_loop<T, Edit, GetAvailableComponentClasses, GetLoadedProject
     WriteProject: WriteProjectUsecase<T> + Send + Sync + 'static,
 {
     let ViewModelParams {
-        runtime,
+        runtime: _,
         edit,
         get_available_component_classes,
         get_loaded_projects,
         get_root_component_classes,
-        load_project,
+        load_project: _,
         new_project,
         new_root_component_class,
         realtime_render_component,
-        redo,
+        redo: _,
         set_owner_for_root_component_class,
-        undo,
-        write_project,
+        undo: _,
+        write_project: _,
     } = params;
     let ViewModelInner {
         projects,
@@ -415,8 +415,8 @@ async fn view_model_loop<T, Edit, GetAvailableComponentClasses, GetLoadedProject
                 selected_component_instance.store(Some(Arc::new(handle)));
                 update_flags |= DataUpdateFlags::COMPONENT_INSTANCE_SELECT;
             }
-            ViewModelMessage::DragComponentInstance(handle, delta) => {
-                if let Some(mut rect) = timeline_item.load().component_instances.get_mut(&handle) {
+            ViewModelMessage::DragComponentInstance(handle, _delta) => {
+                if let Some(_rect) = timeline_item.load().component_instances.get_mut(&handle) {
                     // let Range { start, end } = &mut rect.time;
                     // *start = TimelineTime::new(start.value() + delta.x as f64).unwrap();
                     // *end = TimelineTime::new(end.value() + delta.x as f64).unwrap();

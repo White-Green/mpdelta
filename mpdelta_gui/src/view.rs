@@ -3,8 +3,8 @@ use crate::ImageRegister;
 use cgmath::Vector3;
 use egui::epaint::Shadow;
 use egui::style::Margin;
-use egui::{Area, Button, Color32, Context, Direction, Frame, Id, Label, Layout, Pos2, Rect, Rounding, ScrollArea, Sense, Slider, Stroke, Style, TextEdit, TextureId, Vec2, Visuals, Widget, Window};
-use mpdelta_core::component::parameter::{ImageRequiredParamsTransform, Opacity, ParameterValueType, VariableParameterValue};
+use egui::{Button, Color32, Context, Frame, Pos2, Rect, Rounding, ScrollArea, Sense, Slider, Stroke, Style, TextEdit, TextureId, Vec2};
+use mpdelta_core::component::parameter::{ImageRequiredParamsTransform, ParameterValueType, VariableParameterValue};
 use mpdelta_core::time::TimelineTime;
 use mpdelta_core::usecase::{
     EditUsecase, GetAvailableComponentClassesUsecase, GetLoadedProjectsUsecase, GetRootComponentClassesUsecase, LoadProjectUsecase, NewProjectUsecase, NewRootComponentClassUsecase, RealtimeComponentRenderer, RealtimeRenderComponentUsecase, RedoUsecase, SetOwnerForRootComponentClassUsecase,
@@ -12,7 +12,7 @@ use mpdelta_core::usecase::{
 };
 use once_cell::sync::Lazy;
 use regex::Regex;
-use std::hash::SipHasher;
+
 use std::str::FromStr;
 use std::sync::Arc;
 

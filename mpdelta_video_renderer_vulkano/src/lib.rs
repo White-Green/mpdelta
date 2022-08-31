@@ -1,4 +1,3 @@
-use async_recursion::async_recursion;
 use async_trait::async_trait;
 use cgmath::{Matrix4, SquareMatrix, Vector3, Vector4};
 use composite_operation_shader::CompositeOperationConstant;
@@ -8,45 +7,43 @@ use futures::future::BoxFuture;
 use futures::stream::{self, StreamExt};
 use futures::FutureExt;
 use glam::{Mat4, Vec4};
-use mpdelta_core::component::marker_pin::MarkerTime;
-use mpdelta_core::component::parameter::placeholder::{Placeholder, TagAudio, TagImage};
-use mpdelta_core::component::parameter::{BlendMode, CompositeOperation, ImageRequiredParams, ImageRequiredParamsTransformFixed, Parameter, ParameterValueType};
-use mpdelta_core::component::processor::{NativeProcessorExecutable, NativeProcessorInput};
+
+use mpdelta_core::component::parameter::placeholder::{Placeholder, TagImage};
+use mpdelta_core::component::parameter::{BlendMode, CompositeOperation, ImageRequiredParamsTransformFixed, Parameter, ParameterValueType};
+use mpdelta_core::component::processor::NativeProcessorInput;
 use mpdelta_core::native::processor::ParameterNativeProcessorInputFixed;
 use mpdelta_core::time::TimelineTime;
 use mpdelta_core_vulkano::ImageType;
-use mpdelta_renderer::evaluate_component::{AudioNativeTreeNode, ImageNativeTreeNode, ReadonlySourceTree};
+use mpdelta_renderer::evaluate_component::{ImageNativeTreeNode, ReadonlySourceTree};
 use mpdelta_renderer::{VideoRenderer, VideoRendererBuilder};
 use std::cmp::Ordering;
-use std::collections::HashMap;
+
 use std::ops::Range;
 use std::sync::Arc;
 use std::time::Duration;
 use texture_drawing_shader::TextureDrawingConstant;
-use tokio::sync::mpsc::error::TryRecvError;
+
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use tokio::sync::{mpsc, Notify};
 use tokio::task::JoinHandle;
 use vulkano::command_buffer::{AutoCommandBufferBuilder, ClearColorImageInfo, CommandBufferUsage, PrimaryCommandBuffer, RenderPassBeginInfo, SubpassContents};
-use vulkano::descriptor_set::layout::DescriptorSetLayout;
+
 use vulkano::descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet};
 use vulkano::device::{Device, Queue};
 use vulkano::format::Format;
 use vulkano::format::{ClearColorValue, ClearValue};
 use vulkano::image::view::{ImageView, ImageViewCreateInfo};
-use vulkano::image::{AttachmentImage, ImageAccess, ImageAspects, ImageCreateFlags, ImageDimensions, ImageLayout, ImageSubresourceRange, ImageUsage, ImmutableImage, MipmapsCount, StorageImage};
-use vulkano::pipeline::cache::PipelineCache;
-use vulkano::pipeline::graphics::color_blend::ColorBlendState;
-use vulkano::pipeline::graphics::depth_stencil::{CompareOp, DepthStencilState, StencilOp, StencilOpState, StencilOps, StencilState};
+use vulkano::image::{AttachmentImage, ImageAspects, ImageDimensions, ImageSubresourceRange, ImageUsage, ImmutableImage, MipmapsCount, StorageImage};
+
 use vulkano::pipeline::graphics::input_assembly::{InputAssemblyState, PrimitiveTopology};
-use vulkano::pipeline::graphics::vertex_input::{BuffersDefinition, VertexInputAttributeDescription, VertexInputBindingDescription, VertexInputRate, VertexInputState};
-use vulkano::pipeline::graphics::viewport::{Scissor, Viewport, ViewportState};
+use vulkano::pipeline::graphics::vertex_input::VertexInputState;
+use vulkano::pipeline::graphics::viewport::{Viewport, ViewportState};
 use vulkano::pipeline::{ComputePipeline, GraphicsPipeline, PartialStateMode, Pipeline, PipelineBindPoint, StateMode};
 use vulkano::render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass};
 use vulkano::sampler::{Sampler, SamplerCreateInfo};
-use vulkano::shader::{ShaderExecution, ShaderModule};
+use vulkano::shader::ShaderModule;
+use vulkano::single_pass_renderpass;
 use vulkano::sync::GpuFuture;
-use vulkano::{impl_vertex, single_pass_renderpass};
 
 #[derive(Debug, Clone)]
 struct SharedResource {
@@ -103,7 +100,7 @@ impl MPDeltaVideoRendererBuilder {
             .unwrap();
         let composite_operation_shader = unsafe { ShaderModule::from_bytes(Arc::clone(&device), include_bytes!(concat!(env!("OUT_DIR"), "/composite_operation_shader.spv"))).unwrap() };
 
-        let composite_operation_pipeline = ComputePipeline::new(Arc::clone(&device), (composite_operation_shader.entry_point_with_execution("shader::main", vulkano::shader::spirv::ExecutionModel::GLCompute).unwrap()), &(), None, |_| {}).unwrap();
+        let composite_operation_pipeline = ComputePipeline::new(Arc::clone(&device), composite_operation_shader.entry_point_with_execution("shader::main", vulkano::shader::spirv::ExecutionModel::GLCompute).unwrap(), &(), None, |_| {}).unwrap();
         image_creation_future.then_signal_fence().wait(None).unwrap();
         MPDeltaVideoRendererBuilder {
             default_image: ImageType(default_image),
@@ -262,7 +259,12 @@ fn render<Audio: Clone + Send + Sync + 'static, T: ParameterValueType<'static, I
                             * move_mat(rotate_center)
                             * move_mat(translate)
                     }
-                    ImageRequiredParamsTransformFixed::Free { left_top, right_top, left_bottom, right_bottom } => todo!(),
+                    ImageRequiredParamsTransformFixed::Free {
+                        left_top: _,
+                        right_top: _,
+                        left_bottom: _,
+                        right_bottom: _,
+                    } => todo!(),
                 };
                 let transform_matrix = mat4_into_glam(transform_mat);
                 let parameters = stream::iter(tasks).then(|param| async move { param.await.unwrap() }).collect::<Vec<_>>().await;

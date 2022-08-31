@@ -1,8 +1,8 @@
 use async_trait::async_trait;
-use futures::FutureExt;
+
 use mpdelta_core::component::instance::ComponentInstance;
 use mpdelta_core::component::link::MarkerLink;
-use mpdelta_core::component::marker_pin::{MarkerPin, MarkerTime};
+
 use mpdelta_core::core::Editor;
 use mpdelta_core::edit::{InstanceEditCommand, RootComponentEditCommand};
 use mpdelta_core::project::RootComponentClass;
@@ -72,7 +72,7 @@ impl<T> Editor<T> for ProjectEditor {
         }
     }
 
-    async fn edit_instance(&self, root: &StaticPointer<RwLock<RootComponentClass<T>>>, target: &StaticPointer<RwLock<ComponentInstance<T>>>, command: InstanceEditCommand) -> Result<Self::Log, Self::Err> {
+    async fn edit_instance(&self, _root: &StaticPointer<RwLock<RootComponentClass<T>>>, _target: &StaticPointer<RwLock<ComponentInstance<T>>>, command: InstanceEditCommand) -> Result<Self::Log, Self::Err> {
         match command {}
     }
 

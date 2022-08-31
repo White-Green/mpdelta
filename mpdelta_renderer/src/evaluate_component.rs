@@ -8,23 +8,23 @@ use mpdelta_core::component::instance::ComponentInstance;
 use mpdelta_core::component::link::MarkerLink;
 use mpdelta_core::component::marker_pin::{MarkerPin, MarkerTime};
 use mpdelta_core::component::parameter::placeholder::{Placeholder, TagAudio, TagImage};
-use mpdelta_core::component::parameter::value::{DefaultEasing, EasingValue, FrameVariableValue};
+use mpdelta_core::component::parameter::value::{EasingValue, FrameVariableValue};
 use mpdelta_core::component::parameter::{
-    AudioRequiredParams, ComponentProcessorInputValue, ImageRequiredParams, ImageRequiredParamsFrameVariable, ImageRequiredParamsTransform, ImageRequiredParamsTransformFrameVariable, Opacity, Parameter, ParameterFrameVariableValue, ParameterNullableValue, ParameterType,
-    ParameterTypeExceptComponentClass, ParameterValue, ParameterValueType, VariableParameterPriority, VariableParameterValue,
+    AudioRequiredParams, ComponentProcessorInputValue, ImageRequiredParamsFrameVariable, ImageRequiredParamsTransform, ImageRequiredParamsTransformFrameVariable, Opacity, Parameter, ParameterFrameVariableValue, ParameterNullableValue, ParameterType, ParameterTypeExceptComponentClass,
+    ParameterValue, ParameterValueType, VariableParameterPriority, VariableParameterValue,
 };
 use mpdelta_core::component::processor::{ComponentProcessorBody, NativeProcessorExecutable};
 use mpdelta_core::core::IdGenerator;
 use mpdelta_core::native::processor::ParameterNativeProcessorInputFixed;
-use mpdelta_core::ptr::{StaticPointer, StaticPointerOwned};
+use mpdelta_core::ptr::StaticPointer;
 use mpdelta_core::time::TimelineTime;
 use std::collections::{BTreeMap, HashMap};
 use std::future::Future;
-use std::iter::{Peekable, SkipWhile, TakeWhile};
+
 use std::ops::{Deref, Range};
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::{array, iter, mem};
+use std::{array, iter};
 use tokio::sync::RwLock;
 
 pub struct ComponentProcessorInputBuffer;
@@ -295,7 +295,7 @@ fn frame_variable_value_into_input_buffer(params: ParameterFrameVariableValue, l
             let parameter = value.map(|v| v.into_iter().map(|(k, v)| (k, frame_variable_value_into_input_buffer(v, left, right))).collect());
             Parameter::Dictionary(TimeSplitValue::new(left, Some(Either::Right(parameter)), right))
         }
-        ParameterFrameVariableValue::ComponentClass(value) => Parameter::ComponentClass(()),
+        ParameterFrameVariableValue::ComponentClass(_value) => Parameter::ComponentClass(()),
     }
 }
 
@@ -524,7 +524,7 @@ fn into_frame_variable_value<T, ID: IdGenerator>(
         Parameter::RealNumber(value) => ParameterFrameVariableValue::RealNumber(frame_values_easing([value], |[v]| v, frames, Default::default)),
         Parameter::Vec2(value) => ParameterFrameVariableValue::Vec2(frame_values_easing(value.into(), From::from, frames, Default::default)),
         Parameter::Vec3(value) => ParameterFrameVariableValue::Vec3(frame_values_easing(value.into(), From::from, frames, Default::default)),
-        Parameter::Dictionary(value) => todo!(),
+        Parameter::Dictionary(_value) => todo!(),
         Parameter::ComponentClass(()) => todo!(),
     }
 }
@@ -551,7 +551,7 @@ async fn shift_time<T, ID: IdGenerator>(
         Parameter::RealNumber(value) => Parameter::RealNumber(frame_values_easing([value.map_time(|time| map_time.map_time(time))], |[v]| v, frames, Default::default)),
         Parameter::Vec2(value) => Parameter::Vec2(frame_values_easing(value.map(|value| value.map_time(|time| map_time.map_time(time))).into(), From::from, frames, Default::default)),
         Parameter::Vec3(value) => Parameter::Vec3(frame_values_easing(value.map(|value| value.map_time(|time| map_time.map_time(time))).into(), From::from, frames, Default::default)),
-        Parameter::Dictionary(value) => todo!(),
+        Parameter::Dictionary(_value) => todo!(),
         Parameter::ComponentClass(()) => todo!(),
     }
 }
@@ -602,9 +602,9 @@ fn evaluate_processor_executable<T: ParameterValueType<'static>, ID: IdGenerator
             .iter()
             .map(|param| match param {
                 Parameter::None => ParameterNativeProcessorInputFixed::<T::Image, T::Audio>::None,
-                Parameter::Image(value) => unimplemented!(),
-                Parameter::Audio(value) => unimplemented!(),
-                Parameter::Video(value) => unimplemented!(),
+                Parameter::Image(_value) => unimplemented!(),
+                Parameter::Audio(_value) => unimplemented!(),
+                Parameter::Video(_value) => unimplemented!(),
                 Parameter::File(value) => ParameterNativeProcessorInputFixed::<T::Image, T::Audio>::File(value.get(time).unwrap().clone()),
                 Parameter::String(value) => ParameterNativeProcessorInputFixed::<T::Image, T::Audio>::String(value.get(time).unwrap().clone()),
                 Parameter::Select(value) => ParameterNativeProcessorInputFixed::<T::Image, T::Audio>::Select(*value.get(time).unwrap()),
@@ -614,7 +614,7 @@ fn evaluate_processor_executable<T: ParameterValueType<'static>, ID: IdGenerator
                 Parameter::RealNumber(value) => ParameterNativeProcessorInputFixed::<T::Image, T::Audio>::RealNumber(*value.get(time).unwrap()),
                 Parameter::Vec2(value) => ParameterNativeProcessorInputFixed::<T::Image, T::Audio>::Vec2(*value.get(time).unwrap()),
                 Parameter::Vec3(value) => ParameterNativeProcessorInputFixed::<T::Image, T::Audio>::Vec3(*value.get(time).unwrap()),
-                Parameter::Dictionary(value) => todo!(),
+                Parameter::Dictionary(_value) => todo!(),
                 Parameter::ComponentClass(_) => unreachable!(),
             })
             .collect::<Vec<_>>();
@@ -1053,13 +1053,13 @@ async fn evaluate_parameter<ID: IdGenerator + 'static, T: ParameterValueType<'st
     Ok(param)
 }
 
-async fn collect_cached_time<T>(components: &[impl AsRef<StaticPointer<RwLock<ComponentInstance<T>>>>], links: &[impl AsRef<StaticPointer<RwLock<MarkerLink>>>]) {
+async fn collect_cached_time<T>(_components: &[impl AsRef<StaticPointer<RwLock<ComponentInstance<T>>>>], links: &[impl AsRef<StaticPointer<RwLock<MarkerLink>>>]) {
     let links = links.iter().map(AsRef::as_ref).filter_map(StaticPointer::upgrade).collect::<Vec<_>>();
     let links = stream::iter(links.iter()).then(|link| link.read()).collect::<Vec<_>>().await;
     loop {
         let mut flg = true;
         for link in &links {
-            let equals = link.from == link.to;
+            let _equals = link.from == link.to;
             if let Some((from, to)) = link.from.upgrade().zip(link.to.upgrade()) {
                 let from = {
                     let guard = from.read().await;

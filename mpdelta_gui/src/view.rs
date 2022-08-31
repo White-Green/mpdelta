@@ -2,7 +2,7 @@ use crate::viewmodel::{MPDeltaViewModel, ViewModelParams};
 use crate::ImageRegister;
 use egui::epaint::Shadow;
 use egui::style::Margin;
-use egui::{Area, Button, Context, Direction, Frame, Id, Label, Layout, Pos2, Rect, ScrollArea, Sense, Slider, Style, TextureId, Vec2, Visuals, Widget, Window};
+use egui::{Area, Button, Context, Direction, Frame, Id, Label, Layout, Pos2, Rect, ScrollArea, Sense, Slider, Stroke, Style, TextureId, Vec2, Visuals, Widget, Window};
 use mpdelta_core::component::parameter::ParameterValueType;
 use mpdelta_core::usecase::{
     EditUsecase, GetAvailableComponentClassesUsecase, GetLoadedProjectsUsecase, GetRootComponentClassesUsecase, LoadProjectUsecase, NewProjectUsecase, NewRootComponentClassUsecase, RealtimeComponentRenderer, RealtimeRenderComponentUsecase, RedoUsecase, SetOwnerForRootComponentClassUsecase,
@@ -115,13 +115,14 @@ impl<T: ParameterValueType<'static>, R: RealtimeComponentRenderer<T>> Gui<T::Ima
                 ui.allocate_ui_at_rect(rect, |ui| {
                     let base_point = ui.cursor().min;
                     let selected = self.view_model.selected_component_instance();
+                    let selected = selected.as_deref();
                     for item in self.view_model.component_instances().iter() {
                         let (handle, rect) = item.pair();
                         let rectangle = Rect::from_min_size(Pos2::new(rect.time.start.value() as f32 * 100., rect.layer * 60.), Vec2::new((rect.time.end.value() - rect.time.start.value()) as f32 * 100., 50.));
                         ui.allocate_ui_at_rect(Rect::from_min_size(base_point + rectangle.min.to_vec2(), rectangle.size()), |ui| {
                             let frame = Frame::group(&Style::default()).inner_margin(Margin::default());
-                            let frame = match &*selected {
-                                Some(selected) if handle == &**selected => frame.shadow(Shadow::big_light()),
+                            let frame = match selected {
+                                Some(selected) if handle == selected => frame.shadow(Shadow::big_light()),
                                 _ => frame,
                             };
                             frame.show(ui, |ui| {
@@ -138,6 +139,26 @@ impl<T: ParameterValueType<'static>, R: RealtimeComponentRenderer<T>> Gui<T::Ima
                                 }
                             });
                         });
+                    }
+                    let painter = ui.painter();
+                    let pins = &*self.view_model.marker_pins();
+                    for link in self.view_model.component_links().iter() {
+                        let from = if let Some(from) = pins.get(&link.from) {
+                            from
+                        } else {
+                            continue;
+                        };
+                        let to = if let Some(to) = pins.get(&link.to) {
+                            to
+                        } else {
+                            continue;
+                        };
+                        let from = &*from;
+                        let to = &*to;
+                        if from.0.as_ref() != selected && to.0.as_ref() != selected {
+                            continue;
+                        }
+                        painter.hline((from.2.value() * 100.) as f32..=(to.2.value() * 100.) as f32, from.1.max(to.1) * 60. + 50., Stroke::default());
                     }
                 });
                 response.context_menu(|ui| {

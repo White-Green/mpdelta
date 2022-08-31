@@ -187,7 +187,7 @@ impl<T: ParameterValueType<'static>, R: RealtimeComponentRenderer<T>> MPDeltaVie
         DerefMap::new(self.inner.timeline_item.load(), |guard| &guard.component_links)
     }
 
-    pub fn marker_pins(&self) -> impl Deref<Target = DashMap<StaticPointer<RwLock<MarkerPin>>, (usize, TimelineTime)>> {
+    pub fn marker_pins(&self) -> impl Deref<Target = DashMap<StaticPointer<RwLock<MarkerPin>>, (Option<StaticPointer<RwLock<ComponentInstance<T>>>>, f32, TimelineTime)>> {
         DerefMap::new(self.inner.timeline_item.load(), |guard| &guard.marker_pins)
     }
 
@@ -261,7 +261,7 @@ impl<T> Debug for ViewModelMessage<T> {
 #[derive(Debug)]
 struct TimelineItem<T> {
     component_instances: DashMap<StaticPointer<RwLock<ComponentInstance<T>>>, ComponentInstanceRect>,
-    marker_pins: DashMap<StaticPointer<RwLock<MarkerPin>>, (usize, TimelineTime)>,
+    marker_pins: DashMap<StaticPointer<RwLock<MarkerPin>>, (Option<StaticPointer<RwLock<ComponentInstance<T>>>>, f32, TimelineTime)>,
     component_links: Vec<MarkerLink>,
 }
 
@@ -440,20 +440,20 @@ async fn view_model_loop<T, Edit, GetAvailableComponentClasses, GetLoadedProject
                 if let Some(root_component_class) = root_component_class.upgrade() {
                     let class = root_component_class.read().await;
                     let new_component_instances = DashMap::<StaticPointer<RwLock<ComponentInstance<T>>>, ComponentInstanceRect>::new();
-                    let new_marker_pins = DashMap::<StaticPointer<RwLock<MarkerPin>>, (usize, TimelineTime)>::new();
-                    new_marker_pins.insert(class.left().await, (0, TimelineTime::ZERO));
-                    new_marker_pins.insert(class.right().await, (0, TimelineTime::new(10.0).unwrap()));
+                    let new_marker_pins = DashMap::<StaticPointer<RwLock<MarkerPin>>, (Option<StaticPointer<RwLock<ComponentInstance<T>>>>, f32, TimelineTime)>::new();
+                    new_marker_pins.insert(class.left().await, (None, 0., TimelineTime::ZERO));
+                    new_marker_pins.insert(class.right().await, (None, 0., TimelineTime::new(10.0).unwrap()));
                     for component in class.components().await {
                         if let Some(component_ref) = component.upgrade() {
                             let guard = component_ref.read().await;
                             let time_left = guard.marker_left().upgrade().unwrap().read().await.cached_timeline_time();
                             let time_right = guard.marker_right().upgrade().unwrap().read().await.cached_timeline_time();
-                            let layer = new_component_instances.len();
-                            new_marker_pins.insert(guard.marker_left().reference(), (layer, time_left));
-                            new_marker_pins.insert(guard.marker_right().reference(), (layer, time_right));
+                            let layer = new_component_instances.len() as f32;
+                            new_marker_pins.insert(guard.marker_left().reference(), (Some(component.clone()), layer, time_left));
+                            new_marker_pins.insert(guard.marker_right().reference(), (Some(component.clone()), layer, time_right));
                             for pin in guard.markers() {
                                 let time = pin.read().await.cached_timeline_time();
-                                new_marker_pins.insert(StaticPointerOwned::reference(pin).clone(), (layer, time));
+                                new_marker_pins.insert(StaticPointerOwned::reference(pin).clone(), (Some(component.clone()), layer, time));
                             }
                             drop(guard);
                             new_component_instances.insert(component, ComponentInstanceRect { layer: layer as f32, time: time_left..time_right });

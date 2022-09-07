@@ -9,7 +9,6 @@ use mpdelta_gui::view::MPDeltaGUI;
 use mpdelta_gui::viewmodel::ViewModelParams;
 use mpdelta_gui_vulkano::MPDeltaGUIVulkano;
 use mpdelta_renderer::MPDeltaRendererBuilder;
-
 use mpdelta_services::history::InMemoryEditHistoryStore;
 use mpdelta_services::id_generator::UniqueIdGenerator;
 use mpdelta_services::project_editor::ProjectEditor;

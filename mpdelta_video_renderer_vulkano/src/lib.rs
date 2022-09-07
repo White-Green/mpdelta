@@ -7,7 +7,6 @@ use futures::future::BoxFuture;
 use futures::stream::{self, StreamExt};
 use futures::FutureExt;
 use glam::{Mat4, Vec4};
-
 use mpdelta_core::component::parameter::placeholder::{Placeholder, TagImage};
 use mpdelta_core::component::parameter::{BlendMode, CompositeOperation, ImageRequiredParamsTransformFixed, Parameter, ParameterValueType};
 use mpdelta_core::component::processor::NativeProcessorInput;
@@ -17,24 +16,20 @@ use mpdelta_core_vulkano::ImageType;
 use mpdelta_renderer::evaluate_component::{ImageNativeTreeNode, ReadonlySourceTree};
 use mpdelta_renderer::{VideoRenderer, VideoRendererBuilder};
 use std::cmp::Ordering;
-
 use std::ops::Range;
 use std::sync::Arc;
 use std::time::Duration;
 use texture_drawing_shader::TextureDrawingConstant;
-
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use tokio::sync::{mpsc, Notify};
 use tokio::task::JoinHandle;
 use vulkano::command_buffer::{AutoCommandBufferBuilder, ClearColorImageInfo, CommandBufferUsage, PrimaryCommandBuffer, RenderPassBeginInfo, SubpassContents};
-
 use vulkano::descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet};
 use vulkano::device::{Device, Queue};
 use vulkano::format::Format;
 use vulkano::format::{ClearColorValue, ClearValue};
 use vulkano::image::view::{ImageView, ImageViewCreateInfo};
 use vulkano::image::{AttachmentImage, ImageAspects, ImageDimensions, ImageSubresourceRange, ImageUsage, ImmutableImage, MipmapsCount, StorageImage};
-
 use vulkano::pipeline::graphics::input_assembly::{InputAssemblyState, PrimitiveTopology};
 use vulkano::pipeline::graphics::vertex_input::VertexInputState;
 use vulkano::pipeline::graphics::viewport::{Viewport, ViewportState};

@@ -3,14 +3,12 @@ use mpdelta_core_vulkano::ImageType;
 use mpdelta_gui::view::Gui;
 use mpdelta_gui::ImageRegister;
 use std::sync::Arc;
-
 use vulkano::device::{Device, DeviceExtensions, Queue};
 use vulkano::format::NumericType;
 use vulkano::image::view::ImageView;
 use vulkano::image::{ImageAccess, ImageUsage, SwapchainImage};
 use vulkano::instance::InstanceExtensions;
 use vulkano::pipeline::graphics::viewport::Viewport;
-
 use vulkano::swapchain::{AcquireError, FullScreenExclusive, Surface, SurfaceInfo, Swapchain, SwapchainCreateInfo, SwapchainCreationError};
 use vulkano::sync::{FenceSignalFuture, FlushError, GpuFuture};
 use winit::event::{Event, WindowEvent};

@@ -1,7 +1,6 @@
 #![cfg_attr(target_arch = "spirv", no_std, feature(register_attr), register_attr(spirv), feature(asm_experimental_arch))]
 // HACK(eddyb) can't easily see warnings otherwise from `spirv-builder` builds.
 #![deny(warnings)]
-
 use spirv_std::glam::Mat4;
 
 pub struct TextureDrawingConstant {

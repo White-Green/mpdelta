@@ -15,7 +15,6 @@ use mpdelta_core::usecase::{
     EditUsecase, GetAvailableComponentClassesUsecase, GetLoadedProjectsUsecase, GetRootComponentClassesUsecase, LoadProjectUsecase, NewProjectUsecase, NewRootComponentClassUsecase, RealtimeComponentRenderer, RealtimeRenderComponentUsecase, RedoUsecase, SetOwnerForRootComponentClassUsecase,
     UndoUsecase, WriteProjectUsecase,
 };
-
 use std::fmt::{Debug, Formatter};
 use std::ops::{Deref, Range};
 use std::sync::atomic::AtomicUsize;

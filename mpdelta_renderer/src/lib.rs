@@ -1,25 +1,16 @@
 use crate::evaluate_component::{evaluate_component, AudioNativeTreeNode, ImageNativeTreeNode, ReadonlySourceTree, RendererError, SourceTree};
-
 use async_trait::async_trait;
-
 use futures::prelude::future::FutureExt;
 use futures::prelude::stream::{self, StreamExt};
-
 use mpdelta_core::component::instance::ComponentInstance;
-
 use mpdelta_core::component::parameter::placeholder::{Placeholder, TagAudio, TagImage};
-
 use mpdelta_core::component::parameter::{Parameter, ParameterSelect, ParameterType, ParameterValueType};
-
 use mpdelta_core::core::{ComponentRendererBuilder, IdGenerator};
-
 use mpdelta_core::ptr::StaticPointer;
 use mpdelta_core::time::TimelineTime;
 use mpdelta_core::usecase::RealtimeComponentRenderer;
-
 use std::sync::Arc;
 use std::time::Duration;
-
 use tokio::runtime::Handle;
 use tokio::sync::RwLock;
 

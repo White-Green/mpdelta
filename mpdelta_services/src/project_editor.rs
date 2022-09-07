@@ -1,8 +1,6 @@
 use async_trait::async_trait;
-
 use mpdelta_core::component::instance::ComponentInstance;
 use mpdelta_core::component::link::MarkerLink;
-
 use mpdelta_core::core::Editor;
 use mpdelta_core::edit::{InstanceEditCommand, RootComponentEditCommand};
 use mpdelta_core::project::RootComponentClass;

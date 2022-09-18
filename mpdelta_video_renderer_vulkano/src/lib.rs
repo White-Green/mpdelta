@@ -13,8 +13,6 @@ use mpdelta_core::component::processor::NativeProcessorInput;
 use mpdelta_core::native::processor::ParameterNativeProcessorInputFixed;
 use mpdelta_core::time::TimelineTime;
 use mpdelta_core_vulkano::ImageType;
-use mpdelta_renderer::evaluate_component::{ImageNativeTreeNode, ReadonlySourceTree};
-use mpdelta_renderer::{VideoRenderer, VideoRendererBuilder};
 use std::cmp::Ordering;
 use std::ops::Range;
 use std::sync::Arc;

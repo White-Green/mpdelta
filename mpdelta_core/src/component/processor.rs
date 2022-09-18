@@ -2,13 +2,12 @@ use crate::component::instance::ComponentInstance;
 use crate::component::link::MarkerLink;
 use crate::component::parameter::placeholder::{Placeholder, TagAudio, TagImage};
 use crate::component::parameter::value::FrameVariableValue;
-use crate::component::parameter::{ComponentProcessorInputValue, Never, Parameter, ParameterFrameVariableValue, ParameterType, ParameterValueFixed, ParameterValueFixedExceptComponentClass, ParameterValueType};
+use crate::component::parameter::{ComponentProcessorInputValue, Never, Parameter, ParameterFrameVariableValue, ParameterType, ParameterValueFixed, ParameterValueType};
 use crate::native::processor::NativeProcessor;
 use crate::ptr::StaticPointerCow;
 use async_trait::async_trait;
 use cgmath::{Vector2, Vector3};
 use std::borrow::Cow;
-use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -48,7 +47,7 @@ impl<'a> ParameterValueType<'a> for NativeProcessorInput {
     type RealNumber = FrameVariableValue<f64>;
     type Vec2 = FrameVariableValue<Vector2<f64>>;
     type Vec3 = FrameVariableValue<Vector3<f64>>;
-    type Dictionary = FrameVariableValue<HashMap<String, ParameterValueFixedExceptComponentClass>>;
+    type Dictionary = Never;
     type ComponentClass = Never;
 }
 

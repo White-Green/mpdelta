@@ -27,6 +27,27 @@ impl<'a, Image: Clone + Send + Sync + 'a, Audio: Clone + Send + Sync + 'a> Param
     type RealNumber = f64;
     type Vec2 = Vector2<f64>;
     type Vec3 = Vector3<f64>;
-    type Dictionary = HashMap<String, Parameter<'a, NativeProcessorInputFixed<Image, Audio>>>;
+    type Dictionary = Never;
+    type ComponentClass = Never;
+}
+
+pub struct NativeProcessorOutput<Image, Audio>(PhantomData<(Image, Audio)>);
+
+pub type ParameterNativeProcessorOutput<Image, Audio> = Parameter<'static, NativeProcessorOutput<Image, Audio>>;
+
+impl<'a, Image: Clone + Send + Sync + 'a, Audio: Clone + Send + Sync + 'a> ParameterValueType<'a> for NativeProcessorOutput<Image, Audio> {
+    type Image = Image;
+    type Audio = Audio;
+    type Video = (Image, Audio);
+    type File = PathBuf;
+    type String = String;
+    type Select = usize;
+    type Boolean = bool;
+    type Radio = bool;
+    type Integer = i64;
+    type RealNumber = f64;
+    type Vec2 = Vector2<f64>;
+    type Vec3 = Vector3<f64>;
+    type Dictionary = HashMap<String, Parameter<'a, NativeProcessorOutput<Image, Audio>>>;
     type ComponentClass = Never;
 }

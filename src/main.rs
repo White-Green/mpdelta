@@ -14,7 +14,6 @@ use mpdelta_services::id_generator::UniqueIdGenerator;
 use mpdelta_services::project_editor::ProjectEditor;
 use mpdelta_services::project_io::{TemporaryProjectLoader, TemporaryProjectWriter};
 use mpdelta_services::project_store::InMemoryProjectStore;
-use mpdelta_video_renderer_vulkano::MPDeltaVideoRendererBuilder;
 use std::borrow::Cow;
 use std::sync::Arc;
 use tokio::runtime::Runtime;
@@ -82,7 +81,7 @@ fn main() {
     let mut component_class_loader = ComponentClassList::new();
     component_class_loader.add(RectangleClass::new(Arc::clone(&queue)));
     let component_class_loader = Arc::new(component_class_loader);
-    let component_renderer_builder = Arc::new(MPDeltaRendererBuilder::new(Arc::clone(&id_generator), Arc::new(MPDeltaVideoRendererBuilder::new(Arc::clone(&device), Arc::clone(&queue))), Arc::new(())));
+    let component_renderer_builder = Arc::new(MPDeltaRendererBuilder::new(Arc::clone(&id_generator), Arc::new(()), Arc::new(())));
     let project_editor = Arc::new(ProjectEditor::new());
     let edit_history = Arc::new(InMemoryEditHistoryStore::new(100));
     let core = Arc::new(MPDeltaCore::new(

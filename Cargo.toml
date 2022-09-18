@@ -17,7 +17,6 @@ members = [
     "mpdelta_gui_vulkano",
     "mpdelta_services",
     "mpdelta_renderer",
-    "mpdelta_renderer_v2",
     "mpdelta_video_renderer_vulkano",
     "mpdelta_video_renderer_vulkano/shaders/composite_operation_shader",
     "mpdelta_video_renderer_vulkano/shaders/texture_drawing_shader",
@@ -32,8 +31,7 @@ default-members = [
     "mpdelta_gui_vulkano",
     "mpdelta_services",
     "mpdelta_renderer",
-    "mpdelta_renderer_v2",
-    "mpdelta_video_renderer_vulkano",
+#    "mpdelta_video_renderer_vulkano",
 ]
 
 [dependencies]
@@ -45,7 +43,7 @@ mpdelta_core = { path = "mpdelta_core" }
 mpdelta_core_vulkano = { path = "mpdelta_core_vulkano" }
 mpdelta_services = { path = "mpdelta_services" }
 mpdelta_renderer = { path = "mpdelta_renderer" }
-mpdelta_video_renderer_vulkano = { path = "mpdelta_video_renderer_vulkano" }
+#mpdelta_video_renderer_vulkano = { path = "mpdelta_video_renderer_vulkano" }
 mpdelta_gui = { path = "mpdelta_gui" }
 mpdelta_gui_vulkano = { path = "mpdelta_gui_vulkano" }
 tokio = { version = "1.19.2", features = ["full"] }

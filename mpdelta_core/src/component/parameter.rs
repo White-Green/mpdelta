@@ -436,7 +436,7 @@ impl<'a> ParameterValueType<'a> for ComponentProcessorInput {
     type RealNumber = TimeSplitValue<TimelineTime, Option<Either<EasingValue<f64>, FrameVariableValue<f64>>>>;
     type Vec2 = Vector2<TimeSplitValue<TimelineTime, Option<Either<EasingValue<f64>, FrameVariableValue<f64>>>>>;
     type Vec3 = Vector3<TimeSplitValue<TimelineTime, Option<Either<EasingValue<f64>, FrameVariableValue<f64>>>>>;
-    type Dictionary = TimeSplitValue<TimelineTime, Option<Either<HashMap<String, ComponentProcessorInputValue>, FrameVariableValue<HashMap<String, ComponentProcessorInputValue>>>>>;
+    type Dictionary = Never;
     type ComponentClass = ();
 }
 
@@ -457,7 +457,7 @@ impl<'a> ParameterValueType<'a> for FrameVariable {
     type RealNumber = FrameVariableValue<f64>;
     type Vec2 = FrameVariableValue<Vector2<f64>>;
     type Vec3 = FrameVariableValue<Vector3<f64>>;
-    type Dictionary = FrameVariableValue<HashMap<String, ParameterFrameVariableValue>>;
+    type Dictionary = Never;
     type ComponentClass = Never;
 }
 
@@ -478,7 +478,7 @@ impl<'a> ParameterValueType<'a> for NullableValue {
     type RealNumber = TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, Option<EasingValue<f64>>>;
     type Vec2 = Vector2<TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, Option<EasingValue<f64>>>>;
     type Vec3 = Vector3<TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, Option<EasingValue<f64>>>>;
-    type Dictionary = TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, Option<HashMap<String, ParameterNullableValue>>>;
+    type Dictionary = Never;
     type ComponentClass = Option<()>;
 }
 

@@ -1,5 +1,5 @@
 [package]
-name = "texture_drawing_shader"
+name = "shader_texture_drawing"
 version = "0.1.0"
 edition = "2021"
 

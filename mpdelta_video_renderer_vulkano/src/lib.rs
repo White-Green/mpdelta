@@ -1,12 +1,12 @@
 use cgmath::{Matrix4, SquareMatrix, Vector3, Vector4};
-use composite_operation_shader::CompositeOperationConstant;
 use glam::{Mat4, Vec4};
 use mpdelta_core::component::parameter::{ImageRequiredParamsFixed, ImageRequiredParamsTransformFixed};
 use mpdelta_core_vulkano::ImageType;
 use mpdelta_renderer::{Combiner, CombinerBuilder, ImageSizeRequest};
+use shader_composite_operation::CompositeOperationConstant;
+use shader_texture_drawing::TextureDrawingConstant;
 use std::cmp::Ordering;
 use std::sync::Arc;
-use texture_drawing_shader::TextureDrawingConstant;
 use vulkano::command_buffer::{AutoCommandBufferBuilder, ClearColorImageInfo, CommandBufferUsage, PrimaryCommandBuffer, RenderPassBeginInfo, SubpassContents};
 use vulkano::descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet};
 use vulkano::device::{Device, Queue};
@@ -57,7 +57,7 @@ impl SharedResource {
             }
         )
         .unwrap();
-        let texture_drawing_shader = unsafe { ShaderModule::from_bytes(Arc::clone(&device), include_bytes!(concat!(env!("OUT_DIR"), "/texture_drawing_shader.spv"))).unwrap() };
+        let texture_drawing_shader = unsafe { ShaderModule::from_bytes(Arc::clone(&device), include_bytes!(concat!(env!("OUT_DIR"), "/texture_drawing.spv"))).unwrap() };
         let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
         let texture_drawing_pipeline = GraphicsPipeline::start()
             .render_pass(subpass.clone())
@@ -71,7 +71,7 @@ impl SharedResource {
             .vertex_input_state(VertexInputState::new())
             .build(Arc::clone(&device))
             .unwrap();
-        let composite_operation_shader = unsafe { ShaderModule::from_bytes(Arc::clone(&device), include_bytes!(concat!(env!("OUT_DIR"), "/composite_operation_shader.spv"))).unwrap() };
+        let composite_operation_shader = unsafe { ShaderModule::from_bytes(Arc::clone(&device), include_bytes!(concat!(env!("OUT_DIR"), "/composite_operation.spv"))).unwrap() };
 
         let composite_operation_pipeline = ComputePipeline::new(Arc::clone(&device), composite_operation_shader.entry_point_with_execution("shader::main", vulkano::shader::spirv::ExecutionModel::GLCompute).unwrap(), &(), None, |_| {}).unwrap();
         SharedResource {

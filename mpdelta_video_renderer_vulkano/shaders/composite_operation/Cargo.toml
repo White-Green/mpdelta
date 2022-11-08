@@ -1,5 +1,5 @@
 [package]
-name = "composite_operation_shader"
+name = "shader_composite_operation"
 version = "0.1.0"
 edition = "2021"
 

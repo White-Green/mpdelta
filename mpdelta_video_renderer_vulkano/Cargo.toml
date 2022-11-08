@@ -8,7 +8,6 @@ edition = "2021"
 [dependencies]
 async-trait = { workspace = true }
 cgmath = { workspace = true }
-composite_operation_shader = { path = "shaders/composite_operation_shader" }
 dashmap = { workspace = true }
 either = { workspace = true }
 futures = { workspace = true }
@@ -16,7 +15,8 @@ glam = { workspace = true }
 mpdelta_core = { workspace = true }
 mpdelta_core_vulkano = { workspace = true }
 mpdelta_renderer = { workspace = true }
-texture_drawing_shader = { path = "shaders/texture_drawing_shader" }
+shader_composite_operation = { path = "shaders/composite_operation" }
+shader_texture_drawing = { path = "shaders/texture_drawing" }
 tokio = { workspace = true }
 vulkano = { workspace = true }
 

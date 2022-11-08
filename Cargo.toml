@@ -18,8 +18,8 @@ members = [
     "mpdelta_services",
     "mpdelta_renderer",
     "mpdelta_video_renderer_vulkano",
-    "mpdelta_video_renderer_vulkano/shaders/composite_operation_shader",
-    "mpdelta_video_renderer_vulkano/shaders/texture_drawing_shader",
+    "mpdelta_video_renderer_vulkano/shaders/composite_operation",
+    "mpdelta_video_renderer_vulkano/shaders/texture_drawing",
 ]
 default-members = [
     ".",

@@ -60,7 +60,6 @@ regex = "1.6.0"
 shader_builder = { path = "mpdelta_build_utils/shader_builder" }
 spirv-builder = { git = "https://github.com/EmbarkStudios/rust-gpu/", rev = "c248806bf0be9cc59e996e0cf61585513a0e3890" }
 spirv-std = { git = "https://github.com/EmbarkStudios/rust-gpu/", rev = "c248806bf0be9cc59e996e0cf61585513a0e3890", features = ["glam"] }
-take_mut = "0.2.2"
 thiserror = "1.0.31"
 time = { version = "0.3.11", features = ["std"] }
 tokio = { version = "1.19.2", features = ["full"] }

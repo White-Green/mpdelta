@@ -1,19 +1,20 @@
 use async_trait::async_trait;
 use mpdelta_components::rectangle::RectangleClass;
 use mpdelta_core::component::class::ComponentClass;
-use mpdelta_core::component::parameter::ParameterValueType;
+use mpdelta_core::component::parameter::{AudioRequiredParamsFrameVariable, ParameterValueType};
 use mpdelta_core::core::{ComponentClassLoader, MPDeltaCore};
 use mpdelta_core::ptr::{StaticPointer, StaticPointerOwned};
 use mpdelta_core_vulkano::ImageType;
 use mpdelta_gui::view::MPDeltaGUI;
 use mpdelta_gui::viewmodel::ViewModelParams;
 use mpdelta_gui_vulkano::MPDeltaGUIVulkano;
-use mpdelta_renderer::MPDeltaRendererBuilder;
+use mpdelta_renderer::{Combiner, CombinerBuilder, MPDeltaRendererBuilder};
 use mpdelta_services::history::InMemoryEditHistoryStore;
 use mpdelta_services::id_generator::UniqueIdGenerator;
 use mpdelta_services::project_editor::ProjectEditor;
 use mpdelta_services::project_io::{TemporaryProjectLoader, TemporaryProjectWriter};
 use mpdelta_services::project_store::InMemoryProjectStore;
+use mpdelta_video_renderer_vulkano::ImageCombinerBuilder;
 use std::borrow::Cow;
 use std::sync::Arc;
 use tokio::runtime::Runtime;
@@ -30,7 +31,7 @@ use winit::window::{Window, WindowBuilder};
 
 struct ValueType;
 
-impl<'a> ParameterValueType<'a> for ValueType {
+impl<'a> ParameterValueType for ValueType {
     type Image = ImageType;
     type Audio = ();
     type Video = ();
@@ -45,6 +46,28 @@ impl<'a> ParameterValueType<'a> for ValueType {
     type Vec3 = ();
     type Dictionary = ();
     type ComponentClass = ();
+}
+
+struct TmpAudioCombiner;
+
+impl CombinerBuilder<()> for TmpAudioCombiner {
+    type Request = ();
+    type Param = AudioRequiredParamsFrameVariable;
+    type Combiner = TmpAudioCombiner;
+
+    fn new_combiner(&self, _request: Self::Request) -> Self::Combiner {
+        TmpAudioCombiner
+    }
+}
+
+impl Combiner<()> for TmpAudioCombiner {
+    type Param = AudioRequiredParamsFrameVariable;
+
+    fn add(&mut self, _data: (), _param: Self::Param) {}
+
+    fn collect(self) -> () {
+        ()
+    }
 }
 
 #[derive(Default)]
@@ -81,7 +104,7 @@ fn main() {
     let mut component_class_loader = ComponentClassList::new();
     component_class_loader.add(RectangleClass::new(Arc::clone(&queue)));
     let component_class_loader = Arc::new(component_class_loader);
-    let component_renderer_builder = Arc::new(MPDeltaRendererBuilder::new(Arc::clone(&id_generator), Arc::new(()), Arc::new(())));
+    let component_renderer_builder = Arc::new(MPDeltaRendererBuilder::new(Arc::clone(&id_generator), Arc::new(ImageCombinerBuilder::new(Arc::clone(&device), Arc::clone(&queue))), Arc::new(TmpAudioCombiner)));
     let project_editor = Arc::new(ProjectEditor::new());
     let edit_history = Arc::new(InMemoryEditHistoryStore::new(100));
     let core = Arc::new(MPDeltaCore::new(

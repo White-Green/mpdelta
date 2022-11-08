@@ -29,7 +29,7 @@ impl<T> MPDeltaGUI<T, ()> {
         view_model_params: ViewModelParams<Edit, GetAvailableComponentClasses, GetLoadedProjects, GetRootComponentClasses, LoadProject, NewProject, NewRootComponentClass, RealtimeRenderComponent, Redo, SetOwnerForRootComponentClass, Undo, WriteProject>,
     ) -> MPDeltaGUI<T, RealtimeRenderComponent::Renderer>
     where
-        T: ParameterValueType<'static>,
+        T: ParameterValueType,
         Edit: EditUsecase<T> + Send + Sync + 'static,
         GetAvailableComponentClasses: GetAvailableComponentClassesUsecase<T> + Send + Sync + 'static,
         GetLoadedProjects: GetLoadedProjectsUsecase<T> + Send + Sync + 'static,
@@ -51,7 +51,7 @@ impl<T> MPDeltaGUI<T, ()> {
     }
 }
 
-impl<T: ParameterValueType<'static>, R: RealtimeComponentRenderer<T>> Gui<T::Image> for MPDeltaGUI<T, R> {
+impl<T: ParameterValueType, R: RealtimeComponentRenderer<T>> Gui<T::Image> for MPDeltaGUI<T, R> {
     fn ui(&mut self, ctx: &Context, image: &mut impl ImageRegister<T::Image>) {
         egui::TopBottomPanel::top("menu").show(ctx, |ui| {
             egui::menu::bar(ui, |ui| {

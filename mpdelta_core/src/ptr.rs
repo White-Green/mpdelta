@@ -1,4 +1,5 @@
 use std::fmt::{Debug, Formatter};
+use std::future::Future;
 use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
 use std::ops::Deref;
@@ -74,6 +75,16 @@ impl<T: ?Sized> StaticPointer<T> {
 
     pub fn may_upgrade(&self) -> bool {
         self.0.strong_count() > 0
+    }
+}
+
+impl<'a, T: ?Sized> StaticPointerStrongRef<'a, tokio::sync::RwLock<T>> {
+    pub fn read_owned(this: Self) -> impl Future<Output = tokio::sync::OwnedRwLockReadGuard<T>> {
+        this.0.read_owned()
+    }
+
+    pub fn write_owned(this: Self) -> impl Future<Output = tokio::sync::OwnedRwLockWriteGuard<T>> {
+        this.0.write_owned()
     }
 }
 

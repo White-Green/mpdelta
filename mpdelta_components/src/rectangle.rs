@@ -2,8 +2,8 @@ use async_trait::async_trait;
 use mpdelta_core::component::class::ComponentClass;
 use mpdelta_core::component::instance::ComponentInstance;
 use mpdelta_core::component::marker_pin::{MarkerPin, MarkerTime};
-use mpdelta_core::component::parameter::{ImageRequiredParams, ParameterType, ParameterTypeExceptComponentClass, ParameterValueFixed, ParameterValueType};
-use mpdelta_core::component::processor::{ComponentProcessor, ComponentProcessorBody, NativeProcessorExecutable};
+use mpdelta_core::component::parameter::{ImageRequiredParams, Parameter, ParameterFrameVariableValue, ParameterSelect, ParameterType, ParameterTypeExceptComponentClass, ParameterValueFixed, ParameterValueType};
+use mpdelta_core::component::processor::{ComponentProcessor, ComponentProcessorBody, NativeProcessorBuilder, NativeProcessorExecutable};
 use mpdelta_core::native::processor::{NativeProcessor, ParameterNativeProcessorInputFixed};
 use mpdelta_core::ptr::{StaticPointer, StaticPointerCow, StaticPointerOwned};
 use mpdelta_core::time::TimelineTime;
@@ -38,7 +38,7 @@ impl Rectangle {
 }
 
 #[async_trait]
-impl<T: ParameterValueType<'static, Image = ImageType>> ComponentClass<T> for RectangleClass {
+impl<T: ParameterValueType<Image = ImageType>> ComponentClass<T> for RectangleClass {
     async fn generate_image(&self) -> bool {
         true
     }
@@ -63,8 +63,21 @@ impl<T: ParameterValueType<'static, Image = ImageType>> ComponentClass<T> for Re
     }
 }
 
+impl<T: ParameterValueType<Image = ImageType>> NativeProcessorBuilder<T> for Rectangle {
+    fn output_type(&self) -> Parameter<ParameterSelect> {
+        Parameter::Image(())
+    }
+
+    fn build(&self, _: &[ParameterValueFixed], _: &[ParameterFrameVariableValue], _: &[(String, ParameterType)], _: &mut dyn Iterator<Item = TimelineTime>, _: &dyn Fn(TimelineTime) -> MarkerTime) -> NativeProcessorExecutable<T> {
+        NativeProcessorExecutable {
+            processor: Arc::new(self.clone()),
+            parameter: Arc::new([]),
+        }
+    }
+}
+
 #[async_trait]
-impl<T: ParameterValueType<'static, Image = ImageType>> ComponentProcessor<T> for Rectangle {
+impl<T: ParameterValueType<Image = ImageType>> ComponentProcessor<T> for Rectangle {
     async fn update_variable_parameter(&self, _: &mut [ParameterValueFixed], _: &mut Vec<(String, ParameterType)>) {}
 
     async fn natural_length(&self, _: &[ParameterValueFixed]) -> Duration {
@@ -72,15 +85,11 @@ impl<T: ParameterValueType<'static, Image = ImageType>> ComponentProcessor<T> fo
     }
 
     async fn get_processor(&self) -> ComponentProcessorBody<'_, T> {
-        let rectangle = self.clone();
-        ComponentProcessorBody::Native(Cow::Owned(vec![Arc::new(move |_: &_, _: &_| NativeProcessorExecutable {
-            processor: Arc::new(rectangle.clone()),
-            parameter: Arc::new([]),
-        }) as _]))
+        ComponentProcessorBody::Native(Cow::Owned(vec![Arc::new(self.clone()) as Arc<_>]))
     }
 }
 
-impl<T: ParameterValueType<'static, Image = ImageType>> NativeProcessor<T> for Rectangle {
+impl<T: ParameterValueType<Image = ImageType>> NativeProcessor<T> for Rectangle {
     fn parameter_type(&self) -> &[ParameterTypeExceptComponentClass] {
         &[]
     }
@@ -90,7 +99,11 @@ impl<T: ParameterValueType<'static, Image = ImageType>> NativeProcessor<T> for R
         TYPE
     }
 
-    fn process(&self, _: &[ParameterNativeProcessorInputFixed<ImageType, T::Audio>]) -> ParameterNativeProcessorInputFixed<ImageType, T::Audio> {
+    fn has_same_output(&self, _: TimelineTime, _: TimelineTime, _: &[ParameterNativeProcessorInputFixed<ImageType, T::Audio>]) -> bool {
+        true
+    }
+
+    fn process(&self, _: TimelineTime, _: &[ParameterNativeProcessorInputFixed<ImageType, T::Audio>]) -> ParameterNativeProcessorInputFixed<ImageType, T::Audio> {
         ParameterNativeProcessorInputFixed::Image(ImageType(Arc::clone(&self.0)))
     }
 }

@@ -87,7 +87,7 @@ pub struct MPDeltaViewModel<T, R> {
     seek_base: usize,
 }
 
-impl<T: ParameterValueType<'static>> MPDeltaViewModel<T, ()> {
+impl<T: ParameterValueType> MPDeltaViewModel<T, ()> {
     pub fn new<Edit, GetAvailableComponentClasses, GetLoadedProjects, GetRootComponentClasses, LoadProject, NewProject, NewRootComponentClass, RealtimeRenderComponent, Redo, SetOwnerForRootComponentClass, Undo, WriteProject>(
         params: ViewModelParams<Edit, GetAvailableComponentClasses, GetLoadedProjects, GetRootComponentClasses, LoadProject, NewProject, NewRootComponentClass, RealtimeRenderComponent, Redo, SetOwnerForRootComponentClass, Undo, WriteProject>,
     ) -> MPDeltaViewModel<T, RealtimeRenderComponent::Renderer>
@@ -138,7 +138,7 @@ impl<S, O, F: Fn(&S) -> &O> Deref for DerefMap<S, F> {
     }
 }
 
-impl<T: ParameterValueType<'static>, R: RealtimeComponentRenderer<T>> MPDeltaViewModel<T, R> {
+impl<T: ParameterValueType, R: RealtimeComponentRenderer<T>> MPDeltaViewModel<T, R> {
     pub fn new_project(&self) {
         self.message_sender.send(ViewModelMessage::NewProject).unwrap();
     }
@@ -175,7 +175,7 @@ impl<T: ParameterValueType<'static>, R: RealtimeComponentRenderer<T>> MPDeltaVie
         if self.playing {
             self.seek = (self.seek_base + (self.play_start.elapsed().as_secs_f64() * 60.).floor() as usize) % 600
         }
-        self.inner.realtime_renderer.load().as_ref().map(|renderer| renderer.render_frame(self.seek))
+        self.inner.realtime_renderer.load().as_ref().and_then(|renderer| renderer.render_frame(self.seek).ok())
     }
 
     pub fn component_instances(&self) -> impl Deref<Target = DashMap<StaticPointer<RwLock<ComponentInstance<T>>>, ComponentInstanceRect>> {
@@ -302,6 +302,7 @@ struct ViewModelInner<T, R> {
     selected_project: AtomicUsize,
     root_component_classes: ArcSwap<Vec<(StaticPointer<RwLock<RootComponentClass<T>>>, String)>>,
     selected_root_component_class: AtomicUsize,
+    component_instance: ArcSwapOption<StaticPointerOwned<RwLock<ComponentInstance<T>>>>,
     realtime_renderer: ArcSwapOption<R>,
     timeline_item: ArcSwap<TimelineItem<T>>,
     selected_component_instance: ArcSwapOption<StaticPointer<RwLock<ComponentInstance<T>>>>,
@@ -315,6 +316,7 @@ impl<T, R> ViewModelInner<T, R> {
             selected_project: Default::default(),
             root_component_classes: Default::default(),
             selected_root_component_class: Default::default(),
+            component_instance: Default::default(),
             realtime_renderer: Default::default(),
             timeline_item: Default::default(),
             selected_component_instance: Default::default(),
@@ -345,7 +347,7 @@ async fn view_model_loop<T, Edit, GetAvailableComponentClasses, GetLoadedProject
     mut message_receiver: UnboundedReceiver<ViewModelMessage<T>>,
     inner: Arc<ViewModelInner<T, RealtimeRenderComponent::Renderer>>,
 ) where
-    T: ParameterValueType<'static>,
+    T: ParameterValueType,
     Edit: EditUsecase<T> + Send + Sync + 'static,
     GetAvailableComponentClasses: GetAvailableComponentClassesUsecase<T> + Send + Sync + 'static,
     GetLoadedProjects: GetLoadedProjectsUsecase<T> + Send + Sync + 'static,
@@ -379,6 +381,7 @@ async fn view_model_loop<T, Edit, GetAvailableComponentClasses, GetLoadedProject
         selected_project,
         root_component_classes,
         selected_root_component_class,
+        component_instance,
         realtime_renderer,
         timeline_item,
         selected_component_instance,
@@ -486,7 +489,10 @@ async fn view_model_loop<T, Edit, GetAvailableComponentClasses, GetLoadedProject
                     let instance = StaticPointerOwned::new(RwLock::new(class_ref.read().await.instantiate(&class).await));
                     let instance_reference = StaticPointerOwned::reference(&instance).clone();
                     match realtime_render_component.render_component(&instance_reference).await {
-                        Ok(renderer) => realtime_renderer.store(Some(Arc::new(renderer))),
+                        Ok(renderer) => {
+                            component_instance.store(Some(Arc::new(instance)));
+                            realtime_renderer.store(Some(Arc::new(renderer)));
+                        }
                         Err(e) => {
                             eprintln!("failed to create renderer by {e}");
                         }

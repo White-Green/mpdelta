@@ -16,9 +16,9 @@ pub struct ComponentInstance<T> {
     markers: Vec<StaticPointerOwned<Cell<MarkerPin>>>,
     image_required_params: Option<ImageRequiredParams<T>>,
     audio_required_params: Option<AudioRequiredParams<T>>,
-    fixed_parameters_type: Box<[(String, Parameter<'static, Type>)]>,
+    fixed_parameters_type: Box<[(String, Parameter<Type>)]>,
     fixed_parameters: Box<[ParameterValueFixed]>,
-    variable_parameters_type: Vec<(String, Parameter<'static, Type>)>,
+    variable_parameters_type: Vec<(String, Parameter<Type>)>,
     variable_parameters: Vec<VariableParameterValue<T, ParameterValue, ParameterNullableValue>>,
     processor: Arc<dyn ComponentProcessor<T>>,
 }
@@ -91,13 +91,13 @@ impl<T> ComponentInstance<T> {
     pub fn audio_required_params(&self) -> Option<&AudioRequiredParams<T>> {
         self.audio_required_params.as_ref()
     }
-    pub fn fixed_parameters_type(&self) -> &[(String, Parameter<'static, Type>)] {
+    pub fn fixed_parameters_type(&self) -> &[(String, Parameter<Type>)] {
         &self.fixed_parameters_type
     }
-    pub fn fixed_parameters(&self) -> &[Parameter<'static, ValueFixed>] {
+    pub fn fixed_parameters(&self) -> &[Parameter<ValueFixed>] {
         &self.fixed_parameters
     }
-    pub fn variable_parameters_type(&self) -> &[(String, Parameter<'static, Type>)] {
+    pub fn variable_parameters_type(&self) -> &[(String, Parameter<Type>)] {
         &self.variable_parameters_type
     }
     pub fn variable_parameters(&self) -> &[VariableParameterValue<T, ParameterValue, ParameterNullableValue>] {

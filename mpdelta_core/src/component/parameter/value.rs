@@ -22,6 +22,20 @@ impl<T: Clone> Easing<T> for DefaultEasing {
     }
 }
 
+pub struct LinearEasing;
+
+impl<T: Copy + Into<f64> + TryFrom<f64> + Default> Easing<T> for LinearEasing {
+    fn id(&self) -> &str {
+        "default"
+    }
+
+    fn easing(&self, &left: &T, &right: &T, p: f64) -> T {
+        let left = left.into();
+        let right = right.into();
+        T::try_from(left * (1. - p) + right * p).unwrap_or_default()
+    }
+}
+
 #[derive(Clone)]
 pub struct EasingValue<Value> {
     pub from: Value,
@@ -35,7 +49,7 @@ impl<Value: Debug> Debug for EasingValue<Value> {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct FrameVariableValue<Value> {
     values: BTreeMap<TimelineTime, Value>,
 }

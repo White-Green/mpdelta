@@ -1,6 +1,7 @@
 use crate::component::marker_pin::MarkerTime;
 use std::cmp::Ordering;
 use std::hash::{Hash, Hasher};
+use std::ops::Neg;
 
 /// タイムライン上での時間(秒)
 /// (-∞, ∞)
@@ -9,6 +10,8 @@ pub struct TimelineTime(f64);
 
 impl TimelineTime {
     pub const ZERO: TimelineTime = TimelineTime(0.0);
+    pub const MAX: TimelineTime = TimelineTime(f64::MAX);
+    pub const MIN: TimelineTime = TimelineTime(-f64::MAX);
 
     pub fn new(time: f64) -> Option<TimelineTime> {
         if time.is_finite() {
@@ -52,6 +55,15 @@ impl Ord for TimelineTime {
 impl Hash for TimelineTime {
     fn hash<H: Hasher>(&self, state: &mut H) {
         state.write(&self.0.to_ne_bytes())
+    }
+}
+
+impl Neg for TimelineTime {
+    type Output = TimelineTime;
+
+    fn neg(self) -> Self::Output {
+        // 表現可能な数の範囲が正負で同一なのでsafe
+        TimelineTime(-self.0)
     }
 }
 

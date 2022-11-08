@@ -11,6 +11,7 @@ use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt::{Debug, Formatter};
 use std::hash::{Hash, Hasher};
+use std::mem;
 use std::ops::Range;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -19,27 +20,27 @@ use tokio::sync::RwLock;
 pub mod placeholder;
 pub mod value;
 
-pub trait ParameterValueType<'a>: 'a {
-    type Image: 'a + Clone + Send + Sync;
-    type Audio: 'a + Clone + Send + Sync;
-    type Video: 'a + Clone + Send + Sync;
-    type File: 'a + Clone + Send + Sync;
-    type String: 'a + Clone + Send + Sync;
-    type Select: 'a + Clone + Send + Sync;
-    type Boolean: 'a + Clone + Send + Sync;
-    type Radio: 'a + Clone + Send + Sync;
-    type Integer: 'a + Clone + Send + Sync;
-    type RealNumber: 'a + Clone + Send + Sync;
-    type Vec2: 'a + Clone + Send + Sync;
-    type Vec3: 'a + Clone + Send + Sync;
-    type Dictionary: 'a + Clone + Send + Sync;
-    type ComponentClass: 'a + Clone + Send + Sync;
+pub trait ParameterValueType: 'static + Send + Sync {
+    type Image: 'static + Clone + Send + Sync;
+    type Audio: 'static + Clone + Send + Sync;
+    type Video: 'static + Clone + Send + Sync;
+    type File: 'static + Clone + Send + Sync;
+    type String: 'static + Clone + Send + Sync;
+    type Select: 'static + Clone + Send + Sync;
+    type Boolean: 'static + Clone + Send + Sync;
+    type Radio: 'static + Clone + Send + Sync;
+    type Integer: 'static + Clone + Send + Sync;
+    type RealNumber: 'static + Clone + Send + Sync;
+    type Vec2: 'static + Clone + Send + Sync;
+    type Vec3: 'static + Clone + Send + Sync;
+    type Dictionary: 'static + Clone + Send + Sync;
+    type ComponentClass: 'static + Clone + Send + Sync;
 }
 
-impl<'a, A, B> ParameterValueType<'a> for (A, B)
+impl<A, B> ParameterValueType for (A, B)
 where
-    A: ParameterValueType<'a>,
-    B: ParameterValueType<'a>,
+    A: ParameterValueType,
+    B: ParameterValueType,
 {
     type Image = (A::Image, B::Image);
     type Audio = (A::Audio, B::Audio);
@@ -57,7 +58,24 @@ where
     type ComponentClass = (A::ComponentClass, B::ComponentClass);
 }
 
-pub enum Parameter<'a, Type: ParameterValueType<'a>> {
+impl<T: ParameterValueType> ParameterValueType for Option<T> {
+    type Image = Option<T::Image>;
+    type Audio = Option<T::Audio>;
+    type Video = Option<T::Video>;
+    type File = Option<T::File>;
+    type String = Option<T::String>;
+    type Select = Option<T::Select>;
+    type Boolean = Option<T::Boolean>;
+    type Radio = Option<T::Radio>;
+    type Integer = Option<T::Integer>;
+    type RealNumber = Option<T::RealNumber>;
+    type Vec2 = Option<T::Vec2>;
+    type Vec3 = Option<T::Vec3>;
+    type Dictionary = Option<T::Dictionary>;
+    type ComponentClass = Option<T::ComponentClass>;
+}
+
+pub enum Parameter<Type: ParameterValueType> {
     None,
     Image(Type::Image),
     Audio(Type::Audio),
@@ -75,7 +93,7 @@ pub enum Parameter<'a, Type: ParameterValueType<'a>> {
     ComponentClass(Type::ComponentClass),
 }
 
-impl<'a, Type: ParameterValueType<'a>> Parameter<'a, Type> {
+impl<Type: ParameterValueType> Parameter<Type> {
     pub fn into_none(self) -> Result<(), Self> {
         if let Parameter::None = self {
             Ok(())
@@ -286,7 +304,7 @@ impl<'a, Type: ParameterValueType<'a>> Parameter<'a, Type> {
             None
         }
     }
-    pub fn equals_type<'b, Type2: ParameterValueType<'b>>(&self, other: &Parameter<'b, Type2>) -> bool {
+    pub fn equals_type<Type2: ParameterValueType>(&self, other: &Parameter<Type2>) -> bool {
         matches!(
             (self, other),
             (Self::None, Parameter::None)
@@ -306,9 +324,28 @@ impl<'a, Type: ParameterValueType<'a>> Parameter<'a, Type> {
                 | (Self::ComponentClass(_), Parameter::ComponentClass(_))
         )
     }
+    pub fn select(&self) -> Parameter<ParameterSelect> {
+        match self {
+            Self::None => Parameter::<ParameterSelect>::None,
+            Self::Image(_) => Parameter::<ParameterSelect>::Image(()),
+            Self::Audio(_) => Parameter::<ParameterSelect>::Audio(()),
+            Self::Video(_) => Parameter::<ParameterSelect>::Video(()),
+            Self::File(_) => Parameter::<ParameterSelect>::File(()),
+            Self::String(_) => Parameter::<ParameterSelect>::String(()),
+            Self::Select(_) => Parameter::<ParameterSelect>::Select(()),
+            Self::Boolean(_) => Parameter::<ParameterSelect>::Boolean(()),
+            Self::Radio(_) => Parameter::<ParameterSelect>::Radio(()),
+            Self::Integer(_) => Parameter::<ParameterSelect>::Integer(()),
+            Self::RealNumber(_) => Parameter::<ParameterSelect>::RealNumber(()),
+            Self::Vec2(_) => Parameter::<ParameterSelect>::Vec2(()),
+            Self::Vec3(_) => Parameter::<ParameterSelect>::Vec3(()),
+            Self::Dictionary(_) => Parameter::<ParameterSelect>::Dictionary(()),
+            Self::ComponentClass(_) => Parameter::<ParameterSelect>::ComponentClass(()),
+        }
+    }
 }
 
-impl<'a, Type: ParameterValueType<'a>> Clone for Parameter<'a, Type> {
+impl<Type: ParameterValueType> Clone for Parameter<Type> {
     fn clone(&self) -> Self {
         match self {
             Self::None => Self::None,
@@ -330,7 +367,124 @@ impl<'a, Type: ParameterValueType<'a>> Clone for Parameter<'a, Type> {
     }
 }
 
-impl<'a, Type: ParameterValueType<'a>> Debug for Parameter<'a, Type> {
+impl<Type: ParameterValueType> Copy for Parameter<Type>
+where
+    Type::Image: Copy,
+    Type::Audio: Copy,
+    Type::Video: Copy,
+    Type::File: Copy,
+    Type::String: Copy,
+    Type::Select: Copy,
+    Type::Boolean: Copy,
+    Type::Radio: Copy,
+    Type::Integer: Copy,
+    Type::RealNumber: Copy,
+    Type::Vec2: Copy,
+    Type::Vec3: Copy,
+    Type::Dictionary: Copy,
+    Type::ComponentClass: Copy,
+{
+}
+
+impl<Type: ParameterValueType> PartialEq for Parameter<Type>
+where
+    Type::Image: PartialEq,
+    Type::Audio: PartialEq,
+    Type::Video: PartialEq,
+    Type::File: PartialEq,
+    Type::String: PartialEq,
+    Type::Select: PartialEq,
+    Type::Boolean: PartialEq,
+    Type::Radio: PartialEq,
+    Type::Integer: PartialEq,
+    Type::RealNumber: PartialEq,
+    Type::Vec2: PartialEq,
+    Type::Vec3: PartialEq,
+    Type::Dictionary: PartialEq,
+    Type::ComponentClass: PartialEq,
+{
+    fn eq(&self, rhs: &Self) -> bool {
+        match (self, rhs) {
+            (Self::None, Self::None) => true,
+            (Self::Image(value0), Self::Image(value1)) => value0 == value1,
+            (Self::Audio(value0), Self::Audio(value1)) => value0 == value1,
+            (Self::Video(value0), Self::Video(value1)) => value0 == value1,
+            (Self::File(value0), Self::File(value1)) => value0 == value1,
+            (Self::String(value0), Self::String(value1)) => value0 == value1,
+            (Self::Select(value0), Self::Select(value1)) => value0 == value1,
+            (Self::Boolean(value0), Self::Boolean(value1)) => value0 == value1,
+            (Self::Radio(value0), Self::Radio(value1)) => value0 == value1,
+            (Self::Integer(value0), Self::Integer(value1)) => value0 == value1,
+            (Self::RealNumber(value0), Self::RealNumber(value1)) => value0 == value1,
+            (Self::Vec2(value0), Self::Vec2(value1)) => value0 == value1,
+            (Self::Vec3(value0), Self::Vec3(value1)) => value0 == value1,
+            (Self::Dictionary(value0), Self::Dictionary(value1)) => value0 == value1,
+            (Self::ComponentClass(value0), Self::ComponentClass(value1)) => value0 == value1,
+            _ => false,
+        }
+    }
+}
+
+impl<Type: ParameterValueType> Eq for Parameter<Type>
+where
+    Type::Image: Eq,
+    Type::Audio: Eq,
+    Type::Video: Eq,
+    Type::File: Eq,
+    Type::String: Eq,
+    Type::Select: Eq,
+    Type::Boolean: Eq,
+    Type::Radio: Eq,
+    Type::Integer: Eq,
+    Type::RealNumber: Eq,
+    Type::Vec2: Eq,
+    Type::Vec3: Eq,
+    Type::Dictionary: Eq,
+    Type::ComponentClass: Eq,
+{
+}
+
+impl<Type: ParameterValueType> Hash for Parameter<Type>
+where
+    Type::Image: Hash,
+    Type::Audio: Hash,
+    Type::Video: Hash,
+    Type::File: Hash,
+    Type::String: Hash,
+    Type::Select: Hash,
+    Type::Boolean: Hash,
+    Type::Radio: Hash,
+    Type::Integer: Hash,
+    Type::RealNumber: Hash,
+    Type::Vec2: Hash,
+    Type::Vec3: Hash,
+    Type::Dictionary: Hash,
+    Type::ComponentClass: Hash,
+{
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        let tag = mem::discriminant(self);
+        tag.hash(state);
+        match self {
+            Self::None => {}
+            Self::Image(value) => value.hash(state),
+            Self::Audio(value) => value.hash(state),
+            Self::Video(value) => value.hash(state),
+            Self::File(value) => value.hash(state),
+            Self::String(value) => value.hash(state),
+            Self::Select(value) => value.hash(state),
+            Self::Boolean(value) => value.hash(state),
+            Self::Radio(value) => value.hash(state),
+            Self::Integer(value) => value.hash(state),
+            Self::RealNumber(value) => value.hash(state),
+            Self::Vec2(value) => value.hash(state),
+            Self::Vec3(value) => value.hash(state),
+            Self::Dictionary(value) => value.hash(state),
+            Self::ComponentClass(value) => value.hash(state),
+        }
+    }
+}
+
+impl<Type: ParameterValueType> Debug for Parameter<Type> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Parameter::None => f.write_str("None"),
@@ -352,14 +506,178 @@ impl<'a, Type: ParameterValueType<'a>> Debug for Parameter<'a, Type> {
     }
 }
 
+pub struct ParameterAllValues<Type: ParameterValueType> {
+    pub image: Type::Image,
+    pub audio: Type::Audio,
+    pub video: Type::Video,
+    pub file: Type::File,
+    pub string: Type::String,
+    pub select: Type::Select,
+    pub boolean: Type::Boolean,
+    pub radio: Type::Radio,
+    pub integer: Type::Integer,
+    pub real_number: Type::RealNumber,
+    pub vec2: Type::Vec2,
+    pub vec3: Type::Vec3,
+    pub dictionary: Type::Dictionary,
+    pub component_class: Type::ComponentClass,
+}
+
+impl<Type: ParameterValueType> Default for ParameterAllValues<Type>
+where
+    Type::Image: Default,
+    Type::Audio: Default,
+    Type::Video: Default,
+    Type::File: Default,
+    Type::String: Default,
+    Type::Select: Default,
+    Type::Boolean: Default,
+    Type::Radio: Default,
+    Type::Integer: Default,
+    Type::RealNumber: Default,
+    Type::Vec2: Default,
+    Type::Vec3: Default,
+    Type::Dictionary: Default,
+    Type::ComponentClass: Default,
+{
+    fn default() -> Self {
+        ParameterAllValues {
+            image: Default::default(),
+            audio: Default::default(),
+            video: Default::default(),
+            file: Default::default(),
+            string: Default::default(),
+            select: Default::default(),
+            boolean: Default::default(),
+            radio: Default::default(),
+            integer: Default::default(),
+            real_number: Default::default(),
+            vec2: Default::default(),
+            vec3: Default::default(),
+            dictionary: Default::default(),
+            component_class: Default::default(),
+        }
+    }
+}
+
+impl<Type: ParameterValueType> Clone for ParameterAllValues<Type> {
+    fn clone(&self) -> Self {
+        ParameterAllValues {
+            image: self.image.clone(),
+            audio: self.audio.clone(),
+            video: self.video.clone(),
+            file: self.file.clone(),
+            string: self.string.clone(),
+            select: self.select.clone(),
+            boolean: self.boolean.clone(),
+            radio: self.radio.clone(),
+            integer: self.integer.clone(),
+            real_number: self.real_number.clone(),
+            vec2: self.vec2.clone(),
+            vec3: self.vec3.clone(),
+            dictionary: self.dictionary.clone(),
+            component_class: self.component_class.clone(),
+        }
+    }
+}
+
+impl<Type: ParameterValueType> PartialEq for ParameterAllValues<Type>
+where
+    Type::Image: PartialEq,
+    Type::Audio: PartialEq,
+    Type::Video: PartialEq,
+    Type::File: PartialEq,
+    Type::String: PartialEq,
+    Type::Select: PartialEq,
+    Type::Boolean: PartialEq,
+    Type::Radio: PartialEq,
+    Type::Integer: PartialEq,
+    Type::RealNumber: PartialEq,
+    Type::Vec2: PartialEq,
+    Type::Vec3: PartialEq,
+    Type::Dictionary: PartialEq,
+    Type::ComponentClass: PartialEq,
+{
+    fn eq(&self, other: &Self) -> bool {
+        self.image == other.image
+            && self.audio == other.audio
+            && self.video == other.video
+            && self.file == other.file
+            && self.string == other.string
+            && self.select == other.select
+            && self.boolean == other.boolean
+            && self.radio == other.radio
+            && self.integer == other.integer
+            && self.real_number == other.real_number
+            && self.vec2 == other.vec2
+            && self.vec3 == other.vec3
+            && self.dictionary == other.dictionary
+            && self.component_class == other.component_class
+    }
+}
+
+impl<Type: ParameterValueType> Eq for ParameterAllValues<Type>
+where
+    Type::Image: Eq,
+    Type::Audio: Eq,
+    Type::Video: Eq,
+    Type::File: Eq,
+    Type::String: Eq,
+    Type::Select: Eq,
+    Type::Boolean: Eq,
+    Type::Radio: Eq,
+    Type::Integer: Eq,
+    Type::RealNumber: Eq,
+    Type::Vec2: Eq,
+    Type::Vec3: Eq,
+    Type::Dictionary: Eq,
+    Type::ComponentClass: Eq,
+{
+}
+
+impl<Type: ParameterValueType> Hash for ParameterAllValues<Type>
+where
+    Type::Image: Hash,
+    Type::Audio: Hash,
+    Type::Video: Hash,
+    Type::File: Hash,
+    Type::String: Hash,
+    Type::Select: Hash,
+    Type::Boolean: Hash,
+    Type::Radio: Hash,
+    Type::Integer: Hash,
+    Type::RealNumber: Hash,
+    Type::Vec2: Hash,
+    Type::Vec3: Hash,
+    Type::Dictionary: Hash,
+    Type::ComponentClass: Hash,
+{
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.image.hash(state);
+        self.audio.hash(state);
+        self.video.hash(state);
+        self.file.hash(state);
+        self.string.hash(state);
+        self.select.hash(state);
+        self.boolean.hash(state);
+        self.radio.hash(state);
+        self.integer.hash(state);
+        self.real_number.hash(state);
+        self.vec2.hash(state);
+        self.vec3.hash(state);
+        self.dictionary.hash(state);
+        self.component_class.hash(state);
+    }
+}
+
 #[derive(Debug, Copy, Clone)]
 pub enum Never {}
 
 pub struct Type;
 
-pub type ParameterType = Parameter<'static, Type>;
+pub type ParameterType = Parameter<Type>;
 
-impl<'a> ParameterValueType<'a> for Type {
+impl ParameterValueType for Type {
     type Image = ();
     type Audio = ();
     type Video = ();
@@ -372,15 +690,15 @@ impl<'a> ParameterValueType<'a> for Type {
     type RealNumber = Option<Range<f64>>;
     type Vec2 = Option<Range<Vector2<f64>>>;
     type Vec3 = Option<Range<Vector3<f64>>>;
-    type Dictionary = HashMap<String, Parameter<'a, Type>>;
+    type Dictionary = HashMap<String, Parameter<Type>>;
     type ComponentClass = ();
 }
 
 pub struct TypeExceptComponentClass;
 
-pub type ParameterTypeExceptComponentClass = Parameter<'static, TypeExceptComponentClass>;
+pub type ParameterTypeExceptComponentClass = Parameter<TypeExceptComponentClass>;
 
-impl<'a> ParameterValueType<'a> for TypeExceptComponentClass {
+impl ParameterValueType for TypeExceptComponentClass {
     type Image = ();
     type Audio = ();
     type Video = ();
@@ -393,15 +711,15 @@ impl<'a> ParameterValueType<'a> for TypeExceptComponentClass {
     type RealNumber = Option<Range<f64>>;
     type Vec2 = Option<Range<Vector2<f64>>>;
     type Vec3 = Option<Range<Vector3<f64>>>;
-    type Dictionary = HashMap<String, Parameter<'a, TypeExceptComponentClass>>;
+    type Dictionary = HashMap<String, Parameter<TypeExceptComponentClass>>;
     type ComponentClass = Never;
 }
 
 pub struct Value;
 
-pub type ParameterValue = Parameter<'static, Value>;
+pub type ParameterValue = Parameter<Value>;
 
-impl<'a> ParameterValueType<'a> for Value {
+impl ParameterValueType for Value {
     type Image = Placeholder<TagImage>;
     type Audio = Placeholder<TagAudio>;
     type Video = (Placeholder<TagImage>, Placeholder<TagAudio>);
@@ -414,16 +732,16 @@ impl<'a> ParameterValueType<'a> for Value {
     type RealNumber = TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, EasingValue<f64>>;
     type Vec2 = Vector2<TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, EasingValue<f64>>>;
     type Vec3 = Vector3<TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, EasingValue<f64>>>;
-    type Dictionary = TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, HashMap<String, ParameterValue>>;
+    type Dictionary = Never;
     type ComponentClass = ();
 }
 
 #[derive(Clone)]
 pub struct ComponentProcessorInput;
 
-pub type ComponentProcessorInputValue = Parameter<'static, ComponentProcessorInput>;
+pub type ComponentProcessorInputValue = Parameter<ComponentProcessorInput>;
 
-impl<'a> ParameterValueType<'a> for ComponentProcessorInput {
+impl ParameterValueType for ComponentProcessorInput {
     type Image = Placeholder<TagImage>;
     type Audio = Placeholder<TagAudio>;
     type Video = (Placeholder<TagImage>, Placeholder<TagAudio>);
@@ -436,15 +754,15 @@ impl<'a> ParameterValueType<'a> for ComponentProcessorInput {
     type RealNumber = TimeSplitValue<TimelineTime, Option<Either<EasingValue<f64>, FrameVariableValue<f64>>>>;
     type Vec2 = Vector2<TimeSplitValue<TimelineTime, Option<Either<EasingValue<f64>, FrameVariableValue<f64>>>>>;
     type Vec3 = Vector3<TimeSplitValue<TimelineTime, Option<Either<EasingValue<f64>, FrameVariableValue<f64>>>>>;
-    type Dictionary = TimeSplitValue<TimelineTime, Option<Either<HashMap<String, ComponentProcessorInputValue>, FrameVariableValue<HashMap<String, ComponentProcessorInputValue>>>>>;
+    type Dictionary = Never;
     type ComponentClass = ();
 }
 
 pub struct FrameVariable;
 
-pub type ParameterFrameVariableValue = Parameter<'static, FrameVariable>;
+pub type ParameterFrameVariableValue = Parameter<FrameVariable>;
 
-impl<'a> ParameterValueType<'a> for FrameVariable {
+impl ParameterValueType for FrameVariable {
     type Image = Placeholder<TagImage>;
     type Audio = Placeholder<TagAudio>;
     type Video = (Placeholder<TagImage>, Placeholder<TagAudio>);
@@ -457,15 +775,15 @@ impl<'a> ParameterValueType<'a> for FrameVariable {
     type RealNumber = FrameVariableValue<f64>;
     type Vec2 = FrameVariableValue<Vector2<f64>>;
     type Vec3 = FrameVariableValue<Vector3<f64>>;
-    type Dictionary = FrameVariableValue<HashMap<String, ParameterFrameVariableValue>>;
+    type Dictionary = Never;
     type ComponentClass = Never;
 }
 
 pub struct NullableValue;
 
-pub type ParameterNullableValue = Parameter<'static, NullableValue>;
+pub type ParameterNullableValue = Parameter<NullableValue>;
 
-impl<'a> ParameterValueType<'a> for NullableValue {
+impl ParameterValueType for NullableValue {
     type Image = Option<Placeholder<TagImage>>;
     type Audio = Option<Placeholder<TagAudio>>;
     type Video = Option<(Placeholder<TagImage>, Placeholder<TagAudio>)>;
@@ -478,15 +796,15 @@ impl<'a> ParameterValueType<'a> for NullableValue {
     type RealNumber = TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, Option<EasingValue<f64>>>;
     type Vec2 = Vector2<TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, Option<EasingValue<f64>>>>;
     type Vec3 = Vector3<TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, Option<EasingValue<f64>>>>;
-    type Dictionary = TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, Option<HashMap<String, ParameterNullableValue>>>;
+    type Dictionary = Never;
     type ComponentClass = Option<()>;
 }
 
 pub struct TypedValue;
 
-pub type ParameterTypedValue = Parameter<'static, TypedValue>;
+pub type ParameterTypedValue = Parameter<TypedValue>;
 
-impl<'a> ParameterValueType<'a> for TypedValue {
+impl ParameterValueType for TypedValue {
     type Image = Placeholder<TagImage>;
     type Audio = Placeholder<TagAudio>;
     type Video = (Placeholder<TagImage>, Placeholder<TagAudio>);
@@ -499,15 +817,15 @@ impl<'a> ParameterValueType<'a> for TypedValue {
     type RealNumber = (Option<Range<f64>>, TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, EasingValue<f64>>);
     type Vec2 = (Option<Range<Vector2<f64>>>, Vector2<TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, EasingValue<f64>>>);
     type Vec3 = (Option<Range<Vector3<f64>>>, Vector3<TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, EasingValue<f64>>>);
-    type Dictionary = (HashMap<String, Parameter<'a, Type>>, TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, HashMap<String, ParameterValue>>);
+    type Dictionary = (HashMap<String, Parameter<Type>>, TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, HashMap<String, ParameterValue>>);
     type ComponentClass = ();
 }
 
 pub struct ValueFixed;
 
-pub type ParameterValueFixed = Parameter<'static, ValueFixed>;
+pub type ParameterValueFixed = Parameter<ValueFixed>;
 
-impl<'a> ParameterValueType<'a> for ValueFixed {
+impl ParameterValueType for ValueFixed {
     type Image = Placeholder<TagImage>;
     type Audio = Placeholder<TagAudio>;
     type Video = (Placeholder<TagImage>, Placeholder<TagAudio>);
@@ -526,9 +844,9 @@ impl<'a> ParameterValueType<'a> for ValueFixed {
 
 pub struct ValueFixedExceptComponentClass;
 
-pub type ParameterValueFixedExceptComponentClass = Parameter<'static, ValueFixedExceptComponentClass>;
+pub type ParameterValueFixedExceptComponentClass = Parameter<ValueFixedExceptComponentClass>;
 
-impl<'a> ParameterValueType<'a> for ValueFixedExceptComponentClass {
+impl ParameterValueType for ValueFixedExceptComponentClass {
     type Image = Placeholder<TagImage>;
     type Audio = Placeholder<TagAudio>;
     type Video = (Placeholder<TagImage>, Placeholder<TagAudio>);
@@ -547,7 +865,7 @@ impl<'a> ParameterValueType<'a> for ValueFixedExceptComponentClass {
 
 pub struct ParameterSelect;
 
-impl<'a> ParameterValueType<'a> for ParameterSelect {
+impl ParameterValueType for ParameterSelect {
     type Image = ();
     type Audio = ();
     type Video = ();
@@ -713,7 +1031,7 @@ pub struct ImageRequiredParams<T> {
     pub aspect_ratio: (u32, u32),
     pub transform: ImageRequiredParamsTransform<T>,
     pub background_color: [u8; 4],
-    pub opacity: PinSplitValue<EasingValue<Opacity>>,
+    pub opacity: PinSplitValue<EasingValue<f64>>,
     pub blend_mode: PinSplitValue<BlendMode>,
     pub composite_operation: PinSplitValue<CompositeOperation>,
 }
@@ -729,7 +1047,7 @@ impl<T> ImageRequiredParams<T> {
                 scale: Vector3 {
                     x: one_value.clone(),
                     y: one_value.clone(),
-                    z: one_value.clone(),
+                    z: one_value,
                 },
                 translate: Vector3 { x: zero.clone(), y: zero.clone(), z: zero.clone() },
                 rotate: TimeSplitValue::new(
@@ -745,15 +1063,7 @@ impl<T> ImageRequiredParams<T> {
                 rotate_center: Vector3 { x: zero.clone(), y: zero.clone(), z: zero },
             },
             background_color: [0; 4],
-            opacity: TimeSplitValue::new(
-                marker_left.clone(),
-                EasingValue {
-                    from: Opacity::OPAQUE,
-                    to: Opacity::OPAQUE,
-                    easing: Arc::new(DefaultEasing),
-                },
-                marker_right.clone(),
-            ),
+            opacity: TimeSplitValue::new(marker_left.clone(), EasingValue { from: 1., to: 1., easing: Arc::new(DefaultEasing) }, marker_right.clone()),
             blend_mode: TimeSplitValue::new(marker_left.clone(), Default::default(), marker_right.clone()),
             composite_operation: TimeSplitValue::new(marker_left.clone(), Default::default(), marker_right.clone()),
         }
@@ -781,20 +1091,22 @@ impl<T> Clone for ImageRequiredParams<T> {
     }
 }
 
+pub type Vector3Params<T> = Vector3<VariableParameterValue<T, PinSplitValue<EasingValue<f64>>, PinSplitValue<Option<EasingValue<f64>>>>>;
+
 #[derive(Debug)]
 pub enum ImageRequiredParamsTransform<T> {
     Params {
-        scale: Vector3<VariableParameterValue<T, PinSplitValue<EasingValue<f64>>, PinSplitValue<Option<EasingValue<f64>>>>>,
-        translate: Vector3<VariableParameterValue<T, PinSplitValue<EasingValue<f64>>, PinSplitValue<Option<EasingValue<f64>>>>>,
+        scale: Vector3Params<T>,
+        translate: Vector3Params<T>,
         rotate: TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, EasingValue<Quaternion<f64>>>,
-        scale_center: Vector3<VariableParameterValue<T, PinSplitValue<EasingValue<f64>>, PinSplitValue<Option<EasingValue<f64>>>>>,
-        rotate_center: Vector3<VariableParameterValue<T, PinSplitValue<EasingValue<f64>>, PinSplitValue<Option<EasingValue<f64>>>>>,
+        scale_center: Vector3Params<T>,
+        rotate_center: Vector3Params<T>,
     },
     Free {
-        left_top: Vector3<VariableParameterValue<T, PinSplitValue<EasingValue<f64>>, PinSplitValue<Option<EasingValue<f64>>>>>,
-        right_top: Vector3<VariableParameterValue<T, PinSplitValue<EasingValue<f64>>, PinSplitValue<Option<EasingValue<f64>>>>>,
-        left_bottom: Vector3<VariableParameterValue<T, PinSplitValue<EasingValue<f64>>, PinSplitValue<Option<EasingValue<f64>>>>>,
-        right_bottom: Vector3<VariableParameterValue<T, PinSplitValue<EasingValue<f64>>, PinSplitValue<Option<EasingValue<f64>>>>>,
+        left_top: Vector3Params<T>,
+        right_top: Vector3Params<T>,
+        left_bottom: Vector3Params<T>,
+        right_bottom: Vector3Params<T>,
     },
 }
 
@@ -886,7 +1198,7 @@ impl ImageRequiredParamsTransformFrameVariable {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ImageRequiredParamsFixed {
     pub aspect_ratio: (u32, u32),
     pub transform: ImageRequiredParamsTransformFixed,
@@ -896,7 +1208,7 @@ pub struct ImageRequiredParamsFixed {
     pub composite_operation: CompositeOperation,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ImageRequiredParamsTransformFixed {
     Params {
         scale: Vector3<f64>,
@@ -925,7 +1237,12 @@ impl<T> Clone for AudioRequiredParams<T> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
+pub struct AudioRequiredParamsFrameVariable {
+    pub volume: Vec<FrameVariableValue<f64>>,
+}
+
+#[derive(Debug, Clone)]
 pub struct AudioRequiredParamsFixed {
     pub volume: Vec<f64>,
 }

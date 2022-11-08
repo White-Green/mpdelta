@@ -30,11 +30,11 @@ impl<T> AbstractSliceMut<T> for [T] {
 
 impl<'a, T> AbstractSlice<T> for [&'a T] {
     fn get(&self, index: usize) -> Option<&T> {
-        self.get(index).map(|v| *v)
+        self.get(index).copied()
     }
 
     fn iter(&self) -> Box<dyn Iterator<Item = &T> + '_> {
-        Box::new(self.iter().map(|v| *v))
+        Box::new(self.iter().copied())
     }
 }
 

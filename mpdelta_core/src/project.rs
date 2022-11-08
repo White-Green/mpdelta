@@ -4,8 +4,8 @@ use crate::component::instance::ComponentInstance;
 use crate::component::link::MarkerLink;
 use crate::component::marker_pin::{MarkerPin, MarkerTime};
 use crate::component::parameter::value::{DefaultEasing, EasingValue};
-use crate::component::parameter::{AudioRequiredParams, ImageRequiredParams, ImageRequiredParamsTransform, Opacity, ParameterType, ParameterValueFixed, VariableParameterValue};
-use crate::component::processor::{ComponentProcessor, ComponentProcessorBody};
+use crate::component::parameter::{AudioRequiredParams, ComponentProcessorInputValue, ImageRequiredParams, ImageRequiredParamsTransform, ParameterType, ParameterValueFixed, VariableParameterValue};
+use crate::component::processor::{ComponentProcessor, ComponentProcessorBody, ProcessorComponentBuilder};
 use crate::ptr::{StaticPointer, StaticPointerCow, StaticPointerOwned};
 use crate::time::TimelineTime;
 use async_trait::async_trait;
@@ -131,21 +131,24 @@ impl<T: 'static> ComponentClass<T> for RootComponentClass<T> {
                 rotate_center: Vector3 { x: zero.clone(), y: zero.clone(), z: zero },
             },
             background_color: [0; 4],
-            opacity: TimeSplitValue::new(
-                marker_left.clone(),
-                EasingValue {
-                    from: Opacity::OPAQUE,
-                    to: Opacity::OPAQUE,
-                    easing: Arc::new(DefaultEasing),
-                },
-                marker_right.clone(),
-            ),
+            opacity: TimeSplitValue::new(marker_left.clone(), EasingValue { from: 1., to: 1., easing: Arc::new(DefaultEasing) }, marker_right.clone()),
             blend_mode: TimeSplitValue::new(marker_left.clone(), Default::default(), marker_right.clone()),
             composite_operation: TimeSplitValue::new(marker_left.clone(), Default::default(), marker_right.clone()),
         };
         let audio_required_params = AudioRequiredParams { volume: vec![one_value.clone(), one_value] };
         let processor = Arc::clone(&self.item) as _;
         ComponentInstance::new_no_param(this.clone(), StaticPointerCow::Reference(marker_left), StaticPointerCow::Reference(marker_right), Some(image_required_params), Some(audio_required_params), processor)
+    }
+}
+
+struct CloneComponentBuilder<T> {
+    components: Vec<StaticPointerCow<RwLock<ComponentInstance<T>>>>,
+    links: Vec<StaticPointerCow<RwLock<MarkerLink>>>,
+}
+
+impl<T> ProcessorComponentBuilder<T> for CloneComponentBuilder<T> {
+    fn build(&self, _: &[ParameterValueFixed], _: &[ComponentProcessorInputValue], _: &[(String, ParameterType)], _: &mut dyn Iterator<Item = TimelineTime>, _: &dyn Fn(TimelineTime) -> MarkerTime) -> (Vec<StaticPointerCow<RwLock<ComponentInstance<T>>>>, Vec<StaticPointerCow<RwLock<MarkerLink>>>) {
+        (self.components.clone(), self.links.clone())
     }
 }
 
@@ -162,8 +165,8 @@ impl<T> ComponentProcessor<T> for RootComponentClassItemWrapper<T> {
     async fn get_processor(&self) -> ComponentProcessorBody<'_, T> {
         let guard = self.0.read().await;
         let components = guard.component.iter().map(Into::into).collect::<Vec<_>>();
-        let link = guard.link.iter().map(Into::into).collect::<Vec<_>>();
-        ComponentProcessorBody::Component(Arc::new(move |_, _| (components.clone(), link.clone())))
+        let links = guard.link.iter().map(Into::into).collect::<Vec<_>>();
+        ComponentProcessorBody::Component(Arc::new(CloneComponentBuilder { components, links }))
     }
 }
 

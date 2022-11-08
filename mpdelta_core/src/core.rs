@@ -211,14 +211,14 @@ where
 }
 
 #[async_trait]
-pub trait ComponentRendererBuilder<T: ParameterValueType<'static>>: Send + Sync {
+pub trait ComponentRendererBuilder<T: ParameterValueType>: Send + Sync {
     type Err: Error + 'static;
     type Renderer: RealtimeComponentRenderer<T> + Send + Sync;
     async fn create_renderer(&self, component: &StaticPointer<RwLock<ComponentInstance<T>>>) -> Result<Self::Renderer, Self::Err>;
 }
 
 #[async_trait]
-impl<T: ParameterValueType<'static>, T0: Send + Sync, T1: Send + Sync, T2: Send + Sync, T3: Send + Sync, T4: Send + Sync, T5: Send + Sync, CR: Send + Sync, T7: Send + Sync, T8: Send + Sync> RealtimeRenderComponentUsecase<T> for MPDeltaCore<T0, T1, T2, T3, T4, T5, CR, T7, T8>
+impl<T: ParameterValueType, T0: Send + Sync, T1: Send + Sync, T2: Send + Sync, T3: Send + Sync, T4: Send + Sync, T5: Send + Sync, CR: Send + Sync, T7: Send + Sync, T8: Send + Sync> RealtimeRenderComponentUsecase<T> for MPDeltaCore<T0, T1, T2, T3, T4, T5, CR, T7, T8>
 where
     StaticPointer<RwLock<ComponentInstance<T>>>: Sync,
     CR: ComponentRendererBuilder<T>,
@@ -757,7 +757,7 @@ mod tests {
     #[tokio::test]
     async fn realtime_render_component() {
         struct Temporary;
-        impl ParameterValueType<'static> for Temporary {
+        impl ParameterValueType for Temporary {
             type Image = ();
             type Audio = ();
             type Video = ();
@@ -777,11 +777,12 @@ mod tests {
         struct RD;
         #[async_trait]
         impl RealtimeComponentRenderer<Temporary> for RD {
+            type Err = std::convert::Infallible;
             fn get_frame_count(&self) -> usize {
                 unreachable!()
             }
 
-            fn render_frame(&self, _: usize) -> () {
+            fn render_frame(&self, _: usize) -> Result<(), Self::Err> {
                 unreachable!()
             }
 
@@ -789,11 +790,11 @@ mod tests {
                 unreachable!()
             }
 
-            fn mix_audio(&self, _: usize, _: usize) -> () {
+            fn mix_audio(&self, _: usize, _: usize) -> Result<(), Self::Err> {
                 unreachable!()
             }
 
-            fn render_param(&self, _param: Parameter<'static, ParameterSelect>) -> Parameter<'static, Temporary> {
+            fn render_param(&self, _param: Parameter<ParameterSelect>) -> Result<Parameter<Temporary>, Self::Err> {
                 unreachable!()
             }
         }

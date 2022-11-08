@@ -1,14 +1,15 @@
 use crate::component::instance::ComponentInstance;
 use crate::component::link::MarkerLink;
+use crate::component::marker_pin::MarkerTime;
 use crate::component::parameter::placeholder::{Placeholder, TagAudio, TagImage};
 use crate::component::parameter::value::FrameVariableValue;
-use crate::component::parameter::{ComponentProcessorInputValue, Never, Parameter, ParameterFrameVariableValue, ParameterType, ParameterValueFixed, ParameterValueFixedExceptComponentClass, ParameterValueType};
+use crate::component::parameter::{ComponentProcessorInputValue, Never, Parameter, ParameterFrameVariableValue, ParameterSelect, ParameterType, ParameterValueFixed, ParameterValueType};
 use crate::native::processor::NativeProcessor;
 use crate::ptr::StaticPointerCow;
+use crate::time::TimelineTime;
 use async_trait::async_trait;
 use cgmath::{Vector2, Vector3};
 use std::borrow::Cow;
-use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -16,7 +17,7 @@ use tokio::sync::RwLock;
 
 pub struct NativeProcessorExecutable<T> {
     pub processor: Arc<dyn NativeProcessor<T>>,
-    pub parameter: Arc<[Parameter<'static, NativeProcessorInput>]>,
+    pub parameter: Arc<[Parameter<NativeProcessorInput>]>,
 }
 
 impl<T> Clone for NativeProcessorExecutable<T> {
@@ -28,14 +29,30 @@ impl<T> Clone for NativeProcessorExecutable<T> {
     }
 }
 
+pub trait NativeProcessorBuilder<T> {
+    fn output_type(&self) -> Parameter<ParameterSelect>;
+    fn build(&self, fixed_parameters: &[ParameterValueFixed], variable_parameters: &[ParameterFrameVariableValue], variable_parameter_type: &[(String, ParameterType)], frames: &mut dyn Iterator<Item = TimelineTime>, map_time: &dyn Fn(TimelineTime) -> MarkerTime) -> NativeProcessorExecutable<T>;
+}
+
+pub trait ProcessorComponentBuilder<T> {
+    fn build(
+        &self,
+        fixed_parameters: &[ParameterValueFixed],
+        variable_parameters: &[ComponentProcessorInputValue],
+        variable_parameter_type: &[(String, ParameterType)],
+        frames: &mut dyn Iterator<Item = TimelineTime>,
+        map_time: &dyn Fn(TimelineTime) -> MarkerTime,
+    ) -> (Vec<StaticPointerCow<RwLock<ComponentInstance<T>>>>, Vec<StaticPointerCow<RwLock<MarkerLink>>>);
+}
+
 pub enum ComponentProcessorBody<'a, T> {
-    Native(Cow<'a, [Arc<dyn Fn(&[ParameterValueFixed], &[ParameterFrameVariableValue]) -> NativeProcessorExecutable<T> + Send + Sync + 'a>]>),
-    Component(Arc<dyn Fn(&[ParameterValueFixed], &[ComponentProcessorInputValue]) -> (Vec<StaticPointerCow<RwLock<ComponentInstance<T>>>>, Vec<StaticPointerCow<RwLock<MarkerLink>>>) + Send + Sync + 'a>),
+    Native(Cow<'a, [Arc<dyn NativeProcessorBuilder<T> + Send + Sync + 'a>]>),
+    Component(Arc<dyn ProcessorComponentBuilder<T> + Send + Sync + 'a>),
 }
 
 pub struct NativeProcessorInput;
 
-impl<'a> ParameterValueType<'a> for NativeProcessorInput {
+impl ParameterValueType for NativeProcessorInput {
     type Image = Placeholder<TagImage>;
     type Audio = Placeholder<TagAudio>;
     type Video = (Placeholder<TagImage>, Placeholder<TagAudio>);
@@ -48,7 +65,7 @@ impl<'a> ParameterValueType<'a> for NativeProcessorInput {
     type RealNumber = FrameVariableValue<f64>;
     type Vec2 = FrameVariableValue<Vector2<f64>>;
     type Vec3 = FrameVariableValue<Vector3<f64>>;
-    type Dictionary = FrameVariableValue<HashMap<String, ParameterValueFixedExceptComponentClass>>;
+    type Dictionary = Never;
     type ComponentClass = Never;
 }
 

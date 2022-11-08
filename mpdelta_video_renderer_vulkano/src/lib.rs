@@ -1,35 +1,19 @@
-use async_trait::async_trait;
 use cgmath::{Matrix4, SquareMatrix, Vector3, Vector4};
 use composite_operation_shader::CompositeOperationConstant;
-use dashmap::DashMap;
-use either::Either;
-use futures::future::BoxFuture;
-use futures::stream::{self, StreamExt};
-use futures::FutureExt;
 use glam::{Mat4, Vec4};
-use mpdelta_core::component::parameter::placeholder::{Placeholder, TagImage};
-use mpdelta_core::component::parameter::{BlendMode, CompositeOperation, ImageRequiredParamsTransformFixed, Parameter, ParameterValueType};
-use mpdelta_core::component::processor::NativeProcessorInput;
-use mpdelta_core::native::processor::ParameterNativeProcessorInputFixed;
-use mpdelta_core::time::TimelineTime;
+use mpdelta_core::component::parameter::{ImageRequiredParamsFixed, ImageRequiredParamsTransformFixed};
 use mpdelta_core_vulkano::ImageType;
-use mpdelta_renderer::evaluate_component::{ImageNativeTreeNode, ReadonlySourceTree};
-use mpdelta_renderer::{VideoRenderer, VideoRendererBuilder};
+use mpdelta_renderer::{Combiner, CombinerBuilder, ImageSizeRequest};
 use std::cmp::Ordering;
-use std::ops::Range;
 use std::sync::Arc;
-use std::time::Duration;
 use texture_drawing_shader::TextureDrawingConstant;
-use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
-use tokio::sync::{mpsc, Notify};
-use tokio::task::JoinHandle;
 use vulkano::command_buffer::{AutoCommandBufferBuilder, ClearColorImageInfo, CommandBufferUsage, PrimaryCommandBuffer, RenderPassBeginInfo, SubpassContents};
 use vulkano::descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet};
 use vulkano::device::{Device, Queue};
 use vulkano::format::Format;
 use vulkano::format::{ClearColorValue, ClearValue};
 use vulkano::image::view::{ImageView, ImageViewCreateInfo};
-use vulkano::image::{AttachmentImage, ImageAspects, ImageDimensions, ImageSubresourceRange, ImageUsage, ImmutableImage, MipmapsCount, StorageImage};
+use vulkano::image::{AttachmentImage, ImageAspects, ImageDimensions, ImageSubresourceRange, ImageUsage, StorageImage};
 use vulkano::pipeline::graphics::input_assembly::{InputAssemblyState, PrimitiveTopology};
 use vulkano::pipeline::graphics::vertex_input::VertexInputState;
 use vulkano::pipeline::graphics::viewport::{Viewport, ViewportState};
@@ -49,14 +33,8 @@ struct SharedResource {
     composite_operation_pipeline: Arc<ComputePipeline>,
 }
 
-pub struct MPDeltaVideoRendererBuilder {
-    default_image: ImageType,
-    shared_resource: Arc<SharedResource>,
-}
-
-impl MPDeltaVideoRendererBuilder {
-    pub fn new(device: Arc<Device>, queue: Arc<Queue>) -> MPDeltaVideoRendererBuilder {
-        let (default_image, image_creation_future) = ImmutableImage::from_iter([0u32], ImageDimensions::Dim2d { width: 1, height: 1, array_layers: 1 }, MipmapsCount::One, Format::R8G8B8A8_UNORM, Arc::clone(&queue)).unwrap();
+impl SharedResource {
+    fn new(device: Arc<Device>, queue: Arc<Queue>) -> SharedResource {
         let render_pass = single_pass_renderpass!(
             Arc::clone(&device),
             attachments: {
@@ -96,102 +74,14 @@ impl MPDeltaVideoRendererBuilder {
         let composite_operation_shader = unsafe { ShaderModule::from_bytes(Arc::clone(&device), include_bytes!(concat!(env!("OUT_DIR"), "/composite_operation_shader.spv"))).unwrap() };
 
         let composite_operation_pipeline = ComputePipeline::new(Arc::clone(&device), composite_operation_shader.entry_point_with_execution("shader::main", vulkano::shader::spirv::ExecutionModel::GLCompute).unwrap(), &(), None, |_| {}).unwrap();
-        image_creation_future.then_signal_fence().wait(None).unwrap();
-        MPDeltaVideoRendererBuilder {
-            default_image: ImageType(default_image),
-            shared_resource: Arc::new(SharedResource {
-                device,
-                queue,
-                render_pass,
-                texture_drawing_pipeline,
-                composite_operation_pipeline,
-            }),
+        SharedResource {
+            device,
+            queue,
+            render_pass,
+            texture_drawing_pipeline,
+            composite_operation_pipeline,
         }
     }
-}
-
-#[async_trait]
-impl<T: ParameterValueType<'static, Image = ImageType> + 'static> VideoRendererBuilder<T> for MPDeltaVideoRendererBuilder {
-    type Renderer = MPDeltaVideoRenderer;
-
-    async fn create_renderer(&self, param: Placeholder<TagImage>, frames_per_second: f64, image_source_tree: ReadonlySourceTree<TagImage, ImageNativeTreeNode<T>>) -> Self::Renderer {
-        let cache = Arc::new(DashMap::new());
-        let (request_sender, request_receiver) = mpsc::unbounded_channel();
-        let notifier = Arc::new(Notify::new());
-        let handle = tokio::spawn(render_loop(Arc::clone(&self.shared_resource), param, frames_per_second, image_source_tree, Arc::clone(&cache), request_receiver, Arc::clone(&notifier)));
-        MPDeltaVideoRenderer {
-            handle,
-            cache,
-            request_sender,
-            notifier,
-            last: self.default_image.clone(),
-        }
-    }
-}
-
-#[derive(Debug)]
-enum RenderRequest {
-    Render(usize),
-    Shutdown,
-}
-
-pub struct MPDeltaVideoRenderer {
-    handle: JoinHandle<()>,
-    cache: Arc<DashMap<usize, ImageType>>,
-    request_sender: UnboundedSender<RenderRequest>,
-    notifier: Arc<Notify>,
-    last: ImageType,
-}
-
-#[async_trait]
-impl VideoRenderer<ImageType> for MPDeltaVideoRenderer {
-    async fn render_frame(&mut self, frame: usize, timeout: Duration) -> ImageType {
-        let frame = tokio::time::timeout(timeout, async {
-            if let Some((_, frame)) = self.cache.remove(&frame) {
-                return frame.clone();
-            }
-            let _ = self.request_sender.send(RenderRequest::Render(frame));
-            loop {
-                self.notifier.notified().await;
-                if let Some((_, frame)) = self.cache.remove(&frame) {
-                    return frame.clone();
-                }
-            }
-        })
-        .await
-        .unwrap_or_else(|_| self.last.clone());
-        self.last = frame.clone();
-        frame
-    }
-}
-
-impl Drop for MPDeltaVideoRenderer {
-    fn drop(&mut self) {
-        let _ = self.request_sender.send(RenderRequest::Shutdown);
-    }
-}
-
-async fn render_loop<T: ParameterValueType<'static, Image = ImageType> + 'static>(
-    shared_resource: Arc<SharedResource>,
-    param: Placeholder<TagImage>,
-    frames_per_second: f64,
-    image_source_tree: ReadonlySourceTree<TagImage, ImageNativeTreeNode<T>>,
-    cache: Arc<DashMap<usize, ImageType>>,
-    mut request_receiver: UnboundedReceiver<RenderRequest>,
-    notifier: Arc<Notify>,
-) {
-    let mut frame = 0;
-    let image_source_tree = Arc::new(image_source_tree);
-    loop {
-        match request_receiver.recv().await {
-            Some(RenderRequest::Render(f)) => frame = f,
-            None | Some(RenderRequest::Shutdown) => break,
-        }
-        cache.insert(frame, render(Arc::clone(&shared_resource), (1920, 1080), param, Arc::clone(&image_source_tree), TimelineTime::new(frame as f64 / frames_per_second).unwrap()).await.unwrap().0);
-        notifier.notify_one();
-        frame += 1;
-    }
-    while let Some(_) = request_receiver.recv().await {}
 }
 
 fn div_ceil(a: u32, b: u32) -> u32 {
@@ -214,284 +104,221 @@ fn mat4_into_glam(mat: Matrix4<f64>) -> Mat4 {
     Mat4::from_cols(vec4_into_glam(mat.x), vec4_into_glam(mat.y), vec4_into_glam(mat.z), vec4_into_glam(mat.w))
 }
 
-fn render<Audio: Clone + Send + Sync + 'static, T: ParameterValueType<'static, Image = ImageType, Audio = Audio> + 'static>(
-    shared_resource: Arc<SharedResource>,
-    required_size: (u32, u32),
-    param: Placeholder<TagImage>,
-    image_source_tree: Arc<ReadonlySourceTree<TagImage, ImageNativeTreeNode<T>>>,
-    at: TimelineTime,
-) -> BoxFuture<'static, Option<(ImageType, Option<(Arc<AttachmentImage>, BlendMode, CompositeOperation)>)>> {
-    async move {
-        match &*image_source_tree.get(param).unwrap() {
-            Either::Right((image_params, native_processor)) => {
-                match (image_params.opacity.first_time(), image_params.opacity.last_time()) {
-                    (Some(first), Some(last)) if at < first || last < at => return None,
-                    (None, _) => return None,
-                    _ => {}
-                }
-                let image_param = image_params.get(at);
-                let image_native_size = match (required_size.0 * image_param.aspect_ratio.1).cmp(&(required_size.1 * image_param.aspect_ratio.0)) {
-                    Ordering::Greater => (div_ceil(image_param.aspect_ratio.0 * required_size.1, image_params.aspect_ratio.1), required_size.1),
-                    Ordering::Equal => required_size,
-                    Ordering::Less => (required_size.0, div_ceil(image_param.aspect_ratio.1 * required_size.0, image_params.aspect_ratio.0)),
-                };
-                let tasks = (0..native_processor.parameter.len())
-                    .map(|i| {
-                        let params = Arc::clone(&native_processor.parameter);
-                        let shared_resource = Arc::clone(&shared_resource);
-                        let image_source_tree = Arc::clone(&image_source_tree);
-                        tokio::spawn(get_param(params, i, shared_resource, image_native_size, image_source_tree, at))
-                    })
-                    .collect::<Vec<_>>();
-                let transform_mat = match image_param.transform {
-                    ImageRequiredParamsTransformFixed::Params { scale, translate, rotate, scale_center, rotate_center } => {
-                        scale_mat(Vector3::new(image_native_size.0 as f64 / required_size.0 as f64, image_native_size.1 as f64 / required_size.1 as f64, 1.))
-                            * move_mat(-scale_center)
-                            * scale_mat(scale)
-                            * move_mat(scale_center)
-                            * move_mat(-rotate_center)
-                            * Matrix4::from(rotate)
-                            * move_mat(rotate_center)
-                            * move_mat(translate)
-                    }
-                    ImageRequiredParamsTransformFixed::Free {
-                        left_top: _,
-                        right_top: _,
-                        left_bottom: _,
-                        right_bottom: _,
-                    } => todo!(),
-                };
-                let transform_matrix = mat4_into_glam(transform_mat);
-                let parameters = stream::iter(tasks).then(|param| async move { param.await.unwrap() }).collect::<Vec<_>>().await;
-                let ImageType(image) = native_processor.processor.process(&parameters).into_image().unwrap();
-                // imageを空間に貼る
-                let mut builder = AutoCommandBufferBuilder::primary(Arc::clone(&shared_resource.device), shared_resource.queue.family(), CommandBufferUsage::OneTimeSubmit).unwrap();
-                let image_view = ImageView::new(
-                    image,
-                    ImageViewCreateInfo {
-                        format: Some(Format::R8G8B8A8_UNORM),
-                        subresource_range: ImageSubresourceRange {
-                            aspects: ImageAspects { color: true, ..ImageAspects::default() },
-                            mip_levels: 0..1,
-                            array_layers: 0..1,
-                        },
-                        ..ImageViewCreateInfo::default()
-                    },
-                )
-                .unwrap();
-                let result_image = AttachmentImage::with_usage(Arc::clone(&shared_resource.device), [required_size.0, required_size.1], Format::R8G8B8A8_UNORM, ImageUsage { storage: true, ..ImageUsage::none() }).unwrap();
-                let result_image_view = ImageView::new(
-                    Arc::clone(&result_image),
-                    ImageViewCreateInfo {
-                        format: Some(Format::R8G8B8A8_UNORM),
-                        subresource_range: ImageSubresourceRange {
-                            aspects: ImageAspects { color: true, ..ImageAspects::default() },
-                            mip_levels: 0..1,
-                            array_layers: 0..1,
-                        },
-                        ..ImageViewCreateInfo::default()
-                    },
-                )
-                .unwrap();
-                let depth = AttachmentImage::with_usage(Arc::clone(&shared_resource.device), [required_size.0, required_size.1], Format::R32_UINT, ImageUsage { storage: true, ..ImageUsage::none() }).unwrap();
-                let depth_view = ImageView::new(
-                    Arc::clone(&depth),
-                    ImageViewCreateInfo {
-                        format: Some(Format::R32_UINT),
-                        subresource_range: ImageSubresourceRange {
-                            aspects: ImageAspects { color: true, ..ImageAspects::default() },
-                            mip_levels: 0..1,
-                            array_layers: 0..1,
-                        },
-                        ..ImageViewCreateInfo::default()
-                    },
-                )
-                .unwrap();
-                let frame_buffer = Framebuffer::new(
-                    Arc::clone(&shared_resource.render_pass),
-                    FramebufferCreateInfo {
-                        attachments: vec![result_image_view, depth_view],
-                        extent: [required_size.0, required_size.1],
-                        layers: 0,
-                        ..FramebufferCreateInfo::default()
-                    },
-                )
-                .unwrap();
-                builder
-                    .begin_render_pass(
-                        RenderPassBeginInfo {
-                            clear_values: vec![Some(ClearValue::Float(image_params.background_color.map(|i| i as f32 / 255.))), Some(ClearValue::Uint([0; 4]))],
-                            ..RenderPassBeginInfo::framebuffer(frame_buffer)
-                        },
-                        SubpassContents::Inline,
-                    )
-                    .unwrap();
-                builder.bind_pipeline_graphics(Arc::clone(&shared_resource.texture_drawing_pipeline));
-                builder.set_viewport(
-                    0,
-                    [Viewport {
-                        origin: [0., 0.],
-                        dimensions: [required_size.0 as f32, required_size.1 as f32],
-                        depth_range: 0.0..1.0,
-                    }],
-                );
-                builder.push_constants(Arc::clone(shared_resource.texture_drawing_pipeline.layout()), 0, TextureDrawingConstant { transform_matrix });
-                builder.bind_descriptor_sets(
-                    PipelineBindPoint::Graphics,
-                    Arc::clone(shared_resource.texture_drawing_pipeline.layout()),
-                    0,
-                    PersistentDescriptorSet::new(
-                        Arc::clone(&shared_resource.texture_drawing_pipeline.layout().set_layouts()[0]),
-                        [
-                            WriteDescriptorSet::image_view(0, image_view),
-                            WriteDescriptorSet::sampler(1, Sampler::new(Arc::clone(&shared_resource.device), SamplerCreateInfo::simple_repeat_linear_no_mipmap()).unwrap()),
-                        ],
-                    )
-                    .unwrap(),
-                );
-                //StencilとTopologyはパイプラインで設定
-                builder.draw(4, 1, 0, 0).unwrap();
-                builder.end_render_pass().unwrap();
-                let command_buffer = builder.build().unwrap();
-                let future = command_buffer.execute(Arc::clone(&shared_resource.queue)).unwrap();
-                future.then_signal_fence_and_flush().unwrap().wait(None).unwrap();
-                Some((ImageType(result_image), Some((depth, image_param.blend_mode, image_param.composite_operation))))
-            }
-            Either::Left((images, time_shift)) => {
-                let at = time_shift.as_ref().map_or(at, |map| {
-                    if let Some((timeline_time_range, marker_time_range)) = map.iter().find(|(_, Range { start, end })| start.value() <= at.value() && at.value() < end.value()) {
-                        if (marker_time_range.end.value() - marker_time_range.start.value()).abs() < f64::EPSILON {
-                            timeline_time_range.start
-                        } else {
-                            let p = (marker_time_range.start.value() - at.value()) / (marker_time_range.end.value() - marker_time_range.start.value());
-                            TimelineTime::new(timeline_time_range.start.value() * (1. - p) + timeline_time_range.end.value() * p).unwrap()
-                        }
-                    } else {
-                        at
-                    }
-                });
-                let tasks = images.iter().map(|&image| tokio::spawn(render(Arc::clone(&shared_resource), required_size, image, Arc::clone(&image_source_tree), at))).collect::<Vec<_>>();
-                let result_image = StorageImage::new(
-                    Arc::clone(&shared_resource.device),
-                    ImageDimensions::Dim2d {
-                        width: required_size.0,
-                        height: required_size.1,
-                        array_layers: 1,
-                    },
-                    Format::R8G8B8A8_UNORM,
-                    [shared_resource.queue.family()],
-                )
-                .unwrap();
-                let result_image_view = ImageView::new(
-                    Arc::clone(&result_image),
-                    ImageViewCreateInfo {
-                        format: Some(Format::R8G8B8A8_UNORM),
-                        subresource_range: ImageSubresourceRange {
-                            aspects: ImageAspects { color: true, ..ImageAspects::default() },
-                            mip_levels: 0..1,
-                            array_layers: 0..1,
-                        },
-                        ..ImageViewCreateInfo::default()
-                    },
-                )
-                .unwrap();
-                let images = stream::iter(tasks).filter_map(|task| async move { task.await.unwrap() }).collect::<Vec<_>>().await;
-                let mut builder = AutoCommandBufferBuilder::primary(Arc::clone(&shared_resource.device), shared_resource.queue.family(), CommandBufferUsage::OneTimeSubmit).unwrap();
-                builder
-                    .clear_color_image(ClearColorImageInfo {
-                        clear_value: ClearColorValue::Float([0.; 4]),
-                        ..ClearColorImageInfo::image(Arc::clone(&result_image) as _)
-                    })
-                    .unwrap();
-                builder.bind_pipeline_compute(Arc::clone(&shared_resource.composite_operation_pipeline));
-                builder.bind_descriptor_sets(
-                    PipelineBindPoint::Compute,
-                    Arc::clone(shared_resource.composite_operation_pipeline.layout()),
-                    0,
-                    PersistentDescriptorSet::new(Arc::clone(&shared_resource.composite_operation_pipeline.layout().set_layouts()[0]), [WriteDescriptorSet::image_view(0, result_image_view)]).unwrap(),
-                );
-                for image in images {
-                    let (ImageType(image), (stencil, blend, composite)) = (image.0, image.1.unwrap());
-                    let image_view = ImageView::new(
-                        image,
-                        ImageViewCreateInfo {
-                            format: Some(Format::R8G8B8A8_UNORM),
-                            subresource_range: ImageSubresourceRange {
-                                aspects: ImageAspects { color: true, ..ImageAspects::default() },
-                                mip_levels: 0..1,
-                                array_layers: 0..1,
-                            },
-                            ..ImageViewCreateInfo::default()
-                        },
-                    )
-                    .unwrap();
-                    let stencil_view = ImageView::new(
-                        stencil,
-                        ImageViewCreateInfo {
-                            format: Some(Format::R32_UINT),
-                            subresource_range: ImageSubresourceRange {
-                                aspects: ImageAspects { color: true, ..ImageAspects::default() },
-                                mip_levels: 0..1,
-                                array_layers: 0..1,
-                            },
-                            ..ImageViewCreateInfo::default()
-                        },
-                    )
-                    .unwrap();
-                    builder.bind_descriptor_sets(
-                        PipelineBindPoint::Compute,
-                        Arc::clone(shared_resource.composite_operation_pipeline.layout()),
-                        1,
-                        PersistentDescriptorSet::new(
-                            Arc::clone(&shared_resource.composite_operation_pipeline.layout().set_layouts()[1]),
-                            [WriteDescriptorSet::image_view(0, image_view), WriteDescriptorSet::image_view(1, stencil_view)],
-                        )
-                        .unwrap(),
-                    );
-                    builder.push_constants(
-                        Arc::clone(shared_resource.composite_operation_pipeline.layout()),
-                        0,
-                        CompositeOperationConstant {
-                            composite: composite as u32,
-                            blend: blend as u32,
-                            image_width: required_size.0,
-                            image_height: required_size.1,
-                        },
-                    );
-                    builder.dispatch([div_ceil(required_size.0, 32), div_ceil(required_size.1, 32), 1]).unwrap();
-                }
-                builder.build().unwrap().execute(Arc::clone(&shared_resource.queue)).unwrap().then_signal_fence_and_flush().unwrap().wait(None).unwrap();
-                // imagesをぜんぶ合成する
-                Some((ImageType(result_image), None))
-            }
-        }
-    }
-    .boxed()
+pub struct ImageCombinerBuilder {
+    shared: Arc<SharedResource>,
 }
 
-async fn get_param<T: ParameterValueType<'static, Image = ImageType> + 'static>(
-    params: Arc<[Parameter<'static, NativeProcessorInput>]>,
-    index: usize,
-    shared_resource: Arc<SharedResource>,
-    required_size: (u32, u32),
-    image_source_tree: Arc<ReadonlySourceTree<TagImage, ImageNativeTreeNode<T>>>,
-    at: TimelineTime,
-) -> ParameterNativeProcessorInputFixed<ImageType, T::Audio> {
-    match &params[index] {
-        Parameter::None => Parameter::None,
-        Parameter::Image(image) => Parameter::Image(render(shared_resource, required_size, *image, image_source_tree, at).await.unwrap().0),
-        Parameter::Audio(_) => todo!(),
-        Parameter::Video(_) => todo!(),
-        Parameter::File(value) => Parameter::File(value.get(at).unwrap().clone()),
-        Parameter::String(value) => Parameter::String(value.get(at).unwrap().clone()),
-        Parameter::Select(value) => Parameter::Select(value.get(at).unwrap().clone()),
-        Parameter::Boolean(value) => Parameter::Boolean(value.get(at).unwrap().clone()),
-        Parameter::Radio(value) => Parameter::Radio(value.get(at).unwrap().clone()),
-        Parameter::Integer(value) => Parameter::Integer(value.get(at).unwrap().clone()),
-        Parameter::RealNumber(value) => Parameter::RealNumber(value.get(at).unwrap().clone()),
-        Parameter::Vec2(value) => Parameter::Vec2(value.get(at).unwrap().clone()),
-        Parameter::Vec3(value) => Parameter::Vec3(value.get(at).unwrap().clone()),
-        Parameter::Dictionary(_) => todo!(),
-        Parameter::ComponentClass(_) => unreachable!(),
+impl ImageCombinerBuilder {
+    pub fn new(device: Arc<Device>, queue: Arc<Queue>) -> ImageCombinerBuilder {
+        ImageCombinerBuilder { shared: Arc::new(SharedResource::new(device, queue)) }
+    }
+}
+
+impl CombinerBuilder<ImageType> for ImageCombinerBuilder {
+    type Request = ImageSizeRequest;
+    type Param = ImageRequiredParamsFixed;
+    type Combiner = ImageCombiner;
+
+    fn new_combiner(&self, request: Self::Request) -> Self::Combiner {
+        ImageCombiner {
+            shared: Arc::clone(&self.shared),
+            image_size_request: request,
+            buffer: Vec::new(),
+        }
+    }
+}
+
+pub struct ImageCombiner {
+    shared: Arc<SharedResource>,
+    image_size_request: ImageSizeRequest,
+    buffer: Vec<(ImageType, ImageRequiredParamsFixed)>,
+}
+
+impl Combiner<ImageType> for ImageCombiner {
+    type Param = ImageRequiredParamsFixed;
+
+    fn add(&mut self, data: ImageType, param: Self::Param) {
+        self.buffer.push((data, param))
+    }
+
+    fn collect(self) -> ImageType {
+        let ImageCombiner { shared: shared_resource, image_size_request, buffer } = self;
+        let image_width = image_size_request.width.ceil() as u32;
+        let image_height = image_size_request.height.ceil() as u32;
+        let result_image = StorageImage::new(
+            Arc::clone(&shared_resource.device),
+            ImageDimensions::Dim2d {
+                width: image_width,
+                height: image_height,
+                array_layers: 1,
+            },
+            Format::R8G8B8A8_UNORM,
+            [shared_resource.queue.family()],
+        )
+        .unwrap();
+        let result_image_view = ImageView::new(
+            Arc::clone(&result_image),
+            ImageViewCreateInfo {
+                format: Some(Format::R8G8B8A8_UNORM),
+                subresource_range: ImageSubresourceRange {
+                    aspects: ImageAspects { color: true, ..ImageAspects::default() },
+                    mip_levels: 0..1,
+                    array_layers: 0..1,
+                },
+                ..ImageViewCreateInfo::default()
+            },
+        )
+        .unwrap();
+        let mut builder = AutoCommandBufferBuilder::primary(Arc::clone(&shared_resource.device), shared_resource.queue.family(), CommandBufferUsage::OneTimeSubmit).unwrap();
+        builder
+            .clear_color_image(ClearColorImageInfo {
+                clear_value: ClearColorValue::Float([0., 0., 0., 0.]),
+                ..ClearColorImageInfo::image(Arc::clone(&result_image) as Arc<_>)
+            })
+            .unwrap();
+        let buffer_image = AttachmentImage::with_usage(Arc::clone(&shared_resource.device), [image_width, image_height], Format::R8G8B8A8_UNORM, ImageUsage { storage: true, ..ImageUsage::none() }).unwrap();
+        let buffer_image_view = ImageView::new(
+            Arc::clone(&buffer_image),
+            ImageViewCreateInfo {
+                format: Some(Format::R8G8B8A8_UNORM),
+                subresource_range: ImageSubresourceRange {
+                    aspects: ImageAspects { color: true, ..ImageAspects::default() },
+                    mip_levels: 0..1,
+                    array_layers: 0..1,
+                },
+                ..ImageViewCreateInfo::default()
+            },
+        )
+        .unwrap();
+        let depth = AttachmentImage::with_usage(Arc::clone(&shared_resource.device), [image_width, image_height], Format::R32_UINT, ImageUsage { storage: true, ..ImageUsage::none() }).unwrap();
+        let depth_view = ImageView::new(
+            Arc::clone(&depth),
+            ImageViewCreateInfo {
+                format: Some(Format::R32_UINT),
+                subresource_range: ImageSubresourceRange {
+                    aspects: ImageAspects { color: true, ..ImageAspects::default() },
+                    mip_levels: 0..1,
+                    array_layers: 0..1,
+                },
+                ..ImageViewCreateInfo::default()
+            },
+        )
+        .unwrap();
+        for (ImageType(image), image_param) in buffer {
+            let image_native_size = match (image_width * image_param.aspect_ratio.1).cmp(&(image_height * image_param.aspect_ratio.0)) {
+                Ordering::Greater => (div_ceil(image_param.aspect_ratio.0 * image_height, image_param.aspect_ratio.1), image_height),
+                Ordering::Equal => (image_width, image_height),
+                Ordering::Less => (image_width, div_ceil(image_param.aspect_ratio.1 * image_width, image_param.aspect_ratio.0)),
+            };
+            let transform_mat = match image_param.transform {
+                ImageRequiredParamsTransformFixed::Params { scale, translate, rotate, scale_center, rotate_center } => {
+                    scale_mat(Vector3::new(image_native_size.0 as f64 / image_size_request.width as f64, image_native_size.1 as f64 / image_size_request.height as f64, 1.))
+                        * move_mat(-scale_center)
+                        * scale_mat(scale)
+                        * move_mat(scale_center)
+                        * move_mat(-rotate_center)
+                        * Matrix4::from(rotate)
+                        * move_mat(rotate_center)
+                        * move_mat(translate)
+                }
+                ImageRequiredParamsTransformFixed::Free {
+                    left_top: _,
+                    right_top: _,
+                    left_bottom: _,
+                    right_bottom: _,
+                } => todo!(),
+            };
+            let transform_matrix = mat4_into_glam(transform_mat);
+            // imageを空間に貼る
+            let image_view = ImageView::new(
+                image,
+                ImageViewCreateInfo {
+                    format: Some(Format::R8G8B8A8_UNORM),
+                    subresource_range: ImageSubresourceRange {
+                        aspects: ImageAspects { color: true, ..ImageAspects::default() },
+                        mip_levels: 0..1,
+                        array_layers: 0..1,
+                    },
+                    ..ImageViewCreateInfo::default()
+                },
+            )
+            .unwrap();
+            let frame_buffer = Framebuffer::new(
+                Arc::clone(&shared_resource.render_pass),
+                FramebufferCreateInfo {
+                    attachments: vec![Arc::clone(&buffer_image_view) as Arc<_>, Arc::clone(&depth_view) as Arc<_>],
+                    extent: [image_width, image_height],
+                    layers: 0,
+                    ..FramebufferCreateInfo::default()
+                },
+            )
+            .unwrap();
+            builder
+                .begin_render_pass(
+                    RenderPassBeginInfo {
+                        clear_values: vec![Some(ClearValue::Float(image_param.background_color.map(|i| i as f32 / 255.))), Some(ClearValue::Uint([0; 4]))],
+                        ..RenderPassBeginInfo::framebuffer(frame_buffer)
+                    },
+                    SubpassContents::Inline,
+                )
+                .unwrap();
+            builder.bind_pipeline_graphics(Arc::clone(&shared_resource.texture_drawing_pipeline));
+            builder.set_viewport(
+                0,
+                [Viewport {
+                    origin: [0., 0.],
+                    dimensions: [image_size_request.width, image_size_request.height],
+                    depth_range: 0.0..1.0,
+                }],
+            );
+            builder.push_constants(Arc::clone(shared_resource.texture_drawing_pipeline.layout()), 0, TextureDrawingConstant { transform_matrix });
+            builder.bind_descriptor_sets(
+                PipelineBindPoint::Graphics,
+                Arc::clone(shared_resource.texture_drawing_pipeline.layout()),
+                0,
+                PersistentDescriptorSet::new(
+                    Arc::clone(&shared_resource.texture_drawing_pipeline.layout().set_layouts()[0]),
+                    [
+                        WriteDescriptorSet::image_view(0, image_view),
+                        WriteDescriptorSet::sampler(1, Sampler::new(Arc::clone(&shared_resource.device), SamplerCreateInfo::simple_repeat_linear_no_mipmap()).unwrap()),
+                    ],
+                )
+                .unwrap(),
+            );
+            //StencilとTopologyはパイプラインで設定
+            builder.draw(4, 1, 0, 0).unwrap();
+            builder.end_render_pass().unwrap();
+
+            builder.bind_pipeline_compute(Arc::clone(&shared_resource.composite_operation_pipeline));
+            builder.bind_descriptor_sets(
+                PipelineBindPoint::Compute,
+                Arc::clone(shared_resource.composite_operation_pipeline.layout()),
+                0,
+                PersistentDescriptorSet::new(Arc::clone(&shared_resource.composite_operation_pipeline.layout().set_layouts()[0]), [WriteDescriptorSet::image_view(0, Arc::clone(&result_image_view) as Arc<_>)]).unwrap(),
+            );
+            builder.bind_descriptor_sets(
+                PipelineBindPoint::Compute,
+                Arc::clone(shared_resource.composite_operation_pipeline.layout()),
+                1,
+                PersistentDescriptorSet::new(
+                    Arc::clone(&shared_resource.composite_operation_pipeline.layout().set_layouts()[1]),
+                    [WriteDescriptorSet::image_view(0, Arc::clone(&buffer_image_view) as Arc<_>), WriteDescriptorSet::image_view(1, Arc::clone(&depth_view) as Arc<_>)],
+                )
+                .unwrap(),
+            );
+            builder.push_constants(
+                Arc::clone(shared_resource.composite_operation_pipeline.layout()),
+                0,
+                CompositeOperationConstant {
+                    composite: image_param.composite_operation as u32,
+                    blend: image_param.blend_mode as u32,
+                    image_width,
+                    image_height,
+                },
+            );
+            builder.dispatch([div_ceil(image_width, 32), div_ceil(image_height, 32), 1]).unwrap();
+        }
+        builder.build().unwrap().execute(Arc::clone(&shared_resource.queue)).unwrap().then_signal_fence_and_flush().unwrap().wait(None).unwrap();
+        ImageType(result_image)
     }
 }

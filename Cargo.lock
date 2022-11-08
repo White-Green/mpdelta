@@ -89,6 +89,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "983cd8b9d4b02a6dc6ffa557262eb5858a27a0038ffffe21a0f133eaa819a164"
 
 [[package]]
+name = "arrayvec"
+version = "0.7.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8da52d66c7071e2e3fa2a1e5c6d088fec47b593032b254f5e980de8ea54454d6"
+
+[[package]]
 name = "ash"
 version = "0.37.0+1.3.209"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1211,6 +1217,8 @@ dependencies = [
 name = "mpdelta_renderer"
 version = "0.1.0"
 dependencies = [
+ "arc-swap",
+ "arrayvec",
  "async-recursion",
  "async-trait",
  "cgmath",
@@ -1218,9 +1226,10 @@ dependencies = [
  "either",
  "futures",
  "mpdelta_core",
+ "once_cell",
+ "pin-utils",
  "thiserror",
  "tokio",
- "uuid",
 ]
 
 [[package]]
@@ -1916,9 +1925,9 @@ dependencies = [
 
 [[package]]
 name = "smallvec"
-version = "1.8.1"
+version = "1.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cc88c725d61fc6c3132893370cac4a0200e3fedf5da8331c570664b1987f5ca2"
+checksum = "a507befe795404456341dfab10cef66ead4c041f62b8b11bbb92bffe5d0953e0"
 
 [[package]]
 name = "smithay-client-toolkit"

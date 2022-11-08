@@ -6,12 +6,12 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-mpdelta_core = { path = "../mpdelta_core" }
-egui = "0.18.1"
-tokio = { version = "1.19.2", features = ["full"] }
-arc-swap = "1.5.1"
-bitflags = "1.3.2"
-dashmap = "5.3.4"
-regex = "1.6.0"
-once_cell = "1.13.1"
-cgmath = "0.18.0"
+arc-swap = { workspace = true }
+bitflags = { workspace = true }
+cgmath = { workspace = true }
+dashmap = { workspace = true }
+egui = { workspace = true }
+mpdelta_core = { workspace = true }
+once_cell = { workspace = true }
+regex = { workspace = true }
+tokio = { workspace = true }

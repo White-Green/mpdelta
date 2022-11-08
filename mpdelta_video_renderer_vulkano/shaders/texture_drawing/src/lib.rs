@@ -1,4 +1,4 @@
-#![cfg_attr(target_arch = "spirv", no_std, feature(register_attr), register_attr(spirv), feature(asm_experimental_arch))]
+#![cfg_attr(target_arch = "spirv", no_std, feature(asm_experimental_arch))]
 // HACK(eddyb) can't easily see warnings otherwise from `spirv-builder` builds.
 #![deny(warnings)]
 use spirv_std::glam::Mat4;
@@ -10,15 +10,14 @@ pub struct TextureDrawingConstant {
 #[cfg(feature = "shader")]
 pub mod shader {
     use core::hint::unreachable_unchecked;
-    #[cfg(not(target_arch = "spirv"))]
-    use spirv_std::macros::spirv;
+    use spirv_std::spirv;
 
     use crate::TextureDrawingConstant;
     use spirv_std::glam::{vec4, Vec2, Vec4};
     use spirv_std::{Image, Sampler};
 
     #[spirv(fragment)]
-    pub fn main_fs(#[spirv(descriptor_set = 0, binding = 0)] image: &Image!(2D, format=rgba8, sampled=true), #[spirv(descriptor_set = 0, binding = 1)] sampler: &Sampler, uv: Vec2, output: &mut Vec4, #[spirv(flat)] output_stencil: &mut u32) {
+    pub fn main_fs(#[spirv(descriptor_set = 0, binding = 0)] image: &Image!(2D, format=rgba8, sampled=true), #[spirv(descriptor_set = 0, binding = 1)] sampler: &Sampler, uv: Vec2, output: &mut Vec4, output_stencil: &mut u32) {
         *output = image.sample(*sampler, uv);
         *output_stencil = 1;
     }

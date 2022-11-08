@@ -1,5 +1,5 @@
 [package]
-name = "composite_operation_shader"
+name = "shader_texture_drawing"
 version = "0.1.0"
 edition = "2021"
 
@@ -9,7 +9,7 @@ edition = "2021"
 crate-type = ["rlib", "dylib"]
 
 [dependencies]
-spirv-std = { git = "https://github.com/EmbarkStudios/rust-gpu/", rev = "5feee3b701ac1f7960efbdf413b8013038767df3", features = ["glam"], optional = true }
+spirv-std = { workspace = true, optional = true }
 
 [features]
 shader = ["spirv-std"]

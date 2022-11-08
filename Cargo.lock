@@ -104,17 +104,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "async-recursion"
-version = "1.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2cda8f4bcc10624c4e85bc66b3f452cca98cfa5ca002dc83a16aad2367641bea"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
-]
-
-[[package]]
 name = "async-trait"
 version = "0.1.56"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -843,9 +832,9 @@ dependencies = [
 
 [[package]]
 name = "glam"
-version = "0.21.3"
+version = "0.22.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "518faa5064866338b013ff9b2350dc318e14cc4fcd6cb8206d7e7c9886c98815"
+checksum = "12f597d56c1bd55a811a1be189459e8fad2bbc272616375602443bdfb37fa774"
 dependencies = [
  "num-traits",
 ]
@@ -1219,7 +1208,6 @@ version = "0.1.0"
 dependencies = [
  "arc-swap",
  "arrayvec",
- "async-recursion",
  "async-trait",
  "cgmath",
  "dashmap",
@@ -1227,7 +1215,6 @@ dependencies = [
  "futures",
  "mpdelta_core",
  "once_cell",
- "pin-utils",
  "thiserror",
  "tokio",
 ]
@@ -1249,7 +1236,6 @@ dependencies = [
 name = "mpdelta_video_renderer_vulkano"
 version = "0.1.0"
 dependencies = [
- "async-recursion",
  "async-trait",
  "cgmath",
  "composite_operation_shader",
@@ -1264,7 +1250,6 @@ dependencies = [
  "texture_drawing_shader",
  "tokio",
  "vulkano",
- "vulkano-shaders",
 ]
 
 [[package]]
@@ -1764,8 +1749,8 @@ checksum = "7ef03e0a2b150c7a90d01faf6254c9c48a41e95fb2a8c2ac1c6f0d2b9aefc342"
 
 [[package]]
 name = "rustc_codegen_spirv"
-version = "0.4.0-alpha.14"
-source = "git+https://github.com/EmbarkStudios/rust-gpu/?rev=5feee3b701ac1f7960efbdf413b8013038767df3#5feee3b701ac1f7960efbdf413b8013038767df3"
+version = "0.4.0-alpha.16"
+source = "git+https://github.com/EmbarkStudios/rust-gpu/?rev=c248806bf0be9cc59e996e0cf61585513a0e3890#c248806bf0be9cc59e996e0cf61585513a0e3890"
 dependencies = [
  "ar",
  "bimap",
@@ -1773,6 +1758,8 @@ dependencies = [
  "indexmap",
  "libc",
  "num-traits",
+ "once_cell",
+ "regex",
  "rspirv",
  "rustc-demangle",
  "rustc_codegen_spirv-types",
@@ -1786,8 +1773,8 @@ dependencies = [
 
 [[package]]
 name = "rustc_codegen_spirv-types"
-version = "0.4.0-alpha.14"
-source = "git+https://github.com/EmbarkStudios/rust-gpu/?rev=5feee3b701ac1f7960efbdf413b8013038767df3#5feee3b701ac1f7960efbdf413b8013038767df3"
+version = "0.4.0-alpha.16"
+source = "git+https://github.com/EmbarkStudios/rust-gpu/?rev=c248806bf0be9cc59e996e0cf61585513a0e3890#c248806bf0be9cc59e996e0cf61585513a0e3890"
 dependencies = [
  "rspirv",
  "serde",
@@ -1970,8 +1957,8 @@ dependencies = [
 
 [[package]]
 name = "spirv-builder"
-version = "0.4.0-alpha.14"
-source = "git+https://github.com/EmbarkStudios/rust-gpu/?rev=5feee3b701ac1f7960efbdf413b8013038767df3#5feee3b701ac1f7960efbdf413b8013038767df3"
+version = "0.4.0-alpha.16"
+source = "git+https://github.com/EmbarkStudios/rust-gpu/?rev=c248806bf0be9cc59e996e0cf61585513a0e3890#c248806bf0be9cc59e996e0cf61585513a0e3890"
 dependencies = [
  "memchr",
  "raw-string",
@@ -1983,8 +1970,8 @@ dependencies = [
 
 [[package]]
 name = "spirv-std"
-version = "0.4.0-alpha.14"
-source = "git+https://github.com/EmbarkStudios/rust-gpu/?rev=5feee3b701ac1f7960efbdf413b8013038767df3#5feee3b701ac1f7960efbdf413b8013038767df3"
+version = "0.4.0-alpha.16"
+source = "git+https://github.com/EmbarkStudios/rust-gpu/?rev=c248806bf0be9cc59e996e0cf61585513a0e3890#c248806bf0be9cc59e996e0cf61585513a0e3890"
 dependencies = [
  "bitflags",
  "glam",
@@ -1995,8 +1982,8 @@ dependencies = [
 
 [[package]]
 name = "spirv-std-macros"
-version = "0.4.0-alpha.14"
-source = "git+https://github.com/EmbarkStudios/rust-gpu/?rev=5feee3b701ac1f7960efbdf413b8013038767df3#5feee3b701ac1f7960efbdf413b8013038767df3"
+version = "0.4.0-alpha.16"
+source = "git+https://github.com/EmbarkStudios/rust-gpu/?rev=c248806bf0be9cc59e996e0cf61585513a0e3890#c248806bf0be9cc59e996e0cf61585513a0e3890"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2006,23 +1993,23 @@ dependencies = [
 
 [[package]]
 name = "spirv-std-types"
-version = "0.4.0-alpha.14"
-source = "git+https://github.com/EmbarkStudios/rust-gpu/?rev=5feee3b701ac1f7960efbdf413b8013038767df3#5feee3b701ac1f7960efbdf413b8013038767df3"
+version = "0.4.0-alpha.16"
+source = "git+https://github.com/EmbarkStudios/rust-gpu/?rev=c248806bf0be9cc59e996e0cf61585513a0e3890#c248806bf0be9cc59e996e0cf61585513a0e3890"
 
 [[package]]
 name = "spirv-tools"
-version = "0.8.0"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ca7f0f689581589b0a31000317fa31257cb24d040227708718ebd9fedf5cdd2b"
+checksum = "dc7c8ca2077515286505bd3ccd396e55ac5706e80322e1d6d22a82e1cad4f7c3"
 dependencies = [
  "spirv-tools-sys",
 ]
 
 [[package]]
 name = "spirv-tools-sys"
-version = "0.6.0"
+version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2980b0b4b2a9b5edfeb1dc8a35e84aac07b9c6dcd2339cce004d9355fb62a59d"
+checksum = "b4b32d9d6469cd6b50dcd6bd841204b5946b4fb7b70a97872717cdc417659c9a"
 dependencies = [
  "cc",
 ]

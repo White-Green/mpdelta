@@ -6,13 +6,13 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-cgmath = "0.18.0"
-uuid = "1.0.0"
-async-trait = "0.1.56"
-thiserror = "1.0.31"
-tokio = { version = "1.19.2", features = ["full"] }
-either = "1.7.0"
-futures = "0.3.21"
+async-trait = { workspace = true }
+cgmath = { workspace = true }
+either = { workspace = true }
+futures = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+uuid = { workspace = true }
 
 [dev-dependencies]
-regex = "1.5.5"
+regex = { workspace = true }

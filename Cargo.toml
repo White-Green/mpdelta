@@ -34,20 +34,56 @@ default-members = [
     "mpdelta_video_renderer_vulkano",
 ]
 
-[dependencies]
-vulkano = "0.30.0"
-vulkano-win = "0.30.0"
-winit = "0.26.0"
+[workspace.dependencies]
+arc-swap = "1.5.1"
+arrayvec = "0.7.2"
+async-trait = "0.1.56"
+bitflags = "1.3.2"
+cgmath = "0.18.0"
+clap = { version = "3.2.16", features = ["derive"] }
+dashmap = "5.3.4"
+egui = "0.18.1"
+egui_winit_vulkano = "0.19.0"
+either = "1.7.0"
+futures = "0.3.21"
+glam = { version = "0.22", default-features = false, features = ["libm"] }
 mpdelta_components = { path = "mpdelta_components" }
 mpdelta_core = { path = "mpdelta_core" }
 mpdelta_core_vulkano = { path = "mpdelta_core_vulkano" }
-mpdelta_services = { path = "mpdelta_services" }
-mpdelta_renderer = { path = "mpdelta_renderer" }
-mpdelta_video_renderer_vulkano = { path = "mpdelta_video_renderer_vulkano" }
 mpdelta_gui = { path = "mpdelta_gui" }
 mpdelta_gui_vulkano = { path = "mpdelta_gui_vulkano" }
+mpdelta_renderer = { path = "mpdelta_renderer" }
+mpdelta_services = { path = "mpdelta_services" }
+mpdelta_video_renderer_vulkano = { path = "mpdelta_video_renderer_vulkano" }
+once_cell = "1.13.1"
+regex = "1.6.0"
+shader_builder = { path = "mpdelta_build_utils/shader_builder" }
+spirv-builder = { git = "https://github.com/EmbarkStudios/rust-gpu/", rev = "c248806bf0be9cc59e996e0cf61585513a0e3890" }
+spirv-std = { git = "https://github.com/EmbarkStudios/rust-gpu/", rev = "c248806bf0be9cc59e996e0cf61585513a0e3890", features = ["glam"] }
+take_mut = "0.2.2"
+thiserror = "1.0.31"
+time = { version = "0.3.11", features = ["std"] }
 tokio = { version = "1.19.2", features = ["full"] }
-async-trait = "0.1.56"
+uuid = "1.0.0"
+vulkano = "0.30.0"
+vulkano-win = "0.30.0"
+winit = "0.26.0"
+
+
+[dependencies]
+async-trait = { workspace = true }
+mpdelta_components = { workspace = true }
+mpdelta_core = { workspace = true }
+mpdelta_core_vulkano = { workspace = true }
+mpdelta_gui = { workspace = true }
+mpdelta_gui_vulkano = { workspace = true }
+mpdelta_renderer = { workspace = true }
+mpdelta_services = { workspace = true }
+mpdelta_video_renderer_vulkano = { workspace = true }
+tokio = { workspace = true }
+vulkano = { workspace = true }
+vulkano-win = { workspace = true }
+winit = { workspace = true }
 
 [profile.dev]
 opt-level = 1

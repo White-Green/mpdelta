@@ -6,21 +6,19 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-mpdelta_core = { path = "../mpdelta_core" }
-mpdelta_core_vulkano = { path = "../mpdelta_core_vulkano" }
-mpdelta_renderer = { path = "../mpdelta_renderer" }
+async-trait = { workspace = true }
+cgmath = { workspace = true }
 composite_operation_shader = { path = "shaders/composite_operation_shader" }
+dashmap = { workspace = true }
+either = { workspace = true }
+futures = { workspace = true }
+glam = { workspace = true }
+mpdelta_core = { workspace = true }
+mpdelta_core_vulkano = { workspace = true }
+mpdelta_renderer = { workspace = true }
 texture_drawing_shader = { path = "shaders/texture_drawing_shader" }
-vulkano = "0.30.0"
-vulkano-shaders = { version = "0.30.0", features = ["shaderc-build-from-source"] }
-async-trait = "0.1.56"
-tokio = { version = "1.19.2", features = ["full"] }
-dashmap = "5.3.4"
-either = "1.7.0"
-futures = "0.3.21"
-async-recursion = "1.0.0"
-cgmath = "0.18.0"
-glam = { version = ">=0.17, <=0.21", default-features = false, features = ["libm"] }
+tokio = { workspace = true }
+vulkano = { workspace = true }
 
 [build-dependencies]
-shader_builder = { path = "../mpdelta_build_utils/shader_builder" }
+shader_builder = { workspace = true }

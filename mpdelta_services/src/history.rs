@@ -3,6 +3,7 @@ use mpdelta_core::component::instance::ComponentInstance;
 use mpdelta_core::core::EditHistory;
 use mpdelta_core::project::RootComponentClass;
 use mpdelta_core::ptr::StaticPointer;
+use qcell::TCell;
 use std::collections::{HashMap, VecDeque};
 use std::hash::Hash;
 use std::sync::Arc;
@@ -41,25 +42,25 @@ impl<Key: Hash + Eq, Log> HistoryStore<Key, Log> {
     }
 }
 
-pub struct InMemoryEditHistoryStore<T, Log>(Mutex<HistoryStore<(StaticPointer<RwLock<RootComponentClass<T>>>, Option<StaticPointer<RwLock<ComponentInstance<T>>>>), Arc<Log>>>);
+pub struct InMemoryEditHistoryStore<K: 'static, T, Log>(Mutex<HistoryStore<(StaticPointer<RwLock<RootComponentClass<K, T>>>, Option<StaticPointer<TCell<K, ComponentInstance<K, T>>>>), Arc<Log>>>);
 
-impl<T, Log> InMemoryEditHistoryStore<T, Log> {
-    pub fn new(max_history: usize) -> InMemoryEditHistoryStore<T, Log> {
+impl<K, T, Log> InMemoryEditHistoryStore<K, T, Log> {
+    pub fn new(max_history: usize) -> InMemoryEditHistoryStore<K, T, Log> {
         InMemoryEditHistoryStore(Mutex::new(HistoryStore::new(max_history)))
     }
 }
 
 #[async_trait]
-impl<T, Log: Send + Sync> EditHistory<T, Log> for InMemoryEditHistoryStore<T, Log> {
-    async fn push_history(&self, root: &StaticPointer<RwLock<RootComponentClass<T>>>, target: Option<&StaticPointer<RwLock<ComponentInstance<T>>>>, log: Log) {
+impl<K: 'static, T, Log: Send + Sync> EditHistory<K, T, Log> for InMemoryEditHistoryStore<K, T, Log> {
+    async fn push_history(&self, root: &StaticPointer<RwLock<RootComponentClass<K, T>>>, target: Option<&StaticPointer<TCell<K, ComponentInstance<K, T>>>>, log: Log) {
         self.0.lock().await.push_history((root.clone(), target.cloned()), Arc::new(log));
     }
 
-    async fn undo(&self, root: &StaticPointer<RwLock<RootComponentClass<T>>>, target: Option<&StaticPointer<RwLock<ComponentInstance<T>>>>) -> Option<Arc<Log>> {
+    async fn undo(&self, root: &StaticPointer<RwLock<RootComponentClass<K, T>>>, target: Option<&StaticPointer<TCell<K, ComponentInstance<K, T>>>>) -> Option<Arc<Log>> {
         self.0.lock().await.pop_undo(&(root.clone(), target.cloned())).map(Arc::clone)
     }
 
-    async fn redo(&self, root: &StaticPointer<RwLock<RootComponentClass<T>>>, target: Option<&StaticPointer<RwLock<ComponentInstance<T>>>>) -> Option<Arc<Log>> {
+    async fn redo(&self, root: &StaticPointer<RwLock<RootComponentClass<K, T>>>, target: Option<&StaticPointer<TCell<K, ComponentInstance<K, T>>>>) -> Option<Arc<Log>> {
         self.0.lock().await.pop_redo(&(root.clone(), target.cloned())).map(Arc::clone)
     }
 }

@@ -7,15 +7,16 @@ use crate::ptr::StaticPointer;
 use crate::time::TimelineTime;
 use cgmath::{One, Quaternion, Vector2, Vector3};
 use either::Either;
+use qcell::TCell;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt::{Debug, Formatter};
 use std::hash::{Hash, Hasher};
+use std::marker::PhantomData;
 use std::mem;
 use std::ops::Range;
 use std::path::PathBuf;
 use std::sync::Arc;
-use tokio::sync::RwLock;
 
 pub mod placeholder;
 pub mod value;
@@ -715,23 +716,27 @@ impl ParameterValueType for TypeExceptComponentClass {
     type ComponentClass = Never;
 }
 
-pub struct Value;
+pub struct Value<K>(PhantomData<K>);
 
-pub type ParameterValue = Parameter<Value>;
+unsafe impl<K> Send for Value<K> {}
 
-impl ParameterValueType for Value {
+unsafe impl<K> Sync for Value<K> {}
+
+pub type ParameterValue<K> = Parameter<Value<K>>;
+
+impl<K: 'static> ParameterValueType for Value<K> {
     type Image = Placeholder<TagImage>;
     type Audio = Placeholder<TagAudio>;
     type Video = (Placeholder<TagImage>, Placeholder<TagAudio>);
-    type File = TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, PathBuf>;
-    type String = TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, String>;
-    type Select = TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, usize>;
-    type Boolean = TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, bool>;
-    type Radio = TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, bool>;
-    type Integer = TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, i64>;
-    type RealNumber = TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, EasingValue<f64>>;
-    type Vec2 = Vector2<TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, EasingValue<f64>>>;
-    type Vec3 = Vector3<TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, EasingValue<f64>>>;
+    type File = TimeSplitValue<StaticPointer<TCell<K, MarkerPin>>, PathBuf>;
+    type String = TimeSplitValue<StaticPointer<TCell<K, MarkerPin>>, String>;
+    type Select = TimeSplitValue<StaticPointer<TCell<K, MarkerPin>>, usize>;
+    type Boolean = TimeSplitValue<StaticPointer<TCell<K, MarkerPin>>, bool>;
+    type Radio = TimeSplitValue<StaticPointer<TCell<K, MarkerPin>>, bool>;
+    type Integer = TimeSplitValue<StaticPointer<TCell<K, MarkerPin>>, i64>;
+    type RealNumber = TimeSplitValue<StaticPointer<TCell<K, MarkerPin>>, EasingValue<f64>>;
+    type Vec2 = Vector2<TimeSplitValue<StaticPointer<TCell<K, MarkerPin>>, EasingValue<f64>>>;
+    type Vec3 = Vector3<TimeSplitValue<StaticPointer<TCell<K, MarkerPin>>, EasingValue<f64>>>;
     type Dictionary = Never;
     type ComponentClass = ();
 }
@@ -779,45 +784,53 @@ impl ParameterValueType for FrameVariable {
     type ComponentClass = Never;
 }
 
-pub struct NullableValue;
+pub struct NullableValue<K>(PhantomData<K>);
 
-pub type ParameterNullableValue = Parameter<NullableValue>;
+unsafe impl<K> Send for NullableValue<K> {}
 
-impl ParameterValueType for NullableValue {
+unsafe impl<K> Sync for NullableValue<K> {}
+
+pub type ParameterNullableValue<K> = Parameter<NullableValue<K>>;
+
+impl<K: 'static> ParameterValueType for NullableValue<K> {
     type Image = Option<Placeholder<TagImage>>;
     type Audio = Option<Placeholder<TagAudio>>;
     type Video = Option<(Placeholder<TagImage>, Placeholder<TagAudio>)>;
-    type File = TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, Option<PathBuf>>;
-    type String = TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, Option<String>>;
-    type Select = TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, Option<usize>>;
-    type Boolean = TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, Option<bool>>;
-    type Radio = TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, Option<bool>>;
-    type Integer = TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, Option<i64>>;
-    type RealNumber = TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, Option<EasingValue<f64>>>;
-    type Vec2 = Vector2<TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, Option<EasingValue<f64>>>>;
-    type Vec3 = Vector3<TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, Option<EasingValue<f64>>>>;
+    type File = TimeSplitValue<StaticPointer<TCell<K, MarkerPin>>, Option<PathBuf>>;
+    type String = TimeSplitValue<StaticPointer<TCell<K, MarkerPin>>, Option<String>>;
+    type Select = TimeSplitValue<StaticPointer<TCell<K, MarkerPin>>, Option<usize>>;
+    type Boolean = TimeSplitValue<StaticPointer<TCell<K, MarkerPin>>, Option<bool>>;
+    type Radio = TimeSplitValue<StaticPointer<TCell<K, MarkerPin>>, Option<bool>>;
+    type Integer = TimeSplitValue<StaticPointer<TCell<K, MarkerPin>>, Option<i64>>;
+    type RealNumber = TimeSplitValue<StaticPointer<TCell<K, MarkerPin>>, Option<EasingValue<f64>>>;
+    type Vec2 = Vector2<TimeSplitValue<StaticPointer<TCell<K, MarkerPin>>, Option<EasingValue<f64>>>>;
+    type Vec3 = Vector3<TimeSplitValue<StaticPointer<TCell<K, MarkerPin>>, Option<EasingValue<f64>>>>;
     type Dictionary = Never;
     type ComponentClass = Option<()>;
 }
 
-pub struct TypedValue;
+pub struct TypedValue<K>(PhantomData<K>);
 
-pub type ParameterTypedValue = Parameter<TypedValue>;
+unsafe impl<K> Send for TypedValue<K> {}
 
-impl ParameterValueType for TypedValue {
+unsafe impl<K> Sync for TypedValue<K> {}
+
+pub type ParameterTypedValue<K> = Parameter<TypedValue<K>>;
+
+impl<K: 'static> ParameterValueType for TypedValue<K> {
     type Image = Placeholder<TagImage>;
     type Audio = Placeholder<TagAudio>;
     type Video = (Placeholder<TagImage>, Placeholder<TagAudio>);
-    type File = (Option<Box<[String]>>, TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, PathBuf>);
-    type String = (Option<Range<usize>>, TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, String>);
-    type Select = (Box<[String]>, TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, usize>);
-    type Boolean = TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, bool>;
-    type Radio = (usize, TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, bool>);
-    type Integer = (Option<Range<i64>>, TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, i64>);
-    type RealNumber = (Option<Range<f64>>, TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, EasingValue<f64>>);
-    type Vec2 = (Option<Range<Vector2<f64>>>, Vector2<TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, EasingValue<f64>>>);
-    type Vec3 = (Option<Range<Vector3<f64>>>, Vector3<TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, EasingValue<f64>>>);
-    type Dictionary = (HashMap<String, Parameter<Type>>, TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, HashMap<String, ParameterValue>>);
+    type File = (Option<Box<[String]>>, TimeSplitValue<StaticPointer<TCell<K, MarkerPin>>, PathBuf>);
+    type String = (Option<Range<usize>>, TimeSplitValue<StaticPointer<TCell<K, MarkerPin>>, String>);
+    type Select = (Box<[String]>, TimeSplitValue<StaticPointer<TCell<K, MarkerPin>>, usize>);
+    type Boolean = TimeSplitValue<StaticPointer<TCell<K, MarkerPin>>, bool>;
+    type Radio = (usize, TimeSplitValue<StaticPointer<TCell<K, MarkerPin>>, bool>);
+    type Integer = (Option<Range<i64>>, TimeSplitValue<StaticPointer<TCell<K, MarkerPin>>, i64>);
+    type RealNumber = (Option<Range<f64>>, TimeSplitValue<StaticPointer<TCell<K, MarkerPin>>, EasingValue<f64>>);
+    type Vec2 = (Option<Range<Vector2<f64>>>, Vector2<TimeSplitValue<StaticPointer<TCell<K, MarkerPin>>, EasingValue<f64>>>);
+    type Vec3 = (Option<Range<Vector3<f64>>>, Vector3<TimeSplitValue<StaticPointer<TCell<K, MarkerPin>>, EasingValue<f64>>>);
+    type Dictionary = (HashMap<String, Parameter<Type>>, TimeSplitValue<StaticPointer<TCell<K, MarkerPin>>, HashMap<String, ParameterValue<K>>>);
     type ComponentClass = ();
 }
 
@@ -993,18 +1006,14 @@ pub enum VariableParameterPriority {
     PrioritizeComponent,
 }
 
-type PinSplitValue<T> = TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, T>;
+type PinSplitValue<K, T> = TimeSplitValue<StaticPointer<TCell<K, MarkerPin>>, T>;
 
-pub enum VariableParameterValue<T, Manually, Nullable> {
+pub enum VariableParameterValue<K: 'static, T, Manually, Nullable> {
     Manually(Manually),
-    MayComponent {
-        params: Nullable,
-        components: Vec<StaticPointer<RwLock<ComponentInstance<T>>>>,
-        priority: VariableParameterPriority,
-    },
+    MayComponent { params: Nullable, components: Vec<StaticPointer<TCell<K, ComponentInstance<K, T>>>>, priority: VariableParameterPriority },
 }
 
-impl<T, Manually: Debug, Nullable: Debug> Debug for VariableParameterValue<T, Manually, Nullable> {
+impl<K, T, Manually: Debug, Nullable: Debug> Debug for VariableParameterValue<K, T, Manually, Nullable> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             VariableParameterValue::Manually(manually) => f.debug_tuple("Manually").field(manually).finish(),
@@ -1013,7 +1022,7 @@ impl<T, Manually: Debug, Nullable: Debug> Debug for VariableParameterValue<T, Ma
     }
 }
 
-impl<T, Manually: Clone, Nullable: Clone> Clone for VariableParameterValue<T, Manually, Nullable> {
+impl<K, T, Manually: Clone, Nullable: Clone> Clone for VariableParameterValue<K, T, Manually, Nullable> {
     fn clone(&self) -> Self {
         match self {
             VariableParameterValue::Manually(value) => VariableParameterValue::Manually(value.clone()),
@@ -1027,28 +1036,24 @@ impl<T, Manually: Clone, Nullable: Clone> Clone for VariableParameterValue<T, Ma
 }
 
 #[derive(Debug)]
-pub struct ImageRequiredParams<T> {
+pub struct ImageRequiredParams<K: 'static, T> {
     pub aspect_ratio: (u32, u32),
-    pub transform: ImageRequiredParamsTransform<T>,
+    pub transform: ImageRequiredParamsTransform<K, T>,
     pub background_color: [u8; 4],
-    pub opacity: PinSplitValue<EasingValue<f64>>,
-    pub blend_mode: PinSplitValue<BlendMode>,
-    pub composite_operation: PinSplitValue<CompositeOperation>,
+    pub opacity: PinSplitValue<K, EasingValue<f64>>,
+    pub blend_mode: PinSplitValue<K, BlendMode>,
+    pub composite_operation: PinSplitValue<K, CompositeOperation>,
 }
 
-impl<T> ImageRequiredParams<T> {
-    pub fn new_default(marker_left: &StaticPointer<RwLock<MarkerPin>>, marker_right: &StaticPointer<RwLock<MarkerPin>>) -> ImageRequiredParams<T> {
+impl<K, T> ImageRequiredParams<K, T> {
+    pub fn new_default(marker_left: &StaticPointer<TCell<K, MarkerPin>>, marker_right: &StaticPointer<TCell<K, MarkerPin>>) -> ImageRequiredParams<K, T> {
         let one = TimeSplitValue::new(marker_left.clone(), EasingValue { from: 1., to: 1., easing: Arc::new(DefaultEasing) }, marker_right.clone());
         let one_value = VariableParameterValue::Manually(one);
         let zero = VariableParameterValue::Manually(TimeSplitValue::new(marker_left.clone(), EasingValue { from: 0., to: 0., easing: Arc::new(DefaultEasing) }, marker_right.clone()));
         ImageRequiredParams {
             aspect_ratio: (1, 1),
             transform: ImageRequiredParamsTransform::Params {
-                scale: Vector3 {
-                    x: one_value.clone(),
-                    y: one_value.clone(),
-                    z: one_value,
-                },
+                scale: Vector3 { x: one_value.clone(), y: one_value.clone(), z: one_value },
                 translate: Vector3 { x: zero.clone(), y: zero.clone(), z: zero.clone() },
                 rotate: TimeSplitValue::new(
                     marker_left.clone(),
@@ -1070,7 +1075,7 @@ impl<T> ImageRequiredParams<T> {
     }
 }
 
-impl<T> Clone for ImageRequiredParams<T> {
+impl<K, T> Clone for ImageRequiredParams<K, T> {
     fn clone(&self) -> Self {
         let ImageRequiredParams {
             aspect_ratio,
@@ -1091,26 +1096,26 @@ impl<T> Clone for ImageRequiredParams<T> {
     }
 }
 
-pub type Vector3Params<T> = Vector3<VariableParameterValue<T, PinSplitValue<EasingValue<f64>>, PinSplitValue<Option<EasingValue<f64>>>>>;
+pub type Vector3Params<K, T> = Vector3<VariableParameterValue<K, T, PinSplitValue<K, EasingValue<f64>>, PinSplitValue<K, Option<EasingValue<f64>>>>>;
 
 #[derive(Debug)]
-pub enum ImageRequiredParamsTransform<T> {
+pub enum ImageRequiredParamsTransform<K: 'static, T> {
     Params {
-        scale: Vector3Params<T>,
-        translate: Vector3Params<T>,
-        rotate: TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, EasingValue<Quaternion<f64>>>,
-        scale_center: Vector3Params<T>,
-        rotate_center: Vector3Params<T>,
+        scale: Vector3Params<K, T>,
+        translate: Vector3Params<K, T>,
+        rotate: TimeSplitValue<StaticPointer<TCell<K, MarkerPin>>, EasingValue<Quaternion<f64>>>,
+        scale_center: Vector3Params<K, T>,
+        rotate_center: Vector3Params<K, T>,
     },
     Free {
-        left_top: Vector3Params<T>,
-        right_top: Vector3Params<T>,
-        left_bottom: Vector3Params<T>,
-        right_bottom: Vector3Params<T>,
+        left_top: Vector3Params<K, T>,
+        right_top: Vector3Params<K, T>,
+        left_bottom: Vector3Params<K, T>,
+        right_bottom: Vector3Params<K, T>,
     },
 }
 
-impl<T> Clone for ImageRequiredParamsTransform<T> {
+impl<K, T> Clone for ImageRequiredParamsTransform<K, T> {
     fn clone(&self) -> Self {
         match self {
             ImageRequiredParamsTransform::Params { scale, translate, rotate, scale_center, rotate_center } => ImageRequiredParamsTransform::Params {
@@ -1226,11 +1231,11 @@ pub enum ImageRequiredParamsTransformFixed {
 }
 
 #[derive(Debug)]
-pub struct AudioRequiredParams<T> {
-    pub volume: Vec<VariableParameterValue<T, PinSplitValue<EasingValue<f64>>, PinSplitValue<Option<EasingValue<f64>>>>>,
+pub struct AudioRequiredParams<K: 'static, T> {
+    pub volume: Vec<VariableParameterValue<K, T, PinSplitValue<K, EasingValue<f64>>, PinSplitValue<K, Option<EasingValue<f64>>>>>,
 }
 
-impl<T> Clone for AudioRequiredParams<T> {
+impl<K, T> Clone for AudioRequiredParams<K, T> {
     fn clone(&self) -> Self {
         let AudioRequiredParams { volume } = self;
         AudioRequiredParams { volume: volume.clone() }

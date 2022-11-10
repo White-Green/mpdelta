@@ -8,8 +8,8 @@ use tokio::sync::RwLock;
 pub struct TemporaryComponentClassLoader;
 
 #[async_trait]
-impl<T> ComponentClassLoader<T> for TemporaryComponentClassLoader {
-    async fn get_available_component_classes(&self) -> Cow<[StaticPointer<RwLock<dyn ComponentClass<T>>>]> {
+impl<K, T> ComponentClassLoader<K, T> for TemporaryComponentClassLoader {
+    async fn get_available_component_classes(&self) -> Cow<[StaticPointer<RwLock<dyn ComponentClass<K, T>>>]> {
         Cow::Borrowed(&[])
     }
 }

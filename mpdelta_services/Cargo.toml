@@ -9,6 +9,7 @@ edition = "2021"
 async-trait = { workspace = true }
 futures = { workspace = true }
 mpdelta_core = { workspace = true }
+qcell = { workspace = true }
 thiserror = { workspace = true }
 time = { workspace = true }
 tokio = { workspace = true }

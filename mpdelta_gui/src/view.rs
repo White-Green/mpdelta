@@ -7,8 +7,7 @@ use egui::{Button, Color32, Context, Frame, Pos2, Rect, Rounding, ScrollArea, Se
 use mpdelta_core::component::parameter::{ImageRequiredParamsTransform, ParameterValueType, VariableParameterValue};
 use mpdelta_core::time::TimelineTime;
 use mpdelta_core::usecase::{
-    EditUsecase, GetAvailableComponentClassesUsecase, GetLoadedProjectsUsecase, GetRootComponentClassesUsecase, LoadProjectUsecase, NewProjectUsecase, NewRootComponentClassUsecase, RealtimeComponentRenderer, RealtimeRenderComponentUsecase, RedoUsecase, SetOwnerForRootComponentClassUsecase,
-    UndoUsecase, WriteProjectUsecase,
+    EditUsecase, GetAvailableComponentClassesUsecase, GetLoadedProjectsUsecase, GetRootComponentClassesUsecase, LoadProjectUsecase, NewProjectUsecase, NewRootComponentClassUsecase, RealtimeComponentRenderer, RealtimeRenderComponentUsecase, RedoUsecase, SetOwnerForRootComponentClassUsecase, UndoUsecase, WriteProjectUsecase,
 };
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -19,30 +18,30 @@ pub trait Gui<T> {
     fn ui(&mut self, ctx: &Context, image: &mut impl ImageRegister<T>);
 }
 
-pub struct MPDeltaGUI<T, R> {
-    view_model: MPDeltaViewModel<T, R>,
+pub struct MPDeltaGUI<K: 'static, T, R> {
+    view_model: MPDeltaViewModel<K, T, R>,
     previous_preview: Option<TextureId>,
 }
 
-impl<T> MPDeltaGUI<T, ()> {
+impl<K, T> MPDeltaGUI<K, T, ()> {
     pub fn new<Edit, GetAvailableComponentClasses, GetLoadedProjects, GetRootComponentClasses, LoadProject, NewProject, NewRootComponentClass, RealtimeRenderComponent, Redo, SetOwnerForRootComponentClass, Undo, WriteProject>(
-        view_model_params: ViewModelParams<Edit, GetAvailableComponentClasses, GetLoadedProjects, GetRootComponentClasses, LoadProject, NewProject, NewRootComponentClass, RealtimeRenderComponent, Redo, SetOwnerForRootComponentClass, Undo, WriteProject>,
-    ) -> MPDeltaGUI<T, RealtimeRenderComponent::Renderer>
+        view_model_params: ViewModelParams<K, Edit, GetAvailableComponentClasses, GetLoadedProjects, GetRootComponentClasses, LoadProject, NewProject, NewRootComponentClass, RealtimeRenderComponent, Redo, SetOwnerForRootComponentClass, Undo, WriteProject>,
+    ) -> MPDeltaGUI<K, T, RealtimeRenderComponent::Renderer>
     where
         T: ParameterValueType,
-        Edit: EditUsecase<T> + Send + Sync + 'static,
-        GetAvailableComponentClasses: GetAvailableComponentClassesUsecase<T> + Send + Sync + 'static,
-        GetLoadedProjects: GetLoadedProjectsUsecase<T> + Send + Sync + 'static,
-        GetRootComponentClasses: GetRootComponentClassesUsecase<T> + Send + Sync + 'static,
-        LoadProject: LoadProjectUsecase<T> + Send + Sync + 'static,
-        NewProject: NewProjectUsecase<T> + Send + Sync + 'static,
-        NewRootComponentClass: NewRootComponentClassUsecase<T> + Send + Sync + 'static,
-        RealtimeRenderComponent: RealtimeRenderComponentUsecase<T> + Send + Sync + 'static,
+        Edit: EditUsecase<K, T> + Send + Sync + 'static,
+        GetAvailableComponentClasses: GetAvailableComponentClassesUsecase<K, T> + Send + Sync + 'static,
+        GetLoadedProjects: GetLoadedProjectsUsecase<K, T> + Send + Sync + 'static,
+        GetRootComponentClasses: GetRootComponentClassesUsecase<K, T> + Send + Sync + 'static,
+        LoadProject: LoadProjectUsecase<K, T> + Send + Sync + 'static,
+        NewProject: NewProjectUsecase<K, T> + Send + Sync + 'static,
+        NewRootComponentClass: NewRootComponentClassUsecase<K, T> + Send + Sync + 'static,
+        RealtimeRenderComponent: RealtimeRenderComponentUsecase<K, T> + Send + Sync + 'static,
         RealtimeRenderComponent::Renderer: Send + Sync + 'static,
-        Redo: RedoUsecase<T> + Send + Sync + 'static,
-        SetOwnerForRootComponentClass: SetOwnerForRootComponentClassUsecase<T> + Send + Sync + 'static,
-        Undo: UndoUsecase<T> + Send + Sync + 'static,
-        WriteProject: WriteProjectUsecase<T> + Send + Sync + 'static,
+        Redo: RedoUsecase<K, T> + Send + Sync + 'static,
+        SetOwnerForRootComponentClass: SetOwnerForRootComponentClassUsecase<K, T> + Send + Sync + 'static,
+        Undo: UndoUsecase<K, T> + Send + Sync + 'static,
+        WriteProject: WriteProjectUsecase<K, T> + Send + Sync + 'static,
     {
         MPDeltaGUI {
             view_model: MPDeltaViewModel::new::<Edit, GetAvailableComponentClasses, GetLoadedProjects, GetRootComponentClasses, LoadProject, NewProject, NewRootComponentClass, RealtimeRenderComponent, Redo, SetOwnerForRootComponentClass, Undo, WriteProject>(view_model_params),
@@ -51,7 +50,7 @@ impl<T> MPDeltaGUI<T, ()> {
     }
 }
 
-impl<T: ParameterValueType, R: RealtimeComponentRenderer<T>> Gui<T::Image> for MPDeltaGUI<T, R> {
+impl<K, T: ParameterValueType, R: RealtimeComponentRenderer<T>> Gui<T::Image> for MPDeltaGUI<K, T, R> {
     fn ui(&mut self, ctx: &Context, image: &mut impl ImageRegister<T::Image>) {
         egui::TopBottomPanel::top("menu").show(ctx, |ui| {
             egui::menu::bar(ui, |ui| {
@@ -162,8 +161,7 @@ impl<T: ParameterValueType, R: RealtimeComponentRenderer<T>> Gui<T::Image> for M
                         let from = &*from;
                         let to = &*to;
                         if selected.is_some() && (from.0.as_ref() == selected || to.0.as_ref() == selected) {
-                            ui.painter()
-                                .hline(base_point.x + (from.2.value() * 100.) as f32..=base_point.x + (to.2.value() * 100.) as f32, base_point.y + from.1.max(to.1) * 60. + 55., Stroke::new(1., ui.visuals().text_color()));
+                            ui.painter().hline(base_point.x + (from.2.value() * 100.) as f32..=base_point.x + (to.2.value() * 100.) as f32, base_point.y + from.1.max(to.1) * 60. + 55., Stroke::new(1., ui.visuals().text_color()));
                             ui.allocate_ui_at_rect(Rect::from_min_size(base_point + Vec2::new((from.2.value() * 100.) as f32, to.1.max(to.1) * 60. + 57.), Vec2::new(20., 100.)), |ui| {
                                 let len = &**len_str.load();
                                 let mut s = len.clone();

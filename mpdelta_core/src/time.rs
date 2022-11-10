@@ -1,7 +1,10 @@
 use crate::component::marker_pin::MarkerTime;
 use std::cmp::Ordering;
+use std::fmt::{Debug, Formatter};
 use std::hash::{Hash, Hasher};
 use std::ops::Neg;
+use std::sync::atomic;
+use std::sync::atomic::AtomicU64;
 
 /// タイムライン上での時間(秒)
 /// (-∞, ∞)
@@ -64,6 +67,40 @@ impl Neg for TimelineTime {
     fn neg(self) -> Self::Output {
         // 表現可能な数の範囲が正負で同一なのでsafe
         TimelineTime(-self.0)
+    }
+}
+
+pub struct AtomicTimelineTime(AtomicU64);
+
+impl AtomicTimelineTime {
+    pub fn new(value: TimelineTime) -> AtomicTimelineTime {
+        AtomicTimelineTime(AtomicU64::new(value.0.to_bits()))
+    }
+
+    pub fn load(&self, ordering: atomic::Ordering) -> TimelineTime {
+        TimelineTime(f64::from_bits(self.0.load(ordering)))
+    }
+
+    pub fn store(&self, value: TimelineTime, ordering: atomic::Ordering) {
+        self.0.store(value.0.to_bits(), ordering)
+    }
+}
+
+impl From<TimelineTime> for AtomicTimelineTime {
+    fn from(value: TimelineTime) -> Self {
+        AtomicTimelineTime::new(value)
+    }
+}
+
+impl Debug for AtomicTimelineTime {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        self.load(atomic::Ordering::Acquire).fmt(f)
+    }
+}
+
+impl Clone for AtomicTimelineTime {
+    fn clone(&self) -> Self {
+        AtomicTimelineTime::new(self.load(atomic::Ordering::Acquire))
     }
 }
 

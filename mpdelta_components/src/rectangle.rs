@@ -8,6 +8,7 @@ use mpdelta_core::native::processor::{NativeProcessor, ParameterNativeProcessorI
 use mpdelta_core::ptr::{StaticPointer, StaticPointerCow, StaticPointerOwned};
 use mpdelta_core::time::TimelineTime;
 use mpdelta_core_vulkano::ImageType;
+use qcell::TCell;
 use std::borrow::Cow;
 use std::sync::Arc;
 use std::time::Duration;
@@ -38,7 +39,7 @@ impl Rectangle {
 }
 
 #[async_trait]
-impl<T: ParameterValueType<Image = ImageType>> ComponentClass<T> for RectangleClass {
+impl<K, T: ParameterValueType<Image = ImageType>> ComponentClass<K, T> for RectangleClass {
     async fn generate_image(&self) -> bool {
         true
     }
@@ -55,9 +56,9 @@ impl<T: ParameterValueType<Image = ImageType>> ComponentClass<T> for RectangleCl
         &[]
     }
 
-    async fn instantiate(&self, this: &StaticPointer<RwLock<dyn ComponentClass<T>>>) -> ComponentInstance<T> {
-        let left = StaticPointerOwned::new(RwLock::new(MarkerPin::new(TimelineTime::ZERO, MarkerTime::ZERO)));
-        let right = StaticPointerOwned::new(RwLock::new(MarkerPin::new(TimelineTime::new(1.).unwrap(), MarkerTime::new(1.).unwrap())));
+    async fn instantiate(&self, this: &StaticPointer<RwLock<dyn ComponentClass<K, T>>>) -> ComponentInstance<K, T> {
+        let left = StaticPointerOwned::new(TCell::new(MarkerPin::new(TimelineTime::ZERO, MarkerTime::ZERO)));
+        let right = StaticPointerOwned::new(TCell::new(MarkerPin::new(TimelineTime::new(1.).unwrap(), MarkerTime::new(1.).unwrap())));
         let image_required_params = ImageRequiredParams::new_default(StaticPointerOwned::reference(&left), StaticPointerOwned::reference(&right));
         ComponentInstance::new_no_param(this.clone(), StaticPointerCow::Owned(left), StaticPointerCow::Owned(right), Some(image_required_params), None, Arc::clone(&self.0) as _)
     }
@@ -69,22 +70,19 @@ impl<T: ParameterValueType<Image = ImageType>> NativeProcessorBuilder<T> for Rec
     }
 
     fn build(&self, _: &[ParameterValueFixed], _: &[ParameterFrameVariableValue], _: &[(String, ParameterType)], _: &mut dyn Iterator<Item = TimelineTime>, _: &dyn Fn(TimelineTime) -> MarkerTime) -> NativeProcessorExecutable<T> {
-        NativeProcessorExecutable {
-            processor: Arc::new(self.clone()),
-            parameter: Arc::new([]),
-        }
+        NativeProcessorExecutable { processor: Arc::new(self.clone()), parameter: Arc::new([]) }
     }
 }
 
 #[async_trait]
-impl<T: ParameterValueType<Image = ImageType>> ComponentProcessor<T> for Rectangle {
+impl<K, T: ParameterValueType<Image = ImageType>> ComponentProcessor<K, T> for Rectangle {
     async fn update_variable_parameter(&self, _: &mut [ParameterValueFixed], _: &mut Vec<(String, ParameterType)>) {}
 
     async fn natural_length(&self, _: &[ParameterValueFixed]) -> Duration {
         Duration::from_secs(1)
     }
 
-    async fn get_processor(&self) -> ComponentProcessorBody<'_, T> {
+    async fn get_processor(&self) -> ComponentProcessorBody<'_, K, T> {
         ComponentProcessorBody::Native(Cow::Owned(vec![Arc::new(self.clone()) as Arc<_>]))
     }
 }

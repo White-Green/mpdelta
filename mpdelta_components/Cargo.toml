@@ -9,5 +9,6 @@ edition = "2021"
 async-trait = { workspace = true }
 mpdelta_core = { workspace = true }
 mpdelta_core_vulkano = { workspace = true }
+qcell = { workspace = true }
 tokio = { workspace = true }
 vulkano = { workspace = true }

@@ -15,5 +15,6 @@ either = { workspace = true }
 futures = { workspace = true }
 mpdelta_core = { workspace = true }
 once_cell = { workspace = true }
+qcell = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }

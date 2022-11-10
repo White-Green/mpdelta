@@ -12,10 +12,10 @@ pub struct TemporaryProjectLoader;
 pub enum Infallible {}
 
 #[async_trait]
-impl<T> ProjectLoader<T> for TemporaryProjectLoader {
+impl<K, T> ProjectLoader<K, T> for TemporaryProjectLoader {
     type Err = Infallible;
 
-    async fn load_project(&self, _: &Path) -> Result<StaticPointerOwned<RwLock<Project<T>>>, Self::Err> {
+    async fn load_project(&self, _: &Path) -> Result<StaticPointerOwned<RwLock<Project<K, T>>>, Self::Err> {
         todo!("ProjectLoader is not implemented yet")
     }
 }
@@ -23,10 +23,10 @@ impl<T> ProjectLoader<T> for TemporaryProjectLoader {
 pub struct TemporaryProjectWriter;
 
 #[async_trait]
-impl<T> ProjectWriter<T> for TemporaryProjectWriter {
+impl<K, T> ProjectWriter<K, T> for TemporaryProjectWriter {
     type Err = Infallible;
 
-    async fn write_project(&self, _: &StaticPointer<RwLock<Project<T>>>, _: &Path) -> Result<(), Self::Err> {
+    async fn write_project(&self, _: &StaticPointer<RwLock<Project<K, T>>>, _: &Path) -> Result<(), Self::Err> {
         todo!("ProjectWriter is not implemented yet")
     }
 }

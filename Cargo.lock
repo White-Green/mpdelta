@@ -1129,6 +1129,7 @@ dependencies = [
  "mpdelta_renderer",
  "mpdelta_services",
  "mpdelta_video_renderer_vulkano",
+ "qcell",
  "tokio",
  "vulkano",
  "vulkano-win",
@@ -1142,6 +1143,7 @@ dependencies = [
  "async-trait",
  "mpdelta_core",
  "mpdelta_core_vulkano",
+ "qcell",
  "tokio",
  "vulkano",
 ]
@@ -1154,6 +1156,7 @@ dependencies = [
  "cgmath",
  "either",
  "futures",
+ "qcell",
  "regex",
  "thiserror",
  "tokio",
@@ -1178,6 +1181,7 @@ dependencies = [
  "egui",
  "mpdelta_core",
  "once_cell",
+ "qcell",
  "regex",
  "tokio",
 ]
@@ -1207,6 +1211,7 @@ dependencies = [
  "futures",
  "mpdelta_core",
  "once_cell",
+ "qcell",
  "thiserror",
  "tokio",
 ]
@@ -1218,6 +1223,7 @@ dependencies = [
  "async-trait",
  "futures",
  "mpdelta_core",
+ "qcell",
  "thiserror",
  "time",
  "tokio",
@@ -1599,6 +1605,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dd96a1e8ed2596c337f8eae5f24924ec83f5ad5ab21ea8e455d3566c69fbcaf7"
 dependencies = [
  "unicode-ident",
+]
+
+[[package]]
+name = "qcell"
+version = "0.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1b632aa7e99db96aa805f87e389f801c536f6785ded873a4e3fbc0441747cc40"
+dependencies = [
+ "once_cell",
 ]
 
 [[package]]

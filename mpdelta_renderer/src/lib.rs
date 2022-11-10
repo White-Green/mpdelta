@@ -7,7 +7,7 @@ use cgmath::{One, Quaternion, Vector2, Vector3};
 use dashmap::DashMap;
 use either::Either;
 use futures::stream::{self, StreamExt};
-use futures::{pin_mut, FutureExt, Stream, TryFutureExt, TryStreamExt};
+use futures::{FutureExt, TryFutureExt, TryStreamExt};
 use mpdelta_core::common::time_split_value::TimeSplitValue;
 use mpdelta_core::component::instance::ComponentInstance;
 use mpdelta_core::component::link::MarkerLink;
@@ -15,17 +15,18 @@ use mpdelta_core::component::marker_pin::{MarkerPin, MarkerTime};
 use mpdelta_core::component::parameter::placeholder::{Placeholder, TagAudio, TagImage};
 use mpdelta_core::component::parameter::value::{EasingValue, FrameVariableValue};
 use mpdelta_core::component::parameter::{
-    AudioRequiredParams, AudioRequiredParamsFrameVariable, ComponentProcessorInputValue, ImageRequiredParams, ImageRequiredParamsFixed, ImageRequiredParamsFrameVariable, ImageRequiredParamsTransform, ImageRequiredParamsTransformFrameVariable, Never, Opacity, Parameter, ParameterAllValues,
-    ParameterFrameVariableValue, ParameterNullableValue, ParameterSelect, ParameterValue, ParameterValueType, VariableParameterPriority, VariableParameterValue,
+    AudioRequiredParams, AudioRequiredParamsFrameVariable, ComponentProcessorInputValue, ImageRequiredParams, ImageRequiredParamsFixed, ImageRequiredParamsFrameVariable, ImageRequiredParamsTransform, ImageRequiredParamsTransformFrameVariable, Never, Opacity, Parameter, ParameterAllValues, ParameterFrameVariableValue, ParameterNullableValue,
+    ParameterSelect, ParameterValue, ParameterValueType, VariableParameterPriority, VariableParameterValue,
 };
 use mpdelta_core::component::processor::{ComponentProcessor, ComponentProcessorBody, NativeProcessorExecutable, NativeProcessorInput};
 use mpdelta_core::core::{ComponentRendererBuilder, IdGenerator};
 use mpdelta_core::native::processor::ParameterNativeProcessorInputFixed;
-use mpdelta_core::ptr::{StaticPointer, StaticPointerCow, StaticPointerStrongRef};
+use mpdelta_core::ptr::{StaticPointer, StaticPointerCow};
 use mpdelta_core::time::TimelineTime;
 use mpdelta_core::usecase::RealtimeComponentRenderer;
 use once_cell::sync::OnceCell;
-use std::borrow::{Borrow, Cow};
+use qcell::{TCell, TCellOwner};
+use std::borrow::Borrow;
 use std::cmp::Ordering;
 use std::collections::hash_map::Entry;
 use std::collections::{btree_map, BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
@@ -40,44 +41,40 @@ use std::sync::Arc;
 use std::{array, future, iter};
 use thiserror::Error;
 use tokio::runtime::Handle;
-use tokio::sync::{RwLock, RwLockReadGuard};
+use tokio::sync::{OwnedRwLockReadGuard, RwLock};
 use tokio::task::JoinHandle;
 
 mod cell_by_need;
 mod cloneable_iterator;
 
-pub struct MPDeltaRendererBuilder<Id, ImageCombinerBuilder, AudioCombinerBuilder> {
+pub struct MPDeltaRendererBuilder<K: 'static, Id, ImageCombinerBuilder, AudioCombinerBuilder> {
     id: Arc<Id>,
     image_combiner_builder: Arc<ImageCombinerBuilder>,
     audio_combiner_builder: Arc<AudioCombinerBuilder>,
+    key: Arc<RwLock<TCellOwner<K>>>,
 }
 
-impl<Id, ImageCombinerBuilder, AudioCombinerBuilder> MPDeltaRendererBuilder<Id, ImageCombinerBuilder, AudioCombinerBuilder> {
-    pub fn new(id: Arc<Id>, image_combiner_builder: Arc<ImageCombinerBuilder>, audio_combiner_builder: Arc<AudioCombinerBuilder>) -> MPDeltaRendererBuilder<Id, ImageCombinerBuilder, AudioCombinerBuilder> {
-        MPDeltaRendererBuilder { id, image_combiner_builder, audio_combiner_builder }
+impl<K, Id, ImageCombinerBuilder, AudioCombinerBuilder> MPDeltaRendererBuilder<K, Id, ImageCombinerBuilder, AudioCombinerBuilder> {
+    pub fn new(id: Arc<Id>, image_combiner_builder: Arc<ImageCombinerBuilder>, audio_combiner_builder: Arc<AudioCombinerBuilder>, key: Arc<RwLock<TCellOwner<K>>>) -> MPDeltaRendererBuilder<K, Id, ImageCombinerBuilder, AudioCombinerBuilder> {
+        MPDeltaRendererBuilder { id, image_combiner_builder, audio_combiner_builder, key }
     }
 }
 
 #[async_trait]
-impl<
-        T: ParameterValueType + 'static,
-        ImageCombinerBuilder: CombinerBuilder<T::Image, Request = ImageSizeRequest, Param = ImageRequiredParamsFixed> + 'static,
-        AudioCombinerBuilder: CombinerBuilder<T::Audio, Request = (), Param = AudioRequiredParamsFrameVariable> + 'static,
-        Id: IdGenerator + 'static,
-    > ComponentRendererBuilder<T> for MPDeltaRendererBuilder<Id, ImageCombinerBuilder, AudioCombinerBuilder>
+impl<K, T: ParameterValueType + 'static, ImageCombinerBuilder: CombinerBuilder<T::Image, Request = ImageSizeRequest, Param = ImageRequiredParamsFixed> + 'static, AudioCombinerBuilder: CombinerBuilder<T::Audio, Request = (), Param = AudioRequiredParamsFrameVariable> + 'static, Id: IdGenerator + 'static> ComponentRendererBuilder<K, T>
+    for MPDeltaRendererBuilder<K, Id, ImageCombinerBuilder, AudioCombinerBuilder>
 {
     type Err = Infallible;
-    type Renderer = MPDeltaRenderer<T, ImageCombinerBuilder, AudioCombinerBuilder, Id>;
+    type Renderer = MPDeltaRenderer<K, T, ImageCombinerBuilder, AudioCombinerBuilder, Id>;
 
-    async fn create_renderer(&self, component: &StaticPointer<RwLock<ComponentInstance<T>>>) -> Result<Self::Renderer, Self::Err> {
+    async fn create_renderer(&self, component: &StaticPointer<TCell<K, ComponentInstance<K, T>>>) -> Result<Self::Renderer, Self::Err> {
+        let key = self.key.read().await;
         let component_ref = component.upgrade().unwrap();
-        let component_ref = component_ref.read().await;
+        let component_ref = component_ref.ro(&key);
         let left = component_ref.marker_left().upgrade().unwrap();
         let right = component_ref.marker_right().upgrade().unwrap();
-        fn f(marker: RwLockReadGuard<'_, MarkerPin>) -> f64 {
-            marker.cached_timeline_time().value()
-        }
-        let (left, right) = futures::join!(left.read().map(f), right.read().map(f));
+        let left = left.ro(&key).cached_timeline_time().value();
+        let right = right.ro(&key).cached_timeline_time().value();
         let frames_count = ((right - left) * 60.) as usize;
         let frames = (0..frames_count).map(move |i| TimelineTime::new(left + i as f64 / 60.).unwrap());
         Ok(MPDeltaRenderer {
@@ -93,28 +90,30 @@ impl<
             )),
             image_size_request: ImageSizeRequest { width: 1920., height: 1080. },
             frames: frames.collect(),
+            key: Arc::clone(&self.key),
         })
     }
 }
 
-pub struct MPDeltaRenderer<T: ParameterValueType, ImageCombinerBuilder, AudioCombinerBuilder, Id> {
+pub struct MPDeltaRenderer<K: 'static, T: ParameterValueType, ImageCombinerBuilder, AudioCombinerBuilder, Id> {
     runtime: Handle,
-    evaluate_component: Arc<EvaluateComponent<T, ImageCombinerBuilder, AudioCombinerBuilder, Id>>,
+    evaluate_component: Arc<EvaluateComponent<K, T, ImageCombinerBuilder, AudioCombinerBuilder, Id>>,
     image_size_request: ImageSizeRequest,
     frames: Vec<TimelineTime>,
+    key: Arc<RwLock<TCellOwner<K>>>,
 }
 
 #[derive(Error)]
-pub enum RenderError<T> {
+pub enum RenderError<K: 'static, T> {
     #[error("{0}")]
-    EvaluateError(#[from] EvaluateError<T>),
+    EvaluateError(#[from] EvaluateError<K, T>),
     #[error("a frame index is out of range: the length is {length} but the index is {index}")]
     FrameOutOfRange { length: usize, index: usize },
     #[error("required type value is not provided")]
     NotProvided,
 }
 
-impl<T> Debug for RenderError<T> {
+impl<K, T> Debug for RenderError<K, T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             RenderError::EvaluateError(e) => f.debug_tuple("EvaluateError").field(e).finish(),
@@ -124,14 +123,19 @@ impl<T> Debug for RenderError<T> {
     }
 }
 
-impl<
-        T: ParameterValueType + 'static,
-        ImageCombinerBuilder: CombinerBuilder<T::Image, Request = ImageSizeRequest, Param = ImageRequiredParamsFixed> + 'static,
-        AudioCombinerBuilder: CombinerBuilder<T::Audio, Request = (), Param = AudioRequiredParamsFrameVariable> + 'static,
-        Id: IdGenerator + 'static,
-    > RealtimeComponentRenderer<T> for MPDeltaRenderer<T, ImageCombinerBuilder, AudioCombinerBuilder, Id>
+async fn wait_for_drop_arc_inner<T>(arc: Arc<T>) {
+    let mut arc = Some(arc);
+    loop {
+        let Err(a) = Arc::try_unwrap(arc.take().unwrap()) else { return; };
+        arc = Some(a);
+        tokio::task::yield_now().await;
+    }
+}
+
+impl<K, T: ParameterValueType + 'static, ImageCombinerBuilder: CombinerBuilder<T::Image, Request = ImageSizeRequest, Param = ImageRequiredParamsFixed> + 'static, AudioCombinerBuilder: CombinerBuilder<T::Audio, Request = (), Param = AudioRequiredParamsFrameVariable> + 'static, Id: IdGenerator + 'static> RealtimeComponentRenderer<T>
+    for MPDeltaRenderer<K, T, ImageCombinerBuilder, AudioCombinerBuilder, Id>
 {
-    type Err = RenderError<T>;
+    type Err = RenderError<K, T>;
 
     fn get_frame_count(&self) -> usize {
         self.frames.len()
@@ -139,7 +143,12 @@ impl<
 
     fn render_frame(&self, frame: usize) -> Result<T::Image, Self::Err> {
         let Some(&at) = self.frames.get(frame) else { return Err(RenderError::FrameOutOfRange { length: self.frames.len(), index: frame }); };
-        let result = self.runtime.block_on(Arc::clone(&self.evaluate_component).evaluate(at, ParameterSelectValue(Parameter::Image(())), self.image_size_request))?;
+        let result = self.runtime.block_on(
+            Arc::clone(&self.key)
+                .read_owned()
+                .map(Arc::new)
+                .then(|key| Arc::clone(&self.evaluate_component).evaluate(at, ParameterSelectValue(Parameter::Image(())), self.image_size_request, Arc::clone(&key)).then(|ret| wait_for_drop_arc_inner(key).map(|_| ret))),
+        )?;
         let (image, _) = result.ok_or(RenderError::NotProvided)?.into_image().unwrap();
         Ok(image)
     }
@@ -149,7 +158,12 @@ impl<
     }
 
     fn mix_audio(&self, _offset: usize, _length: usize) -> Result<T::Audio, Self::Err> {
-        let result = self.runtime.block_on(Arc::clone(&self.evaluate_component).evaluate(self.frames[0], ParameterSelectValue(Parameter::Image(())), self.image_size_request))?;
+        let result = self.runtime.block_on(
+            Arc::clone(&self.key)
+                .read_owned()
+                .map(Arc::new)
+                .then(|key| Arc::clone(&self.evaluate_component).evaluate(self.frames[0], ParameterSelectValue(Parameter::Image(())), self.image_size_request, Arc::clone(&key)).then(|ret| wait_for_drop_arc_inner(key).map(|_| ret))),
+        )?;
         let (audio, _) = result.ok_or(RenderError::NotProvided)?.into_audio().unwrap();
         Ok(audio)
     }
@@ -179,26 +193,26 @@ impl<Image: Send + Sync + 'static, Audio: Send + Sync + Clone + 'static> Paramet
 }
 
 #[derive(Error)]
-pub enum EvaluateError<T> {
+pub enum EvaluateError<K: 'static, T> {
     #[error("invalid component: {0:?}")]
-    InvalidComponent(StaticPointer<RwLock<ComponentInstance<T>>>),
+    InvalidComponent(StaticPointer<TCell<K, ComponentInstance<K, T>>>),
     #[error("the output type by {component:?} is mismatch; expected: {expect:?}, but got {actual:?}")]
     OutputTypeMismatch {
-        component: StaticPointer<RwLock<ComponentInstance<T>>>,
+        component: StaticPointer<TCell<K, ComponentInstance<K, T>>>,
         expect: Parameter<ParameterSelect>,
         actual: Parameter<ParameterSelect>,
     },
     #[error("a dependency cycle detected")]
-    CycleDependency(Vec<StaticPointer<RwLock<ComponentInstance<T>>>>),
+    CycleDependency(Vec<StaticPointer<TCell<K, ComponentInstance<K, T>>>>),
     #[error("invalid link graph")]
     InvalidLinkGraph,
     #[error("invalid marker: {0:?}")]
-    InvalidMarker(StaticPointer<RwLock<MarkerPin>>),
+    InvalidMarker(StaticPointer<TCell<K, MarkerPin>>),
     #[error("{index}-th variable parameter of {component:?} is invalid")]
-    InvalidVariableParameter { component: StaticPointer<RwLock<ComponentInstance<T>>>, index: usize },
+    InvalidVariableParameter { component: StaticPointer<TCell<K, ComponentInstance<K, T>>>, index: usize },
 }
 
-impl<T> Debug for EvaluateError<T> {
+impl<K, T> Debug for EvaluateError<K, T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             EvaluateError::InvalidComponent(c) => f.debug_tuple("InvalidComponent").field(c).finish(),
@@ -211,15 +225,11 @@ impl<T> Debug for EvaluateError<T> {
     }
 }
 
-impl<T> Clone for EvaluateError<T> {
+impl<K, T> Clone for EvaluateError<K, T> {
     fn clone(&self) -> Self {
         match self {
             EvaluateError::InvalidComponent(component) => EvaluateError::InvalidComponent(component.clone()),
-            EvaluateError::OutputTypeMismatch { component, expect, actual } => EvaluateError::OutputTypeMismatch {
-                component: component.clone(),
-                expect: *expect,
-                actual: *actual,
-            },
+            EvaluateError::OutputTypeMismatch { component, expect, actual } => EvaluateError::OutputTypeMismatch { component: component.clone(), expect: *expect, actual: *actual },
             EvaluateError::CycleDependency(dependencies) => EvaluateError::CycleDependency(dependencies.clone()),
             EvaluateError::InvalidLinkGraph => EvaluateError::InvalidLinkGraph,
             EvaluateError::InvalidMarker(marker) => EvaluateError::InvalidMarker(marker.clone()),
@@ -228,14 +238,14 @@ impl<T> Clone for EvaluateError<T> {
     }
 }
 
-async fn value_into_processor_input_buffer(param: ParameterValue) -> ComponentProcessorInputValueBuffer<(), ()> {
-    fn convert<T: Clone + Send, U: Send>(value: TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, T>) -> impl Future<Output = TimeSplitValue<TimelineTime, Option<Either<T, U>>>> + Send {
-        value.map_time_value_async(
-            |time| async move {
+fn value_into_processor_input_buffer<K: 'static>(param: ParameterValue<K>, key: &TCellOwner<K>) -> ComponentProcessorInputValueBuffer<(), ()> {
+    fn convert<K, T: Clone + Send, U: Send>(value: TimeSplitValue<StaticPointer<TCell<K, MarkerPin>>, T>, key: &TCellOwner<K>) -> TimeSplitValue<TimelineTime, Option<Either<T, U>>> {
+        value.map_time_value(
+            |time| {
                 let strong_ref = time.upgrade().unwrap();
-                strong_ref.read().map(|marker| marker.cached_timeline_time()).await
+                strong_ref.ro(key).cached_timeline_time()
             },
-            |value| future::ready(Some(Either::Left(value))),
+            |value| Some(Either::Left(value)),
         )
     }
     match param {
@@ -243,15 +253,15 @@ async fn value_into_processor_input_buffer(param: ParameterValue) -> ComponentPr
         ParameterValue::Image(_) => unreachable!(),
         ParameterValue::Audio(_) => unreachable!(),
         ParameterValue::Video(_) => unreachable!(),
-        ParameterValue::File(value) => ComponentProcessorInputValueBuffer::File(convert(value).await),
-        ParameterValue::String(value) => ComponentProcessorInputValueBuffer::String(convert(value).await),
-        ParameterValue::Select(value) => ComponentProcessorInputValueBuffer::Select(convert(value).await),
-        ParameterValue::Boolean(value) => ComponentProcessorInputValueBuffer::Boolean(convert(value).await),
-        ParameterValue::Radio(value) => ComponentProcessorInputValueBuffer::Radio(convert(value).await),
-        ParameterValue::Integer(value) => ComponentProcessorInputValueBuffer::Integer(convert(value).await),
-        ParameterValue::RealNumber(value) => ComponentProcessorInputValueBuffer::RealNumber(convert(value).await),
-        ParameterValue::Vec2(Vector2 { x, y }) => ComponentProcessorInputValueBuffer::Vec2(Vector2::new(convert(x).await, convert(y).await)),
-        ParameterValue::Vec3(Vector3 { x, y, z }) => ComponentProcessorInputValueBuffer::Vec3(Vector3::new(convert(x).await, convert(y).await, convert(z).await)),
+        ParameterValue::File(value) => ComponentProcessorInputValueBuffer::File(convert(value, key)),
+        ParameterValue::String(value) => ComponentProcessorInputValueBuffer::String(convert(value, key)),
+        ParameterValue::Select(value) => ComponentProcessorInputValueBuffer::Select(convert(value, key)),
+        ParameterValue::Boolean(value) => ComponentProcessorInputValueBuffer::Boolean(convert(value, key)),
+        ParameterValue::Radio(value) => ComponentProcessorInputValueBuffer::Radio(convert(value, key)),
+        ParameterValue::Integer(value) => ComponentProcessorInputValueBuffer::Integer(convert(value, key)),
+        ParameterValue::RealNumber(value) => ComponentProcessorInputValueBuffer::RealNumber(convert(value, key)),
+        ParameterValue::Vec2(Vector2 { x, y }) => ComponentProcessorInputValueBuffer::Vec2(Vector2::new(convert(x, key), convert(y, key))),
+        ParameterValue::Vec3(Vector3 { x, y, z }) => ComponentProcessorInputValueBuffer::Vec3(Vector3::new(convert(x, key), convert(y, key), convert(z, key))),
         ParameterValue::Dictionary(value) => {
             let _: Never = value;
             unreachable!()
@@ -302,27 +312,27 @@ impl<Image: Clone + Send + Sync + 'static, Audio: Clone + Send + Sync + 'static>
     type ComponentClass = ();
 }
 
-async fn nullable_into_processor_input_buffer_ref(param: ParameterNullableValue) -> ComponentProcessorInputValueBufferRef<(), ()> {
-    async fn convert<T>(value: TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, Option<T>>) -> TimeSplitValue<TimelineTime, Option<Either<T, FrameVariableValue<T>>>> {
-        value.map_time_value_async(|t| async move { t.upgrade().unwrap().read().await.cached_timeline_time() }, |v| async move { v.map(Either::Left) }).await
+fn nullable_into_processor_input_buffer_ref<K: 'static>(param: ParameterNullableValue<K>, key: &TCellOwner<K>) -> ComponentProcessorInputValueBufferRef<(), ()> {
+    fn convert<K, T>(value: TimeSplitValue<StaticPointer<TCell<K, MarkerPin>>, Option<T>>, key: &TCellOwner<K>) -> TimeSplitValue<TimelineTime, Option<Either<T, FrameVariableValue<T>>>> {
+        value.map_time_value(|t| t.upgrade().unwrap().ro(key).cached_timeline_time(), |v| v.map(Either::Left))
     }
-    async fn convert_easing<T>(value: TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, Option<EasingValue<T>>>) -> TimeSplitValue<TimelineTime, Option<Either<EasingValue<T>, FrameVariableValue<T>>>> {
-        value.map_time_value_async(|t| async move { t.upgrade().unwrap().read().await.cached_timeline_time() }, |v| async move { v.map(Either::Left) }).await
+    fn convert_easing<K, T>(value: TimeSplitValue<StaticPointer<TCell<K, MarkerPin>>, Option<EasingValue<T>>>, key: &TCellOwner<K>) -> TimeSplitValue<TimelineTime, Option<Either<EasingValue<T>, FrameVariableValue<T>>>> {
+        value.map_time_value(|t| t.upgrade().unwrap().ro(key).cached_timeline_time(), |v| v.map(Either::Left))
     }
     match param {
         ParameterNullableValue::None => Parameter::None,
         ParameterNullableValue::Image(_) => unreachable!(),
         ParameterNullableValue::Audio(_) => unreachable!(),
         ParameterNullableValue::Video(_) => unreachable!(),
-        ParameterNullableValue::File(value) => Parameter::File(Arc::new(convert(value).await)),
-        ParameterNullableValue::String(value) => Parameter::String(Arc::new(convert(value).await)),
-        ParameterNullableValue::Select(value) => Parameter::Select(Arc::new(convert(value).await)),
-        ParameterNullableValue::Boolean(value) => Parameter::Boolean(Arc::new(convert(value).await)),
-        ParameterNullableValue::Radio(value) => Parameter::Radio(Arc::new(convert(value).await)),
-        ParameterNullableValue::Integer(value) => Parameter::Integer(Arc::new(convert(value).await)),
-        ParameterNullableValue::RealNumber(value) => Parameter::RealNumber(Arc::new(convert_easing(value).await)),
-        ParameterNullableValue::Vec2(Vector2 { x, y }) => Parameter::Vec2(Arc::new(Vector2::new(convert_easing(x).await, convert_easing(y).await))),
-        ParameterNullableValue::Vec3(Vector3 { x, y, z }) => Parameter::Vec3(Arc::new(Vector3::new(convert_easing(x).await, convert_easing(y).await, convert_easing(z).await))),
+        ParameterNullableValue::File(value) => Parameter::File(Arc::new(convert(value, key))),
+        ParameterNullableValue::String(value) => Parameter::String(Arc::new(convert(value, key))),
+        ParameterNullableValue::Select(value) => Parameter::Select(Arc::new(convert(value, key))),
+        ParameterNullableValue::Boolean(value) => Parameter::Boolean(Arc::new(convert(value, key))),
+        ParameterNullableValue::Radio(value) => Parameter::Radio(Arc::new(convert(value, key))),
+        ParameterNullableValue::Integer(value) => Parameter::Integer(Arc::new(convert(value, key))),
+        ParameterNullableValue::RealNumber(value) => Parameter::RealNumber(Arc::new(convert_easing(value, key))),
+        ParameterNullableValue::Vec2(Vector2 { x, y }) => Parameter::Vec2(Arc::new(Vector2::new(convert_easing(x, key), convert_easing(y, key)))),
+        ParameterNullableValue::Vec3(Vector3 { x, y, z }) => Parameter::Vec3(Arc::new(Vector3::new(convert_easing(x, key), convert_easing(y, key), convert_easing(z, key)))),
         ParameterNullableValue::Dictionary(value) => {
             let _: Never = value;
             unreachable!()
@@ -331,27 +341,27 @@ async fn nullable_into_processor_input_buffer_ref(param: ParameterNullableValue)
     }
 }
 
-async fn nullable_into_processor_input_buffer<Image: Clone + Send + Sync + 'static, Audio: Clone + Send + Sync + 'static>(param: ParameterNullableValue) -> ComponentProcessorInputValueBuffer<Image, Audio> {
-    async fn convert<T>(value: TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, Option<T>>) -> TimeSplitValue<TimelineTime, Option<Either<T, FrameVariableValue<T>>>> {
-        value.map_time_value_async(|t| async move { t.upgrade().unwrap().read().await.cached_timeline_time() }, |v| async move { v.map(Either::Left) }).await
+fn nullable_into_processor_input_buffer<K: 'static, Image: Clone + Send + Sync + 'static, Audio: Clone + Send + Sync + 'static>(param: ParameterNullableValue<K>, key: &TCellOwner<K>) -> ComponentProcessorInputValueBuffer<Image, Audio> {
+    fn convert<K, T>(value: TimeSplitValue<StaticPointer<TCell<K, MarkerPin>>, Option<T>>, key: &TCellOwner<K>) -> TimeSplitValue<TimelineTime, Option<Either<T, FrameVariableValue<T>>>> {
+        value.map_time_value(|t| t.upgrade().unwrap().ro(key).cached_timeline_time(), |v| v.map(Either::Left))
     }
-    async fn convert_easing<T>(value: TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, Option<EasingValue<T>>>) -> TimeSplitValue<TimelineTime, Option<Either<EasingValue<T>, FrameVariableValue<T>>>> {
-        value.map_time_value_async(|t| async move { t.upgrade().unwrap().read().await.cached_timeline_time() }, |v| async move { v.map(Either::Left) }).await
+    fn convert_easing<K, T>(value: TimeSplitValue<StaticPointer<TCell<K, MarkerPin>>, Option<EasingValue<T>>>, key: &TCellOwner<K>) -> TimeSplitValue<TimelineTime, Option<Either<EasingValue<T>, FrameVariableValue<T>>>> {
+        value.map_time_value(|t| t.upgrade().unwrap().ro(key).cached_timeline_time(), |v| v.map(Either::Left))
     }
     match param {
         ParameterNullableValue::None => Parameter::None,
         ParameterNullableValue::Image(_) => unreachable!(),
         ParameterNullableValue::Audio(_) => unreachable!(),
         ParameterNullableValue::Video(_) => unreachable!(),
-        ParameterNullableValue::File(value) => Parameter::File(convert(value).await),
-        ParameterNullableValue::String(value) => Parameter::String(convert(value).await),
-        ParameterNullableValue::Select(value) => Parameter::Select(convert(value).await),
-        ParameterNullableValue::Boolean(value) => Parameter::Boolean(convert(value).await),
-        ParameterNullableValue::Radio(value) => Parameter::Radio(convert(value).await),
-        ParameterNullableValue::Integer(value) => Parameter::Integer(convert(value).await),
-        ParameterNullableValue::RealNumber(value) => Parameter::RealNumber(convert_easing(value).await),
-        ParameterNullableValue::Vec2(Vector2 { x, y }) => Parameter::Vec2(Vector2::new(convert_easing(x).await, convert_easing(y).await)),
-        ParameterNullableValue::Vec3(Vector3 { x, y, z }) => Parameter::Vec3(Vector3::new(convert_easing(x).await, convert_easing(y).await, convert_easing(z).await)),
+        ParameterNullableValue::File(value) => Parameter::File(convert(value, key)),
+        ParameterNullableValue::String(value) => Parameter::String(convert(value, key)),
+        ParameterNullableValue::Select(value) => Parameter::Select(convert(value, key)),
+        ParameterNullableValue::Boolean(value) => Parameter::Boolean(convert(value, key)),
+        ParameterNullableValue::Radio(value) => Parameter::Radio(convert(value, key)),
+        ParameterNullableValue::Integer(value) => Parameter::Integer(convert(value, key)),
+        ParameterNullableValue::RealNumber(value) => Parameter::RealNumber(convert_easing(value, key)),
+        ParameterNullableValue::Vec2(Vector2 { x, y }) => Parameter::Vec2(Vector2::new(convert_easing(x, key), convert_easing(y, key))),
+        ParameterNullableValue::Vec3(Vector3 { x, y, z }) => Parameter::Vec3(Vector3::new(convert_easing(x, key), convert_easing(y, key), convert_easing(z, key))),
         ParameterNullableValue::Dictionary(value) => {
             let _: Never = value;
             unreachable!()
@@ -498,7 +508,7 @@ pub trait Combiner<Data>: Send + Sync {
     fn collect(self) -> Data;
 }
 
-fn collect_dependencies<T: ParameterValueType>(component: &ComponentInstance<T>, required_type: &mut HashMap<StaticPointer<RwLock<ComponentInstance<T>>>, HashSet<Parameter<ParameterSelect>>>) -> HashSet<StaticPointer<RwLock<ComponentInstance<T>>>> {
+fn collect_dependencies<K, T: ParameterValueType>(component: &ComponentInstance<K, T>, required_type: &mut HashMap<StaticPointer<TCell<K, ComponentInstance<K, T>>>, HashSet<Parameter<ParameterSelect>>>) -> HashSet<StaticPointer<TCell<K, ComponentInstance<K, T>>>> {
     let dependencies = component
         .variable_parameters()
         .iter()
@@ -512,13 +522,7 @@ fn collect_dependencies<T: ParameterValueType>(component: &ComponentInstance<T>,
         })
         .chain(component.image_required_params().into_iter().flat_map(|image_required_params| {
             let array = match &image_required_params.transform {
-                ImageRequiredParamsTransform::Params {
-                    scale,
-                    translate,
-                    rotate: _,
-                    scale_center,
-                    rotate_center,
-                } => [scale, translate, scale_center, rotate_center],
+                ImageRequiredParamsTransform::Params { scale, translate, rotate: _, scale_center, rotate_center } => [scale, translate, scale_center, rotate_center],
                 ImageRequiredParamsTransform::Free { left_top, right_top, left_bottom, right_bottom } => [left_top, right_top, left_bottom, right_bottom],
             };
             array.into_iter().flat_map(AsRef::<[_; 3]>::as_ref).flat_map(|param| {
@@ -582,11 +586,10 @@ impl TimelineRangeSet {
     }
 }
 
-async fn get_time_range<T: ParameterValueType>(component: &ComponentInstance<T>) -> TimelineRange {
-    let left = component.marker_left().upgrade().unwrap();
-    let right = component.marker_right().upgrade().unwrap();
-    let (left, right) = tokio::join!(left.read(), right.read());
-    TimelineRange([left.cached_timeline_time(), right.cached_timeline_time()])
+fn get_time_range<K, T: ParameterValueType>(component: &ComponentInstance<K, T>, key: &TCellOwner<K>) -> TimelineRange {
+    let left = component.marker_left().upgrade().unwrap().ro(key).cached_timeline_time();
+    let right = component.marker_right().upgrade().unwrap().ro(key).cached_timeline_time();
+    TimelineRange([left, right])
 }
 
 fn range_intersection(TimelineRange([start1, end1]): TimelineRange, TimelineRange([start2, end2]): TimelineRange) -> Option<TimelineRange> {
@@ -641,40 +644,64 @@ fn range_set_union(TimelineRangeSet(already_used): &mut TimelineRangeSet, Timeli
     already_used.insert(range.into());
 }
 
-struct Function<T: ParameterValueType> {
-    function: FunctionByNeed<(TimelineTime, ParameterSelectValue, ImageSizeRequest), EvaluateComponentResult<T>>,
+struct FunctionArg<K: 'static>(TimelineTime, ParameterSelectValue, ImageSizeRequest, Arc<OwnedRwLockReadGuard<TCellOwner<K>>>);
+
+impl<K> Clone for FunctionArg<K> {
+    fn clone(&self) -> Self {
+        let FunctionArg(at, ty, size, ref key) = *self;
+        FunctionArg(at, ty, size, Arc::clone(key))
+    }
+}
+
+impl<K> PartialEq for FunctionArg<K> {
+    fn eq(&self, other: &Self) -> bool {
+        self.0 == other.0 && self.1 == other.1 && self.2 == other.2
+    }
+}
+
+impl<K> Eq for FunctionArg<K> {}
+
+impl<K> Hash for FunctionArg<K> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.0.hash(state);
+        self.1.hash(state);
+        self.2.hash(state);
+    }
+}
+
+struct Function<K: 'static, T: ParameterValueType> {
+    function: FunctionByNeed<FunctionArg<K>, EvaluateComponentResult<K, T>>,
     ranges: TimelineRangeSet,
 }
 
-struct EvaluateAllComponent<T: ParameterValueType, Id> {
-    functions: Vec<Function<T>>,
+struct EvaluateAllComponent<K: 'static, T: ParameterValueType, Id> {
+    functions: Vec<Function<K, T>>,
     phantom: PhantomData<Id>,
 }
 
-impl<T: ParameterValueType, Id: IdGenerator + 'static> EvaluateAllComponent<T, Id> {
-    async fn new<ImageCombinerBuilder: CombinerBuilder<T::Image, Request = ImageSizeRequest, Param = ImageRequiredParamsFixed> + 'static, AudioCombinerBuilder: CombinerBuilder<T::Audio, Request = (), Param = AudioRequiredParamsFrameVariable> + 'static>(
-        components: impl Into<Cow<'_, [StaticPointer<RwLock<ComponentInstance<T>>>]>>,
-        links: impl Into<Cow<'_, [StaticPointer<RwLock<MarkerLink>>]>>,
-        begin: StaticPointer<RwLock<MarkerPin>>,
-        end: StaticPointer<RwLock<MarkerPin>>,
+impl<K, T: ParameterValueType, Id: IdGenerator + 'static> EvaluateAllComponent<K, T, Id> {
+    fn new<ImageCombinerBuilder: CombinerBuilder<T::Image, Request = ImageSizeRequest, Param = ImageRequiredParamsFixed> + 'static, AudioCombinerBuilder: CombinerBuilder<T::Audio, Request = (), Param = AudioRequiredParamsFrameVariable> + 'static>(
+        components: Vec<StaticPointer<TCell<K, ComponentInstance<K, T>>>>,
+        links: Vec<StaticPointer<TCell<K, MarkerLink<K>>>>,
+        begin: StaticPointer<TCell<K, MarkerPin>>,
+        end: StaticPointer<TCell<K, MarkerPin>>,
         frames: CloneableIterator<TimelineTime>,
         id_generator: Arc<Id>,
         image_combiner_builder: Arc<ImageCombinerBuilder>,
         audio_combiner_builder: Arc<AudioCombinerBuilder>,
-    ) -> Result<EvaluateAllComponent<T, Id>, EvaluateError<T>> {
-        let components = components.into();
-        let links = links.into();
-        collect_cached_time(&components, &links, begin, end).await?;
+        key: &TCellOwner<K>,
+    ) -> Result<EvaluateAllComponent<K, T, Id>, EvaluateError<K, T>> {
+        collect_cached_time(&components, &links, begin, end, key)?;
         let mut required_type_map = HashMap::new();
         let mut dependencies_map = HashMap::with_capacity(components.len());
         let mut time_range_map = HashMap::with_capacity(components.len());
         let components_strong_ref = components.iter().map(|component| component.upgrade().ok_or_else(|| EvaluateError::InvalidComponent(component.clone()))).collect::<Result<Vec<_>, _>>()?;
-        let component_instances = stream::iter(components_strong_ref.iter()).then(|component| component.read()).collect::<Vec<_>>().await;
+        let component_instances = components_strong_ref.iter().map(|component| component.ro(key)).collect::<Vec<_>>();
         let component_instance_map = components.iter().zip(component_instances.iter().map(Deref::deref)).collect::<HashMap<_, _>>();
         for component in &*components {
             let component_ref = component_instance_map.get(&component).unwrap();
             let dependencies = collect_dependencies(component_ref, &mut required_type_map);
-            let time_range = get_time_range(component_ref).await;
+            let time_range = get_time_range(component_ref, key);
             dependencies_map.insert(component, dependencies);
             time_range_map.insert(component.clone(), time_range);
         }
@@ -739,7 +766,7 @@ impl<T: ParameterValueType, Id: IdGenerator + 'static> EvaluateAllComponent<T, I
             let result = component_reference_ranges.insert(component, reference_range);
             debug_assert!(result.is_none());
         }
-        let map: Arc<DashMap<StaticPointer<RwLock<ComponentInstance<T>>>, FunctionByNeed<(TimelineTime, ParameterSelectValue, ImageSizeRequest), EvaluateComponentResult<T>>>> = Arc::new(DashMap::new());
+        let map: Arc<DashMap<StaticPointer<TCell<K, ComponentInstance<K, T>>>, FunctionByNeed<FunctionArg<K>, EvaluateComponentResult<K, T>>>> = Arc::new(DashMap::new());
         for component in sorted {
             let component = component.clone();
             let map = Arc::clone(&map);
@@ -757,7 +784,7 @@ impl<T: ParameterValueType, Id: IdGenerator + 'static> EvaluateAllComponent<T, I
                         Arc::clone(&audio_combiner_builder),
                     ));
                     // DynFnとDynFutureはhigher-ranked lifetime error(原因不明)回避のため
-                    DynFn(Box::new(move |(time, ty, request)| Arc::clone(&evaluate_component).evaluate_boxed(time, ty, request)))
+                    DynFn(Box::new(move |FunctionArg(time, ty, request, key)| Arc::clone(&evaluate_component).evaluate_boxed(time, ty, request, key)))
                 }),
             );
         }
@@ -781,14 +808,16 @@ impl<T: ParameterValueType, Id: IdGenerator + 'static> EvaluateAllComponent<T, I
         audio_combiner: Option<&mut AudioCombiner>,
         left: TimelineTime,
         right: TimelineTime,
-    ) -> EvaluateAllComponentResult<T> {
+        key: Arc<OwnedRwLockReadGuard<TCellOwner<K>>>,
+    ) -> EvaluateAllComponentResult<K, T> {
         match ty.0 {
             Parameter::None => Ok(Parameter::None),
             Parameter::Image(_) => {
                 let tasks = self
                     .functions
                     .iter()
-                    .filter_map(|Function { function, ranges }| ranges.contains(at).then(|| tokio::spawn(function.call((at, ty, image_size_request))).map(|result| result.unwrap())))
+                    .zip(iter::repeat(key))
+                    .filter_map(|(Function { function, ranges }, key)| ranges.contains(at).then(|| tokio::spawn(function.call(FunctionArg(at, ty, image_size_request, key))).map(|result| result.unwrap())))
                     .collect::<Vec<_>>();
                 let combiner = image_combiner.unwrap();
                 for task in tasks {
@@ -802,7 +831,8 @@ impl<T: ParameterValueType, Id: IdGenerator + 'static> EvaluateAllComponent<T, I
                 let tasks = self
                     .functions
                     .iter()
-                    .filter_map(|Function { function, ranges }| ranges.contains(at).then(|| tokio::spawn(function.call((at, ty, image_size_request))).map(|result| result.unwrap())))
+                    .zip(iter::repeat(key))
+                    .filter_map(|(Function { function, ranges }, key)| ranges.contains(at).then(|| tokio::spawn(function.call(FunctionArg(at, ty, image_size_request, key))).map(|result| result.unwrap())))
                     .collect::<Vec<_>>();
                 let combiner = audio_combiner.unwrap();
                 for task in tasks {
@@ -817,7 +847,8 @@ impl<T: ParameterValueType, Id: IdGenerator + 'static> EvaluateAllComponent<T, I
                 let tasks = self
                     .functions
                     .iter()
-                    .map(|Function { function, ranges }| tokio::spawn(function.call((at, ty, image_size_request))).map(move |result| (result.unwrap(), ranges)))
+                    .zip(iter::repeat(key))
+                    .map(|(Function { function, ranges }, key)| tokio::spawn(function.call(FunctionArg(at, ty, image_size_request, key))).map(move |result| (result.unwrap(), ranges)))
                     .collect::<Vec<_>>();
                 let mut buffer = empty_input_buffer(&ty.0, left, right);
                 for task in tasks {
@@ -832,9 +863,9 @@ impl<T: ParameterValueType, Id: IdGenerator + 'static> EvaluateAllComponent<T, I
     }
 }
 
-async fn collect_cached_time<T>(_components: &[StaticPointer<RwLock<ComponentInstance<T>>>], links: &[StaticPointer<RwLock<MarkerLink>>], begin: StaticPointer<RwLock<MarkerPin>>, end: StaticPointer<RwLock<MarkerPin>>) -> Result<(), EvaluateError<T>> {
-    let links = stream::iter(links.iter().filter_map(StaticPointer::upgrade)).then(StaticPointerStrongRef::read_owned).collect::<Vec<_>>().await;
-    let mut links = links.iter().map(Deref::deref).collect::<HashSet<&MarkerLink>>();
+fn collect_cached_time<K, T>(_components: &[StaticPointer<TCell<K, ComponentInstance<K, T>>>], links: &[StaticPointer<TCell<K, MarkerLink<K>>>], begin: StaticPointer<TCell<K, MarkerPin>>, end: StaticPointer<TCell<K, MarkerPin>>, key: &TCellOwner<K>) -> Result<(), EvaluateError<K, T>> {
+    let links = links.iter().filter_map(StaticPointer::upgrade).collect::<Vec<_>>();
+    let mut links = links.iter().map(|link| link.ro(key)).collect::<HashSet<&MarkerLink<K>>>();
     let mut locked = HashSet::from([&begin, &end]);
 
     loop {
@@ -854,7 +885,8 @@ async fn collect_cached_time<T>(_components: &[StaticPointer<RwLock<ComponentIns
         locked.insert(to);
         let from = from.upgrade().ok_or_else(|| EvaluateError::InvalidMarker(from.clone()))?;
         let to = to.upgrade().ok_or_else(|| EvaluateError::InvalidMarker(to.clone()))?;
-        let (from, mut to) = futures::join!(from.read(), to.write());
+        let from = from.ro(key);
+        let to = to.ro(key);
         to.cache_timeline_time(TimelineTime::new(from.cached_timeline_time().value() + len.value()).unwrap());
     }
     if links.is_empty() {
@@ -885,9 +917,9 @@ impl Hash for ImageSizeRequest {
     }
 }
 
-type EvaluateAllComponentResult<T> = Result<ComponentProcessorInputValueBuffer<(), ()>, EvaluateError<T>>;
+type EvaluateAllComponentResult<K, T> = Result<ComponentProcessorInputValueBuffer<(), ()>, EvaluateError<K, T>>;
 
-type EvaluateComponentResult<T> = Result<Option<ComponentProcessorInputValueBufferRef<(<T as ParameterValueType>::Image, ImageRequiredParamsFixed), (<T as ParameterValueType>::Audio, AudioRequiredParamsFrameVariable)>>, EvaluateError<T>>;
+type EvaluateComponentResult<K, T> = Result<Option<ComponentProcessorInputValueBufferRef<(<T as ParameterValueType>::Image, ImageRequiredParamsFixed), (<T as ParameterValueType>::Audio, AudioRequiredParamsFrameVariable)>>, EvaluateError<K, T>>;
 
 #[derive(PartialEq, Eq, Clone, Copy)]
 struct PlaceholderListItem {
@@ -903,24 +935,24 @@ impl<Image: Send + Sync + Clone + 'static, Audio: Send + Sync + Clone + 'static>
     }
 }
 
-struct EvaluateComponentCache<T: ParameterValueType, Id> {
+struct EvaluateComponentCache<K: 'static, T: ParameterValueType, Id> {
     result_cache: ResultCache<T::Image, T::Audio>,
-    map_time: tokio::sync::OnceCell<Arc<MapTime>>,
+    map_time: OnceCell<Arc<MapTime>>,
     image_required_params: tokio::sync::OnceCell<Arc<Option<ImageRequiredParamsFrameVariable>>>,
     audio_required_params: tokio::sync::OnceCell<Arc<Option<AudioRequiredParamsFrameVariable>>>,
-    result_components_renderer: tokio::sync::OnceCell<(EvaluateAllComponent<T, Id>, Vec<StaticPointerCow<RwLock<ComponentInstance<T>>>>, Vec<StaticPointerCow<RwLock<MarkerLink>>>)>,
+    result_components_renderer: OnceCell<(EvaluateAllComponent<K, T, Id>, Vec<StaticPointerCow<TCell<K, ComponentInstance<K, T>>>>, Vec<StaticPointerCow<TCell<K, MarkerLink<K>>>>)>,
     image_executable: OnceCell<NativeProcessorExecutable<T>>,
     placeholder_list: OnceCell<Vec<ArcSwapOption<PlaceholderListItem>>>,
 }
 
-impl<T: ParameterValueType, Id> Default for EvaluateComponentCache<T, Id> {
+impl<K, T: ParameterValueType, Id> Default for EvaluateComponentCache<K, T, Id> {
     fn default() -> Self {
         EvaluateComponentCache {
             result_cache: Default::default(),
-            map_time: tokio::sync::OnceCell::new(),
+            map_time: OnceCell::new(),
             image_required_params: tokio::sync::OnceCell::new(),
             audio_required_params: tokio::sync::OnceCell::new(),
-            result_components_renderer: tokio::sync::OnceCell::new(),
+            result_components_renderer: OnceCell::new(),
             image_executable: OnceCell::new(),
             placeholder_list: OnceCell::new(),
         }
@@ -930,24 +962,24 @@ impl<T: ParameterValueType, Id> Default for EvaluateComponentCache<T, Id> {
 #[derive(Clone, Copy, Eq, PartialEq, Hash)]
 struct ParameterSelectValue(Parameter<ParameterSelect>);
 
-struct ReferenceFunctions<T: ParameterValueType>(Arc<DashMap<StaticPointer<RwLock<ComponentInstance<T>>>, FunctionByNeed<(TimelineTime, ParameterSelectValue, ImageSizeRequest), EvaluateComponentResult<T>>>>);
+struct ReferenceFunctions<K: 'static, T: ParameterValueType>(Arc<DashMap<StaticPointer<TCell<K, ComponentInstance<K, T>>>, FunctionByNeed<FunctionArg<K>, EvaluateComponentResult<K, T>>>>);
 
-impl<T: ParameterValueType> Clone for ReferenceFunctions<T> {
+impl<K, T: ParameterValueType> Clone for ReferenceFunctions<K, T> {
     fn clone(&self) -> Self {
         ReferenceFunctions(Arc::clone(&self.0))
     }
 }
 
-struct ImageGenerator<T: ParameterValueType, ImageCombinerBuilder> {
-    reference_functions: ReferenceFunctions<T>,
-    argument_reference_range: Arc<HashMap<StaticPointer<RwLock<ComponentInstance<T>>>, TimelineRangeSet>>,
+struct ImageGenerator<K: 'static, T: ParameterValueType, ImageCombinerBuilder> {
+    reference_functions: ReferenceFunctions<K, T>,
+    argument_reference_range: Arc<HashMap<StaticPointer<TCell<K, ComponentInstance<K, T>>>, TimelineRangeSet>>,
     image_combiner_builder: Arc<ImageCombinerBuilder>,
-    components: Vec<StaticPointer<RwLock<ComponentInstance<T>>>>,
+    components: Vec<StaticPointer<TCell<K, ComponentInstance<K, T>>>>,
     image_size_request: ImageSizeRequest,
     default_range: Arc<TimelineRangeSet>,
 }
 
-impl<T: ParameterValueType, ImageCombinerBuilder> Clone for ImageGenerator<T, ImageCombinerBuilder> {
+impl<K, T: ParameterValueType, ImageCombinerBuilder> Clone for ImageGenerator<K, T, ImageCombinerBuilder> {
     fn clone(&self) -> Self {
         let ImageGenerator {
             ref reference_functions,
@@ -968,12 +1000,12 @@ impl<T: ParameterValueType, ImageCombinerBuilder> Clone for ImageGenerator<T, Im
     }
 }
 
-impl<T: ParameterValueType, ImageCombinerBuilder: CombinerBuilder<T::Image, Param = ImageRequiredParamsFixed, Request = ImageSizeRequest>> ImageGenerator<T, ImageCombinerBuilder> {
+impl<K, T: ParameterValueType, ImageCombinerBuilder: CombinerBuilder<T::Image, Param = ImageRequiredParamsFixed, Request = ImageSizeRequest>> ImageGenerator<K, T, ImageCombinerBuilder> {
     fn new(
-        reference_functions: ReferenceFunctions<T>,
-        argument_reference_range: Arc<HashMap<StaticPointer<RwLock<ComponentInstance<T>>>, TimelineRangeSet>>,
+        reference_functions: ReferenceFunctions<K, T>,
+        argument_reference_range: Arc<HashMap<StaticPointer<TCell<K, ComponentInstance<K, T>>>, TimelineRangeSet>>,
         image_combiner_builder: Arc<ImageCombinerBuilder>,
-        components: Vec<StaticPointer<RwLock<ComponentInstance<T>>>>,
+        components: Vec<StaticPointer<TCell<K, ComponentInstance<K, T>>>>,
         image_size_request: ImageSizeRequest,
         default_range: Arc<TimelineRangeSet>,
     ) -> Self {
@@ -986,7 +1018,7 @@ impl<T: ParameterValueType, ImageCombinerBuilder: CombinerBuilder<T::Image, Para
             default_range,
         }
     }
-    async fn get(&self, at: TimelineTime) -> Result<T::Image, EvaluateError<T>> {
+    async fn get(&self, at: TimelineTime, key: &Arc<OwnedRwLockReadGuard<TCellOwner<K>>>) -> Result<T::Image, EvaluateError<K, T>> {
         let tasks = self
             .components
             .iter()
@@ -994,7 +1026,7 @@ impl<T: ParameterValueType, ImageCombinerBuilder: CombinerBuilder<T::Image, Para
                 let range = self.argument_reference_range.get(component).unwrap_or(&self.default_range);
                 range
                     .contains(at)
-                    .then(|| tokio::spawn(self.reference_functions.0.get(component).unwrap().call((at, ParameterSelectValue(Parameter::Image(())), self.image_size_request))).map(|result| result.unwrap()))
+                    .then(|| tokio::spawn(self.reference_functions.0.get(component).unwrap().call(FunctionArg(at, ParameterSelectValue(Parameter::Image(())), self.image_size_request, Arc::clone(key)))).map(|result| result.unwrap()))
             })
             .collect::<Vec<_>>();
         let mut combiner = self.image_combiner_builder.new_combiner(self.image_size_request);
@@ -1006,19 +1038,19 @@ impl<T: ParameterValueType, ImageCombinerBuilder: CombinerBuilder<T::Image, Para
                 unreachable!()
             }
         }
-        Ok::<_, EvaluateError<T>>(combiner.collect())
+        Ok::<_, EvaluateError<K, T>>(combiner.collect())
     }
 }
 
-struct GetParam<'a, T: ParameterValueType, ImageCombinerBuilder> {
+struct GetParam<'a, K: 'static, T: ParameterValueType, ImageCombinerBuilder> {
     params: Vec<ParameterNativeProcessorInputFixed<T::Image, T::Audio>>,
     executable: &'a NativeProcessorExecutable<T>,
-    image_map: &'a HashMap<Placeholder<TagImage>, ImageGenerator<T, ImageCombinerBuilder>>,
+    image_map: &'a HashMap<Placeholder<TagImage>, ImageGenerator<K, T, ImageCombinerBuilder>>,
     audio_map: &'a HashMap<Placeholder<TagAudio>, T::Audio>,
 }
 
-impl<'a, T: ParameterValueType, ImageCombinerBuilder: CombinerBuilder<T::Image, Param = ImageRequiredParamsFixed, Request = ImageSizeRequest>> GetParam<'a, T, ImageCombinerBuilder> {
-    fn new(executable: &'a NativeProcessorExecutable<T>, image_map: &'a HashMap<Placeholder<TagImage>, ImageGenerator<T, ImageCombinerBuilder>>, audio_map: &'a HashMap<Placeholder<TagAudio>, T::Audio>) -> Self {
+impl<'a, K, T: ParameterValueType, ImageCombinerBuilder: CombinerBuilder<T::Image, Param = ImageRequiredParamsFixed, Request = ImageSizeRequest>> GetParam<'a, K, T, ImageCombinerBuilder> {
+    fn new(executable: &'a NativeProcessorExecutable<T>, image_map: &'a HashMap<Placeholder<TagImage>, ImageGenerator<K, T, ImageCombinerBuilder>>, audio_map: &'a HashMap<Placeholder<TagAudio>, T::Audio>) -> Self {
         GetParam {
             params: vec![Parameter::None; executable.parameter.len()],
             executable,
@@ -1026,17 +1058,17 @@ impl<'a, T: ParameterValueType, ImageCombinerBuilder: CombinerBuilder<T::Image, 
             audio_map,
         }
     }
-    async fn get(&mut self, at: TimelineTime) -> Result<&[ParameterNativeProcessorInputFixed<T::Image, T::Audio>], EvaluateError<T>> {
+    async fn get(&mut self, at: TimelineTime, key: &Arc<OwnedRwLockReadGuard<TCellOwner<K>>>) -> Result<&[ParameterNativeProcessorInputFixed<T::Image, T::Audio>], EvaluateError<K, T>> {
         for (param_out, param_raw) in self.params.iter_mut().zip(self.executable.parameter.iter()) {
-            *param_out = get_param_at(param_raw, self.image_map, self.audio_map, at).await?;
+            *param_out = get_param_at(param_raw, self.image_map, self.audio_map, at, key).await?;
         }
-        Ok::<_, EvaluateError<T>>(self.params.as_slice())
+        Ok::<_, EvaluateError<K, T>>(self.params.as_slice())
     }
 
-    async fn process_all<U, Ret: From<BTreeMap<TimelineTime, U>>>(&mut self, frames: impl Iterator<Item = TimelineTime>, map: impl Fn(ParameterNativeProcessorInputFixed<T::Image, T::Audio>) -> Result<U, EvaluateError<T>>) -> Result<Ret, EvaluateError<T>> {
+    async fn process_all<U, Ret: From<BTreeMap<TimelineTime, U>>>(&mut self, frames: impl Iterator<Item = TimelineTime>, map: impl Fn(ParameterNativeProcessorInputFixed<T::Image, T::Audio>) -> Result<U, EvaluateError<K, T>>, key: &Arc<OwnedRwLockReadGuard<TCellOwner<K>>>) -> Result<Ret, EvaluateError<K, T>> {
         let mut buffer = Vec::with_capacity(frames.size_hint().0);
         for at in frames {
-            buffer.push((at, map(self.executable.processor.process(at, self.get(at).await?))?));
+            buffer.push((at, map(self.executable.processor.process(at, self.get(at, key).await?))?));
         }
         Ok(BTreeMap::from_iter(buffer).into())
     }
@@ -1044,52 +1076,50 @@ impl<'a, T: ParameterValueType, ImageCombinerBuilder: CombinerBuilder<T::Image, 
     async fn get_time_split_value<U, Any>(
         mut self,
         frames: impl Iterator<Item = TimelineTime>,
-        map: impl Fn(ParameterNativeProcessorInputFixed<T::Image, T::Audio>) -> Result<U, EvaluateError<T>>,
+        map: impl Fn(ParameterNativeProcessorInputFixed<T::Image, T::Audio>) -> Result<U, EvaluateError<K, T>>,
         left: TimelineTime,
         right: TimelineTime,
-    ) -> Result<TimeSplitValue<TimelineTime, Option<Either<Any, FrameVariableValue<U>>>>, EvaluateError<T>> {
-        Ok(into_time_split_value(self.process_all(frames, map).await?, left, right))
+        key: &Arc<OwnedRwLockReadGuard<TCellOwner<K>>>,
+    ) -> Result<TimeSplitValue<TimelineTime, Option<Either<Any, FrameVariableValue<U>>>>, EvaluateError<K, T>> {
+        Ok(into_time_split_value(self.process_all(frames, map, key).await?, left, right))
     }
 
     async fn get_time_split_value_array<U: Copy, Any, V: AsRef<[U; N]>, Ret: From<[TimeSplitValue<TimelineTime, Option<Either<Any, FrameVariableValue<U>>>>; N]>, const N: usize>(
         mut self,
         frames: impl Iterator<Item = TimelineTime>,
-        map: impl Fn(ParameterNativeProcessorInputFixed<T::Image, T::Audio>) -> Result<V, EvaluateError<T>>,
+        map: impl Fn(ParameterNativeProcessorInputFixed<T::Image, T::Audio>) -> Result<V, EvaluateError<K, T>>,
         left: TimelineTime,
         right: TimelineTime,
-    ) -> Result<Ret, EvaluateError<T>> {
-        Ok(into_time_split_value_array(self.process_all(frames, map).await?, left, right))
+        key: &Arc<OwnedRwLockReadGuard<TCellOwner<K>>>,
+    ) -> Result<Ret, EvaluateError<K, T>> {
+        Ok(into_time_split_value_array(self.process_all(frames, map, key).await?, left, right))
     }
 }
 
-struct EvaluateComponent<T: ParameterValueType, ImageCombinerBuilder, AudioCombinerBuilder, Id> {
-    cache_context: Arc<EvaluateComponentCache<T, Id>>,
-    component: StaticPointer<RwLock<ComponentInstance<T>>>,
+struct EvaluateComponent<K: 'static, T: ParameterValueType, ImageCombinerBuilder, AudioCombinerBuilder, Id> {
+    cache_context: Arc<EvaluateComponentCache<K, T, Id>>,
+    component: StaticPointer<TCell<K, ComponentInstance<K, T>>>,
     frames: CloneableIterator<TimelineTime>,
-    reference_functions: ReferenceFunctions<T>,
-    argument_reference_range: Arc<HashMap<StaticPointer<RwLock<ComponentInstance<T>>>, TimelineRangeSet>>,
+    reference_functions: ReferenceFunctions<K, T>,
+    argument_reference_range: Arc<HashMap<StaticPointer<TCell<K, ComponentInstance<K, T>>>, TimelineRangeSet>>,
     id_generator: Arc<Id>,
     image_combiner_builder: Arc<ImageCombinerBuilder>,
     audio_combiner_builder: Arc<AudioCombinerBuilder>,
     default_range: OnceCell<Arc<TimelineRangeSet>>,
 }
 
-impl<
-        T: ParameterValueType + 'static,
-        ImageCombinerBuilder: CombinerBuilder<T::Image, Request = ImageSizeRequest, Param = ImageRequiredParamsFixed> + 'static,
-        AudioCombinerBuilder: CombinerBuilder<T::Audio, Request = (), Param = AudioRequiredParamsFrameVariable> + 'static,
-        Id: IdGenerator + 'static,
-    > EvaluateComponent<T, ImageCombinerBuilder, AudioCombinerBuilder, Id>
+impl<K: 'static, T: ParameterValueType + 'static, ImageCombinerBuilder: CombinerBuilder<T::Image, Request = ImageSizeRequest, Param = ImageRequiredParamsFixed> + 'static, AudioCombinerBuilder: CombinerBuilder<T::Audio, Request = (), Param = AudioRequiredParamsFrameVariable> + 'static, Id: IdGenerator + 'static>
+    EvaluateComponent<K, T, ImageCombinerBuilder, AudioCombinerBuilder, Id>
 {
     fn new(
-        component: StaticPointer<RwLock<ComponentInstance<T>>>,
+        component: StaticPointer<TCell<K, ComponentInstance<K, T>>>,
         frames: CloneableIterator<TimelineTime>,
-        reference_functions: ReferenceFunctions<T>,
-        argument_reference_range: Arc<HashMap<StaticPointer<RwLock<ComponentInstance<T>>>, TimelineRangeSet>>,
+        reference_functions: ReferenceFunctions<K, T>,
+        argument_reference_range: Arc<HashMap<StaticPointer<TCell<K, ComponentInstance<K, T>>>, TimelineRangeSet>>,
         id_generator: Arc<Id>,
         image_combiner_builder: Arc<ImageCombinerBuilder>,
         audio_combiner_builder: Arc<AudioCombinerBuilder>,
-    ) -> EvaluateComponent<T, ImageCombinerBuilder, AudioCombinerBuilder, Id> {
+    ) -> EvaluateComponent<K, T, ImageCombinerBuilder, AudioCombinerBuilder, Id> {
         EvaluateComponent {
             cache_context: Arc::new(EvaluateComponentCache::default()),
             component,
@@ -1103,11 +1133,11 @@ impl<
         }
     }
 
-    fn evaluate_boxed(self: Arc<Self>, at: TimelineTime, ty: ParameterSelectValue, image_size_request: ImageSizeRequest) -> DynFuture<'static, EvaluateComponentResult<T>> {
-        DynFuture((self.evaluate(at, ty, image_size_request)).boxed())
+    fn evaluate_boxed(self: Arc<Self>, at: TimelineTime, ty: ParameterSelectValue, image_size_request: ImageSizeRequest, key: Arc<OwnedRwLockReadGuard<TCellOwner<K>>>) -> DynFuture<'static, EvaluateComponentResult<K, T>> {
+        DynFuture((self.evaluate(at, ty, image_size_request, key)).boxed())
     }
 
-    fn evaluate(self: Arc<Self>, at: TimelineTime, ty: ParameterSelectValue, image_size_request: ImageSizeRequest) -> impl Future<Output = EvaluateComponentResult<T>> + Send + 'static {
+    fn evaluate(self: Arc<Self>, at: TimelineTime, ty: ParameterSelectValue, image_size_request: ImageSizeRequest, key_arc: Arc<OwnedRwLockReadGuard<TCellOwner<K>>>) -> impl Future<Output = EvaluateComponentResult<K, T>> + Send + 'static {
         check_in_cache(Arc::clone(&self.cache_context), at, ty).then(move |result| async move {
             let EvaluateComponent {
                 cache_context,
@@ -1123,181 +1153,86 @@ impl<
             if let Some(cached_result) = result {
                 return cached_result;
             }
+            let key: &TCellOwner<K> = &key_arc;
             let Some(component_ref) = component.upgrade() else { return Err(EvaluateError::InvalidComponent(component.clone())); };
-            StaticPointerStrongRef::read_owned(component_ref)
-                .then(move |component_ref| {
-                    (((async move {
-                        fn f(marker: tokio::sync::RwLockReadGuard<'_, MarkerPin>) -> (TimelineTime, Option<MarkerTime>) {
-                            (marker.cached_timeline_time(), marker.locked_component_time())
-                        }
-                        let marker_left = component_ref.marker_left().upgrade().unwrap();
-                        let marker_right = component_ref.marker_right().upgrade().unwrap();
-                        (futures::join!(marker_left.read().map(f), marker_right.read().map(f)), component_ref)
-                    })
-                    .then({
-                        let image_combiner_builder = Arc::clone(image_combiner_builder);
-                        let audio_combiner_builder = Arc::clone(audio_combiner_builder);
-                        let argument_reference_range = Arc::clone(argument_reference_range);
-                        move |(((left, left_marker_time), (right, right_marker_time)), component_ref)| async move {
-                            let default_range = default_range.get_or_init(|| Arc::new(TimelineRangeSet(BTreeSet::from([TimelineRange([left, right])]))));
-                            let parameters = evaluate_parameters(at, image_size_request, reference_functions, &argument_reference_range, &image_combiner_builder, &audio_combiner_builder, component, &component_ref, left, right, default_range);
-                            let map_time = cache_context
-                                .map_time
-                                .get_or_init(|| {
-                                    let times_stream = stream::once(future::ready((left, left_marker_time.map(TimelineTime::from))))
-                                        .chain(stream::iter(component_ref.markers()).then(|marker| marker.read().map(|marker| (marker.cached_timeline_time(), marker.locked_component_time().map(TimelineTime::from)))))
-                                        .chain(stream::once(future::ready((right, right_marker_time.map(TimelineTime::from)))));
-                                    remove_option_from_times(times_stream).map(MapTime::new).map(Arc::new)
-                                })
-                                .map(Arc::clone);
-                            (futures::join!(parameters, map_time), left, right, component_ref, cache_context, reference_functions, default_range)
-                        }
+            let component_ref = component_ref.ro(key);
+            let marker_left = component_ref.marker_left().upgrade().unwrap();
+            let marker_right = component_ref.marker_right().upgrade().unwrap();
+            let marker_left = marker_left.ro(key);
+            let marker_right = marker_right.ro(key);
+            let left = marker_left.cached_timeline_time();
+            let left_marker_time = marker_left.locked_component_time();
+            let right = marker_right.cached_timeline_time();
+            let right_marker_time = marker_right.locked_component_time();
+            let default_range = default_range.get_or_init(|| Arc::new(TimelineRangeSet(BTreeSet::from([TimelineRange([left, right])]))));
+            let parameters = evaluate_parameters(at, image_size_request, reference_functions, argument_reference_range, image_combiner_builder, audio_combiner_builder, component, component_ref, left, right, default_range, &key_arc).await;
+            let map_time = Arc::clone(cache_context.map_time.get_or_init(|| {
+                let times_iter = iter::once((left, left_marker_time.map(TimelineTime::from)))
+                    .chain(component_ref.markers().iter().map(|marker| {
+                        let marker = marker.ro(key);
+                        (marker.cached_timeline_time(), marker.locked_component_time().map(TimelineTime::from))
                     }))
-                    .then(move |((parameters, map_time), left, right, component_ref, cache_context, reference_functions, default_range)| async move {
-                        let frames = frames.clone();
-                        let processor = component_ref.processor();
-                        let processed = process(
-                            cache_context,
-                            frames.clone(),
-                            at,
-                            ty,
-                            image_size_request,
-                            id_generator,
-                            image_combiner_builder,
-                            audio_combiner_builder,
-                            component,
-                            &component_ref,
-                            processor,
-                            left,
-                            right,
-                            parameters?,
-                            &map_time,
-                        );
-                        let image_required_params = acquire_image_required_param(cache_context, &frames, image_size_request, reference_functions, argument_reference_range, &component_ref, left, right, default_range);
-                        let audio_required_params = acquire_audio_required_param(cache_context, &frames, image_size_request, reference_functions, argument_reference_range, &component_ref, left, right, default_range);
-                        let (result, image_required_params, audio_required_params) = futures::join!(processed, image_required_params, audio_required_params);
-                        result
-                            .and_then(|result| image_required_params.map(|image_required_params| (result, image_required_params)))
-                            .and_then(|(result, image_required_params)| audio_required_params.map(|audio_required_params| (result, image_required_params, audio_required_params, cache_context)))
-                    }))
-                    .and_then(move |(result, image_required_params, audio_required_params, cache_context)| {
-                        async move {
-                            let create_error = |actual: Parameter<_>| EvaluateError::OutputTypeMismatch {
-                                component: component.clone(),
-                                expect: ty.0,
-                                actual: actual.select(),
-                            };
-                            match ty.0 {
-                                Parameter::None => Ok(Some(Parameter::None)),
-                                Parameter::Image(_) => {
-                                    {
-                                        cache_context
-                                            .result_cache
-                                            .0
-                                            .image
-                                            .write()
-                                            .map(|mut lock| {
-                                                // TODO: キャッシュ管理をもうちょっと賢くする
-                                                lock.retain(|&time, _| time == at);
-                                                let result = match lock.entry(at) {
-                                                    btree_map::Entry::Vacant(entry) => entry.insert(result.map(|result| Ok((result.into_image().map_err(create_error)?, (*image_required_params).as_ref().unwrap().get(at)))).transpose()?).clone(),
-                                                    btree_map::Entry::Occupied(entry) => entry.into_mut().clone(),
-                                                };
-                                                Ok(result.map(Parameter::Image))
-                                            })
-                                            .await
-                                    }
-                                }
-                                Parameter::Audio(_) => Ok(cache_context
-                                    .result_cache
-                                    .0
-                                    .audio
-                                    .get_or_try_init(|| result.map(|result| Ok((result.into_audio().map_err(create_error)?, (*audio_required_params).as_ref().cloned().unwrap()))).transpose())
-                                    .map(Clone::clone)?
-                                    .map(Parameter::Audio)),
-                                Parameter::Video(_) => unreachable!(),
-                                Parameter::File(_) => Ok(cache_context
-                                    .result_cache
-                                    .0
-                                    .file
-                                    .get_or_try_init(|| result.map(|result| result.into_file().map(Arc::new).map_err(create_error)).transpose())
-                                    .map(Clone::clone)?
-                                    .map(Parameter::File)),
-                                Parameter::String(_) => Ok(cache_context
-                                    .result_cache
-                                    .0
-                                    .string
-                                    .get_or_try_init(|| result.map(|result| result.into_string().map(Arc::new).map_err(create_error)).transpose())
-                                    .map(Clone::clone)?
-                                    .map(Parameter::String)),
-                                Parameter::Select(_) => Ok(cache_context
-                                    .result_cache
-                                    .0
-                                    .select
-                                    .get_or_try_init(|| result.map(|result| result.into_select().map(Arc::new).map_err(create_error)).transpose())
-                                    .map(Clone::clone)?
-                                    .map(Parameter::Select)),
-                                Parameter::Boolean(_) => Ok(cache_context
-                                    .result_cache
-                                    .0
-                                    .boolean
-                                    .get_or_try_init(|| result.map(|result| result.into_boolean().map(Arc::new).map_err(create_error)).transpose())
-                                    .map(Clone::clone)?
-                                    .map(Parameter::Boolean)),
-                                Parameter::Radio(_) => Ok(cache_context
-                                    .result_cache
-                                    .0
-                                    .radio
-                                    .get_or_try_init(|| result.map(|result| result.into_radio().map(Arc::new).map_err(create_error)).transpose())
-                                    .map(Clone::clone)?
-                                    .map(Parameter::Radio)),
-                                Parameter::Integer(_) => Ok(cache_context
-                                    .result_cache
-                                    .0
-                                    .integer
-                                    .get_or_try_init(|| result.map(|result| result.into_integer().map(Arc::new).map_err(create_error)).transpose())
-                                    .map(Clone::clone)?
-                                    .map(Parameter::Integer)),
-                                Parameter::RealNumber(_) => Ok(cache_context
-                                    .result_cache
-                                    .0
-                                    .real_number
-                                    .get_or_try_init(|| result.map(|result| result.into_real_number().map(Arc::new).map_err(create_error)).transpose())
-                                    .map(Clone::clone)?
-                                    .map(Parameter::RealNumber)),
-                                Parameter::Vec2(_) => Ok(cache_context
-                                    .result_cache
-                                    .0
-                                    .vec2
-                                    .get_or_try_init(|| result.map(|result| result.into_vec2().map(Arc::new).map_err(create_error)).transpose())
-                                    .map(Clone::clone)?
-                                    .map(Parameter::Vec2)),
-                                Parameter::Vec3(_) => Ok(cache_context
-                                    .result_cache
-                                    .0
-                                    .vec3
-                                    .get_or_try_init(|| result.map(|result| result.into_vec3().map(Arc::new).map_err(create_error)).transpose())
-                                    .map(Clone::clone)?
-                                    .map(Parameter::Vec3)),
-                                Parameter::Dictionary(_) => todo!(),
-                                Parameter::ComponentClass(_) => unreachable!(),
-                            }
-                        }
-                    })
-                })
-                .await
+                    .chain(iter::once((right, right_marker_time.map(TimelineTime::from))));
+                Arc::new(MapTime::new(remove_option_from_times(times_iter)))
+            }));
+            let frames = frames.clone();
+            let processor = component_ref.processor();
+            let processed = process(cache_context, frames.clone(), at, ty, image_size_request, id_generator, image_combiner_builder, audio_combiner_builder, component, component_ref, processor, left, right, parameters?, &map_time, &key_arc);
+            let image_required_params = acquire_image_required_param(cache_context, &frames, image_size_request, reference_functions, argument_reference_range, component_ref, left, right, default_range, &key_arc);
+            let audio_required_params = acquire_audio_required_param(cache_context, &frames, image_size_request, reference_functions, argument_reference_range, component_ref, left, right, default_range, &key_arc);
+            let (result, image_required_params, audio_required_params) = futures::try_join!(processed, image_required_params, audio_required_params)?;
+            let create_error = |actual: Parameter<_>| EvaluateError::OutputTypeMismatch {
+                component: component.clone(),
+                expect: ty.0,
+                actual: actual.select(),
+            };
+            match ty.0 {
+                Parameter::None => Ok(Some(Parameter::None)),
+                Parameter::Image(_) => {
+                    {
+                        cache_context
+                            .result_cache
+                            .0
+                            .image
+                            .write()
+                            .map(|mut lock| {
+                                // TODO: キャッシュ管理をもうちょっと賢くする
+                                lock.retain(|&time, _| time == at);
+                                let result = match lock.entry(at) {
+                                    btree_map::Entry::Vacant(entry) => entry.insert(result.map(|result| Ok((result.into_image().map_err(create_error)?, (*image_required_params).as_ref().unwrap().get(at)))).transpose()?).clone(),
+                                    btree_map::Entry::Occupied(entry) => entry.into_mut().clone(),
+                                };
+                                Ok(result.map(Parameter::Image))
+                            })
+                            .await
+                    }
+                }
+                Parameter::Audio(_) => Ok(cache_context
+                    .result_cache
+                    .0
+                    .audio
+                    .get_or_try_init(|| result.map(|result| Ok((result.into_audio().map_err(create_error)?, (*audio_required_params).as_ref().cloned().unwrap()))).transpose())
+                    .map(Clone::clone)?
+                    .map(Parameter::Audio)),
+                Parameter::Video(_) => unreachable!(),
+                Parameter::File(_) => Ok(cache_context.result_cache.0.file.get_or_try_init(|| result.map(|result| result.into_file().map(Arc::new).map_err(create_error)).transpose()).map(Clone::clone)?.map(Parameter::File)),
+                Parameter::String(_) => Ok(cache_context.result_cache.0.string.get_or_try_init(|| result.map(|result| result.into_string().map(Arc::new).map_err(create_error)).transpose()).map(Clone::clone)?.map(Parameter::String)),
+                Parameter::Select(_) => Ok(cache_context.result_cache.0.select.get_or_try_init(|| result.map(|result| result.into_select().map(Arc::new).map_err(create_error)).transpose()).map(Clone::clone)?.map(Parameter::Select)),
+                Parameter::Boolean(_) => Ok(cache_context.result_cache.0.boolean.get_or_try_init(|| result.map(|result| result.into_boolean().map(Arc::new).map_err(create_error)).transpose()).map(Clone::clone)?.map(Parameter::Boolean)),
+                Parameter::Radio(_) => Ok(cache_context.result_cache.0.radio.get_or_try_init(|| result.map(|result| result.into_radio().map(Arc::new).map_err(create_error)).transpose()).map(Clone::clone)?.map(Parameter::Radio)),
+                Parameter::Integer(_) => Ok(cache_context.result_cache.0.integer.get_or_try_init(|| result.map(|result| result.into_integer().map(Arc::new).map_err(create_error)).transpose()).map(Clone::clone)?.map(Parameter::Integer)),
+                Parameter::RealNumber(_) => Ok(cache_context.result_cache.0.real_number.get_or_try_init(|| result.map(|result| result.into_real_number().map(Arc::new).map_err(create_error)).transpose()).map(Clone::clone)?.map(Parameter::RealNumber)),
+                Parameter::Vec2(_) => Ok(cache_context.result_cache.0.vec2.get_or_try_init(|| result.map(|result| result.into_vec2().map(Arc::new).map_err(create_error)).transpose()).map(Clone::clone)?.map(Parameter::Vec2)),
+                Parameter::Vec3(_) => Ok(cache_context.result_cache.0.vec3.get_or_try_init(|| result.map(|result| result.into_vec3().map(Arc::new).map_err(create_error)).transpose()).map(Clone::clone)?.map(Parameter::Vec3)),
+                Parameter::Dictionary(_) => todo!(),
+                Parameter::ComponentClass(_) => unreachable!(),
+            }
         })
     }
 }
 
-fn process<
-    'a,
-    T: ParameterValueType + 'static,
-    ImageCombinerBuilder: CombinerBuilder<T::Image, Request = ImageSizeRequest, Param = ImageRequiredParamsFixed> + 'static,
-    AudioCombinerBuilder: CombinerBuilder<T::Audio, Request = (), Param = AudioRequiredParamsFrameVariable> + 'static,
-    Id: IdGenerator + 'static,
->(
-    cache_context: &'a Arc<EvaluateComponentCache<T, Id>>,
+fn process<'a, K, T: ParameterValueType + 'static, ImageCombinerBuilder: CombinerBuilder<T::Image, Request = ImageSizeRequest, Param = ImageRequiredParamsFixed> + 'static, AudioCombinerBuilder: CombinerBuilder<T::Audio, Request = (), Param = AudioRequiredParamsFrameVariable> + 'static, Id: IdGenerator + 'static>(
+    cache_context: &'a Arc<EvaluateComponentCache<K, T, Id>>,
     frames: CloneableIterator<TimelineTime>,
     at: TimelineTime,
     ty: ParameterSelectValue,
@@ -1305,14 +1240,15 @@ fn process<
     id_generator: &'a Arc<Id>,
     image_combiner_builder: &'a Arc<ImageCombinerBuilder>,
     audio_combiner_builder: &'a Arc<AudioCombinerBuilder>,
-    component: &'a StaticPointer<RwLock<ComponentInstance<T>>>,
-    component_ref: &'a ComponentInstance<T>,
-    processor: &'a Arc<dyn ComponentProcessor<T>>,
+    component: &'a StaticPointer<TCell<K, ComponentInstance<K, T>>>,
+    component_ref: &'a ComponentInstance<K, T>,
+    processor: &'a Arc<dyn ComponentProcessor<K, T>>,
     left: TimelineTime,
     right: TimelineTime,
-    parameters: Vec<ComponentProcessorInputValueBuffer<ImageGenerator<T, ImageCombinerBuilder>, T::Audio>>,
+    parameters: Vec<ComponentProcessorInputValueBuffer<ImageGenerator<K, T, ImageCombinerBuilder>, T::Audio>>,
     map_time: &'a MapTime,
-) -> impl Future<Output = Result<Option<ComponentProcessorInputValueBuffer<T::Image, T::Audio>>, EvaluateError<T>>> + Send + 'a
+    key_arc: &'a Arc<OwnedRwLockReadGuard<TCellOwner<K>>>,
+) -> impl Future<Output = Result<Option<ComponentProcessorInputValueBuffer<T::Image, T::Audio>>, EvaluateError<K, T>>> + Send + 'a
 where
     T::Image: 'static,
     T::Audio: 'static,
@@ -1325,54 +1261,43 @@ where
             let map_time_fn = move |t| MarkerTime::new(map_time.map_time(t).value().clamp(0., natural_length)).unwrap();
             match processor {
                 ComponentProcessorBody::Component(processor) => {
-                    cache_context
-                        .result_components_renderer
-                        .get_or_try_init(move || {
-                            let (components, links) = processor.build(
-                                component_ref.fixed_parameters(),
-                                &parameters.into_iter().map(into_component_processor_input_value).collect::<Vec<_>>(),
-                                component_ref.variable_parameters_type(),
-                                frames.clone().as_dyn_iterator(),
-                                &map_time_fn,
-                            );
-                            let components_weak = components.iter().map(AsRef::as_ref).cloned().collect::<Vec<_>>();
-                            let links_weak = links.iter().map(AsRef::as_ref).cloned().collect::<Vec<_>>();
-                            EvaluateAllComponent::new(
-                                components_weak,
-                                links_weak,
-                                component_ref.marker_left().reference(),
-                                component_ref.marker_right().reference(),
-                                frames,
-                                Arc::clone(id_generator),
-                                Arc::clone(image_combiner_builder),
-                                Arc::clone(audio_combiner_builder),
-                            )
-                            .and_then(move |ret| future::ready(Ok((ret, components, links))))
-                        })
-                        .and_then({
-                            let mut image_combiner = (ty == ParameterSelectValue(Parameter::Image(()))).then(|| image_combiner_builder.new_combiner(image_size_request));
-                            let mut audio_combiner = (ty == ParameterSelectValue(Parameter::Audio(()))).then(|| audio_combiner_builder.new_combiner(()));
-                            move |(all_component, _, _)| {
-                                async move { Ok((all_component.evaluate(at, ty, image_size_request, image_combiner.as_mut(), audio_combiner.as_mut(), left, right).await?, image_combiner, audio_combiner)) }.map_ok(|(result, image_combiner, audio_combiner)| match result {
-                                    Parameter::None => Some(ComponentProcessorInputValueBuffer::<T::Image, T::Audio>::None),
-                                    Parameter::Image(()) => Some(ComponentProcessorInputValueBuffer::<T::Image, T::Audio>::Image(image_combiner.unwrap().collect())),
-                                    Parameter::Audio(()) => Some(ComponentProcessorInputValueBuffer::<T::Image, T::Audio>::Audio(audio_combiner.unwrap().collect())),
-                                    Parameter::Video(((), ())) => unreachable!(),
-                                    Parameter::File(value) => Some(ComponentProcessorInputValueBuffer::<T::Image, T::Audio>::File(value)),
-                                    Parameter::String(value) => Some(ComponentProcessorInputValueBuffer::<T::Image, T::Audio>::String(value)),
-                                    Parameter::Select(value) => Some(ComponentProcessorInputValueBuffer::<T::Image, T::Audio>::Select(value)),
-                                    Parameter::Boolean(value) => Some(ComponentProcessorInputValueBuffer::<T::Image, T::Audio>::Boolean(value)),
-                                    Parameter::Radio(value) => Some(ComponentProcessorInputValueBuffer::<T::Image, T::Audio>::Radio(value)),
-                                    Parameter::Integer(value) => Some(ComponentProcessorInputValueBuffer::<T::Image, T::Audio>::Integer(value)),
-                                    Parameter::RealNumber(value) => Some(ComponentProcessorInputValueBuffer::<T::Image, T::Audio>::RealNumber(value)),
-                                    Parameter::Vec2(value) => Some(ComponentProcessorInputValueBuffer::<T::Image, T::Audio>::Vec2(value)),
-                                    Parameter::Vec3(value) => Some(ComponentProcessorInputValueBuffer::<T::Image, T::Audio>::Vec3(value)),
-                                    Parameter::Dictionary(value) => Some(ComponentProcessorInputValueBuffer::<T::Image, T::Audio>::Dictionary(value)),
-                                    Parameter::ComponentClass(value) => Some(ComponentProcessorInputValueBuffer::<T::Image, T::Audio>::ComponentClass(value)),
-                                })
-                            }
-                        })
-                        .await
+                    let (all_component, _, _) = cache_context.result_components_renderer.get_or_try_init(move || {
+                        let (components, links) = processor.build(component_ref.fixed_parameters(), &parameters.into_iter().map(into_component_processor_input_value).collect::<Vec<_>>(), component_ref.variable_parameters_type(), frames.clone().as_dyn_iterator(), &map_time_fn);
+                        let components_weak = components.iter().map(AsRef::as_ref).cloned().collect::<Vec<_>>();
+                        let links_weak = links.iter().map(AsRef::as_ref).cloned().collect::<Vec<_>>();
+                        let ret = EvaluateAllComponent::new(
+                            components_weak,
+                            links_weak,
+                            component_ref.marker_left().reference(),
+                            component_ref.marker_right().reference(),
+                            frames,
+                            Arc::clone(id_generator),
+                            Arc::clone(image_combiner_builder),
+                            Arc::clone(audio_combiner_builder),
+                            key_arc,
+                        )?;
+                        Ok((ret, components, links))
+                    })?;
+                    let mut image_combiner = (ty == ParameterSelectValue(Parameter::Image(()))).then(|| image_combiner_builder.new_combiner(image_size_request));
+                    let mut audio_combiner = (ty == ParameterSelectValue(Parameter::Audio(()))).then(|| audio_combiner_builder.new_combiner(()));
+                    let result = all_component.evaluate(at, ty, image_size_request, image_combiner.as_mut(), audio_combiner.as_mut(), left, right, Arc::clone(key_arc)).await?;
+                    Ok(Some(match result {
+                        Parameter::None => ComponentProcessorInputValueBuffer::<T::Image, T::Audio>::None,
+                        Parameter::Image(()) => ComponentProcessorInputValueBuffer::<T::Image, T::Audio>::Image(image_combiner.unwrap().collect()),
+                        Parameter::Audio(()) => ComponentProcessorInputValueBuffer::<T::Image, T::Audio>::Audio(audio_combiner.unwrap().collect()),
+                        Parameter::Video(((), ())) => unreachable!(),
+                        Parameter::File(value) => ComponentProcessorInputValueBuffer::<T::Image, T::Audio>::File(value),
+                        Parameter::String(value) => ComponentProcessorInputValueBuffer::<T::Image, T::Audio>::String(value),
+                        Parameter::Select(value) => ComponentProcessorInputValueBuffer::<T::Image, T::Audio>::Select(value),
+                        Parameter::Boolean(value) => ComponentProcessorInputValueBuffer::<T::Image, T::Audio>::Boolean(value),
+                        Parameter::Radio(value) => ComponentProcessorInputValueBuffer::<T::Image, T::Audio>::Radio(value),
+                        Parameter::Integer(value) => ComponentProcessorInputValueBuffer::<T::Image, T::Audio>::Integer(value),
+                        Parameter::RealNumber(value) => ComponentProcessorInputValueBuffer::<T::Image, T::Audio>::RealNumber(value),
+                        Parameter::Vec2(value) => ComponentProcessorInputValueBuffer::<T::Image, T::Audio>::Vec2(value),
+                        Parameter::Vec3(value) => ComponentProcessorInputValueBuffer::<T::Image, T::Audio>::Vec3(value),
+                        Parameter::Dictionary(value) => ComponentProcessorInputValueBuffer::<T::Image, T::Audio>::Dictionary(value),
+                        Parameter::ComponentClass(value) => ComponentProcessorInputValueBuffer::<T::Image, T::Audio>::ComponentClass(value),
+                    }))
                 }
                 ComponentProcessorBody::Native(processors) => {
                     let Some(processor) = processors.iter().find(|processor| ParameterSelectValue(processor.output_type()) == ty) else { return Ok(None); };
@@ -1381,13 +1306,7 @@ where
                         let placeholder_list = cache_context.placeholder_list.get_or_init(|| iter::from_fn(|| Some(ArcSwapOption::empty())).take(parameters.len()).collect());
                         let mut image_map = HashMap::new();
                         let mut audio_map = HashMap::new();
-                        let generate_variable_parameters = || {
-                            parameters
-                                .into_iter()
-                                .zip(placeholder_list)
-                                .map(|(param, placeholder)| into_frame_variable_value(param, frames.clone(), placeholder, &mut image_map, &mut audio_map, &**id_generator))
-                                .collect::<Vec<_>>()
-                        };
+                        let generate_variable_parameters = || parameters.into_iter().zip(placeholder_list).map(|(param, placeholder)| into_frame_variable_value(param, frames.clone(), placeholder, &mut image_map, &mut audio_map, &**id_generator)).collect::<Vec<_>>();
                         let executable = if let ParameterSelectValue(Parameter::Image(())) = ty {
                             cache_context
                                 .image_executable
@@ -1399,151 +1318,169 @@ where
                         let mut get_param = GetParam::new(&executable, &image_map, &audio_map);
                         match ty.0 {
                             Parameter::None => Ok(Some(Parameter::None)),
-                            Parameter::Image(_) => Ok(Some(Parameter::Image(executable.processor.process(at, (get_param.get(at)).await?).into_image().map_err(|actual| EvaluateError::OutputTypeMismatch {
+                            Parameter::Image(_) => Ok(Some(Parameter::Image(executable.processor.process(at, (get_param.get(at, key_arc)).await?).into_image().map_err(|actual| EvaluateError::OutputTypeMismatch {
                                 component: component.clone(),
                                 expect: Parameter::Image(()),
                                 actual: actual.select(),
                             })?))),
-                            Parameter::Audio(_) => Ok(Some(Parameter::Audio(executable.processor.process(at, (get_param.get(at)).await?).into_audio().map_err(|actual| EvaluateError::OutputTypeMismatch {
+                            Parameter::Audio(_) => Ok(Some(Parameter::Audio(executable.processor.process(at, (get_param.get(at, key_arc)).await?).into_audio().map_err(|actual| EvaluateError::OutputTypeMismatch {
                                 component: component.clone(),
                                 expect: Parameter::Image(()),
                                 actual: actual.select(),
                             })?))),
                             Parameter::Video(_) => unreachable!(),
                             Parameter::File(_) => Ok(Some(Parameter::File(
-                                (get_param.get_time_split_value(
-                                    frames,
-                                    |value| {
-                                        Parameter::into_file(value).map_err(|actual| EvaluateError::OutputTypeMismatch {
-                                            component: component.clone(),
-                                            expect: Parameter::File(()),
-                                            actual: actual.select(),
-                                        })
-                                    },
-                                    left,
-                                    right,
-                                ))
-                                .await?,
+                                get_param
+                                    .get_time_split_value(
+                                        frames,
+                                        |value| {
+                                            Parameter::into_file(value).map_err(|actual| EvaluateError::OutputTypeMismatch {
+                                                component: component.clone(),
+                                                expect: Parameter::File(()),
+                                                actual: actual.select(),
+                                            })
+                                        },
+                                        left,
+                                        right,
+                                        key_arc,
+                                    )
+                                    .await?,
                             ))),
                             Parameter::String(_) => Ok(Some(Parameter::String(
-                                (get_param.get_time_split_value(
-                                    frames,
-                                    |value| {
-                                        Parameter::into_string(value).map_err(|actual| EvaluateError::OutputTypeMismatch {
-                                            component: component.clone(),
-                                            expect: Parameter::String(()),
-                                            actual: actual.select(),
-                                        })
-                                    },
-                                    left,
-                                    right,
-                                ))
-                                .await?,
+                                get_param
+                                    .get_time_split_value(
+                                        frames,
+                                        |value| {
+                                            Parameter::into_string(value).map_err(|actual| EvaluateError::OutputTypeMismatch {
+                                                component: component.clone(),
+                                                expect: Parameter::String(()),
+                                                actual: actual.select(),
+                                            })
+                                        },
+                                        left,
+                                        right,
+                                        key_arc,
+                                    )
+                                    .await?,
                             ))),
                             Parameter::Select(_) => Ok(Some(Parameter::Select(
-                                (get_param.get_time_split_value(
-                                    frames,
-                                    |value| {
-                                        Parameter::into_select(value).map_err(|actual| EvaluateError::OutputTypeMismatch {
-                                            component: component.clone(),
-                                            expect: Parameter::Select(()),
-                                            actual: actual.select(),
-                                        })
-                                    },
-                                    left,
-                                    right,
-                                ))
-                                .await?,
+                                get_param
+                                    .get_time_split_value(
+                                        frames,
+                                        |value| {
+                                            Parameter::into_select(value).map_err(|actual| EvaluateError::OutputTypeMismatch {
+                                                component: component.clone(),
+                                                expect: Parameter::Select(()),
+                                                actual: actual.select(),
+                                            })
+                                        },
+                                        left,
+                                        right,
+                                        key_arc,
+                                    )
+                                    .await?,
                             ))),
                             Parameter::Boolean(_) => Ok(Some(Parameter::Boolean(
-                                (get_param.get_time_split_value(
-                                    frames,
-                                    |value| {
-                                        Parameter::into_boolean(value).map_err(|actual| EvaluateError::OutputTypeMismatch {
-                                            component: component.clone(),
-                                            expect: Parameter::Boolean(()),
-                                            actual: actual.select(),
-                                        })
-                                    },
-                                    left,
-                                    right,
-                                ))
-                                .await?,
+                                get_param
+                                    .get_time_split_value(
+                                        frames,
+                                        |value| {
+                                            Parameter::into_boolean(value).map_err(|actual| EvaluateError::OutputTypeMismatch {
+                                                component: component.clone(),
+                                                expect: Parameter::Boolean(()),
+                                                actual: actual.select(),
+                                            })
+                                        },
+                                        left,
+                                        right,
+                                        key_arc,
+                                    )
+                                    .await?,
                             ))),
                             Parameter::Radio(_) => Ok(Some(Parameter::Radio(
-                                (get_param.get_time_split_value(
-                                    frames,
-                                    |value| {
-                                        Parameter::into_radio(value).map_err(|actual| EvaluateError::OutputTypeMismatch {
-                                            component: component.clone(),
-                                            expect: Parameter::Radio(()),
-                                            actual: actual.select(),
-                                        })
-                                    },
-                                    left,
-                                    right,
-                                ))
-                                .await?,
+                                get_param
+                                    .get_time_split_value(
+                                        frames,
+                                        |value| {
+                                            Parameter::into_radio(value).map_err(|actual| EvaluateError::OutputTypeMismatch {
+                                                component: component.clone(),
+                                                expect: Parameter::Radio(()),
+                                                actual: actual.select(),
+                                            })
+                                        },
+                                        left,
+                                        right,
+                                        key_arc,
+                                    )
+                                    .await?,
                             ))),
                             Parameter::Integer(_) => Ok(Some(Parameter::Integer(
-                                (get_param.get_time_split_value(
-                                    frames,
-                                    |value| {
-                                        Parameter::into_integer(value).map_err(|actual| EvaluateError::OutputTypeMismatch {
-                                            component: component.clone(),
-                                            expect: Parameter::Integer(()),
-                                            actual: actual.select(),
-                                        })
-                                    },
-                                    left,
-                                    right,
-                                ))
-                                .await?,
+                                get_param
+                                    .get_time_split_value(
+                                        frames,
+                                        |value| {
+                                            Parameter::into_integer(value).map_err(|actual| EvaluateError::OutputTypeMismatch {
+                                                component: component.clone(),
+                                                expect: Parameter::Integer(()),
+                                                actual: actual.select(),
+                                            })
+                                        },
+                                        left,
+                                        right,
+                                        key_arc,
+                                    )
+                                    .await?,
                             ))),
                             Parameter::RealNumber(_) => Ok(Some(Parameter::RealNumber(
-                                (get_param.get_time_split_value(
-                                    frames,
-                                    |value| {
-                                        Parameter::into_real_number(value).map_err(|actual| EvaluateError::OutputTypeMismatch {
-                                            component: component.clone(),
-                                            expect: Parameter::RealNumber(()),
-                                            actual: actual.select(),
-                                        })
-                                    },
-                                    left,
-                                    right,
-                                ))
-                                .await?,
+                                get_param
+                                    .get_time_split_value(
+                                        frames,
+                                        |value| {
+                                            Parameter::into_real_number(value).map_err(|actual| EvaluateError::OutputTypeMismatch {
+                                                component: component.clone(),
+                                                expect: Parameter::RealNumber(()),
+                                                actual: actual.select(),
+                                            })
+                                        },
+                                        left,
+                                        right,
+                                        key_arc,
+                                    )
+                                    .await?,
                             ))),
                             Parameter::Vec2(_) => Ok(Some(Parameter::Vec2(
-                                (get_param.get_time_split_value_array(
-                                    frames,
-                                    |value| {
-                                        Parameter::into_vec2(value).map_err(|actual| EvaluateError::OutputTypeMismatch {
-                                            component: component.clone(),
-                                            expect: Parameter::Vec2(()),
-                                            actual: actual.select(),
-                                        })
-                                    },
-                                    left,
-                                    right,
-                                ))
-                                .await?,
+                                get_param
+                                    .get_time_split_value_array(
+                                        frames,
+                                        |value| {
+                                            Parameter::into_vec2(value).map_err(|actual| EvaluateError::OutputTypeMismatch {
+                                                component: component.clone(),
+                                                expect: Parameter::Vec2(()),
+                                                actual: actual.select(),
+                                            })
+                                        },
+                                        left,
+                                        right,
+                                        key_arc,
+                                    )
+                                    .await?,
                             ))),
                             Parameter::Vec3(_) => Ok(Some(Parameter::Vec3(
-                                (get_param.get_time_split_value_array(
-                                    frames,
-                                    |value| {
-                                        Parameter::into_vec3(value).map_err(|actual| EvaluateError::OutputTypeMismatch {
-                                            component: component.clone(),
-                                            expect: Parameter::Vec3(()),
-                                            actual: actual.select(),
-                                        })
-                                    },
-                                    left,
-                                    right,
-                                ))
-                                .await?,
+                                get_param
+                                    .get_time_split_value_array(
+                                        frames,
+                                        |value| {
+                                            Parameter::into_vec3(value).map_err(|actual| EvaluateError::OutputTypeMismatch {
+                                                component: component.clone(),
+                                                expect: Parameter::Vec3(()),
+                                                actual: actual.select(),
+                                            })
+                                        },
+                                        left,
+                                        right,
+                                        key_arc,
+                                    )
+                                    .await?,
                             ))),
                             Parameter::Dictionary(_) => todo!(),
                             Parameter::ComponentClass(_) => Ok(Some(Parameter::ComponentClass(()))),
@@ -1555,20 +1492,21 @@ where
         })
 }
 
-fn acquire_image_required_param<'a, T: ParameterValueType + 'static, Id: IdGenerator + 'static>(
-    cache_context: &'a Arc<EvaluateComponentCache<T, Id>>,
+fn acquire_image_required_param<'a, K, T: ParameterValueType + 'static, Id: IdGenerator + 'static>(
+    cache_context: &'a Arc<EvaluateComponentCache<K, T, Id>>,
     frames: &'a CloneableIterator<TimelineTime>,
     image_size_request: ImageSizeRequest,
-    reference_functions: &'a ReferenceFunctions<T>,
-    argument_reference_range: &'a Arc<HashMap<StaticPointer<RwLock<ComponentInstance<T>>>, TimelineRangeSet>>,
-    component_ref: &'a ComponentInstance<T>,
+    reference_functions: &'a ReferenceFunctions<K, T>,
+    argument_reference_range: &'a Arc<HashMap<StaticPointer<TCell<K, ComponentInstance<K, T>>>, TimelineRangeSet>>,
+    component_ref: &'a ComponentInstance<K, T>,
     left: TimelineTime,
     right: TimelineTime,
     default_range: &'a Arc<TimelineRangeSet>,
-) -> impl Future<Output = Result<Arc<Option<ImageRequiredParamsFrameVariable>>, EvaluateError<T>>> + Send + 'a {
+    key: &'a Arc<OwnedRwLockReadGuard<TCellOwner<K>>>,
+) -> impl Future<Output = Result<Arc<Option<ImageRequiredParamsFrameVariable>>, EvaluateError<K, T>>> + Send + 'a {
     cache_context
         .image_required_params
-        .get_or_try_init::<EvaluateError<T>, _, _>(move || async move {
+        .get_or_try_init::<EvaluateError<K, T>, _, _>(move || async move {
             if let Some(&ImageRequiredParams {
                 aspect_ratio,
                 ref transform,
@@ -1578,85 +1516,45 @@ fn acquire_image_required_param<'a, T: ParameterValueType + 'static, Id: IdGener
                 ref composite_operation,
             }) = component_ref.image_required_params()
             {
-                let transform = async {
-                    match transform {
-                        ImageRequiredParamsTransform::Params { scale, translate, rotate, scale_center, rotate_center } => {
-                            let (scale, translate, rotate, scale_center, rotate_center) = (
-                                (param_as_frame_variable_value_easing(scale.as_ref(), reference_functions, argument_reference_range, image_size_request, left, right, frames.clone(), From::from, |_| 1., default_range)).await,
-                                (param_as_frame_variable_value_easing(translate.as_ref(), reference_functions, argument_reference_range, image_size_request, left, right, frames.clone(), From::from, |_| 0., default_range)).await,
-                                (as_frame_variable_value_easing(rotate, frames.clone(), |v| v, |_| Quaternion::one())).await,
-                                (param_as_frame_variable_value_easing(scale_center.as_ref(), reference_functions, argument_reference_range, image_size_request, left, right, frames.clone(), From::from, |_| 0., default_range)).await,
-                                (param_as_frame_variable_value_easing(rotate_center.as_ref(), reference_functions, argument_reference_range, image_size_request, left, right, frames.clone(), From::from, |_| 0., default_range)).await,
-                            );
-                            Ok(ImageRequiredParamsTransformFrameVariable::Params {
-                                scale: scale?,
-                                translate: translate?,
-                                rotate,
-                                scale_center: scale_center?,
-                                rotate_center: rotate_center?,
-                            })
-                        }
-                        ImageRequiredParamsTransform::Free { left_top, right_top, left_bottom, right_bottom } => {
-                            let (left_top, right_top, left_bottom, right_bottom) = (
-                                (param_as_frame_variable_value_easing(left_top.as_ref(), reference_functions, argument_reference_range, image_size_request, left, right, frames.clone(), From::from, |_| 0., default_range)).await,
-                                (param_as_frame_variable_value_easing(
-                                    right_top.as_ref(),
-                                    reference_functions,
-                                    argument_reference_range,
-                                    image_size_request,
-                                    left,
-                                    right,
-                                    frames.clone(),
-                                    From::from,
-                                    |i| [image_size_request.width as f64, 0., 0.][i],
-                                    default_range,
-                                ))
-                                .await,
-                                (param_as_frame_variable_value_easing(
-                                    left_bottom.as_ref(),
-                                    reference_functions,
-                                    argument_reference_range,
-                                    image_size_request,
-                                    left,
-                                    right,
-                                    frames.clone(),
-                                    From::from,
-                                    |i| [0., image_size_request.height as f64, 0.][i],
-                                    default_range,
-                                ))
-                                .await,
-                                (param_as_frame_variable_value_easing(
-                                    right_bottom.as_ref(),
-                                    reference_functions,
-                                    argument_reference_range,
-                                    image_size_request,
-                                    left,
-                                    right,
-                                    frames.clone(),
-                                    From::from,
-                                    |i| [image_size_request.width as f64, image_size_request.height as f64, 0.][i],
-                                    default_range,
-                                ))
-                                .await,
-                            );
-                            Ok(ImageRequiredParamsTransformFrameVariable::Free {
-                                left_top: left_top?,
-                                right_top: right_top?,
-                                left_bottom: left_bottom?,
-                                right_bottom: right_bottom?,
-                            })
-                        }
+                let transform = match transform {
+                    ImageRequiredParamsTransform::Params { scale, translate, rotate, scale_center, rotate_center } => {
+                        let rotate = as_frame_variable_value_easing(rotate, frames.clone(), |v| v, |_| Quaternion::one(), key);
+                        let (scale, translate, scale_center, rotate_center) = futures::try_join!(
+                            param_as_frame_variable_value_easing(scale.as_ref(), reference_functions, argument_reference_range, image_size_request, left, right, frames.clone(), From::from, |_| 1., default_range, key),
+                            param_as_frame_variable_value_easing(translate.as_ref(), reference_functions, argument_reference_range, image_size_request, left, right, frames.clone(), From::from, |_| 0., default_range, key),
+                            param_as_frame_variable_value_easing(scale_center.as_ref(), reference_functions, argument_reference_range, image_size_request, left, right, frames.clone(), From::from, |_| 0., default_range, key),
+                            param_as_frame_variable_value_easing(rotate_center.as_ref(), reference_functions, argument_reference_range, image_size_request, left, right, frames.clone(), From::from, |_| 0., default_range, key),
+                        )?;
+                        ImageRequiredParamsTransformFrameVariable::Params { scale, translate, rotate, scale_center, rotate_center }
+                    }
+                    ImageRequiredParamsTransform::Free { left_top, right_top, left_bottom, right_bottom } => {
+                        let (left_top, right_top, left_bottom, right_bottom) = futures::try_join!(
+                            param_as_frame_variable_value_easing(left_top.as_ref(), reference_functions, argument_reference_range, image_size_request, left, right, frames.clone(), From::from, |_| 0., default_range, key),
+                            param_as_frame_variable_value_easing(right_top.as_ref(), reference_functions, argument_reference_range, image_size_request, left, right, frames.clone(), From::from, |i| [image_size_request.width as f64, 0., 0.][i], default_range, key),
+                            param_as_frame_variable_value_easing(left_bottom.as_ref(), reference_functions, argument_reference_range, image_size_request, left, right, frames.clone(), From::from, |i| [0., image_size_request.height as f64, 0.][i], default_range, key),
+                            param_as_frame_variable_value_easing(
+                                right_bottom.as_ref(),
+                                reference_functions,
+                                argument_reference_range,
+                                image_size_request,
+                                left,
+                                right,
+                                frames.clone(),
+                                From::from,
+                                |i| [image_size_request.width as f64, image_size_request.height as f64, 0.][i],
+                                default_range,
+                                key
+                            ),
+                        )?;
+                        ImageRequiredParamsTransformFrameVariable::Free { left_top, right_top, left_bottom, right_bottom }
                     }
                 };
-                let (transform, opacity, blend_mode, composite_operation) = (
-                    (transform).await,
-                    (as_frame_variable_value_easing(opacity, frames.clone(), |opacity| Opacity::new(opacity).unwrap(), |_| 1.)).await,
-                    (as_frame_variable_value(blend_mode, frames.clone())).await,
-                    (as_frame_variable_value(composite_operation, frames.clone())).await,
-                );
+                let opacity = as_frame_variable_value_easing(opacity, frames.clone(), |opacity| Opacity::new(opacity).unwrap(), |_| 1., key);
+                let blend_mode = as_frame_variable_value(blend_mode, frames.clone(), key);
+                let composite_operation = as_frame_variable_value(composite_operation, frames.clone(), key);
                 Ok(Arc::new(Some(ImageRequiredParamsFrameVariable {
                     aspect_ratio,
-                    transform: transform?,
+                    transform,
                     background_color,
                     opacity,
                     blend_mode,
@@ -1669,24 +1567,25 @@ fn acquire_image_required_param<'a, T: ParameterValueType + 'static, Id: IdGener
         .map_ok(Arc::clone)
 }
 
-fn acquire_audio_required_param<'a, T: ParameterValueType + 'static, Id: IdGenerator + 'static>(
-    cache_context: &'a EvaluateComponentCache<T, Id>,
+fn acquire_audio_required_param<'a, K, T: ParameterValueType + 'static, Id: IdGenerator + 'static>(
+    cache_context: &'a EvaluateComponentCache<K, T, Id>,
     frames: &'a CloneableIterator<TimelineTime>,
     image_size_request: ImageSizeRequest,
-    reference_functions: &'a ReferenceFunctions<T>,
-    argument_reference_range: &'a Arc<HashMap<StaticPointer<RwLock<ComponentInstance<T>>>, TimelineRangeSet>>,
-    component_ref: &'a ComponentInstance<T>,
+    reference_functions: &'a ReferenceFunctions<K, T>,
+    argument_reference_range: &'a Arc<HashMap<StaticPointer<TCell<K, ComponentInstance<K, T>>>, TimelineRangeSet>>,
+    component_ref: &'a ComponentInstance<K, T>,
     left: TimelineTime,
     right: TimelineTime,
     default_range: &'a Arc<TimelineRangeSet>,
-) -> impl Future<Output = Result<Arc<Option<AudioRequiredParamsFrameVariable>>, EvaluateError<T>>> + Send + 'a {
+    key: &'a Arc<OwnedRwLockReadGuard<TCellOwner<K>>>,
+) -> impl Future<Output = Result<Arc<Option<AudioRequiredParamsFrameVariable>>, EvaluateError<K, T>>> + Send + 'a {
     cache_context
         .audio_required_params
-        .get_or_try_init::<EvaluateError<T>, _, _>(move || {
+        .get_or_try_init::<EvaluateError<K, T>, _, _>(move || {
             future::ready(component_ref.audio_required_params().ok_or(()))
                 .and_then(move |AudioRequiredParams { volume }| {
                     stream::iter(volume.iter())
-                        .then(move |param| (param_as_frame_variable_value_easing(array::from_ref(param), reference_functions, argument_reference_range, image_size_request, left, right, frames.clone(), |[v]| v, |_| 1., default_range)))
+                        .then(move |param| (param_as_frame_variable_value_easing(array::from_ref(param), reference_functions, argument_reference_range, image_size_request, left, right, frames.clone(), |[v]| v, |_| 1., default_range, key)))
                         .try_collect()
                         .map(Ok)
                 })
@@ -1695,180 +1594,158 @@ fn acquire_audio_required_param<'a, T: ParameterValueType + 'static, Id: IdGener
         .map_ok(Arc::clone)
 }
 
-fn evaluate_parameters<'a, T: ParameterValueType + 'static, ImageCombinerBuilder: CombinerBuilder<T::Image, Request = ImageSizeRequest, Param = ImageRequiredParamsFixed> + 'static, AudioCombinerBuilder: CombinerBuilder<T::Audio, Request = (), Param = AudioRequiredParamsFrameVariable> + 'static>(
+fn evaluate_parameters<'a, K: 'static, T: ParameterValueType + 'static, ImageCombinerBuilder: CombinerBuilder<T::Image, Request = ImageSizeRequest, Param = ImageRequiredParamsFixed> + 'static, AudioCombinerBuilder: CombinerBuilder<T::Audio, Request = (), Param = AudioRequiredParamsFrameVariable> + 'static>(
     at: TimelineTime,
     image_size_request: ImageSizeRequest,
-    reference_functions: &'a ReferenceFunctions<T>,
-    argument_reference_range: &'a Arc<HashMap<StaticPointer<RwLock<ComponentInstance<T>>>, TimelineRangeSet>>,
+    reference_functions: &'a ReferenceFunctions<K, T>,
+    argument_reference_range: &'a Arc<HashMap<StaticPointer<TCell<K, ComponentInstance<K, T>>>, TimelineRangeSet>>,
     image_combiner_builder: &'a Arc<ImageCombinerBuilder>,
     audio_combiner_builder: &'a Arc<AudioCombinerBuilder>,
-    component: &'a StaticPointer<RwLock<ComponentInstance<T>>>,
-    component_ref: &'a ComponentInstance<T>,
+    component: &'a StaticPointer<TCell<K, ComponentInstance<K, T>>>,
+    component_ref: &'a ComponentInstance<K, T>,
     left: TimelineTime,
     right: TimelineTime,
     default_range: &'a Arc<TimelineRangeSet>,
-) -> impl Future<Output = Result<Vec<Parameter<ComponentProcessorInputBuffer<ImageGenerator<T, ImageCombinerBuilder>, <T as ParameterValueType>::Audio>>>, EvaluateError<T>>> + Send + 'a {
+    key: &'a Arc<OwnedRwLockReadGuard<TCellOwner<K>>>,
+) -> impl Future<Output = Result<Vec<Parameter<ComponentProcessorInputBuffer<ImageGenerator<K, T, ImageCombinerBuilder>, <T as ParameterValueType>::Audio>>>, EvaluateError<K, T>>> + Send + 'a {
     stream::iter(component_ref.variable_parameters().iter().zip(component_ref.variable_parameters_type()).enumerate())
-        .map(
-            move |(index, (param, (_, ty)))| -> Result<JoinHandle<Result<ComponentProcessorInputValueBuffer<ImageGenerator<T, ImageCombinerBuilder>, T::Audio>, EvaluateError<T>>>, EvaluateError<T>> {
-                match ty {
-                    Parameter::Image(_) => {
-                        if let VariableParameterValue::MayComponent {
-                            params: Parameter::Image(Option::None),
+        .map(move |(index, (param, (_, ty)))| -> Result<JoinHandle<Result<ComponentProcessorInputValueBuffer<ImageGenerator<K, T, ImageCombinerBuilder>, T::Audio>, EvaluateError<K, T>>>, EvaluateError<K, T>> {
+            match ty {
+                Parameter::Image(_) => {
+                    if let VariableParameterValue::MayComponent { params: Parameter::Image(Option::None), components, priority: _ } = param {
+                        let reference_functions = reference_functions.clone();
+                        let argument_reference_range = Arc::clone(argument_reference_range);
+                        let image_combiner_builder = Arc::clone(image_combiner_builder);
+                        let components = components.clone();
+                        Ok(tokio::spawn(future::ready(Ok(ComponentProcessorInputValueBuffer::Image(ImageGenerator::new(
+                            reference_functions,
+                            argument_reference_range,
+                            image_combiner_builder,
                             components,
-                            priority: _,
-                        } = param
-                        {
-                            let reference_functions = reference_functions.clone();
-                            let argument_reference_range = Arc::clone(argument_reference_range);
-                            let image_combiner_builder = Arc::clone(image_combiner_builder);
-                            let components = components.clone();
-                            Ok(tokio::spawn(future::ready(Ok(ComponentProcessorInputValueBuffer::Image(ImageGenerator::new(
-                                reference_functions,
-                                argument_reference_range,
-                                image_combiner_builder,
-                                components,
-                                image_size_request,
-                                Arc::clone(default_range),
-                            ))))))
-                        } else {
-                            Err(EvaluateError::InvalidVariableParameter { component: component.clone(), index })
-                        }
+                            image_size_request,
+                            Arc::clone(default_range),
+                        ))))))
+                    } else {
+                        Err(EvaluateError::InvalidVariableParameter { component: component.clone(), index })
                     }
-                    Parameter::Audio(_) => {
-                        if let VariableParameterValue::MayComponent {
-                            params: Parameter::Audio(Option::None),
-                            components,
-                            priority: _,
-                        } = param
-                        {
-                            let reference_functions = reference_functions.clone();
-                            let _argument_reference_range = Arc::clone(argument_reference_range);
-                            let components = components.clone();
-                            let combiner = audio_combiner_builder.new_combiner(());
-                            Ok(tokio::spawn(
-                                stream::iter(components)
-                                    .map(move |component| {
-                                        // let range = argument_reference_range.get(&component).unwrap();
-                                        tokio::spawn(reference_functions.0.get(&component).unwrap().call((at, ParameterSelectValue(Parameter::Audio(())), image_size_request))).map(|result| result.unwrap())
-                                    })
-                                    .buffered(16)
-                                    .try_fold(combiner, |mut combiner, param| {
-                                        if let Some(param) = param {
-                                            if let Parameter::Audio((image, param)) = param {
-                                                combiner.add(image, param);
-                                            } else {
-                                                unreachable!()
-                                            }
-                                        }
-                                        future::ready(Ok(combiner))
-                                    })
-                                    .map_ok(|combiner| ComponentProcessorInputValueBuffer::Audio(combiner.collect())),
-                            ))
-                        } else {
-                            Err(EvaluateError::InvalidVariableParameter { component: component.clone(), index })
-                        }
-                    }
-                    Parameter::Video(_) => {
-                        if let VariableParameterValue::MayComponent {
-                            params: Parameter::Video(Option::None),
-                            components,
-                            priority: _,
-                        } = param
-                        {
-                            let reference_functions0 = reference_functions.clone();
-                            let reference_functions1 = reference_functions.clone();
-                            let argument_reference_range = Arc::clone(argument_reference_range);
-                            let components = components.clone();
-                            let image_combiner_builder = Arc::clone(image_combiner_builder);
-                            let audio_combiner = audio_combiner_builder.new_combiner(());
-                            let default_range = Arc::clone(default_range);
-                            Ok(tokio::spawn(
-                                stream::iter(components.clone())
-                                    .map(move |component| {
-                                        // let range = argument_reference_range.get(&component).unwrap();
-                                        tokio::spawn(reference_functions0.0.get(&component).unwrap().call((at, ParameterSelectValue(Parameter::Audio(())), image_size_request))).map(|result| result.unwrap())
-                                    })
-                                    .buffered(16)
-                                    .try_fold(audio_combiner, |mut audio_combiner, param| {
-                                        if let Some(param) = param {
-                                            if let Parameter::Audio((image, param)) = param {
-                                                audio_combiner.add(image, param);
-                                            } else {
-                                                unreachable!()
-                                            }
-                                        }
-                                        future::ready(Ok(audio_combiner))
-                                    })
-                                    .map_ok(move |audio_combiner| ComponentProcessorInputValueBuffer::Video((ImageGenerator::new(reference_functions1, argument_reference_range, image_combiner_builder, components, image_size_request, default_range), audio_combiner.collect()))),
-                            ))
-                        } else {
-                            Err(EvaluateError::InvalidVariableParameter { component: component.clone(), index })
-                        }
-                    }
-                    ty @ (Parameter::None
-                    | Parameter::File(_)
-                    | Parameter::String(_)
-                    | Parameter::Select(_)
-                    | Parameter::Boolean(_)
-                    | Parameter::Radio(_)
-                    | Parameter::Integer(_)
-                    | Parameter::RealNumber(_)
-                    | Parameter::Vec2(_)
-                    | Parameter::Vec3(_)
-                    | Parameter::Dictionary(_)
-                    | Parameter::ComponentClass(_)) => match param {
-                        VariableParameterValue::Manually(param) => Ok(tokio::spawn(value_into_processor_input_buffer(param.clone()).map(change_type_parameter).map(Ok::<_, EvaluateError<T>>))),
-                        VariableParameterValue::MayComponent { params, components, priority } => {
-                            let params = params.clone();
-                            let reference_functions = reference_functions.clone();
-                            let argument_reference_range = Arc::clone(argument_reference_range);
-                            let ty = ty.select();
-                            let tasks = stream::iter(components.clone())
-                                .map(move |component| tokio::spawn(reference_functions.0.get(&component).unwrap().call((at, ParameterSelectValue(ty), image_size_request))).map(|result| result.unwrap().map(|result| (result, component))))
-                                .buffered(16);
-                            let default_range = Arc::clone(default_range);
-                            match priority {
-                                VariableParameterPriority::PrioritizeManually => Ok(tokio::spawn(
-                                    tasks
-                                        .try_fold(empty_input_buffer(&ty, left, right), move |buffer, (param, component)| {
-                                            if let Some(param) = param {
-                                                let range = argument_reference_range.get(&component).unwrap_or(&default_range);
-                                                future::ready(Ok(combine_params(buffer, &param, range)))
-                                            } else {
-                                                future::ready(Ok(buffer))
-                                            }
-                                        })
-                                        .and_then(|buffer| nullable_into_processor_input_buffer_ref(params).map(|param| Ok((buffer, param))))
-                                        .map_ok(move |(buffer, param)| combine_params(buffer, &param, &BTreeSet::from([TimelineRange::from([left, right])]).into()))
-                                        .map_ok(change_type_parameter),
-                                )),
-                                VariableParameterPriority::PrioritizeComponent => Ok(tokio::spawn(
-                                    nullable_into_processor_input_buffer(params)
-                                        .then(move |buffer| {
-                                            tasks.try_fold(buffer, move |buffer, (param, component)| {
-                                                if let Some(param) = param {
-                                                    let range = argument_reference_range.get(&component).unwrap_or(&default_range);
-                                                    future::ready(Ok(combine_params(buffer, &param, range)))
-                                                } else {
-                                                    future::ready(Ok(buffer))
-                                                }
-                                            })
-                                        })
-                                        .map_ok(change_type_parameter),
-                                )),
-                            }
-                        }
-                    },
                 }
-            },
-        )
+                Parameter::Audio(_) => {
+                    if let VariableParameterValue::MayComponent { params: Parameter::Audio(Option::None), components, priority: _ } = param {
+                        let reference_functions = reference_functions.clone();
+                        let components = components.clone();
+                        let combiner = audio_combiner_builder.new_combiner(());
+                        let key = Arc::clone(key);
+                        Ok(tokio::spawn(
+                            stream::iter(components)
+                                .map(move |component| {
+                                    // let range = argument_reference_range.get(&component).unwrap();
+                                    tokio::spawn(reference_functions.0.get(&component).unwrap().call(FunctionArg(at, ParameterSelectValue(Parameter::Audio(())), image_size_request, Arc::clone(&key)))).map(|result| result.unwrap())
+                                })
+                                .buffered(16)
+                                .try_fold(combiner, |mut combiner, param| {
+                                    if let Some(param) = param {
+                                        if let Parameter::Audio((image, param)) = param {
+                                            combiner.add(image, param);
+                                        } else {
+                                            unreachable!()
+                                        }
+                                    }
+                                    future::ready(Ok(combiner))
+                                })
+                                .map_ok(|combiner| ComponentProcessorInputValueBuffer::Audio(combiner.collect())),
+                        ))
+                    } else {
+                        Err(EvaluateError::InvalidVariableParameter { component: component.clone(), index })
+                    }
+                }
+                Parameter::Video(_) => {
+                    if let VariableParameterValue::MayComponent { params: Parameter::Video(Option::None), components, priority: _ } = param {
+                        let reference_functions0 = reference_functions.clone();
+                        let reference_functions1 = reference_functions.clone();
+                        let argument_reference_range = Arc::clone(argument_reference_range);
+                        let components = components.clone();
+                        let image_combiner_builder = Arc::clone(image_combiner_builder);
+                        let audio_combiner = audio_combiner_builder.new_combiner(());
+                        let default_range = Arc::clone(default_range);
+                        let key = Arc::clone(key);
+                        Ok(tokio::spawn(
+                            stream::iter(components.clone())
+                                .map(move |component| {
+                                    // let range = argument_reference_range.get(&component).unwrap();
+                                    tokio::spawn(reference_functions0.0.get(&component).unwrap().call(FunctionArg(at, ParameterSelectValue(Parameter::Audio(())), image_size_request, Arc::clone(&key)))).map(|result| result.unwrap())
+                                })
+                                .buffered(16)
+                                .try_fold(audio_combiner, |mut audio_combiner, param| {
+                                    if let Some(param) = param {
+                                        if let Parameter::Audio((image, param)) = param {
+                                            audio_combiner.add(image, param);
+                                        } else {
+                                            unreachable!()
+                                        }
+                                    }
+                                    future::ready(Ok(audio_combiner))
+                                })
+                                .map_ok(move |audio_combiner| ComponentProcessorInputValueBuffer::Video((ImageGenerator::new(reference_functions1, argument_reference_range, image_combiner_builder, components, image_size_request, default_range), audio_combiner.collect()))),
+                        ))
+                    } else {
+                        Err(EvaluateError::InvalidVariableParameter { component: component.clone(), index })
+                    }
+                }
+                ty @ (Parameter::None | Parameter::File(_) | Parameter::String(_) | Parameter::Select(_) | Parameter::Boolean(_) | Parameter::Radio(_) | Parameter::Integer(_) | Parameter::RealNumber(_) | Parameter::Vec2(_) | Parameter::Vec3(_) | Parameter::Dictionary(_) | Parameter::ComponentClass(_)) => match param {
+                    VariableParameterValue::Manually(param) => Ok(tokio::spawn(future::ready(Ok::<_, EvaluateError<K, T>>(change_type_parameter(value_into_processor_input_buffer(param.clone(), key)))))),
+                    VariableParameterValue::MayComponent { params, components, priority } => {
+                        let params = params.clone();
+                        let reference_functions = reference_functions.clone();
+                        let argument_reference_range = Arc::clone(argument_reference_range);
+                        let ty = ty.select();
+                        let tasks = stream::iter(components.clone())
+                            .map({
+                                let key = Arc::clone(key);
+                                move |component| tokio::spawn(reference_functions.0.get(&component).unwrap().call(FunctionArg(at, ParameterSelectValue(ty), image_size_request, Arc::clone(&key)))).map(|result| result.unwrap().map(|result| (result, component)))
+                            })
+                            .buffered(16);
+                        let default_range = Arc::clone(default_range);
+                        match priority {
+                            VariableParameterPriority::PrioritizeManually => Ok(tokio::spawn(
+                                tasks
+                                    .try_fold(empty_input_buffer(&ty, left, right), move |buffer, (param, component)| {
+                                        if let Some(param) = param {
+                                            let range = argument_reference_range.get(&component).unwrap_or(&default_range);
+                                            future::ready(Ok(combine_params(buffer, &param, range)))
+                                        } else {
+                                            future::ready(Ok(buffer))
+                                        }
+                                    })
+                                    .map_ok({
+                                        let key = Arc::clone(key);
+                                        move |buffer| (buffer, nullable_into_processor_input_buffer_ref(params, &key))
+                                    })
+                                    .map_ok(move |(buffer, param)| combine_params(buffer, &param, &BTreeSet::from([TimelineRange::from([left, right])]).into()))
+                                    .map_ok(change_type_parameter),
+                            )),
+                            VariableParameterPriority::PrioritizeComponent => Ok(tokio::spawn(
+                                tasks
+                                    .try_fold(nullable_into_processor_input_buffer(params, key), move |buffer, (param, component)| {
+                                        if let Some(param) = param {
+                                            let range = argument_reference_range.get(&component).unwrap_or(&default_range);
+                                            future::ready(Ok(combine_params(buffer, &param, range)))
+                                        } else {
+                                            future::ready(Ok(buffer))
+                                        }
+                                    })
+                                    .map_ok(change_type_parameter),
+                            )),
+                        }
+                    }
+                },
+            }
+        })
         .map_ok(|task| task.map(Result::unwrap))
         .try_buffered(16)
         .try_collect::<Vec<_>>()
 }
 
-async fn check_in_cache<T: ParameterValueType + 'static, Id: IdGenerator + 'static>(cache_context: Arc<EvaluateComponentCache<T, Id>>, at: TimelineTime, ty: ParameterSelectValue) -> Option<EvaluateComponentResult<T>> {
+async fn check_in_cache<K, T: ParameterValueType + 'static, Id: IdGenerator + 'static>(cache_context: Arc<EvaluateComponentCache<K, T, Id>>, at: TimelineTime, ty: ParameterSelectValue) -> Option<EvaluateComponentResult<K, T>> {
     match ty.0 {
         Parameter::None => unreachable!(),
         Parameter::Image(_) => {
@@ -1935,10 +1812,10 @@ async fn check_in_cache<T: ParameterValueType + 'static, Id: IdGenerator + 'stat
     None
 }
 
-async fn param_as_frame_variable_value_easing<'a, T: ParameterValueType, V, const N: usize>(
-    value: &'a [VariableParameterValue<T, TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, EasingValue<f64>>, TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, Option<EasingValue<f64>>>>; N],
-    reference_functions: &'a ReferenceFunctions<T>,
-    argument_reference_range: &'a HashMap<StaticPointer<RwLock<ComponentInstance<T>>>, TimelineRangeSet>,
+async fn param_as_frame_variable_value_easing<'a, K, T: ParameterValueType, V, const N: usize>(
+    value: &'a [VariableParameterValue<K, T, TimeSplitValue<StaticPointer<TCell<K, MarkerPin>>, EasingValue<f64>>, TimeSplitValue<StaticPointer<TCell<K, MarkerPin>>, Option<EasingValue<f64>>>>; N],
+    reference_functions: &'a ReferenceFunctions<K, T>,
+    argument_reference_range: &'a HashMap<StaticPointer<TCell<K, ComponentInstance<K, T>>>, TimelineRangeSet>,
     image_size_request: ImageSizeRequest,
     left: TimelineTime,
     right: TimelineTime,
@@ -1946,75 +1823,74 @@ async fn param_as_frame_variable_value_easing<'a, T: ParameterValueType, V, cons
     map: impl Fn([f64; N]) -> V + Send + 'a,
     default: impl Fn(usize) -> f64 + Send + 'a,
     default_range: &'a Arc<TimelineRangeSet>,
-) -> Result<FrameVariableValue<V>, EvaluateError<T>> {
+    key: &'a Arc<OwnedRwLockReadGuard<TCellOwner<K>>>,
+) -> Result<FrameVariableValue<V>, EvaluateError<K, T>> {
     let value: [_; N] = (stream::iter(value.iter())
-        .then(move |value| match value {
-            VariableParameterValue::Manually(value) => (value.map_time_value_ref_async(
-                |t| async move {
-                    let strong_ref = t.upgrade().unwrap();
-                    (strong_ref.read().map(|t| t.cached_timeline_time())).await
-                },
-                |v| future::ready(Some(Either::Left(v.clone()))),
-            ))
-            .map(Ok)
-            .boxed(),
-            VariableParameterValue::MayComponent { params, components, priority } => match *priority {
-                VariableParameterPriority::PrioritizeManually => stream::iter(components.iter())
-                    .map(move |component| {
-                        tokio::spawn(reference_functions.0.get(component).unwrap().call((TimelineTime::ZERO, ParameterSelectValue(Parameter::RealNumber(())), image_size_request)))
-                            .map(Result::unwrap)
-                            .map(move |result| result.map(|result| (component, result)))
-                    })
-                    .buffered(16)
-                    .try_fold(TimeSplitValue::new(left, None, right), |buffer, (component, param)| match param.map(Parameter::into_real_number) {
-                        None => future::ready(Ok(buffer)),
-                        Some(Ok(param)) => future::ready(Ok(override_time_split_value(buffer, &param, argument_reference_range.get(component).unwrap_or(default_range)))),
-                        Some(Err(param)) => future::ready(Err(EvaluateError::OutputTypeMismatch {
-                            component: component.clone(),
-                            expect: Parameter::RealNumber(()),
-                            actual: param.select(),
-                        })),
-                    })
-                    .and_then(move |buffer| {
-                        params
-                            .map_time_value_ref_async(
-                                |t| async move {
-                                    let strong_ref = t.upgrade().unwrap();
-                                    (strong_ref.read().map(|t| t.cached_timeline_time())).await
-                                },
-                                |v| future::ready(v.clone().map(Either::Left)),
-                            )
-                            .map(move |params| override_time_split_value(buffer, &params, &BTreeSet::from([[left, right].into()]).into()))
-                            .map(Ok)
-                    })
-                    .boxed(),
-                VariableParameterPriority::PrioritizeComponent => (params.map_time_value_ref_async(
-                    |t| async move {
+        .then(move |value| async move {
+            match value {
+                VariableParameterValue::Manually(value) => Ok(value.map_time_value_ref(
+                    |t| {
                         let strong_ref = t.upgrade().unwrap();
-                        (strong_ref.read().map(|t| t.cached_timeline_time())).await
+                        strong_ref.ro(key).cached_timeline_time()
                     },
-                    |v| future::ready(v.clone().map(Either::Left)),
-                ))
-                .then(move |buffer| {
-                    stream::iter(components.iter())
+                    |v| (Some(Either::Left(v.clone()))),
+                )),
+                VariableParameterValue::MayComponent { params, components, priority } => {
+                    let tasks = stream::iter(components.iter())
                         .map(move |component| {
-                            tokio::spawn(reference_functions.0.get(component).unwrap().call((TimelineTime::ZERO, ParameterSelectValue(Parameter::RealNumber(())), image_size_request)))
+                            tokio::spawn(reference_functions.0.get(component).unwrap().call(FunctionArg(TimelineTime::ZERO, ParameterSelectValue(Parameter::RealNumber(())), image_size_request, Arc::clone(key))))
                                 .map(Result::unwrap)
-                                .map(move |result| result.map(|result| (component, result)))
+                                .map_ok(move |result| (component, result))
                         })
                         .buffered(16)
-                        .try_fold(buffer, |buffer, (component, param)| match param.map(Parameter::into_real_number) {
-                            None => future::ready(Ok(buffer)),
-                            Some(Ok(param)) => future::ready(Ok(override_time_split_value(buffer, &param, argument_reference_range.get(component).unwrap_or(default_range)))),
-                            Some(Err(param)) => future::ready(Err(EvaluateError::OutputTypeMismatch {
-                                component: component.clone(),
-                                expect: Parameter::RealNumber(()),
-                                actual: param.select(),
-                            })),
-                        })
-                })
-                .boxed(),
-            },
+                        .boxed();
+                    match *priority {
+                        VariableParameterPriority::PrioritizeManually => {
+                            tasks
+                                .try_fold(TimeSplitValue::new(left, None, right), |buffer, (component, param)| match param.map(Parameter::into_real_number) {
+                                    None => future::ready(Ok(buffer)),
+                                    Some(Ok(param)) => future::ready(Ok(override_time_split_value(buffer, &param, argument_reference_range.get(component).unwrap_or(default_range)))),
+                                    Some(Err(param)) => future::ready(Err(EvaluateError::OutputTypeMismatch {
+                                        component: component.clone(),
+                                        expect: Parameter::RealNumber(()),
+                                        actual: param.select(),
+                                    })),
+                                })
+                                .map_ok(move |buffer| {
+                                    let params = params.map_time_value_ref(
+                                        |t| {
+                                            let strong_ref = t.upgrade().unwrap();
+                                            strong_ref.ro(key).cached_timeline_time()
+                                        },
+                                        |v| v.clone().map(Either::Left),
+                                    );
+                                    override_time_split_value(buffer, &params, &BTreeSet::from([[left, right].into()]).into())
+                                })
+                                .await
+                        }
+                        VariableParameterPriority::PrioritizeComponent => {
+                            let buffer = params.map_time_value_ref(
+                                |t| {
+                                    let strong_ref = t.upgrade().unwrap();
+                                    strong_ref.ro(key).cached_timeline_time()
+                                },
+                                |v| v.clone().map(Either::Left),
+                            );
+                            tasks
+                                .try_fold(buffer, |buffer, (component, param)| match param.map(Parameter::into_real_number) {
+                                    None => future::ready(Ok(buffer)),
+                                    Some(Ok(param)) => future::ready(Ok(override_time_split_value(buffer, &param, argument_reference_range.get(component).unwrap_or(default_range)))),
+                                    Some(Err(param)) => future::ready(Err(EvaluateError::OutputTypeMismatch {
+                                        component: component.clone(),
+                                        expect: Parameter::RealNumber(()),
+                                        actual: param.select(),
+                                    })),
+                                })
+                                .await
+                        }
+                    }
+                }
+            }
         })
         .try_collect::<Vec<_>>())
     .await?
@@ -2023,29 +1899,25 @@ async fn param_as_frame_variable_value_easing<'a, T: ParameterValueType, V, cons
     Ok(FrameValuesEasing::new(value).collect(frames, map, default))
 }
 
-async fn as_frame_variable_value_easing<U: Copy, V>(value: &TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, EasingValue<U>>, frames: impl Iterator<Item = TimelineTime>, map: impl Fn(U) -> V, default: impl Fn(usize) -> U) -> FrameVariableValue<V> {
-    let value = value
-        .map_time_value_ref_async(
-            |t| async move {
-                let strong_ref = t.upgrade().unwrap();
-                strong_ref.read().map(|t| t.cached_timeline_time()).await
-            },
-            |v| future::ready(Some(Either::Left(v.clone()))),
-        )
-        .await;
+fn as_frame_variable_value_easing<K, U: Copy, V>(value: &TimeSplitValue<StaticPointer<TCell<K, MarkerPin>>, EasingValue<U>>, frames: impl Iterator<Item = TimelineTime>, map: impl Fn(U) -> V, default: impl Fn(usize) -> U, key: &TCellOwner<K>) -> FrameVariableValue<V> {
+    let value = value.map_time_value_ref(
+        |t| {
+            let strong_ref = t.upgrade().unwrap();
+            strong_ref.ro(key).cached_timeline_time()
+        },
+        |v| Some(Either::Left(v.clone())),
+    );
     FrameValuesEasing::new([value]).collect(frames, |[v]| map(v), default)
 }
 
-async fn as_frame_variable_value<U: Copy + Default>(value: &TimeSplitValue<StaticPointer<RwLock<MarkerPin>>, U>, frames: impl Iterator<Item = TimelineTime>) -> FrameVariableValue<U> {
-    let value = value
-        .map_time_value_ref_async(
-            |t| async move {
-                let strong_ref = t.upgrade().unwrap();
-                strong_ref.read().map(|t| t.cached_timeline_time()).await
-            },
-            |v| future::ready(Some(Either::Left(*v))),
-        )
-        .await;
+fn as_frame_variable_value<K, U: Copy + Default>(value: &TimeSplitValue<StaticPointer<TCell<K, MarkerPin>>, U>, frames: impl Iterator<Item = TimelineTime>, key: &TCellOwner<K>) -> FrameVariableValue<U> {
+    let value = value.map_time_value_ref(
+        |t| {
+            let strong_ref = t.upgrade().unwrap();
+            strong_ref.ro(key).cached_timeline_time()
+        },
+        |v| Some(Either::Left(*v)),
+    );
     FrameValues::new([value]).collect(frames, |[v]| v)
 }
 
@@ -2057,17 +1929,18 @@ fn into_time_split_value_array<T: Copy, Any, Ret: From<[TimeSplitValue<TimelineT
     array::from_fn(|i| TimeSplitValue::new(left, Some(Either::Right(value.map_ref(|array| array.as_ref()[i]))), right)).into()
 }
 
-async fn get_param_at<T: ParameterValueType>(
+async fn get_param_at<K, T: ParameterValueType>(
     param: &Parameter<NativeProcessorInput>,
-    image_map: &HashMap<Placeholder<TagImage>, ImageGenerator<T, impl CombinerBuilder<T::Image, Param = ImageRequiredParamsFixed, Request = ImageSizeRequest>>>,
+    image_map: &HashMap<Placeholder<TagImage>, ImageGenerator<K, T, impl CombinerBuilder<T::Image, Param = ImageRequiredParamsFixed, Request = ImageSizeRequest>>>,
     audio_map: &HashMap<Placeholder<TagAudio>, T::Audio>,
     at: TimelineTime,
-) -> Result<ParameterNativeProcessorInputFixed<T::Image, T::Audio>, EvaluateError<T>> {
+    key: &Arc<OwnedRwLockReadGuard<TCellOwner<K>>>,
+) -> Result<ParameterNativeProcessorInputFixed<T::Image, T::Audio>, EvaluateError<K, T>> {
     let result = match param {
         Parameter::None => Parameter::None,
-        Parameter::Image(image_placeholder) => Parameter::Image(image_map.get(image_placeholder).unwrap().get(at).await?),
+        Parameter::Image(image_placeholder) => Parameter::Image(image_map.get(image_placeholder).unwrap().get(at, key).await?),
         Parameter::Audio(audio_placeholder) => Parameter::Audio(audio_map.get(audio_placeholder).unwrap().clone()),
-        Parameter::Video((image_placeholder, audio_placeholder)) => Parameter::Video((image_map.get(image_placeholder).unwrap().get(at).await?, audio_map.get(audio_placeholder).unwrap().clone())),
+        Parameter::Video((image_placeholder, audio_placeholder)) => Parameter::Video((image_map.get(image_placeholder).unwrap().get(at, key).await?, audio_map.get(audio_placeholder).unwrap().clone())),
         Parameter::File(value) => Parameter::File(value.get(at).unwrap().clone()),
         Parameter::String(value) => Parameter::String(value.get(at).unwrap().clone()),
         Parameter::Select(value) => Parameter::Select(*value.get(at).unwrap()),
@@ -2196,10 +2069,7 @@ fn into_frame_variable_value<Image: Clone + Send + Sync + 'static, Audio: Clone 
         Parameter::None => Parameter::None,
         Parameter::Image(image) => {
             let id = id.load().as_deref().copied().unwrap_or_else(|| {
-                let new_id = PlaceholderListItem {
-                    image: Some(Placeholder::new(id_generator)),
-                    audio: None,
-                };
+                let new_id = PlaceholderListItem { image: Some(Placeholder::new(id_generator)), audio: None };
                 id.compare_and_swap(&None::<Arc<_>>, Some(Arc::new(new_id))).as_deref().copied().unwrap_or(new_id)
             });
             let id = id.image.unwrap();
@@ -2208,10 +2078,7 @@ fn into_frame_variable_value<Image: Clone + Send + Sync + 'static, Audio: Clone 
         }
         Parameter::Audio(audio) => {
             let id = id.load().as_deref().copied().unwrap_or_else(|| {
-                let new_id = PlaceholderListItem {
-                    image: None,
-                    audio: Some(Placeholder::new(id_generator)),
-                };
+                let new_id = PlaceholderListItem { image: None, audio: Some(Placeholder::new(id_generator)) };
                 id.compare_and_swap(&None::<Arc<_>>, Some(Arc::new(new_id))).as_deref().copied().unwrap_or(new_id)
             });
             let id = id.audio.unwrap();
@@ -2266,60 +2133,57 @@ fn into_component_processor_input_value<Image: Clone + Send + Sync + 'static, Au
     }
 }
 
-#[allow(clippy::manual_async_fn)] // Send制約が強制されなくてエラーになる場合があったので
-fn remove_option_from_times(data: impl Stream<Item = (TimelineTime, Option<TimelineTime>)> + Send) -> impl Future<Output = Vec<(TimelineTime, TimelineTime)>> + Send {
-    async move {
-        let mut buffer = Vec::with_capacity(data.size_hint().0);
-        let data = data.peekable();
-        pin_mut!(data);
-        while let Some((time, locked)) = data.next().await {
-            if buffer.is_empty() || locked.is_some() || data.as_mut().peek().await.is_none() {
-                buffer.push((time, locked));
+fn remove_option_from_times(data: impl IntoIterator<Item = (TimelineTime, Option<TimelineTime>)>) -> Vec<(TimelineTime, TimelineTime)> {
+    let data = data.into_iter();
+    let mut buffer = Vec::with_capacity(data.size_hint().0);
+    let mut data = data.peekable();
+    while let Some((time, locked)) = data.next() {
+        if buffer.is_empty() || locked.is_some() || data.peek().is_none() {
+            buffer.push((time, locked));
+        }
+    }
+    let locked_count = buffer.iter().filter(|(_, option)| option.is_some()).count();
+    match locked_count {
+        0 => {
+            if let [(left_cached, ref mut left_locked), (right_cached, ref mut right_locked)] = *buffer.as_mut_slice() {
+                *left_locked = Some(TimelineTime::ZERO);
+                *right_locked = Some(TimelineTime::new(right_cached.value() - left_cached.value()).unwrap());
+            } else {
+                unreachable!()
             }
         }
-        let locked_count = buffer.iter().filter(|(_, option)| option.is_some()).count();
-        match locked_count {
-            0 => {
-                if let [(left_cached, ref mut left_locked), (right_cached, ref mut right_locked)] = *buffer.as_mut_slice() {
-                    *left_locked = Some(TimelineTime::ZERO);
-                    *right_locked = Some(TimelineTime::new(right_cached.value() - left_cached.value()).unwrap());
-                } else {
-                    unreachable!()
-                }
-            }
-            1 => {
-                if let [(left_cached, ref mut left_locked @ None), (right_cached, Some(right_locked)), ..] = *buffer.as_mut_slice() {
-                    *left_locked = Some(TimelineTime::new(right_locked.value() - (right_cached.value() - left_cached.value())).unwrap());
-                    if buffer.len() > 2 {
-                        buffer.remove(1);
-                    }
-                }
-                if let [ref head @ .., (ref mut left_cached, Some(ref mut left_locked)), (right_cached, ref mut right_locked @ None)] = *buffer.as_mut_slice() {
-                    if !head.is_empty() {
-                        *left_locked = TimelineTime::new(left_locked.value() + (right_cached.value() - left_cached.value())).unwrap();
-                        *left_cached = right_cached;
-                        buffer.pop().unwrap();
-                    } else {
-                        *right_locked = Some(TimelineTime::new(left_locked.value() + (right_cached.value() - left_cached.value())).unwrap());
-                    }
-                }
-            }
-            _ => {
-                if let [(left_cached, ref mut left_locked @ None), (center_cached, Some(center_locked)), (right_cached, Some(right_locked)), ..] = *buffer.as_mut_slice() {
-                    let marker_time_per_timeline_time = (right_locked.value() - center_locked.value()) / (right_cached.value() - center_cached.value());
-                    *left_locked = Some(TimelineTime::new(center_locked.value() - (center_cached.value() - left_cached.value()) * marker_time_per_timeline_time).unwrap());
+        1 => {
+            if let [(left_cached, ref mut left_locked @ None), (right_cached, Some(right_locked)), ..] = *buffer.as_mut_slice() {
+                *left_locked = Some(TimelineTime::new(right_locked.value() - (right_cached.value() - left_cached.value())).unwrap());
+                if buffer.len() > 2 {
                     buffer.remove(1);
                 }
-                if let [.., (left_cached, Some(left_locked)), (ref mut center_cached, Some(ref mut center_locked)), (right_cached, Option::None)] = *buffer.as_mut_slice() {
-                    let marker_time_per_timeline_time = (center_locked.value() - left_locked.value()) / (center_cached.value() - left_cached.value());
-                    *center_locked = TimelineTime::new(center_locked.value() + (right_cached.value() - center_cached.value()) * marker_time_per_timeline_time).unwrap();
-                    *center_cached = right_cached;
+            }
+            if let [ref head @ .., (ref mut left_cached, Some(ref mut left_locked)), (right_cached, ref mut right_locked @ None)] = *buffer.as_mut_slice() {
+                if !head.is_empty() {
+                    *left_locked = TimelineTime::new(left_locked.value() + (right_cached.value() - left_cached.value())).unwrap();
+                    *left_cached = right_cached;
                     buffer.pop().unwrap();
+                } else {
+                    *right_locked = Some(TimelineTime::new(left_locked.value() + (right_cached.value() - left_cached.value())).unwrap());
                 }
             }
         }
-        buffer.into_iter().map(|(a, b)| (a, b.unwrap())).collect()
+        _ => {
+            if let [(left_cached, ref mut left_locked @ None), (center_cached, Some(center_locked)), (right_cached, Some(right_locked)), ..] = *buffer.as_mut_slice() {
+                let marker_time_per_timeline_time = (right_locked.value() - center_locked.value()) / (right_cached.value() - center_cached.value());
+                *left_locked = Some(TimelineTime::new(center_locked.value() - (center_cached.value() - left_cached.value()) * marker_time_per_timeline_time).unwrap());
+                buffer.remove(1);
+            }
+            if let [.., (left_cached, Some(left_locked)), (ref mut center_cached, Some(ref mut center_locked)), (right_cached, Option::None)] = *buffer.as_mut_slice() {
+                let marker_time_per_timeline_time = (center_locked.value() - left_locked.value()) / (center_cached.value() - left_cached.value());
+                *center_locked = TimelineTime::new(center_locked.value() + (right_cached.value() - center_cached.value()) * marker_time_per_timeline_time).unwrap();
+                *center_cached = right_cached;
+                buffer.pop().unwrap();
+            }
+        }
     }
+    buffer.into_iter().map(|(a, b)| (a, b.unwrap())).collect()
 }
 
 struct MapTime {
@@ -2550,11 +2414,7 @@ mod tests {
             time_split_value![time!(0), Some('a'), time!(0.3), Some('c'), time!(0.7), Some('a'), time!(1), Some('b'), time!(2)]
         );
         assert_eq!(
-            override_time_split_value(
-                time_split_value![time!(0), Some('a'), time!(1), Some('b'), time!(2)],
-                &time_split_value![time!(0), None, time!(0.3), Some('c'), time!(0.7), None, time!(2)],
-                &[time![0, 1], time![1.5, 2]].into(),
-            ),
+            override_time_split_value(time_split_value![time!(0), Some('a'), time!(1), Some('b'), time!(2)], &time_split_value![time!(0), None, time!(0.3), Some('c'), time!(0.7), None, time!(2)], &[time![0, 1], time![1.5, 2]].into()),
             time_split_value![time!(0), Some('a'), time!(0.3), Some('c'), time!(0.7), Some('a'), time!(1), Some('b'), time!(2)]
         );
         assert_eq!(
@@ -2591,34 +2451,34 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn test_map_time() {
-        let map_time = MapTime::new(remove_option_from_times(stream::iter([(time!(10), None), (time!(20), None)])).await);
+    #[test]
+    fn test_map_time() {
+        let map_time = MapTime::new(remove_option_from_times([(time!(10), None), (time!(20), None)]));
         assert_eq!(map_time.map_time(time!(10)), time!(0));
         assert_eq!(map_time.map_time(time!(11)), time!(1));
         assert_eq!(map_time.map_time(time!(20)), time!(10));
 
-        let map_time = MapTime::new(remove_option_from_times(stream::iter([(time!(10), None), (time!(12), Some(time!(5))), (time!(20), None)])).await);
+        let map_time = MapTime::new(remove_option_from_times([(time!(10), None), (time!(12), Some(time!(5))), (time!(20), None)]));
         assert_eq!(map_time.map_time(time!(10)), time!(3));
         assert_eq!(map_time.map_time(time!(11)), time!(4));
         assert_eq!(map_time.map_time(time!(20)), time!(13));
 
-        let map_time = MapTime::new(remove_option_from_times(stream::iter([(time!(12), Some(time!(5))), (time!(20), None)])).await);
+        let map_time = MapTime::new(remove_option_from_times([(time!(12), Some(time!(5))), (time!(20), None)]));
         assert_eq!(map_time.map_time(time!(10)), time!(3));
         assert_eq!(map_time.map_time(time!(11)), time!(4));
         assert_eq!(map_time.map_time(time!(20)), time!(13));
 
-        let map_time = MapTime::new(remove_option_from_times(stream::iter([(time!(10), None), (time!(12), Some(time!(5)))])).await);
+        let map_time = MapTime::new(remove_option_from_times([(time!(10), None), (time!(12), Some(time!(5)))]));
         assert_eq!(map_time.map_time(time!(10)), time!(3));
         assert_eq!(map_time.map_time(time!(11)), time!(4));
         assert_eq!(map_time.map_time(time!(20)), time!(13));
 
-        let map_time = MapTime::new(remove_option_from_times(stream::iter([(time!(10), None), (time!(12), Some(time!(5))), (time!(18), Some(time!(8))), (time!(20), None)])).await);
+        let map_time = MapTime::new(remove_option_from_times([(time!(10), None), (time!(12), Some(time!(5))), (time!(18), Some(time!(8))), (time!(20), None)]));
         assert_eq!(map_time.map_time(time!(10)), time!(4));
         assert_eq!(map_time.map_time(time!(11)), time!(4.5));
         assert_eq!(map_time.map_time(time!(20)), time!(9));
 
-        let map_time = MapTime::new(remove_option_from_times(stream::iter([(time!(10), None), (time!(12), Some(time!(5))), (time!(15), Some(time!(6.5))), (time!(18), Some(time!(9.5))), (time!(20), None)])).await);
+        let map_time = MapTime::new(remove_option_from_times([(time!(10), None), (time!(12), Some(time!(5))), (time!(15), Some(time!(6.5))), (time!(18), Some(time!(9.5))), (time!(20), None)]));
         assert_eq!(map_time.map_time(time!(10)), time!(4));
         assert_eq!(map_time.map_time(time!(11)), time!(4.5));
         assert_eq!(map_time.map_time(time!(15)), time!(6.5));

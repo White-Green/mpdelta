@@ -542,7 +542,6 @@ async fn view_model_loop<K, T, Edit, GetAvailableComponentClasses, GetLoadedProj
                                 let time = pin.ro(&key).cached_timeline_time();
                                 new_marker_pins.insert(StaticPointerOwned::reference(pin).clone(), (Some(component.clone()), layer, time));
                             }
-                            drop(guard);
                             new_component_instances.insert(component, ComponentInstanceRect { layer: layer as f32, time: time_left..time_right });
                         }
                     }

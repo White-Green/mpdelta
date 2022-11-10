@@ -203,7 +203,7 @@ impl<K, T> Hash for RootComponentClass<K, T> {
 }
 
 impl<K, T> RootComponentClass<K, T> {
-    pub(crate) fn new_empty(id: Uuid, key: Arc<RwLock<TCellOwner<K>>>) -> StaticPointerOwned<RwLock<RootComponentClass<K, T>>> {
+    pub(crate) fn new_empty(id: Uuid) -> StaticPointerOwned<RwLock<RootComponentClass<K, T>>> {
         StaticPointerOwned::new(RwLock::new(RootComponentClass {
             id,
             parent: None,
@@ -273,15 +273,12 @@ mod tests {
 
     #[tokio::test]
     async fn set_parent() {
-        #[derive(Debug)]
-        struct K;
-        let key = Arc::new(RwLock::new(TCellOwner::<K>::new()));
-        let project0 = Project::<K, ()>::new_empty(Uuid::from_u128(0));
-        let project1 = Project::<K, ()>::new_empty(Uuid::from_u128(1));
+        let project0 = Project::<(), ()>::new_empty(Uuid::from_u128(0));
+        let project1 = Project::<(), ()>::new_empty(Uuid::from_u128(1));
         assert!(project0.read().await.children.is_empty());
         assert!(project1.read().await.children.is_empty());
-        let component0 = RootComponentClass::<K, ()>::new_empty(Uuid::from_u128(0), Arc::clone(&key));
-        let component1 = RootComponentClass::<K, ()>::new_empty(Uuid::from_u128(1), Arc::clone(&key));
+        let component0 = RootComponentClass::<(), ()>::new_empty(Uuid::from_u128(0));
+        let component1 = RootComponentClass::<(), ()>::new_empty(Uuid::from_u128(1));
         assert!(component0.read().await.parent.is_none());
         assert!(component1.read().await.parent.is_none());
 

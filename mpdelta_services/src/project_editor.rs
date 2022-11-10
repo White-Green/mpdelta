@@ -56,7 +56,6 @@ impl<K, T> Editor<K, T> for ProjectEditor<K> {
                     to: right.reference(),
                     len: TimelineTime::new(1.0).unwrap(),
                 };
-                drop(guard);
                 let mut item = target.get_mut().await;
                 item.component_mut().push(instance);
                 item.link_mut().extend([StaticPointerOwned::new(TCell::new(link_for_zero)), StaticPointerOwned::new(TCell::new(link_for_length))]);

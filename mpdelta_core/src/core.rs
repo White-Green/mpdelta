@@ -178,7 +178,7 @@ where
     RM: RootComponentClassMemory<K, T>,
 {
     async fn new_root_component_class(&self) -> StaticPointer<RwLock<RootComponentClass<K, T>>> {
-        let root_component_class = RootComponentClass::new_empty(self.id_generator.generate_new(), Arc::clone(&self.key));
+        let root_component_class = RootComponentClass::new_empty(self.id_generator.generate_new());
         let pointer = StaticPointerOwned::reference(&root_component_class).clone();
         self.root_component_class_memory.insert_new_root_component_class(None, root_component_class).await;
         pointer
@@ -603,18 +603,18 @@ mod tests {
             edit_history: Arc::new(()),
             key: Arc::clone(&key),
         };
-        assert_eq!(*NewRootComponentClassUsecase::new_root_component_class(&core).await.upgrade().unwrap().read().await, *RootComponentClass::new_empty(Uuid::from_u128(0), Arc::clone(&key)).read().await);
-        assert_eq!(*NewRootComponentClassUsecase::new_root_component_class(&core).await.upgrade().unwrap().read().await, *RootComponentClass::new_empty(Uuid::from_u128(1), Arc::clone(&key)).read().await);
-        assert_eq!(*NewRootComponentClassUsecase::new_root_component_class(&core).await.upgrade().unwrap().read().await, *RootComponentClass::new_empty(Uuid::from_u128(2), Arc::clone(&key)).read().await);
+        assert_eq!(*NewRootComponentClassUsecase::new_root_component_class(&core).await.upgrade().unwrap().read().await, *RootComponentClass::new_empty(Uuid::from_u128(0)).read().await);
+        assert_eq!(*NewRootComponentClassUsecase::new_root_component_class(&core).await.upgrade().unwrap().read().await, *RootComponentClass::new_empty(Uuid::from_u128(1)).read().await);
+        assert_eq!(*NewRootComponentClassUsecase::new_root_component_class(&core).await.upgrade().unwrap().read().await, *RootComponentClass::new_empty(Uuid::from_u128(2)).read().await);
         assert_eq!(core.id_generator.0.load(atomic::Ordering::SeqCst), 3);
         let guard = core.root_component_class_memory.0.read().await;
         assert_eq!(guard.len(), 3);
         assert_eq!(guard[0].0, None);
-        assert_eq!(*guard[0].1.read().await, *RootComponentClass::new_empty(Uuid::from_u128(0), Arc::clone(&key)).read().await);
+        assert_eq!(*guard[0].1.read().await, *RootComponentClass::new_empty(Uuid::from_u128(0)).read().await);
         assert_eq!(guard[1].0, None);
-        assert_eq!(*guard[1].1.read().await, *RootComponentClass::new_empty(Uuid::from_u128(1), Arc::clone(&key)).read().await);
+        assert_eq!(*guard[1].1.read().await, *RootComponentClass::new_empty(Uuid::from_u128(1)).read().await);
         assert_eq!(guard[2].0, None);
-        assert_eq!(*guard[2].1.read().await, *RootComponentClass::new_empty(Uuid::from_u128(2), Arc::clone(&key)).read().await);
+        assert_eq!(*guard[2].1.read().await, *RootComponentClass::new_empty(Uuid::from_u128(2)).read().await);
     }
 
     #[tokio::test]
@@ -651,9 +651,9 @@ mod tests {
         let project0 = Project::new_empty(Uuid::from_u128(0));
         let project1 = Project::new_empty(Uuid::from_u128(0));
         let project2 = Project::new_empty(Uuid::from_u128(0));
-        let c0 = RootComponentClass::new_empty(Uuid::from_u128(0), Arc::clone(&key));
-        let c1 = RootComponentClass::new_empty(Uuid::from_u128(1), Arc::clone(&key));
-        let c2 = RootComponentClass::new_empty(Uuid::from_u128(2), Arc::clone(&key));
+        let c0 = RootComponentClass::new_empty(Uuid::from_u128(0));
+        let c1 = RootComponentClass::new_empty(Uuid::from_u128(1));
+        let c2 = RootComponentClass::new_empty(Uuid::from_u128(2));
         let component0 = StaticPointerOwned::reference(&c0).clone();
         let component1 = StaticPointerOwned::reference(&c1).clone();
         let component2 = StaticPointerOwned::reference(&c2).clone();
@@ -759,11 +759,11 @@ mod tests {
             project_writer: Arc::new(()),
             project_memory: Arc::new(()),
             root_component_class_memory: Arc::new(RM(RwLock::new(vec![
-                (None, RootComponentClass::new_empty(Uuid::from_u128(0), Arc::clone(&key))),
-                (Some(StaticPointerOwned::reference(&project0).clone()), RootComponentClass::new_empty(Uuid::from_u128(0), Arc::clone(&key))),
-                (Some(StaticPointerOwned::reference(&project0).clone()), RootComponentClass::new_empty(Uuid::from_u128(1), Arc::clone(&key))),
-                (Some(StaticPointerOwned::reference(&project1).clone()), RootComponentClass::new_empty(Uuid::from_u128(2), Arc::clone(&key))),
-                (Some(StaticPointerOwned::reference(&project2).clone()), RootComponentClass::new_empty(Uuid::from_u128(3), Arc::clone(&key))),
+                (None, RootComponentClass::new_empty(Uuid::from_u128(0))),
+                (Some(StaticPointerOwned::reference(&project0).clone()), RootComponentClass::new_empty(Uuid::from_u128(0))),
+                (Some(StaticPointerOwned::reference(&project0).clone()), RootComponentClass::new_empty(Uuid::from_u128(1))),
+                (Some(StaticPointerOwned::reference(&project1).clone()), RootComponentClass::new_empty(Uuid::from_u128(2))),
+                (Some(StaticPointerOwned::reference(&project2).clone()), RootComponentClass::new_empty(Uuid::from_u128(3))),
             ]))),
             component_class_loader: Arc::new(()),
             component_renderer_builder: Arc::new(()),
@@ -773,12 +773,12 @@ mod tests {
         };
         let child0 = GetRootComponentClassesUsecase::get_root_component_classes(&core, StaticPointerOwned::reference(&project0)).await;
         assert_eq!(child0.len(), 2);
-        assert_eq!(*child0[0].upgrade().unwrap().read().await, *RootComponentClass::new_empty(Uuid::from_u128(0), Arc::clone(&key)).read().await);
-        assert_eq!(*child0[1].upgrade().unwrap().read().await, *RootComponentClass::new_empty(Uuid::from_u128(1), Arc::clone(&key)).read().await);
+        assert_eq!(*child0[0].upgrade().unwrap().read().await, *RootComponentClass::new_empty(Uuid::from_u128(0)).read().await);
+        assert_eq!(*child0[1].upgrade().unwrap().read().await, *RootComponentClass::new_empty(Uuid::from_u128(1)).read().await);
         let child1 = GetRootComponentClassesUsecase::get_root_component_classes(&core, StaticPointerOwned::reference(&project1)).await;
-        assert_eq!(*child1[0].upgrade().unwrap().read().await, *RootComponentClass::new_empty(Uuid::from_u128(2), Arc::clone(&key)).read().await);
+        assert_eq!(*child1[0].upgrade().unwrap().read().await, *RootComponentClass::new_empty(Uuid::from_u128(2)).read().await);
         let child2 = GetRootComponentClassesUsecase::get_root_component_classes(&core, StaticPointerOwned::reference(&project2)).await;
-        assert_eq!(*child2[0].upgrade().unwrap().read().await, *RootComponentClass::new_empty(Uuid::from_u128(3), Arc::clone(&key)).read().await);
+        assert_eq!(*child2[0].upgrade().unwrap().read().await, *RootComponentClass::new_empty(Uuid::from_u128(3)).read().await);
     }
 
     #[tokio::test]

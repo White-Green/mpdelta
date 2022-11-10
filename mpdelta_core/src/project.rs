@@ -10,7 +10,7 @@ use crate::ptr::{StaticPointer, StaticPointerCow, StaticPointerOwned};
 use crate::time::TimelineTime;
 use async_trait::async_trait;
 use cgmath::{One, Quaternion, Vector3};
-use qcell::{TCell, TCellOwner};
+use qcell::TCell;
 use std::collections::HashSet;
 use std::fmt::{Debug, Formatter};
 use std::hash::{Hash, Hasher};

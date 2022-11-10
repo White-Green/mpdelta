@@ -52,7 +52,7 @@ pub struct RootComponentClassItem<K: 'static, T> {
     right: StaticPointerOwned<TCell<K, MarkerPin>>,
     component: Vec<StaticPointerOwned<TCell<K, ComponentInstance<K, T>>>>,
     link: Vec<StaticPointerOwned<TCell<K, MarkerLink<K>>>>,
-    key: Arc<RwLock<TCellOwner<K>>>,
+    length: Duration,
 }
 
 impl<K, T> Debug for RootComponentClassItem<K, T> {
@@ -177,9 +177,7 @@ impl<K, T> ComponentProcessor<K, T> for RootComponentClassItemWrapper<K, T> {
 
     async fn natural_length(&self, _: &[ParameterValueFixed]) -> Duration {
         let guard = self.0.read().await;
-        let key = guard.key.read().await;
-        let time = guard.right.ro(&key).cached_timeline_time().value() - guard.left.ro(&key).cached_timeline_time().value();
-        Duration::from_secs_f64(time)
+        guard.length
     }
 
     async fn get_processor(&self) -> ComponentProcessorBody<'_, K, T> {
@@ -214,7 +212,7 @@ impl<K, T> RootComponentClass<K, T> {
                 right: StaticPointerOwned::new(TCell::new(MarkerPin::new(TimelineTime::new(10.).unwrap(), MarkerTime::new(10.).unwrap()))),
                 component: Vec::new(),
                 link: Vec::new(),
-                key,
+                length: Duration::from_secs(10),
             }))),
         }))
     }

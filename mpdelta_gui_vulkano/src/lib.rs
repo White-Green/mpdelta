@@ -51,14 +51,7 @@ impl<T: Gui<ImageType> + 'static> MPDeltaGUIVulkano<T> {
     }
 
     pub fn main(self) {
-        let MPDeltaGUIVulkano {
-            mut gui,
-            mut vulkano_gui,
-            device,
-            queue,
-            event_loop,
-            surface,
-        } = self;
+        let MPDeltaGUIVulkano { mut gui, mut vulkano_gui, device, queue, event_loop, surface } = self;
         let (mut swapchain, images) = {
             let physical_device = device.physical_device();
             let caps = physical_device.surface_capabilities(&surface, Default::default()).unwrap();

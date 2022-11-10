@@ -1,15 +1,16 @@
-use crate::time::TimelineTime;
+use crate::time::{AtomicTimelineTime, TimelineTime};
 use std::cmp::Ordering;
 use std::hash::{Hash, Hasher};
+use std::sync::atomic;
 
 /// 固定マーカの位置のコンポーネントの長さに対する割合
 /// \[0.0, ∞)
 #[derive(Debug, Clone, Copy)]
 pub struct MarkerTime(f64);
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct MarkerPin {
-    cached_timeline_time: TimelineTime,
+    cached_timeline_time: AtomicTimelineTime,
     locked_component_time: Option<MarkerTime>,
 }
 
@@ -58,24 +59,24 @@ impl Hash for MarkerTime {
 impl MarkerPin {
     pub fn new(timeline_time: TimelineTime, component_time: MarkerTime) -> MarkerPin {
         MarkerPin {
-            cached_timeline_time: timeline_time,
+            cached_timeline_time: timeline_time.into(),
             locked_component_time: Some(component_time),
         }
     }
 
     pub fn new_unlocked(timeline_time: TimelineTime) -> MarkerPin {
         MarkerPin {
-            cached_timeline_time: timeline_time,
+            cached_timeline_time: timeline_time.into(),
             locked_component_time: None,
         }
     }
 
     pub fn cached_timeline_time(&self) -> TimelineTime {
-        self.cached_timeline_time
+        self.cached_timeline_time.load(atomic::Ordering::Acquire)
     }
 
-    pub fn cache_timeline_time(&mut self, time: TimelineTime) {
-        self.cached_timeline_time = time;
+    pub fn cache_timeline_time(&self, time: TimelineTime) {
+        self.cached_timeline_time.store(time, atomic::Ordering::Release);
     }
 
     pub fn locked_component_time(&self) -> Option<MarkerTime> {

@@ -56,6 +56,7 @@ mpdelta_renderer = { path = "mpdelta_renderer" }
 mpdelta_services = { path = "mpdelta_services" }
 mpdelta_video_renderer_vulkano = { path = "mpdelta_video_renderer_vulkano" }
 once_cell = "1.13.1"
+qcell = "0.5.2"
 regex = "1.6.0"
 shader_builder = { path = "mpdelta_build_utils/shader_builder" }
 spirv-builder = { git = "https://github.com/EmbarkStudios/rust-gpu/", rev = "c248806bf0be9cc59e996e0cf61585513a0e3890" }
@@ -79,6 +80,7 @@ mpdelta_gui_vulkano = { workspace = true }
 mpdelta_renderer = { workspace = true }
 mpdelta_services = { workspace = true }
 mpdelta_video_renderer_vulkano = { workspace = true }
+qcell = { workspace = true }
 tokio = { workspace = true }
 vulkano = { workspace = true }
 vulkano-win = { workspace = true }

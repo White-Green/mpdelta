@@ -12,9 +12,9 @@ use mpdelta_core::project::{Project, RootComponentClass};
 use mpdelta_core::ptr::{StaticPointer, StaticPointerOwned};
 use mpdelta_core::time::TimelineTime;
 use mpdelta_core::usecase::{
-    EditUsecase, GetAvailableComponentClassesUsecase, GetLoadedProjectsUsecase, GetRootComponentClassesUsecase, LoadProjectUsecase, NewProjectUsecase, NewRootComponentClassUsecase, RealtimeComponentRenderer, RealtimeRenderComponentUsecase, RedoUsecase, SetOwnerForRootComponentClassUsecase,
-    UndoUsecase, WriteProjectUsecase,
+    EditUsecase, GetAvailableComponentClassesUsecase, GetLoadedProjectsUsecase, GetRootComponentClassesUsecase, LoadProjectUsecase, NewProjectUsecase, NewRootComponentClassUsecase, RealtimeComponentRenderer, RealtimeRenderComponentUsecase, RedoUsecase, SetOwnerForRootComponentClassUsecase, UndoUsecase, WriteProjectUsecase,
 };
+use qcell::{TCell, TCellOwner};
 use std::fmt::{Debug, Formatter};
 use std::ops::{Deref, Range};
 use std::sync::atomic::AtomicUsize;
@@ -25,7 +25,7 @@ use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use tokio::sync::{mpsc, Mutex, RwLock};
 use tokio::task::JoinHandle;
 
-pub struct ViewModelParams<Edit, GetAvailableComponentClasses, GetLoadedProjects, GetRootComponentClasses, LoadProject, NewProject, NewRootComponentClass, RealtimeRenderComponent, Redo, SetOwnerForRootComponentClass, Undo, WriteProject> {
+pub struct ViewModelParams<K: 'static, Edit, GetAvailableComponentClasses, GetLoadedProjects, GetRootComponentClasses, LoadProject, NewProject, NewRootComponentClass, RealtimeRenderComponent, Redo, SetOwnerForRootComponentClass, Undo, WriteProject> {
     runtime: Handle,
     edit: Arc<Edit>,
     get_available_component_classes: Arc<GetAvailableComponentClasses>,
@@ -39,10 +39,11 @@ pub struct ViewModelParams<Edit, GetAvailableComponentClasses, GetLoadedProjects
     set_owner_for_root_component_class: Arc<SetOwnerForRootComponentClass>,
     undo: Arc<Undo>,
     write_project: Arc<WriteProject>,
+    key: Arc<RwLock<TCellOwner<K>>>,
 }
 
-impl<Edit, GetAvailableComponentClasses, GetLoadedProjects, GetRootComponentClasses, LoadProject, NewProject, NewRootComponentClass, RealtimeRenderComponent, Redo, SetOwnerForRootComponentClass, Undo, WriteProject>
-    ViewModelParams<Edit, GetAvailableComponentClasses, GetLoadedProjects, GetRootComponentClasses, LoadProject, NewProject, NewRootComponentClass, RealtimeRenderComponent, Redo, SetOwnerForRootComponentClass, Undo, WriteProject>
+impl<K, Edit, GetAvailableComponentClasses, GetLoadedProjects, GetRootComponentClasses, LoadProject, NewProject, NewRootComponentClass, RealtimeRenderComponent, Redo, SetOwnerForRootComponentClass, Undo, WriteProject>
+    ViewModelParams<K, Edit, GetAvailableComponentClasses, GetLoadedProjects, GetRootComponentClasses, LoadProject, NewProject, NewRootComponentClass, RealtimeRenderComponent, Redo, SetOwnerForRootComponentClass, Undo, WriteProject>
 {
     pub fn new(
         runtime: Handle,
@@ -58,7 +59,8 @@ impl<Edit, GetAvailableComponentClasses, GetLoadedProjects, GetRootComponentClas
         set_owner_for_root_component_class: Arc<SetOwnerForRootComponentClass>,
         undo: Arc<Undo>,
         write_project: Arc<WriteProject>,
-    ) -> ViewModelParams<Edit, GetAvailableComponentClasses, GetLoadedProjects, GetRootComponentClasses, LoadProject, NewProject, NewRootComponentClass, RealtimeRenderComponent, Redo, SetOwnerForRootComponentClass, Undo, WriteProject> {
+        key: Arc<RwLock<TCellOwner<K>>>,
+    ) -> ViewModelParams<K, Edit, GetAvailableComponentClasses, GetLoadedProjects, GetRootComponentClasses, LoadProject, NewProject, NewRootComponentClass, RealtimeRenderComponent, Redo, SetOwnerForRootComponentClass, Undo, WriteProject> {
         ViewModelParams {
             runtime,
             edit,
@@ -73,38 +75,39 @@ impl<Edit, GetAvailableComponentClasses, GetLoadedProjects, GetRootComponentClas
             set_owner_for_root_component_class,
             undo,
             write_project,
+            key,
         }
     }
 }
 
-pub struct MPDeltaViewModel<T, R> {
+pub struct MPDeltaViewModel<K: 'static, T, R> {
     handle: JoinHandle<()>,
-    message_sender: UnboundedSender<ViewModelMessage<T>>,
-    inner: Arc<ViewModelInner<T, R>>,
+    message_sender: UnboundedSender<ViewModelMessage<K, T>>,
+    inner: Arc<ViewModelInner<K, T, R>>,
     playing: bool,
     play_start: Instant,
     seek: usize,
     seek_base: usize,
 }
 
-impl<T: ParameterValueType> MPDeltaViewModel<T, ()> {
+impl<K, T: ParameterValueType> MPDeltaViewModel<K, T, ()> {
     pub fn new<Edit, GetAvailableComponentClasses, GetLoadedProjects, GetRootComponentClasses, LoadProject, NewProject, NewRootComponentClass, RealtimeRenderComponent, Redo, SetOwnerForRootComponentClass, Undo, WriteProject>(
-        params: ViewModelParams<Edit, GetAvailableComponentClasses, GetLoadedProjects, GetRootComponentClasses, LoadProject, NewProject, NewRootComponentClass, RealtimeRenderComponent, Redo, SetOwnerForRootComponentClass, Undo, WriteProject>,
-    ) -> MPDeltaViewModel<T, RealtimeRenderComponent::Renderer>
+        params: ViewModelParams<K, Edit, GetAvailableComponentClasses, GetLoadedProjects, GetRootComponentClasses, LoadProject, NewProject, NewRootComponentClass, RealtimeRenderComponent, Redo, SetOwnerForRootComponentClass, Undo, WriteProject>,
+    ) -> MPDeltaViewModel<K, T, RealtimeRenderComponent::Renderer>
     where
-        Edit: EditUsecase<T> + Send + Sync + 'static,
-        GetAvailableComponentClasses: GetAvailableComponentClassesUsecase<T> + Send + Sync + 'static,
-        GetLoadedProjects: GetLoadedProjectsUsecase<T> + Send + Sync + 'static,
-        GetRootComponentClasses: GetRootComponentClassesUsecase<T> + Send + Sync + 'static,
-        LoadProject: LoadProjectUsecase<T> + Send + Sync + 'static,
-        NewProject: NewProjectUsecase<T> + Send + Sync + 'static,
-        NewRootComponentClass: NewRootComponentClassUsecase<T> + Send + Sync + 'static,
-        RealtimeRenderComponent: RealtimeRenderComponentUsecase<T> + Send + Sync + 'static,
+        Edit: EditUsecase<K, T> + Send + Sync + 'static,
+        GetAvailableComponentClasses: GetAvailableComponentClassesUsecase<K, T> + Send + Sync + 'static,
+        GetLoadedProjects: GetLoadedProjectsUsecase<K, T> + Send + Sync + 'static,
+        GetRootComponentClasses: GetRootComponentClassesUsecase<K, T> + Send + Sync + 'static,
+        LoadProject: LoadProjectUsecase<K, T> + Send + Sync + 'static,
+        NewProject: NewProjectUsecase<K, T> + Send + Sync + 'static,
+        NewRootComponentClass: NewRootComponentClassUsecase<K, T> + Send + Sync + 'static,
+        RealtimeRenderComponent: RealtimeRenderComponentUsecase<K, T> + Send + Sync + 'static,
         RealtimeRenderComponent::Renderer: Send + Sync + 'static,
-        Redo: RedoUsecase<T> + Send + Sync + 'static,
-        SetOwnerForRootComponentClass: SetOwnerForRootComponentClassUsecase<T> + Send + Sync + 'static,
-        Undo: UndoUsecase<T> + Send + Sync + 'static,
-        WriteProject: WriteProjectUsecase<T> + Send + Sync + 'static,
+        Redo: RedoUsecase<K, T> + Send + Sync + 'static,
+        SetOwnerForRootComponentClass: SetOwnerForRootComponentClassUsecase<K, T> + Send + Sync + 'static,
+        Undo: UndoUsecase<K, T> + Send + Sync + 'static,
+        WriteProject: WriteProjectUsecase<K, T> + Send + Sync + 'static,
     {
         let (message_sender, message_receiver) = mpsc::unbounded_channel();
         let runtime = params.runtime.clone();
@@ -138,12 +141,12 @@ impl<S, O, F: Fn(&S) -> &O> Deref for DerefMap<S, F> {
     }
 }
 
-impl<T: ParameterValueType, R: RealtimeComponentRenderer<T>> MPDeltaViewModel<T, R> {
+impl<K, T: ParameterValueType, R: RealtimeComponentRenderer<T>> MPDeltaViewModel<K, T, R> {
     pub fn new_project(&self) {
         self.message_sender.send(ViewModelMessage::NewProject).unwrap();
     }
 
-    pub fn projects(&self) -> impl Deref<Target = impl Deref<Target = impl Deref<Target = [(StaticPointer<RwLock<Project<T>>>, String)]>>> + '_ {
+    pub fn projects(&self) -> impl Deref<Target = impl Deref<Target = impl Deref<Target = [(StaticPointer<RwLock<Project<K, T>>>, String)]>>> + '_ {
         self.inner.projects.load()
     }
 
@@ -159,7 +162,7 @@ impl<T: ParameterValueType, R: RealtimeComponentRenderer<T>> MPDeltaViewModel<T,
         self.message_sender.send(ViewModelMessage::NewRootComponentClass).unwrap();
     }
 
-    pub fn root_component_classes(&self) -> impl Deref<Target = impl Deref<Target = impl Deref<Target = [(StaticPointer<RwLock<RootComponentClass<T>>>, String)]>>> + '_ {
+    pub fn root_component_classes(&self) -> impl Deref<Target = impl Deref<Target = impl Deref<Target = [(StaticPointer<RwLock<RootComponentClass<K, T>>>, String)]>>> + '_ {
         self.inner.root_component_classes.load()
     }
 
@@ -178,27 +181,27 @@ impl<T: ParameterValueType, R: RealtimeComponentRenderer<T>> MPDeltaViewModel<T,
         self.inner.realtime_renderer.load().as_ref().and_then(|renderer| renderer.render_frame(self.seek).ok())
     }
 
-    pub fn component_instances(&self) -> impl Deref<Target = DashMap<StaticPointer<RwLock<ComponentInstance<T>>>, ComponentInstanceRect>> {
+    pub fn component_instances(&self) -> impl Deref<Target = DashMap<StaticPointer<TCell<K, ComponentInstance<K, T>>>, ComponentInstanceRect>> {
         DerefMap::new(self.inner.timeline_item.load(), |guard| &guard.component_instances)
     }
 
-    pub fn component_links(&self) -> impl Deref<Target = Vec<(StaticPointer<RwLock<MarkerLink>>, MarkerLink, ArcSwap<String>)>> {
+    pub fn component_links(&self) -> impl Deref<Target = Vec<(StaticPointer<TCell<K, MarkerLink<K>>>, MarkerLink<K>, ArcSwap<String>)>> {
         DerefMap::new(self.inner.timeline_item.load(), |guard| &guard.component_links)
     }
 
-    pub fn marker_pins(&self) -> impl Deref<Target = DashMap<StaticPointer<RwLock<MarkerPin>>, (Option<StaticPointer<RwLock<ComponentInstance<T>>>>, f32, TimelineTime)>> {
+    pub fn marker_pins(&self) -> impl Deref<Target = DashMap<StaticPointer<TCell<K, MarkerPin>>, (Option<StaticPointer<TCell<K, ComponentInstance<K, T>>>>, f32, TimelineTime)>> {
         DerefMap::new(self.inner.timeline_item.load(), |guard| &guard.marker_pins)
     }
 
-    pub fn selected_component_instance(&self) -> impl Deref<Target = Option<Arc<StaticPointer<RwLock<ComponentInstance<T>>>>>> {
+    pub fn selected_component_instance(&self) -> impl Deref<Target = Option<Arc<StaticPointer<TCell<K, ComponentInstance<K, T>>>>>> {
         self.inner.selected_component_instance.load()
     }
 
-    pub fn click_component_instance(&self, handle: &StaticPointer<RwLock<ComponentInstance<T>>>) {
+    pub fn click_component_instance(&self, handle: &StaticPointer<TCell<K, ComponentInstance<K, T>>>) {
         self.message_sender.send(ViewModelMessage::ClickComponentInstance(handle.clone())).unwrap();
     }
 
-    pub fn drag_component_instance(&self, handle: &StaticPointer<RwLock<ComponentInstance<T>>>, delta: Vec2) {
+    pub fn drag_component_instance(&self, handle: &StaticPointer<TCell<K, ComponentInstance<K, T>>>, delta: Vec2) {
         self.message_sender.send(ViewModelMessage::DragComponentInstance(handle.clone(), delta)).unwrap();
     }
 
@@ -206,15 +209,15 @@ impl<T: ParameterValueType, R: RealtimeComponentRenderer<T>> MPDeltaViewModel<T,
         self.message_sender.send(ViewModelMessage::AddComponentInstance).unwrap();
     }
 
-    pub fn remove_marker_link(&self, link: StaticPointer<RwLock<MarkerLink>>) {
+    pub fn remove_marker_link(&self, link: StaticPointer<TCell<K, MarkerLink<K>>>) {
         self.message_sender.send(ViewModelMessage::RemoveMarkerLink(link)).unwrap();
     }
 
-    pub fn edit_marker_link_length(&self, link: StaticPointer<RwLock<MarkerLink>>, new_length: TimelineTime) {
+    pub fn edit_marker_link_length(&self, link: StaticPointer<TCell<K, MarkerLink<K>>>, new_length: TimelineTime) {
         self.message_sender.send(ViewModelMessage::EditMarkerLinkLength(link, new_length)).unwrap();
     }
 
-    pub fn image_required_params(&self) -> &Mutex<Option<ImageRequiredParams<T>>> {
+    pub fn image_required_params(&self) -> &Mutex<Option<ImageRequiredParams<K, T>>> {
         &self.inner.image_required_params
     }
 
@@ -249,20 +252,20 @@ pub struct ComponentInstanceRect {
     pub time: Range<TimelineTime>,
 }
 
-enum ViewModelMessage<T> {
+enum ViewModelMessage<K: 'static, T> {
     NewProject,
     SelectProject(usize),
     NewRootComponentClass,
     SelectRootComponentClass(usize),
-    ClickComponentInstance(StaticPointer<RwLock<ComponentInstance<T>>>),
-    DragComponentInstance(StaticPointer<RwLock<ComponentInstance<T>>>, Vec2),
+    ClickComponentInstance(StaticPointer<TCell<K, ComponentInstance<K, T>>>),
+    DragComponentInstance(StaticPointer<TCell<K, ComponentInstance<K, T>>>, Vec2),
     AddComponentInstance,
-    RemoveMarkerLink(StaticPointer<RwLock<MarkerLink>>),
-    EditMarkerLinkLength(StaticPointer<RwLock<MarkerLink>>, TimelineTime),
+    RemoveMarkerLink(StaticPointer<TCell<K, MarkerLink<K>>>),
+    EditMarkerLinkLength(StaticPointer<TCell<K, MarkerLink<K>>>, TimelineTime),
     UpdatedImageRequiredParams,
 }
 
-impl<T> Debug for ViewModelMessage<T> {
+impl<K, T> Debug for ViewModelMessage<K, T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             ViewModelMessage::NewProject => write!(f, "NewProject"),
@@ -280,13 +283,13 @@ impl<T> Debug for ViewModelMessage<T> {
 }
 
 #[derive(Debug)]
-struct TimelineItem<T> {
-    component_instances: DashMap<StaticPointer<RwLock<ComponentInstance<T>>>, ComponentInstanceRect>,
-    marker_pins: DashMap<StaticPointer<RwLock<MarkerPin>>, (Option<StaticPointer<RwLock<ComponentInstance<T>>>>, f32, TimelineTime)>,
-    component_links: Vec<(StaticPointer<RwLock<MarkerLink>>, MarkerLink, ArcSwap<String>)>,
+struct TimelineItem<K: 'static, T> {
+    component_instances: DashMap<StaticPointer<TCell<K, ComponentInstance<K, T>>>, ComponentInstanceRect>,
+    marker_pins: DashMap<StaticPointer<TCell<K, MarkerPin>>, (Option<StaticPointer<TCell<K, ComponentInstance<K, T>>>>, f32, TimelineTime)>,
+    component_links: Vec<(StaticPointer<TCell<K, MarkerLink<K>>>, MarkerLink<K>, ArcSwap<String>)>,
 }
 
-impl<T> Default for TimelineItem<T> {
+impl<K, T> Default for TimelineItem<K, T> {
     fn default() -> Self {
         TimelineItem {
             component_instances: Default::default(),
@@ -296,21 +299,39 @@ impl<T> Default for TimelineItem<T> {
     }
 }
 
-#[derive(Debug)]
-struct ViewModelInner<T, R> {
-    projects: ArcSwap<Vec<(StaticPointer<RwLock<Project<T>>>, String)>>,
+struct ViewModelInner<K: 'static, T, R> {
+    projects: ArcSwap<Vec<(StaticPointer<RwLock<Project<K, T>>>, String)>>,
     selected_project: AtomicUsize,
-    root_component_classes: ArcSwap<Vec<(StaticPointer<RwLock<RootComponentClass<T>>>, String)>>,
+    root_component_classes: ArcSwap<Vec<(StaticPointer<RwLock<RootComponentClass<K, T>>>, String)>>,
     selected_root_component_class: AtomicUsize,
-    component_instance: ArcSwapOption<StaticPointerOwned<RwLock<ComponentInstance<T>>>>,
+    component_instance: ArcSwapOption<StaticPointerOwned<TCell<K, ComponentInstance<K, T>>>>,
     realtime_renderer: ArcSwapOption<R>,
-    timeline_item: ArcSwap<TimelineItem<T>>,
-    selected_component_instance: ArcSwapOption<StaticPointer<RwLock<ComponentInstance<T>>>>,
-    image_required_params: Mutex<Option<ImageRequiredParams<T>>>,
+    timeline_item: ArcSwap<TimelineItem<K, T>>,
+    selected_component_instance: ArcSwapOption<StaticPointer<TCell<K, ComponentInstance<K, T>>>>,
+    image_required_params: Mutex<Option<ImageRequiredParams<K, T>>>,
 }
 
-impl<T, R> ViewModelInner<T, R> {
-    fn new() -> ViewModelInner<T, R> {
+impl<K, T, R: Debug> Debug for ViewModelInner<K, T, R>
+where
+    ArcSwap<TimelineItem<K, T>>: Debug,
+    Mutex<Option<ImageRequiredParams<K, T>>>: Debug,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ViewModelInner")
+            .field("projects", &self.projects)
+            .field("selected_project", &self.selected_project)
+            .field("root_component_classes", &self.root_component_classes)
+            .field("selected_root_component_class", &self.selected_root_component_class)
+            .field("realtime_renderer", &self.realtime_renderer)
+            .field("timeline_item", &self.timeline_item)
+            .field("selected_component_instance", &self.selected_component_instance)
+            .field("image_required_params", &self.image_required_params)
+            .finish_non_exhaustive()
+    }
+}
+
+impl<K, T, R> ViewModelInner<K, T, R> {
+    fn new() -> ViewModelInner<K, T, R> {
         ViewModelInner {
             projects: Default::default(),
             selected_project: Default::default(),
@@ -325,7 +346,7 @@ impl<T, R> ViewModelInner<T, R> {
     }
 }
 
-impl<T, R> Default for ViewModelInner<T, R> {
+impl<K, T, R> Default for ViewModelInner<K, T, R> {
     fn default() -> Self {
         ViewModelInner::new()
     }
@@ -342,24 +363,24 @@ bitflags! {
     }
 }
 
-async fn view_model_loop<T, Edit, GetAvailableComponentClasses, GetLoadedProjects, GetRootComponentClasses, LoadProject, NewProject, NewRootComponentClass, RealtimeRenderComponent, Redo, SetOwnerForRootComponentClass, Undo, WriteProject>(
-    params: ViewModelParams<Edit, GetAvailableComponentClasses, GetLoadedProjects, GetRootComponentClasses, LoadProject, NewProject, NewRootComponentClass, RealtimeRenderComponent, Redo, SetOwnerForRootComponentClass, Undo, WriteProject>,
-    mut message_receiver: UnboundedReceiver<ViewModelMessage<T>>,
-    inner: Arc<ViewModelInner<T, RealtimeRenderComponent::Renderer>>,
+async fn view_model_loop<K, T, Edit, GetAvailableComponentClasses, GetLoadedProjects, GetRootComponentClasses, LoadProject, NewProject, NewRootComponentClass, RealtimeRenderComponent, Redo, SetOwnerForRootComponentClass, Undo, WriteProject>(
+    params: ViewModelParams<K, Edit, GetAvailableComponentClasses, GetLoadedProjects, GetRootComponentClasses, LoadProject, NewProject, NewRootComponentClass, RealtimeRenderComponent, Redo, SetOwnerForRootComponentClass, Undo, WriteProject>,
+    mut message_receiver: UnboundedReceiver<ViewModelMessage<K, T>>,
+    inner: Arc<ViewModelInner<K, T, RealtimeRenderComponent::Renderer>>,
 ) where
     T: ParameterValueType,
-    Edit: EditUsecase<T> + Send + Sync + 'static,
-    GetAvailableComponentClasses: GetAvailableComponentClassesUsecase<T> + Send + Sync + 'static,
-    GetLoadedProjects: GetLoadedProjectsUsecase<T> + Send + Sync + 'static,
-    GetRootComponentClasses: GetRootComponentClassesUsecase<T> + Send + Sync + 'static,
-    LoadProject: LoadProjectUsecase<T> + Send + Sync + 'static,
-    NewProject: NewProjectUsecase<T> + Send + Sync + 'static,
-    NewRootComponentClass: NewRootComponentClassUsecase<T> + Send + Sync + 'static,
-    RealtimeRenderComponent: RealtimeRenderComponentUsecase<T> + Send + Sync + 'static,
-    Redo: RedoUsecase<T> + Send + Sync + 'static,
-    SetOwnerForRootComponentClass: SetOwnerForRootComponentClassUsecase<T> + Send + Sync + 'static,
-    Undo: UndoUsecase<T> + Send + Sync + 'static,
-    WriteProject: WriteProjectUsecase<T> + Send + Sync + 'static,
+    Edit: EditUsecase<K, T> + Send + Sync + 'static,
+    GetAvailableComponentClasses: GetAvailableComponentClassesUsecase<K, T> + Send + Sync + 'static,
+    GetLoadedProjects: GetLoadedProjectsUsecase<K, T> + Send + Sync + 'static,
+    GetRootComponentClasses: GetRootComponentClassesUsecase<K, T> + Send + Sync + 'static,
+    LoadProject: LoadProjectUsecase<K, T> + Send + Sync + 'static,
+    NewProject: NewProjectUsecase<K, T> + Send + Sync + 'static,
+    NewRootComponentClass: NewRootComponentClassUsecase<K, T> + Send + Sync + 'static,
+    RealtimeRenderComponent: RealtimeRenderComponentUsecase<K, T> + Send + Sync + 'static,
+    Redo: RedoUsecase<K, T> + Send + Sync + 'static,
+    SetOwnerForRootComponentClass: SetOwnerForRootComponentClassUsecase<K, T> + Send + Sync + 'static,
+    Undo: UndoUsecase<K, T> + Send + Sync + 'static,
+    WriteProject: WriteProjectUsecase<K, T> + Send + Sync + 'static,
 {
     let ViewModelParams {
         runtime: _,
@@ -375,6 +396,7 @@ async fn view_model_loop<T, Edit, GetAvailableComponentClasses, GetLoadedProject
         set_owner_for_root_component_class,
         undo: _,
         write_project: _,
+        key,
     } = params;
     let ViewModelInner {
         projects,
@@ -431,7 +453,7 @@ async fn view_model_loop<T, Edit, GetAvailableComponentClasses, GetLoadedProject
                     let pointer = &get_available_component_classes.get_available_component_classes().await[0];
                     let class = pointer.upgrade().unwrap();
                     let instance = class.read().await.instantiate(pointer).await;
-                    let instance = StaticPointerOwned::new(RwLock::new(instance));
+                    let instance = StaticPointerOwned::new(TCell::new(instance));
                     edit.edit(target, RootComponentEditCommand::AddComponentInstance(instance)).await.unwrap();
                     update_flags |= DataUpdateFlags::COMPONENT_INSTANCES;
                 }
@@ -452,7 +474,8 @@ async fn view_model_loop<T, Edit, GetAvailableComponentClasses, GetLoadedProject
                 if let Some(instance) = &*selected_component_instance.load() {
                     if let Some(instance) = instance.upgrade() {
                         if let Some(params) = image_required_params.lock().await.clone() {
-                            instance.write().await.set_image_required_params(params);
+                            let mut key = key.write().await;
+                            instance.rw(&mut key).set_image_required_params(params);
                             update_flags |= DataUpdateFlags::COMPONENT_INSTANCES;
                         }
                     }
@@ -486,7 +509,7 @@ async fn view_model_loop<T, Edit, GetAvailableComponentClasses, GetLoadedProject
             if let Some((class, _)) = root_component_classes.load().get(selected_root_component_class.load(atomic::Ordering::Relaxed)) {
                 if let Some(class_ref) = class.upgrade() {
                     let class = class.clone().map(|weak| weak as _);
-                    let instance = StaticPointerOwned::new(RwLock::new(class_ref.read().await.instantiate(&class).await));
+                    let instance = StaticPointerOwned::new(TCell::new(class_ref.read().await.instantiate(&class).await));
                     let instance_reference = StaticPointerOwned::reference(&instance).clone();
                     match realtime_render_component.render_component(&instance_reference).await {
                         Ok(renderer) => {
@@ -502,29 +525,29 @@ async fn view_model_loop<T, Edit, GetAvailableComponentClasses, GetLoadedProject
                 }
                 if let Some(root_component_class) = class.upgrade() {
                     let class = root_component_class.read().await;
-                    let new_component_instances = DashMap::<StaticPointer<RwLock<ComponentInstance<T>>>, ComponentInstanceRect>::new();
-                    let new_marker_pins = DashMap::<StaticPointer<RwLock<MarkerPin>>, (Option<StaticPointer<RwLock<ComponentInstance<T>>>>, f32, TimelineTime)>::new();
+                    let new_component_instances = DashMap::<StaticPointer<TCell<K, ComponentInstance<K, T>>>, ComponentInstanceRect>::new();
+                    let new_marker_pins = DashMap::<StaticPointer<TCell<K, MarkerPin>>, (Option<StaticPointer<TCell<K, ComponentInstance<K, T>>>>, f32, TimelineTime)>::new();
                     new_marker_pins.insert(class.left().await, (None, 0., TimelineTime::ZERO));
                     new_marker_pins.insert(class.right().await, (None, 0., TimelineTime::new(10.0).unwrap()));
+                    let key = key.read().await;
                     for component in class.components().await {
                         if let Some(component_ref) = component.upgrade() {
-                            let guard = component_ref.read().await;
-                            let time_left = guard.marker_left().upgrade().unwrap().read().await.cached_timeline_time();
-                            let time_right = guard.marker_right().upgrade().unwrap().read().await.cached_timeline_time();
+                            let guard = component_ref.ro(&key);
+                            let time_left = guard.marker_left().upgrade().unwrap().ro(&key).cached_timeline_time();
+                            let time_right = guard.marker_right().upgrade().unwrap().ro(&key).cached_timeline_time();
                             let layer = new_component_instances.len() as f32;
                             new_marker_pins.insert(guard.marker_left().reference(), (Some(component.clone()), layer, time_left));
                             new_marker_pins.insert(guard.marker_right().reference(), (Some(component.clone()), layer, time_right));
                             for pin in guard.markers() {
-                                let time = pin.read().await.cached_timeline_time();
+                                let time = pin.ro(&key).cached_timeline_time();
                                 new_marker_pins.insert(StaticPointerOwned::reference(pin).clone(), (Some(component.clone()), layer, time));
                             }
-                            drop(guard);
                             new_component_instances.insert(component, ComponentInstanceRect { layer: layer as f32, time: time_left..time_right });
                         }
                     }
                     let mut new_component_links = Vec::new();
                     for link in class.links().await {
-                        let link_inner = link.upgrade().unwrap().read().await.clone();
+                        let link_inner = link.upgrade().unwrap().ro(&key).clone();
                         let length = link_inner.len.value().to_string();
                         new_component_links.push((link, link_inner, ArcSwap::new(Arc::new(length))));
                     }
@@ -542,7 +565,8 @@ async fn view_model_loop<T, Edit, GetAvailableComponentClasses, GetLoadedProject
         if update_flags.contains(DataUpdateFlags::COMPONENT_INSTANCE_SELECT) {
             if let Some(instance) = &*selected_component_instance.load() {
                 if let Some(instance) = instance.upgrade() {
-                    *image_required_params.lock().await = instance.read().await.image_required_params().cloned();
+                    let key = key.read().await;
+                    *image_required_params.lock().await = instance.ro(&key).image_required_params().cloned();
                 } else {
                     *image_required_params.lock().await = None;
                 }

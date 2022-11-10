@@ -86,9 +86,7 @@ impl<Value> FrameVariableValue<Value> {
     }
 
     pub fn map_ref<T>(&self, mut map: impl FnMut(&Value) -> T) -> FrameVariableValue<T> {
-        FrameVariableValue {
-            values: self.values.iter().map(|(&k, v)| (k, map(v))).collect(),
-        }
+        FrameVariableValue { values: self.values.iter().map(|(&k, v)| (k, map(v))).collect() }
     }
 
     pub fn map_time(self, mut map: impl FnMut(TimelineTime) -> TimelineTime) -> FrameVariableValue<Value> {

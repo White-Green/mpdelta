@@ -9,11 +9,11 @@ use crate::ptr::StaticPointerCow;
 use crate::time::TimelineTime;
 use async_trait::async_trait;
 use cgmath::{Vector2, Vector3};
+use qcell::TCell;
 use std::borrow::Cow;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::RwLock;
 
 pub struct NativeProcessorExecutable<T> {
     pub processor: Arc<dyn NativeProcessor<T>>,
@@ -34,7 +34,7 @@ pub trait NativeProcessorBuilder<T> {
     fn build(&self, fixed_parameters: &[ParameterValueFixed], variable_parameters: &[ParameterFrameVariableValue], variable_parameter_type: &[(String, ParameterType)], frames: &mut dyn Iterator<Item = TimelineTime>, map_time: &dyn Fn(TimelineTime) -> MarkerTime) -> NativeProcessorExecutable<T>;
 }
 
-pub trait ProcessorComponentBuilder<T> {
+pub trait ProcessorComponentBuilder<K, T> {
     fn build(
         &self,
         fixed_parameters: &[ParameterValueFixed],
@@ -42,12 +42,12 @@ pub trait ProcessorComponentBuilder<T> {
         variable_parameter_type: &[(String, ParameterType)],
         frames: &mut dyn Iterator<Item = TimelineTime>,
         map_time: &dyn Fn(TimelineTime) -> MarkerTime,
-    ) -> (Vec<StaticPointerCow<RwLock<ComponentInstance<T>>>>, Vec<StaticPointerCow<RwLock<MarkerLink>>>);
+    ) -> (Vec<StaticPointerCow<TCell<K, ComponentInstance<K, T>>>>, Vec<StaticPointerCow<TCell<K, MarkerLink<K>>>>);
 }
 
-pub enum ComponentProcessorBody<'a, T> {
+pub enum ComponentProcessorBody<'a, K, T> {
     Native(Cow<'a, [Arc<dyn NativeProcessorBuilder<T> + Send + Sync + 'a>]>),
-    Component(Arc<dyn ProcessorComponentBuilder<T> + Send + Sync + 'a>),
+    Component(Arc<dyn ProcessorComponentBuilder<K, T> + Send + Sync + 'a>),
 }
 
 pub struct NativeProcessorInput;
@@ -70,8 +70,8 @@ impl ParameterValueType for NativeProcessorInput {
 }
 
 #[async_trait]
-pub trait ComponentProcessor<T>: Send + Sync {
+pub trait ComponentProcessor<K, T>: Send + Sync {
     async fn update_variable_parameter(&self, fixed_params: &mut [ParameterValueFixed], variable_parameters: &mut Vec<(String, ParameterType)>);
     async fn natural_length(&self, fixed_params: &[ParameterValueFixed]) -> Duration;
-    async fn get_processor(&self) -> ComponentProcessorBody<'_, T>;
+    async fn get_processor(&self) -> ComponentProcessorBody<'_, K, T>;
 }

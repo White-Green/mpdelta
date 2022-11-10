@@ -15,6 +15,7 @@ use mpdelta_services::project_editor::ProjectEditor;
 use mpdelta_services::project_io::{TemporaryProjectLoader, TemporaryProjectWriter};
 use mpdelta_services::project_store::InMemoryProjectStore;
 use mpdelta_video_renderer_vulkano::ImageCombinerBuilder;
+use qcell::TCellOwner;
 use std::borrow::Cow;
 use std::sync::Arc;
 use tokio::runtime::Runtime;
@@ -28,6 +29,8 @@ use vulkano_win::VkSurfaceBuild;
 use winit::dpi::PhysicalSize;
 use winit::event_loop::EventLoop;
 use winit::window::{Window, WindowBuilder};
+
+struct ProjectKey;
 
 struct ValueType;
 
@@ -71,14 +74,14 @@ impl Combiner<()> for TmpAudioCombiner {
 }
 
 #[derive(Default)]
-struct ComponentClassList(Vec<StaticPointerOwned<RwLock<dyn ComponentClass<ValueType>>>>, Vec<StaticPointer<RwLock<dyn ComponentClass<ValueType>>>>);
+struct ComponentClassList(Vec<StaticPointerOwned<RwLock<dyn ComponentClass<ProjectKey, ValueType>>>>, Vec<StaticPointer<RwLock<dyn ComponentClass<ProjectKey, ValueType>>>>);
 
 impl ComponentClassList {
     fn new() -> ComponentClassList {
         Default::default()
     }
 
-    fn add(&mut self, class: impl ComponentClass<ValueType> + 'static) -> &mut Self {
+    fn add(&mut self, class: impl ComponentClass<ProjectKey, ValueType> + 'static) -> &mut Self {
         let class = StaticPointerOwned::new(RwLock::new(class)).map(|arc| arc as _, |weak| weak as _);
         let reference = StaticPointerOwned::reference(&class).clone();
         self.0.push(class);
@@ -88,8 +91,8 @@ impl ComponentClassList {
 }
 
 #[async_trait]
-impl ComponentClassLoader<ValueType> for ComponentClassList {
-    async fn get_available_component_classes(&self) -> Cow<[StaticPointer<RwLock<dyn ComponentClass<ValueType>>>]> {
+impl ComponentClassLoader<ProjectKey, ValueType> for ComponentClassList {
+    async fn get_available_component_classes(&self) -> Cow<[StaticPointer<RwLock<dyn ComponentClass<ProjectKey, ValueType>>>]> {
         Cow::Borrowed(&self.1)
     }
 }
@@ -100,24 +103,15 @@ fn main() {
     let id_generator = Arc::new(UniqueIdGenerator::new());
     let project_loader = Arc::new(TemporaryProjectLoader);
     let project_writer = Arc::new(TemporaryProjectWriter);
-    let project_memory = Arc::new(InMemoryProjectStore::<ValueType>::new());
+    let project_memory = Arc::new(InMemoryProjectStore::<ProjectKey, ValueType>::new());
     let mut component_class_loader = ComponentClassList::new();
     component_class_loader.add(RectangleClass::new(Arc::clone(&queue)));
     let component_class_loader = Arc::new(component_class_loader);
-    let component_renderer_builder = Arc::new(MPDeltaRendererBuilder::new(Arc::clone(&id_generator), Arc::new(ImageCombinerBuilder::new(Arc::clone(&device), Arc::clone(&queue))), Arc::new(TmpAudioCombiner)));
-    let project_editor = Arc::new(ProjectEditor::new());
+    let key = Arc::new(RwLock::new(TCellOwner::<ProjectKey>::new()));
+    let component_renderer_builder = Arc::new(MPDeltaRendererBuilder::new(Arc::clone(&id_generator), Arc::new(ImageCombinerBuilder::new(Arc::clone(&device), Arc::clone(&queue))), Arc::new(TmpAudioCombiner), Arc::clone(&key)));
+    let project_editor = Arc::new(ProjectEditor::new(Arc::clone(&key)));
     let edit_history = Arc::new(InMemoryEditHistoryStore::new(100));
-    let core = Arc::new(MPDeltaCore::new(
-        id_generator,
-        project_loader,
-        project_writer,
-        Arc::clone(&project_memory),
-        project_memory,
-        component_class_loader,
-        component_renderer_builder,
-        project_editor,
-        edit_history,
-    ));
+    let core = Arc::new(MPDeltaCore::new(id_generator, project_loader, project_writer, Arc::clone(&project_memory), project_memory, component_class_loader, component_renderer_builder, project_editor, edit_history, Arc::clone(&key)));
     let params = ViewModelParams::new(
         runtime.handle().clone(),
         Arc::clone(&core),
@@ -132,6 +126,7 @@ fn main() {
         Arc::clone(&core),
         Arc::clone(&core),
         Arc::clone(&core),
+        Arc::clone(&key),
     );
     let gui = MPDeltaGUI::new(params);
     let gui = MPDeltaGUIVulkano::new(device, queue, event_loop, surface, gui);

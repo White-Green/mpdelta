@@ -6,14 +6,18 @@ use mpdelta_core::edit::{InstanceEditCommand, RootComponentEditCommand};
 use mpdelta_core::project::RootComponentClass;
 use mpdelta_core::ptr::{StaticPointer, StaticPointerOwned};
 use mpdelta_core::time::TimelineTime;
+use qcell::{TCell, TCellOwner};
+use std::sync::Arc;
 use thiserror::Error;
 use tokio::sync::RwLock;
 
-pub struct ProjectEditor {}
+pub struct ProjectEditor<K: 'static> {
+    key: Arc<RwLock<TCellOwner<K>>>,
+}
 
-impl ProjectEditor {
-    pub fn new() -> ProjectEditor {
-        ProjectEditor {}
+impl<K> ProjectEditor<K> {
+    pub fn new(key: Arc<RwLock<TCellOwner<K>>>) -> ProjectEditor<K> {
+        ProjectEditor { key }
     }
 }
 
@@ -28,17 +32,18 @@ pub enum ProjectEditError {
 }
 
 #[async_trait]
-impl<T> Editor<T> for ProjectEditor {
+impl<K, T> Editor<K, T> for ProjectEditor<K> {
     type Log = ProjectEditLog;
     type Err = ProjectEditError;
 
-    async fn edit(&self, target: &StaticPointer<RwLock<RootComponentClass<T>>>, command: RootComponentEditCommand<T>) -> Result<Self::Log, Self::Err> {
+    async fn edit(&self, target: &StaticPointer<RwLock<RootComponentClass<K, T>>>, command: RootComponentEditCommand<K, T>) -> Result<Self::Log, Self::Err> {
         let target = target.upgrade().ok_or(ProjectEditError::InvalidTarget)?;
         let target = target.read().await;
         match command {
             RootComponentEditCommand::AddComponentInstance(instance) => {
-                let base = if let Some(base) = target.get().await.component().last() { base.read().await.marker_left().reference() } else { target.left().await };
-                let guard = instance.read().await;
+                let key = self.key.read().await;
+                let base = if let Some(base) = target.get().await.component().last() { base.ro(&key).marker_left().reference() } else { target.left().await };
+                let guard = instance.ro(&key);
                 let left = guard.marker_left();
                 let right = guard.marker_right();
                 let link_for_zero = MarkerLink {
@@ -51,10 +56,9 @@ impl<T> Editor<T> for ProjectEditor {
                     to: right.reference(),
                     len: TimelineTime::new(1.0).unwrap(),
                 };
-                drop(guard);
                 let mut item = target.get_mut().await;
                 item.component_mut().push(instance);
-                item.link_mut().extend([StaticPointerOwned::new(RwLock::new(link_for_zero)), StaticPointerOwned::new(RwLock::new(link_for_length))]);
+                item.link_mut().extend([StaticPointerOwned::new(TCell::new(link_for_zero)), StaticPointerOwned::new(TCell::new(link_for_length))]);
                 Ok(ProjectEditLog::Unimplemented)
             }
             RootComponentEditCommand::RemoveMarkerLink(link) => {
@@ -63,14 +67,15 @@ impl<T> Editor<T> for ProjectEditor {
             }
             RootComponentEditCommand::EditMarkerLinkLength(link, len) => {
                 if let Some(link) = link.upgrade() {
-                    link.write().await.len = len;
+                    let mut key = self.key.write().await;
+                    link.rw(&mut key).len = len;
                 }
                 Ok(ProjectEditLog::Unimplemented)
             }
         }
     }
 
-    async fn edit_instance(&self, _root: &StaticPointer<RwLock<RootComponentClass<T>>>, _target: &StaticPointer<RwLock<ComponentInstance<T>>>, command: InstanceEditCommand) -> Result<Self::Log, Self::Err> {
+    async fn edit_instance(&self, _root: &StaticPointer<RwLock<RootComponentClass<K, T>>>, _target: &StaticPointer<TCell<K, ComponentInstance<K, T>>>, command: InstanceEditCommand) -> Result<Self::Log, Self::Err> {
         match command {}
     }
 

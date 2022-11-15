@@ -1,9 +1,12 @@
 #![cfg_attr(target_arch = "spirv", no_std, feature(asm_experimental_arch))]
 // HACK(eddyb) can't easily see warnings otherwise from `spirv-builder` builds.
 #![deny(warnings)]
+use bytemuck_derive::{Pod, Zeroable};
 
 pub const BLOCK_SIZE: u32 = 32;
 
+#[repr(C)]
+#[derive(Clone, Copy, Pod, Zeroable)]
 pub struct CompositeOperationConstant {
     pub composite: u32,
     pub blend: u32,

@@ -21,6 +21,8 @@ use std::sync::Arc;
 use tokio::runtime::Runtime;
 use tokio::sync::RwLock;
 use vulkano::command_buffer::allocator::{StandardCommandBufferAllocator, StandardCommandBufferAllocatorCreateInfo};
+use vulkano::instance::InstanceCreateInfo;
+use vulkano::Version;
 use vulkano_util::context::{VulkanoConfig, VulkanoContext};
 use vulkano_util::window::VulkanoWindows;
 use winit::event_loop::EventLoop;
@@ -93,7 +95,13 @@ impl ComponentClassLoader<ProjectKey, ValueType> for ComponentClassList {
 }
 
 fn main() {
-    let context = Arc::new(VulkanoContext::new(VulkanoConfig::default()));
+    let context = Arc::new(VulkanoContext::new(VulkanoConfig {
+        instance_create_info: InstanceCreateInfo {
+            max_api_version: Some(Version::V1_2),
+            ..InstanceCreateInfo::default()
+        },
+        ..VulkanoConfig::default()
+    }));
     let event_loop = EventLoop::new();
     let windows = VulkanoWindows::default();
     let runtime = Runtime::new().unwrap();

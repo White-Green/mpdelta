@@ -3,17 +3,15 @@ use mpdelta_core_vulkano::ImageType;
 use mpdelta_gui::view::Gui;
 use mpdelta_gui::ImageRegister;
 use std::sync::Arc;
-use vulkano::device::{Device, DeviceExtensions, Queue};
-use vulkano::format::NumericType;
+use vulkano::device::DeviceExtensions;
+use vulkano::format::Format;
 use vulkano::image::view::ImageView;
-use vulkano::image::{ImageAccess, ImageUsage, SwapchainImage};
 use vulkano::instance::InstanceExtensions;
-use vulkano::pipeline::graphics::viewport::Viewport;
-use vulkano::swapchain::{AcquireError, FullScreenExclusive, Surface, SurfaceInfo, Swapchain, SwapchainCreateInfo, SwapchainCreationError};
-use vulkano::sync::{FenceSignalFuture, FlushError, GpuFuture};
+use vulkano_util::context::VulkanoContext;
+use vulkano_util::window::{VulkanoWindows, WindowDescriptor};
+use winit::dpi::PhysicalSize;
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
-use winit::window::Window;
 
 struct ImageRegisterWrapper<'a>(&'a mut egui_winit_vulkano::Gui);
 
@@ -29,88 +27,52 @@ impl<'a> ImageRegister<ImageType> for ImageRegisterWrapper<'a> {
 
 pub struct MPDeltaGUIVulkano<T> {
     gui: T,
-    vulkano_gui: egui_winit_vulkano::Gui,
-    device: Arc<Device>,
-    queue: Arc<Queue>,
+    context: Arc<VulkanoContext>,
     event_loop: EventLoop<()>,
-    surface: Arc<Surface<Window>>,
+    windows: VulkanoWindows,
 }
 
 pub fn required_extensions() -> InstanceExtensions {
-    InstanceExtensions::none()
+    InstanceExtensions::empty()
 }
 
 pub fn device_extensions() -> DeviceExtensions {
-    DeviceExtensions { khr_swapchain: true, ..DeviceExtensions::none() }
+    DeviceExtensions { khr_swapchain: true, ..DeviceExtensions::empty() }
 }
 
 impl<T: Gui<ImageType> + 'static> MPDeltaGUIVulkano<T> {
-    pub fn new(device: Arc<Device>, queue: Arc<Queue>, event_loop: EventLoop<()>, surface: Arc<Surface<Window>>, gui: T) -> MPDeltaGUIVulkano<T> {
-        let vulkano_gui = egui_winit_vulkano::Gui::new(Arc::clone(&surface), None, Arc::clone(&queue), false);
-        MPDeltaGUIVulkano { gui, vulkano_gui, device, queue, event_loop, surface }
+    pub fn new(context: Arc<VulkanoContext>, event_loop: EventLoop<()>, windows: VulkanoWindows, gui: T) -> MPDeltaGUIVulkano<T> {
+        MPDeltaGUIVulkano { gui, context, event_loop, windows }
     }
 
     pub fn main(self) {
-        let MPDeltaGUIVulkano { mut gui, mut vulkano_gui, device, queue, event_loop, surface } = self;
-        let (mut swapchain, images) = {
-            let physical_device = device.physical_device();
-            let caps = physical_device.surface_capabilities(&surface, Default::default()).unwrap();
-            let composite_alpha = caps.supported_composite_alpha.iter().next().unwrap();
+        let MPDeltaGUIVulkano { mut gui, context, event_loop, mut windows } = self;
 
-            let supported_formats = physical_device
-                .surface_formats(
-                    &surface,
-                    SurfaceInfo {
-                        full_screen_exclusive: FullScreenExclusive::Default,
-                        win32_monitor: None,
-                        ..SurfaceInfo::default()
-                    },
-                )
-                .unwrap();
-            let (image_format, _) = supported_formats
-                .into_iter()
-                .max_by_key(|(format, _)| match format.type_color() {
-                    Some(NumericType::SRGB) => 1,
-                    _ => 0,
-                })
-                .unwrap();
-            let image_extent: [u32; 2] = surface.window().inner_size().into();
+        // TODO: DeviceによってサポートされているFormatを選ぶようなコードにしたほうがいいかもしれない
+        let window = windows.create_window(&event_loop, &context, &WindowDescriptor::default(), |sc| sc.image_format = Some(Format::B8G8R8A8_SRGB));
 
-            Swapchain::new(
-                Arc::clone(&device),
-                Arc::clone(&surface),
-                SwapchainCreateInfo {
-                    min_image_count: caps.min_image_count,
-                    image_format: Some(image_format),
-                    image_extent,
-                    image_usage: ImageUsage::color_attachment(),
-                    composite_alpha,
-
-                    ..Default::default()
-                },
-            )
-            .unwrap()
-        };
-
-        let mut viewport = Viewport {
-            origin: [0.0, 0.0],
-            dimensions: [0.0, 0.0],
-            depth_range: 0.0..1.0,
-        };
-
-        let mut framebuffers = window_size_dependent_setup(&images, &mut viewport);
-
-        let mut recreate_swapchain = false;
-
-        let mut previous_frame_end = None::<FenceSignalFuture<Box<dyn GpuFuture>>>;
+        {
+            let window = windows.get_window(window).unwrap();
+            window.set_title("mpdelta");
+            window.set_inner_size(PhysicalSize::new(1_920, 1_080));
+        }
+        let renderer = windows.get_renderer_mut(window).unwrap();
+        let mut vulkano_gui = egui_winit_vulkano::Gui::new(&event_loop, renderer.surface(), None, Arc::clone(context.graphics_queue()), false);
 
         event_loop.run(move |event, _, control_flow| {
+            let renderer = windows.get_renderer_mut(window).unwrap();
             match event {
                 Event::WindowEvent { event: WindowEvent::CloseRequested, .. } => {
                     *control_flow = ControlFlow::Exit;
                 }
-                Event::WindowEvent { event: WindowEvent::Resized(_), .. } => {
-                    recreate_swapchain = true;
+                Event::WindowEvent {
+                    event: WindowEvent::Resized(_) | WindowEvent::ScaleFactorChanged { .. },
+                    ..
+                } => {
+                    renderer.resize();
+                }
+                Event::MainEventsCleared => {
+                    renderer.window().request_redraw();
                 }
                 Event::WindowEvent { event, .. } => {
                     let egui_consumed_event = vulkano_gui.update(&event);
@@ -118,72 +80,15 @@ impl<T: Gui<ImageType> + 'static> MPDeltaGUIVulkano<T> {
                         // 必要ならここでイベントハンドリングをする
                     };
                 }
-                Event::RedrawEventsCleared => {
-                    if let Some(previous_frame_end) = &mut previous_frame_end {
-                        previous_frame_end.cleanup_finished();
-                    }
-
-                    if recreate_swapchain {
-                        let dimensions: [u32; 2] = surface.window().inner_size().into();
-                        let (new_swapchain, new_images) = match swapchain.recreate(SwapchainCreateInfo {
-                            image_extent: surface.window().inner_size().into(),
-                            ..swapchain.create_info()
-                        }) {
-                            Ok(r) => r,
-                            Err(SwapchainCreationError::ImageExtentNotSupported { .. }) => return,
-                            Err(e) => panic!("Failed to recreate swapchain: {:?}", e),
-                        };
-
-                        swapchain = new_swapchain;
-                        framebuffers = window_size_dependent_setup(&new_images, &mut viewport);
-                        viewport.dimensions = [dimensions[0] as f32, dimensions[1] as f32];
-                        recreate_swapchain = false;
-                    }
-
-                    let (image_num, suboptimal, acquire_future) = match vulkano::swapchain::acquire_next_image(swapchain.clone(), None) {
-                        Ok(r) => r,
-                        Err(AcquireError::OutOfDate) => {
-                            recreate_swapchain = true;
-                            return;
-                        }
-                        Err(e) => panic!("Failed to acquire next image: {:?}", e),
-                    };
-
-                    if suboptimal {
-                        recreate_swapchain = true;
-                    }
-
+                Event::RedrawRequested(id) if id == window => {
                     vulkano_gui.begin_frame();
                     gui.ui(&vulkano_gui.context(), &mut ImageRegisterWrapper(&mut vulkano_gui));
-
-                    if let Some(previous_frame_end) = previous_frame_end.take() {
-                        previous_frame_end.wait(None).unwrap();
-                    }
-
-                    let future = vulkano_gui.draw_on_image(acquire_future, Arc::clone(&framebuffers[image_num]) as Arc<_>);
-                    let future = future.then_swapchain_present(Arc::clone(&queue), Arc::clone(&swapchain), image_num).boxed().then_signal_fence_and_flush();
-
-                    previous_frame_end = match future {
-                        Ok(future) => Some(future),
-                        Err(FlushError::OutOfDate) => {
-                            recreate_swapchain = true;
-                            None
-                        }
-                        Err(e) => {
-                            println!("Failed to flush future: {:?}", e);
-                            None
-                        }
-                    };
+                    let before_future = renderer.acquire().unwrap();
+                    let after_future = vulkano_gui.draw_on_image(before_future, renderer.swapchain_image_view());
+                    renderer.present(after_future, true);
                 }
-                _ => (),
+                _ => {}
             }
         });
     }
-}
-
-fn window_size_dependent_setup(images: &[Arc<SwapchainImage<Window>>], viewport: &mut Viewport) -> Vec<Arc<ImageView<SwapchainImage<Window>>>> {
-    let dimensions = images[0].dimensions().width_height();
-    viewport.dimensions = [dimensions[0] as f32, dimensions[1] as f32];
-
-    images.iter().map(|image| ImageView::new_default(image.clone()).unwrap()).collect::<Vec<_>>()
 }

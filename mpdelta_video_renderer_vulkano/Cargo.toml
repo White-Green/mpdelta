@@ -19,6 +19,7 @@ shader_composite_operation = { path = "shaders/composite_operation" }
 shader_texture_drawing = { path = "shaders/texture_drawing" }
 tokio = { workspace = true }
 vulkano = { workspace = true }
+vulkano-util = { workspace = true }
 
 [build-dependencies]
 shader_builder = { workspace = true }

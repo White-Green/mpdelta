@@ -1,11 +1,18 @@
 #![cfg_attr(target_arch = "spirv", no_std, feature(asm_experimental_arch))]
 // HACK(eddyb) can't easily see warnings otherwise from `spirv-builder` builds.
 #![deny(warnings)]
+use bytemuck::{Pod, Zeroable};
 use spirv_std::glam::Mat4;
 
+#[repr(C)]
+#[derive(Clone, Copy)]
 pub struct TextureDrawingConstant {
     pub transform_matrix: Mat4,
 }
+
+unsafe impl Zeroable for TextureDrawingConstant {}
+
+unsafe impl Pod for TextureDrawingConstant {}
 
 #[cfg(feature = "shader")]
 pub mod shader {

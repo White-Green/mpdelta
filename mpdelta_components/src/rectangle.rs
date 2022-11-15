@@ -13,9 +13,12 @@ use std::borrow::Cow;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::RwLock;
+use vulkano::command_buffer::allocator::StandardCommandBufferAllocator;
+use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, PrimaryCommandBufferAbstract};
 use vulkano::device::Queue;
 use vulkano::format::Format;
 use vulkano::image::{ImageAccess, ImageDimensions, ImmutableImage, MipmapsCount};
+use vulkano::memory::allocator::{FreeListAllocator, GenericMemoryAllocator};
 use vulkano::sync::GpuFuture;
 
 #[derive(Debug, Clone)]
@@ -25,15 +28,16 @@ pub struct RectangleClass(Arc<Rectangle>);
 pub struct Rectangle(Arc<dyn ImageAccess + 'static>);
 
 impl RectangleClass {
-    pub fn new(queue: Arc<Queue>) -> RectangleClass {
-        RectangleClass(Arc::new(Rectangle::new(queue)))
+    pub fn new(queue: Arc<Queue>, allocator: &GenericMemoryAllocator<Arc<FreeListAllocator>>, command_buffer_allocator: &StandardCommandBufferAllocator) -> RectangleClass {
+        RectangleClass(Arc::new(Rectangle::new(queue, allocator, command_buffer_allocator)))
     }
 }
 
 impl Rectangle {
-    pub fn new(queue: Arc<Queue>) -> Rectangle {
-        let (image, future) = ImmutableImage::from_iter([255u8; 4], ImageDimensions::Dim2d { width: 1, height: 1, array_layers: 1 }, MipmapsCount::One, Format::R8G8B8A8_UNORM, queue).unwrap();
-        future.then_signal_fence().wait(None).unwrap();
+    pub fn new(queue: Arc<Queue>, allocator: &GenericMemoryAllocator<Arc<FreeListAllocator>>, command_buffer_allocator: &StandardCommandBufferAllocator) -> Rectangle {
+        let mut builder = AutoCommandBufferBuilder::primary(command_buffer_allocator, queue.queue_family_index(), CommandBufferUsage::OneTimeSubmit).unwrap();
+        let image = ImmutableImage::from_iter(allocator, [255u8; 4], ImageDimensions::Dim2d { width: 1, height: 1, array_layers: 1 }, MipmapsCount::One, Format::R8G8B8A8_UNORM, &mut builder).unwrap();
+        builder.build().unwrap().execute(queue).unwrap().then_signal_fence_and_flush().unwrap().wait(None).unwrap();
         Rectangle(image)
     }
 }

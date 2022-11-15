@@ -9,6 +9,7 @@ edition = "2021"
 crate-type = ["rlib", "dylib"]
 
 [dependencies]
+bytemuck = { workspace = true }
 spirv-std = { workspace = true, optional = true }
 
 [features]

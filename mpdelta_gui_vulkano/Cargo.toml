@@ -11,4 +11,5 @@ egui_winit_vulkano = { workspace = true }
 mpdelta_core_vulkano = { workspace = true }
 mpdelta_gui = { workspace = true }
 vulkano = { workspace = true }
+vulkano-util = { workspace = true }
 winit = { workspace = true }

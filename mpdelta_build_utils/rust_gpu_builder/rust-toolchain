@@ -5,9 +5,7 @@
 # to the user in the error, instead of "error: invalid channel name '[toolchain]'".
 
 [toolchain]
-channel = "nightly-2022-10-01"
+channel = "nightly-2023-03-04"
 components = ["rust-src", "rustc-dev", "llvm-tools-preview"]
-# commit_hash = 8ce3204af9463db3192ea1eb31c45c2f6d4b5ae6
 
-# Whenever changing the nightly channel, update the commit hash above, and make
-# sure to change REQUIRED_TOOLCHAIN in crates/rustc_codegen_spirv/src/build.rs also.
+# required toolchain is defined in https://github.com/EmbarkStudios/rust-gpu/blob/v0.7.0/crates/rustc_codegen_spirv/build.rs

@@ -15,7 +15,7 @@ use vulkano::format::Format;
 use vulkano::format::{ClearColorValue, ClearValue};
 use vulkano::image::view::{ImageView, ImageViewCreateInfo};
 use vulkano::image::{AttachmentImage, ImageAspects, ImageDimensions, ImageSubresourceRange, ImageUsage, StorageImage};
-use vulkano::memory::allocator::{BumpAllocator, FastMemoryAllocator, FreeListAllocator, GenericMemoryAllocator, StandardMemoryAllocator};
+use vulkano::memory::allocator::{FreeListAllocator, GenericMemoryAllocator, StandardMemoryAllocator};
 use vulkano::pipeline::graphics::input_assembly::{InputAssemblyState, PrimitiveTopology};
 use vulkano::pipeline::graphics::vertex_input::VertexInputState;
 use vulkano::pipeline::graphics::viewport::{Viewport, ViewportState};
@@ -32,7 +32,6 @@ struct SharedResource {
     render_pass: Arc<RenderPass>,
     texture_drawing_pipeline: Arc<GraphicsPipeline>,
     composite_operation_pipeline: Arc<ComputePipeline>,
-    fast_allocator: GenericMemoryAllocator<Arc<BumpAllocator>>,
     efficient_allocator: GenericMemoryAllocator<Arc<FreeListAllocator>>,
     command_buffer_allocator: StandardCommandBufferAllocator,
     descriptor_set_allocator: StandardDescriptorSetAllocator,
@@ -79,7 +78,6 @@ impl SharedResource {
         let composite_operation_shader = unsafe { ShaderModule::from_bytes(Arc::clone(&context.device()), include_bytes!(concat!(env!("OUT_DIR"), "/composite_operation.spv"))).unwrap() };
 
         let composite_operation_pipeline = ComputePipeline::new(Arc::clone(&context.device()), composite_operation_shader.entry_point_with_execution("shader::main", vulkano::shader::spirv::ExecutionModel::GLCompute).unwrap(), &(), None, |_| {}).unwrap();
-        let fast_allocator = FastMemoryAllocator::new_default(Arc::clone(&context.device()));
         let efficient_allocator = StandardMemoryAllocator::new_default(Arc::clone(&context.device()));
         let command_buffer_allocator = StandardCommandBufferAllocator::new(Arc::clone(&context.device()), StandardCommandBufferAllocatorCreateInfo::default());
         let descriptor_set_allocator = StandardDescriptorSetAllocator::new(Arc::clone(&context.device()));
@@ -88,7 +86,6 @@ impl SharedResource {
             render_pass,
             texture_drawing_pipeline,
             composite_operation_pipeline,
-            fast_allocator,
             efficient_allocator,
             command_buffer_allocator,
             descriptor_set_allocator,
@@ -169,7 +166,7 @@ impl Combiner<ImageType> for ImageCombiner {
             ImageViewCreateInfo {
                 format: Some(Format::R8G8B8A8_UNORM),
                 subresource_range: ImageSubresourceRange {
-                    aspects: ImageAspects { color: true, ..ImageAspects::default() },
+                    aspects: ImageAspects::COLOR,
                     mip_levels: 0..1,
                     array_layers: 0..1,
                 },
@@ -184,13 +181,13 @@ impl Combiner<ImageType> for ImageCombiner {
                 ..ClearColorImageInfo::image(Arc::clone(&result_image) as Arc<_>)
             })
             .unwrap();
-        let buffer_image = AttachmentImage::with_usage(&shared_resource.fast_allocator, [image_width, image_height], Format::R8G8B8A8_UNORM, ImageUsage { storage: true, ..ImageUsage::empty() }).unwrap();
+        let buffer_image = AttachmentImage::with_usage(&shared_resource.efficient_allocator, [image_width, image_height], Format::R8G8B8A8_UNORM, ImageUsage::STORAGE).unwrap();
         let buffer_image_view = ImageView::new(
             Arc::clone(&buffer_image),
             ImageViewCreateInfo {
                 format: Some(Format::R8G8B8A8_UNORM),
                 subresource_range: ImageSubresourceRange {
-                    aspects: ImageAspects { color: true, ..ImageAspects::default() },
+                    aspects: ImageAspects::COLOR,
                     mip_levels: 0..1,
                     array_layers: 0..1,
                 },
@@ -198,13 +195,13 @@ impl Combiner<ImageType> for ImageCombiner {
             },
         )
         .unwrap();
-        let depth = AttachmentImage::with_usage(&shared_resource.fast_allocator, [image_width, image_height], Format::R32_UINT, ImageUsage { storage: true, ..ImageUsage::empty() }).unwrap();
+        let depth = AttachmentImage::with_usage(&shared_resource.efficient_allocator, [image_width, image_height], Format::R32_UINT, ImageUsage::STORAGE).unwrap();
         let depth_view = ImageView::new(
             Arc::clone(&depth),
             ImageViewCreateInfo {
                 format: Some(Format::R32_UINT),
                 subresource_range: ImageSubresourceRange {
-                    aspects: ImageAspects { color: true, ..ImageAspects::default() },
+                    aspects: ImageAspects::COLOR,
                     mip_levels: 0..1,
                     array_layers: 0..1,
                 },
@@ -231,7 +228,7 @@ impl Combiner<ImageType> for ImageCombiner {
                 ImageViewCreateInfo {
                     format: Some(Format::R8G8B8A8_UNORM),
                     subresource_range: ImageSubresourceRange {
-                        aspects: ImageAspects { color: true, ..ImageAspects::default() },
+                        aspects: ImageAspects::COLOR,
                         mip_levels: 0..1,
                         array_layers: 0..1,
                     },

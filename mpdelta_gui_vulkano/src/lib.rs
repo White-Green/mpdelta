@@ -1,4 +1,5 @@
 use egui::TextureId;
+use egui_winit_vulkano::GuiConfig;
 use mpdelta_core_vulkano::ImageType;
 use mpdelta_gui::view::Gui;
 use mpdelta_gui::ImageRegister;
@@ -57,7 +58,7 @@ impl<T: Gui<ImageType> + 'static> MPDeltaGUIVulkano<T> {
             window.set_inner_size(PhysicalSize::new(1_920, 1_080));
         }
         let renderer = windows.get_renderer_mut(window).unwrap();
-        let mut vulkano_gui = egui_winit_vulkano::Gui::new(&event_loop, renderer.surface(), None, Arc::clone(context.graphics_queue()), false);
+        let mut vulkano_gui = egui_winit_vulkano::Gui::new(&event_loop, renderer.surface(), Arc::clone(context.graphics_queue()), GuiConfig::default());
 
         event_loop.run(move |event, _, control_flow| {
             let renderer = windows.get_renderer_mut(window).unwrap();

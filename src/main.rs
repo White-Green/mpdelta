@@ -31,7 +31,7 @@ struct ProjectKey;
 
 struct ValueType;
 
-impl<'a> ParameterValueType for ValueType {
+impl ParameterValueType for ValueType {
     type Image = ImageType;
     type Audio = ();
     type Video = ();
@@ -65,9 +65,7 @@ impl Combiner<()> for TmpAudioCombiner {
 
     fn add(&mut self, _data: (), _param: Self::Param) {}
 
-    fn collect(self) -> () {
-        ()
-    }
+    fn collect(self) {}
 }
 
 #[derive(Default)]
@@ -111,7 +109,7 @@ fn main() {
     let project_memory = Arc::new(InMemoryProjectStore::<ProjectKey, ValueType>::new());
     let mut component_class_loader = ComponentClassList::new();
     let command_buffer_allocator = StandardCommandBufferAllocator::new(Arc::clone(context.device()), StandardCommandBufferAllocatorCreateInfo::default());
-    component_class_loader.add(RectangleClass::new(Arc::clone(&context.graphics_queue()), context.memory_allocator(), &command_buffer_allocator));
+    component_class_loader.add(RectangleClass::new(Arc::clone(context.graphics_queue()), context.memory_allocator(), &command_buffer_allocator));
     let component_class_loader = Arc::new(component_class_loader);
     let key = Arc::new(RwLock::new(TCellOwner::<ProjectKey>::new()));
     let component_renderer_builder = Arc::new(MPDeltaRendererBuilder::new(Arc::clone(&id_generator), Arc::new(ImageCombinerBuilder::new(Arc::clone(&context))), Arc::new(TmpAudioCombiner), Arc::clone(&key)));

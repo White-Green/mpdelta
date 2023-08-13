@@ -1,314 +1,131 @@
-use crate::viewmodel::{MPDeltaViewModel, ViewModelParams};
+use crate::edit_funnel::EditFunnelImpl;
+use crate::global_ui_state::GlobalUIStateImpl;
+use crate::preview::view::Preview;
+use crate::preview::viewmodel::{PreviewViewModel, PreviewViewModelImpl};
+use crate::property_window::view::PropertyWindow;
+use crate::property_window::viewmodel::{PropertyWindowViewModel, PropertyWindowViewModelImpl};
+use crate::timeline::view::Timeline;
+use crate::timeline::viewmodel::{TimelineViewModel, TimelineViewModelImpl};
+use crate::viewmodel::{MainWindowViewModel, MainWindowViewModelImpl, ProjectData, ProjectDataList, RootComponentClassData, RootComponentClassDataList, ViewModelParams};
 use crate::ImageRegister;
-use cgmath::Vector3;
-use egui::epaint::Shadow;
-use egui::style::Margin;
-use egui::{Button, Color32, Context, Frame, Pos2, Rect, Rounding, ScrollArea, Sense, Slider, Stroke, Style, TextEdit, TextureId, Vec2};
-use mpdelta_core::component::parameter::{ImageRequiredParamsTransform, ParameterValueType, VariableParameterValue};
-use mpdelta_core::time::TimelineTime;
-use mpdelta_core::usecase::{
-    EditUsecase, GetAvailableComponentClassesUsecase, GetLoadedProjectsUsecase, GetRootComponentClassesUsecase, LoadProjectUsecase, NewProjectUsecase, NewRootComponentClassUsecase, RealtimeComponentRenderer, RealtimeRenderComponentUsecase, RedoUsecase, SetOwnerForRootComponentClassUsecase, UndoUsecase, WriteProjectUsecase,
-};
-use once_cell::sync::Lazy;
-use regex::Regex;
-use std::str::FromStr;
+use egui::{Button, Context};
+use mpdelta_core::component::parameter::ParameterValueType;
 use std::sync::Arc;
 
 pub trait Gui<T> {
     fn ui(&mut self, ctx: &Context, image: &mut impl ImageRegister<T>);
 }
 
-pub struct MPDeltaGUI<K: 'static, T, R> {
-    view_model: MPDeltaViewModel<K, T, R>,
-    previous_preview: Option<TextureId>,
+pub struct MPDeltaGUI<K: 'static, T, VM, PreviewViewModel, TimelineViewModel, PropertyWindowViewModel> {
+    view_model: Arc<VM>,
+    preview: Preview<K, T, PreviewViewModel>,
+    timeline: Timeline<K, T, TimelineViewModel>,
+    property_window: PropertyWindow<K, T, PropertyWindowViewModel>,
 }
 
-impl<K, T> MPDeltaGUI<K, T, ()> {
-    pub fn new<Edit, GetAvailableComponentClasses, GetLoadedProjects, GetRootComponentClasses, LoadProject, NewProject, NewRootComponentClass, RealtimeRenderComponent, Redo, SetOwnerForRootComponentClass, Undo, WriteProject>(
-        view_model_params: ViewModelParams<K, Edit, GetAvailableComponentClasses, GetLoadedProjects, GetRootComponentClasses, LoadProject, NewProject, NewRootComponentClass, RealtimeRenderComponent, Redo, SetOwnerForRootComponentClass, Undo, WriteProject>,
-    ) -> MPDeltaGUI<K, T, RealtimeRenderComponent::Renderer>
+impl<K: Send + Sync + 'static, T> MPDeltaGUI<K, T, (), (), (), ()> {
+    pub fn new<P: ViewModelParams<K, T> + 'static>(view_model_params: P) -> MPDeltaGUI<K, T, impl MainWindowViewModel<K, T>, impl PreviewViewModel<K, T>, impl TimelineViewModel<K, T>, impl PropertyWindowViewModel<K, T>>
     where
         T: ParameterValueType,
-        Edit: EditUsecase<K, T> + Send + Sync + 'static,
-        GetAvailableComponentClasses: GetAvailableComponentClassesUsecase<K, T> + Send + Sync + 'static,
-        GetLoadedProjects: GetLoadedProjectsUsecase<K, T> + Send + Sync + 'static,
-        GetRootComponentClasses: GetRootComponentClassesUsecase<K, T> + Send + Sync + 'static,
-        LoadProject: LoadProjectUsecase<K, T> + Send + Sync + 'static,
-        NewProject: NewProjectUsecase<K, T> + Send + Sync + 'static,
-        NewRootComponentClass: NewRootComponentClassUsecase<K, T> + Send + Sync + 'static,
-        RealtimeRenderComponent: RealtimeRenderComponentUsecase<K, T> + Send + Sync + 'static,
-        RealtimeRenderComponent::Renderer: Send + Sync + 'static,
-        Redo: RedoUsecase<K, T> + Send + Sync + 'static,
-        SetOwnerForRootComponentClass: SetOwnerForRootComponentClassUsecase<K, T> + Send + Sync + 'static,
-        Undo: UndoUsecase<K, T> + Send + Sync + 'static,
-        WriteProject: WriteProjectUsecase<K, T> + Send + Sync + 'static,
     {
+        let global_ui_state = Arc::new(GlobalUIStateImpl::new(&view_model_params));
+        let edit_funnel = EditFunnelImpl::new(view_model_params.runtime().clone(), Arc::clone(view_model_params.edit()));
         MPDeltaGUI {
-            view_model: MPDeltaViewModel::new::<Edit, GetAvailableComponentClasses, GetLoadedProjects, GetRootComponentClasses, LoadProject, NewProject, NewRootComponentClass, RealtimeRenderComponent, Redo, SetOwnerForRootComponentClass, Undo, WriteProject>(view_model_params),
-            previous_preview: None,
+            view_model: MainWindowViewModelImpl::new(&global_ui_state, &view_model_params),
+            preview: Preview::new(PreviewViewModelImpl::new(&global_ui_state, &view_model_params)),
+            timeline: Timeline::new(TimelineViewModelImpl::new(&global_ui_state, &edit_funnel, &view_model_params)),
+            property_window: PropertyWindow::new(PropertyWindowViewModelImpl::new(&global_ui_state, &edit_funnel, &view_model_params)),
         }
     }
 }
 
-impl<K, T: ParameterValueType, R: RealtimeComponentRenderer<T>> Gui<T::Image> for MPDeltaGUI<K, T, R> {
+impl<K, T, VM, TPreviewViewModel, TTimelineViewModel, TPropertyWindowViewModel> Gui<T::Image> for MPDeltaGUI<K, T, VM, TPreviewViewModel, TTimelineViewModel, TPropertyWindowViewModel>
+where
+    K: 'static,
+    T: ParameterValueType,
+    VM: MainWindowViewModel<K, T>,
+    TPreviewViewModel: PreviewViewModel<K, T>,
+    TTimelineViewModel: TimelineViewModel<K, T>,
+    TPropertyWindowViewModel: PropertyWindowViewModel<K, T>,
+{
     fn ui(&mut self, ctx: &Context, image: &mut impl ImageRegister<T::Image>) {
-        egui::TopBottomPanel::top("menu").show(ctx, |ui| {
-            egui::menu::bar(ui, |ui| {
-                ui.menu_button("File", |ui| {
-                    if ui.button("New Project").clicked() {
-                        println!("File/New Project Clicked");
-                        self.view_model.new_project();
-                        ui.close_menu();
-                    }
-                    if ui.button("Open").clicked() {
-                        println!("File/Open Clicked");
-                        ui.close_menu();
-                    }
-                });
-                ui.menu_button("Edit", |ui| {
-                    if ui.button("Undo").clicked() {
-                        println!("Edit/Undo Clicked");
-                        ui.close_menu();
-                    }
-                    if ui.button("Redo").clicked() {
-                        println!("Edit/Redo Clicked");
-                        ui.close_menu();
-                    }
-                });
-            });
-        });
-
-        egui::TopBottomPanel::top("project_tabs").show(ctx, |ui| {
-            ui.horizontal(|ui| {
-                let selected = self.view_model.selected_project();
-                for (i, (_, name)) in self.view_model.projects().iter().enumerate() {
-                    if ui.add(Button::new(name).fill(if selected == i { ui.style().visuals.code_bg_color } else { ui.style().visuals.extreme_bg_color })).clicked() {
-                        self.view_model.select_project(i);
-                    }
-                }
-                if ui.button("+").clicked() {
-                    self.view_model.new_project();
-                }
-            });
-        });
-
-        egui::TopBottomPanel::top("root_component_tabs").show(ctx, |ui| {
-            ui.horizontal(|ui| {
-                let selected = self.view_model.selected_root_component_class();
-                for (i, (_, name)) in self.view_model.root_component_classes().iter().enumerate() {
-                    if ui.add(Button::new(name).fill(if selected == i { ui.style().visuals.code_bg_color } else { ui.style().visuals.extreme_bg_color })).clicked() {
-                        self.view_model.select_root_component_class(i);
-                    }
-                }
-                if ui.button("+").clicked() {
-                    self.view_model.new_root_component_class();
-                }
-            });
-        });
-
-        egui::TopBottomPanel::bottom("bottom_info_bar").show(ctx, |ui| {
-            ui.horizontal(|ui| {
-                ui.label(concat!("mpdelta - ", env!("CARGO_PKG_VERSION")));
-                egui::warn_if_debug_build(ui);
-            })
-        });
-
-        egui::TopBottomPanel::bottom("timeline").resizable(true).show(ctx, |ui| {
-            ScrollArea::both().show(ui, |ui| {
-                let (rect, response) = ui.allocate_at_least(ui.available_size(), Sense::click());
-                ui.allocate_ui_at_rect(rect, |ui| {
-                    let base_point = ui.cursor().min;
-                    let frame = *self.view_model.seek();
-                    ui.painter().vline(base_point.x + frame as f32 / 60. * 100., ui.cursor().min.y..=ui.cursor().min.y + ui.ctx().available_rect().height(), Stroke::new(1., Color32::RED));
-                    let selected = self.view_model.selected_component_instance();
-                    let selected = selected.as_deref();
-                    for item in self.view_model.component_instances().iter() {
-                        let (handle, rect) = item.pair();
-                        let rectangle = Rect::from_min_size(Pos2::new(rect.time.start.value() as f32 * 100., rect.layer * 60.), Vec2::new((rect.time.end.value() - rect.time.start.value()) as f32 * 100., 50.));
-                        ui.allocate_ui_at_rect(Rect::from_min_size(base_point + rectangle.min.to_vec2(), rectangle.size()), |ui| {
-                            let frame = Frame::group(&Style::default()).inner_margin(Margin::default());
-                            let frame = match selected {
-                                Some(selected) if handle == selected => frame.shadow(Shadow::big_light()),
-                                _ => frame,
-                            };
-                            frame.show(ui, |ui| {
-                                let (rect, response) = ui.allocate_exact_size(rectangle.size(), Sense::drag());
-                                ui.allocate_ui_at_rect(rect, |ui| {
-                                    ui.label("Rectangle");
-                                });
-                                if response.clicked() {
-                                    self.view_model.click_component_instance(handle);
-                                }
-                                let delta = response.drag_delta();
-                                if delta != Vec2::default() {
-                                    self.view_model.drag_component_instance(handle, Vec2::new(delta.x / 100., delta.y / 60.));
-                                }
-                            });
-                        });
-                    }
-                    let pins = &*self.view_model.marker_pins();
-                    for (link_ref, link, len_str) in self.view_model.component_links().iter() {
-                        let from = if let Some(from) = pins.get(&link.from) {
-                            from
-                        } else {
-                            continue;
-                        };
-                        let to = if let Some(to) = pins.get(&link.to) {
-                            to
-                        } else {
-                            continue;
-                        };
-                        let from = &*from;
-                        let to = &*to;
-                        if selected.is_some() && (from.0.as_ref() == selected || to.0.as_ref() == selected) {
-                            ui.painter().hline(base_point.x + (from.2.value() * 100.) as f32..=base_point.x + (to.2.value() * 100.) as f32, base_point.y + from.1.max(to.1) * 60. + 55., Stroke::new(1., ui.visuals().text_color()));
-                            ui.allocate_ui_at_rect(Rect::from_min_size(base_point + Vec2::new((from.2.value() * 100.) as f32, to.1.max(to.1) * 60. + 57.), Vec2::new(20., 100.)), |ui| {
-                                let len = &**len_str.load();
-                                let mut s = len.clone();
-                                ui.add(TextEdit::singleline(&mut s));
-                                s.retain(|c| c.is_ascii_digit() || c == '.');
-                                static REGEX: Lazy<Regex> = Lazy::new(|| Regex::new("^\\d+(?:\\.\\d+)?$").unwrap());
-                                if s != *len {
-                                    len_str.store(Arc::new(s.clone()));
-                                    if REGEX.is_match(&s) {
-                                        if let Ok(new_value) = f64::from_str(&s) {
-                                            if let Some(new_value) = TimelineTime::new(new_value) {
-                                                self.view_model.edit_marker_link_length(link_ref.clone(), new_value);
-                                            }
-                                        }
-                                    }
-                                }
-                            });
+        self.view_model.render_frame(|| {
+            egui::TopBottomPanel::top("menu").show(ctx, |ui| {
+                egui::menu::bar(ui, |ui| {
+                    ui.menu_button("File", |ui| {
+                        if ui.button("New Project").clicked() {
+                            println!("File/New Project Clicked");
+                            self.view_model.new_project();
+                            ui.close_menu();
                         }
-                    }
-                });
-                response.context_menu(|ui| {
-                    if ui.button("add").clicked() {
-                        self.view_model.add_component_instance();
-                        ui.close_menu();
-                    }
-                });
-            });
-        });
-
-        egui::SidePanel::left("property").resizable(true).show(ctx, |ui| {
-            ScrollArea::both().show(ui, |ui| {
-                let (rect, _) = ui.allocate_at_least(ui.available_size(), Sense::click());
-                ui.allocate_ui_at_rect(rect, |ui| {
-                    ui.label("Component Properties");
-                    let mut image_required_params = self.view_model.image_required_params().blocking_lock();
-                    let mut edited = false;
-                    if let Some(image_required_params) = image_required_params.as_mut() {
-                        if let ImageRequiredParamsTransform::Params {
-                            scale: Vector3 {
-                                x: VariableParameterValue::Manually(scale_x),
-                                y: VariableParameterValue::Manually(scale_y),
-                                ..
-                            },
-                            translate: Vector3 {
-                                x: VariableParameterValue::Manually(translate_x),
-                                y: VariableParameterValue::Manually(translate_y),
-                                ..
-                            },
-                            ..
-                        } = &mut image_required_params.transform
-                        {
-                            ui.label("position - X");
-                            ui.add(Slider::from_get_set(-3.0..=3.0, |new_value| {
-                                let current_value = translate_x.get_value_mut(0).unwrap().1;
-                                if let Some(value) = new_value {
-                                    current_value.from = value;
-                                    current_value.to = value;
-                                    edited = true;
-                                    value
-                                } else {
-                                    current_value.from
-                                }
-                            }));
-                            ui.label("position - Y");
-                            ui.add(Slider::from_get_set(-3.0..=3.0, |new_value| {
-                                let current_value = translate_y.get_value_mut(0).unwrap().1;
-                                if let Some(value) = new_value {
-                                    current_value.from = value;
-                                    current_value.to = value;
-                                    edited = true;
-                                    value
-                                } else {
-                                    current_value.from
-                                }
-                            }));
-                            ui.label("scale - X");
-                            ui.add(Slider::from_get_set(0.0..=2.0, |new_value| {
-                                let current_value = scale_x.get_value_mut(0).unwrap().1;
-                                if let Some(value) = new_value {
-                                    current_value.from = value;
-                                    current_value.to = value;
-                                    edited = true;
-                                    value
-                                } else {
-                                    current_value.from
-                                }
-                            }));
-                            ui.label("scale - Y");
-                            ui.add(Slider::from_get_set(0.0..=2.0, |new_value| {
-                                let current_value = scale_y.get_value_mut(0).unwrap().1;
-                                if let Some(value) = new_value {
-                                    current_value.from = value;
-                                    current_value.to = value;
-                                    edited = true;
-                                    value
-                                } else {
-                                    current_value.from
-                                }
-                            }));
+                        if ui.button("Open").clicked() {
+                            println!("File/Open Clicked");
+                            ui.close_menu();
                         }
-                    }
-                    self.view_model.updated_image_required_params();
-                });
-            });
-        });
-
-        egui::CentralPanel::default().show(ctx, |ui| {
-            if let Some(img) = self.previous_preview {
-                image.unregister_image(img);
-            }
-            if let Some(img) = self.view_model.get_preview_image() {
-                let texture_id = image.register_image(img);
-                let Vec2 { x: area_width, y: area_height } = ui.available_size();
-                let area_height = area_height - 72.;
-                let (image_width, image_height) = (area_width.min(area_height * 16. / 9.), area_height.min(area_width * 9. / 16.) + 66.);
-                let base_pos = ui.cursor().min + Vec2::new(0., 72.);
-                ui.allocate_ui_at_rect(Rect::from_min_size(base_pos + Vec2::new((area_width - image_width) / 2., (area_height - image_height) / 2.), Vec2::new(image_width, image_height)), |ui| {
-                    let image_size = Vec2 { x: image_width, y: image_height - 66. };
-                    ui.painter().rect(Rect::from_min_size(ui.cursor().min, image_size), Rounding::none(), Color32::BLACK, Stroke::default());
-                    ui.image(texture_id, image_size);
-                    ui.horizontal(|ui| {
-                        let start = ui.cursor().min.x;
-                        if self.view_model.playing() {
-                            if ui.button("⏸").clicked() {
-                                self.view_model.pause();
-                            }
-                        } else if ui.button("▶").clicked() {
-                            self.view_model.play();
+                    });
+                    ui.menu_button("Edit", |ui| {
+                        if ui.button("Undo").clicked() {
+                            println!("Edit/Undo Clicked");
+                            ui.close_menu();
                         }
-                        let button_width = ui.cursor().min.x - start;
-                        ui.style_mut().spacing.slider_width = image_width - button_width;
-                        ui.add_enabled(!self.view_model.playing(), Slider::new(self.view_model.seek(), 0..=599).show_value(false));
+                        if ui.button("Redo").clicked() {
+                            println!("Edit/Redo Clicked");
+                            ui.close_menu();
+                        }
                     });
                 });
-                self.previous_preview = Some(texture_id);
-            } else {
-                if self.view_model.projects().get(self.view_model.selected_project()).is_none() {
-                    if ui.button("create new project").clicked() {
-                        self.view_model.new_project()
+            });
+
+            egui::TopBottomPanel::top("project_tabs").show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    self.view_model.projects(|&ProjectDataList { ref list, selected }| {
+                        for (i, ProjectData { handle, name }) in list.iter().enumerate() {
+                            let button_color = if i == selected { ui.style().visuals.code_bg_color } else { ui.style().visuals.extreme_bg_color };
+                            if ui.add(Button::new(name).fill(button_color)).clicked() {
+                                self.view_model.select_project(handle);
+                            }
+                        }
+                    });
+                    if ui.button("+").clicked() {
+                        self.view_model.new_project();
                     }
-                } else if self.view_model.root_component_classes().get(self.view_model.selected_root_component_class()).is_none() {
-                    if ui.button("add new root component class").clicked() {
+                });
+            });
+
+            egui::TopBottomPanel::top("root_component_tabs").show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    self.view_model.root_component_classes(|&RootComponentClassDataList { ref list, selected }| {
+                        for (i, RootComponentClassData { handle, name }) in list.iter().enumerate() {
+                            let button_color = if i == selected { ui.style().visuals.code_bg_color } else { ui.style().visuals.extreme_bg_color };
+                            if ui.add(Button::new(name).fill(button_color)).clicked() {
+                                self.view_model.select_root_component_class(handle);
+                            }
+                        }
+                    });
+                    if ui.button("+").clicked() {
                         self.view_model.new_root_component_class();
                     }
-                }
-                self.previous_preview = None;
-            }
+                });
+            });
+
+            egui::TopBottomPanel::bottom("bottom_info_bar").show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label(concat!("mpdelta - ", env!("CARGO_PKG_VERSION")));
+                    egui::warn_if_debug_build(ui);
+                })
+            });
+
+            egui::TopBottomPanel::bottom("timeline").resizable(true).show(ctx, |ui| {
+                self.timeline.ui(ui);
+            });
+
+            egui::SidePanel::left("property").resizable(true).show(ctx, |ui| {
+                self.property_window.ui(ui);
+            });
+
+            egui::CentralPanel::default().show(ctx, |ui| {
+                self.preview.ui(ui, image);
+            });
         });
     }
 }

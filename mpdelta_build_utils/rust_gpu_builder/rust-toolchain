@@ -5,7 +5,7 @@
 # to the user in the error, instead of "error: invalid channel name '[toolchain]'".
 
 [toolchain]
-channel = "nightly-2023-03-04"
+channel = "nightly-2023-05-27"
 components = ["rust-src", "rustc-dev", "llvm-tools-preview"]
 
 # required toolchain is defined in https://github.com/EmbarkStudios/rust-gpu/blob/v0.7.0/crates/rustc_codegen_spirv/build.rs

@@ -6,7 +6,7 @@ use mpdelta_core::core::{ComponentClassLoader, MPDeltaCore};
 use mpdelta_core::ptr::{StaticPointer, StaticPointerOwned};
 use mpdelta_core_vulkano::ImageType;
 use mpdelta_gui::view::MPDeltaGUI;
-use mpdelta_gui::viewmodel::ViewModelParams;
+use mpdelta_gui::viewmodel::ViewModelParamsImpl;
 use mpdelta_gui_vulkano::MPDeltaGUIVulkano;
 use mpdelta_renderer::{Combiner, CombinerBuilder, MPDeltaRendererBuilder};
 use mpdelta_services::history::InMemoryEditHistoryStore;
@@ -116,8 +116,9 @@ fn main() {
     let project_editor = Arc::new(ProjectEditor::new(Arc::clone(&key)));
     let edit_history = Arc::new(InMemoryEditHistoryStore::new(100));
     let core = Arc::new(MPDeltaCore::new(id_generator, project_loader, project_writer, Arc::clone(&project_memory), project_memory, component_class_loader, component_renderer_builder, project_editor, edit_history, Arc::clone(&key)));
-    let params = ViewModelParams::new(
+    let params = ViewModelParamsImpl::new(
         runtime.handle().clone(),
+        Arc::clone(&core),
         Arc::clone(&core),
         Arc::clone(&core),
         Arc::clone(&core),

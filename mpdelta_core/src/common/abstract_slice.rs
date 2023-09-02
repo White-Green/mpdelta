@@ -108,12 +108,12 @@ mod tests {
         assert_eq!(<&mut [i32] as AbstractSliceMut<i32>>::get_mut(&mut array.as_mut_slice(), 0), Some(&mut 1));
         assert_eq!(<&mut [i32] as AbstractSliceMut<i32>>::iter_mut(&mut array.as_mut_slice()).collect::<Vec<_>>(), vec![&mut 1, &mut 2, &mut 3, &mut 4, &mut 5]);
 
-        let array = vec![1, 2, 3, 4, 5];
+        let array = [1, 2, 3, 4, 5];
         let array = array.iter().collect::<Vec<_>>();
         assert_eq!(<[&i32] as AbstractSlice<i32>>::get(array.as_slice(), 0), Some(&1));
         assert_eq!(<[&i32] as AbstractSlice<i32>>::iter(array.as_slice()).collect::<Vec<_>>(), vec![&1, &2, &3, &4, &5]);
 
-        let mut array = vec![1, 2, 3, 4, 5];
+        let mut array = [1, 2, 3, 4, 5];
         let mut array = array.iter_mut().collect::<Vec<_>>();
         assert_eq!(<[&mut i32] as AbstractSlice<i32>>::get(array.as_slice(), 0), Some(&1));
         assert_eq!(<[&mut i32] as AbstractSlice<i32>>::iter(array.as_slice()).collect::<Vec<_>>(), vec![&1, &2, &3, &4, &5]);

@@ -126,7 +126,9 @@ impl<K, T> Debug for RenderError<K, T> {
 async fn wait_for_drop_arc_inner<T>(arc: Arc<T>) {
     let mut arc = Some(arc);
     loop {
-        let Err(a) = Arc::try_unwrap(arc.take().unwrap()) else { return; };
+        let Err(a) = Arc::try_unwrap(arc.take().unwrap()) else {
+            return;
+        };
         arc = Some(a);
         tokio::task::yield_now().await;
     }
@@ -142,7 +144,9 @@ impl<K, T: ParameterValueType + 'static, ImageCombinerBuilder: CombinerBuilder<T
     }
 
     fn render_frame(&self, frame: usize) -> Result<T::Image, Self::Err> {
-        let Some(&at) = self.frames.get(frame) else { return Err(RenderError::FrameOutOfRange { length: self.frames.len(), index: frame }); };
+        let Some(&at) = self.frames.get(frame) else {
+            return Err(RenderError::FrameOutOfRange { length: self.frames.len(), index: frame });
+        };
         let result = self.runtime.block_on(
             Arc::clone(&self.key)
                 .read_owned()
@@ -821,7 +825,9 @@ impl<K, T: ParameterValueType, Id: IdGenerator + 'static> EvaluateAllComponent<K
                     .collect::<Vec<_>>();
                 let combiner = image_combiner.unwrap();
                 for task in tasks {
-                    let Some(result) = task.await? else { continue; };
+                    let Some(result) = task.await? else {
+                        continue;
+                    };
                     let Parameter::Image((image, param)) = result else { unreachable!("ここの保証はevaluate_component側の責務") };
                     combiner.add(image, param);
                 }
@@ -836,7 +842,9 @@ impl<K, T: ParameterValueType, Id: IdGenerator + 'static> EvaluateAllComponent<K
                     .collect::<Vec<_>>();
                 let combiner = audio_combiner.unwrap();
                 for task in tasks {
-                    let Some(result) = task.await?else { continue; };
+                    let Some(result) = task.await? else {
+                        continue;
+                    };
                     let Parameter::Audio((image, param)) = result else { unreachable!("ここの保証はevaluate_component側の責務") };
                     combiner.add(image, param);
                 }
@@ -853,7 +861,9 @@ impl<K, T: ParameterValueType, Id: IdGenerator + 'static> EvaluateAllComponent<K
                 let mut buffer = empty_input_buffer(&ty.0, left, right);
                 for task in tasks {
                     let (param, range) = task.await;
-                    let Some(param) = param? else { continue; };
+                    let Some(param) = param? else {
+                        continue;
+                    };
                     buffer = combine_params(buffer, &param, range);
                 }
                 let ret = change_type_parameter(buffer);
@@ -880,7 +890,9 @@ fn collect_cached_time<K, T>(_components: &[StaticPointer<TCell<K, ComponentInst
             }
             None
         };
-        let Some((link, from, to, len)) = process else { break; };
+        let Some((link, from, to, len)) = process else {
+            break;
+        };
         links.remove(&link);
         locked.insert(to);
         let from = from.upgrade().ok_or_else(|| EvaluateError::InvalidMarker(from.clone()))?;
@@ -1031,7 +1043,9 @@ impl<K, T: ParameterValueType, ImageCombinerBuilder: CombinerBuilder<T::Image, P
             .collect::<Vec<_>>();
         let mut combiner = self.image_combiner_builder.new_combiner(self.image_size_request);
         for task in tasks {
-            let Some(param) = task.await? else { continue; };
+            let Some(param) = task.await? else {
+                continue;
+            };
             if let Parameter::Image((image, param)) = param {
                 combiner.add(image, param);
             } else {
@@ -1154,7 +1168,9 @@ impl<K: 'static, T: ParameterValueType + 'static, ImageCombinerBuilder: Combiner
                 return cached_result;
             }
             let key: &TCellOwner<K> = &key_arc;
-            let Some(component_ref) = component.upgrade() else { return Err(EvaluateError::InvalidComponent(component.clone())); };
+            let Some(component_ref) = component.upgrade() else {
+                return Err(EvaluateError::InvalidComponent(component.clone()));
+            };
             let component_ref = component_ref.ro(key);
             let marker_left = component_ref.marker_left().upgrade().unwrap();
             let marker_right = component_ref.marker_right().upgrade().unwrap();
@@ -1300,7 +1316,9 @@ where
                     }))
                 }
                 ComponentProcessorBody::Native(processors) => {
-                    let Some(processor) = processors.iter().find(|processor| ParameterSelectValue(processor.output_type()) == ty) else { return Ok(None); };
+                    let Some(processor) = processors.iter().find(|processor| ParameterSelectValue(processor.output_type()) == ty) else {
+                        return Ok(None);
+                    };
                     let processor = Arc::clone(processor);
                     async move {
                         let placeholder_list = cache_context.placeholder_list.get_or_init(|| iter::from_fn(|| Some(ArcSwapOption::empty())).take(parameters.len()).collect());
@@ -1585,7 +1603,7 @@ fn acquire_audio_required_param<'a, K, T: ParameterValueType + 'static, Id: IdGe
             future::ready(component_ref.audio_required_params().ok_or(()))
                 .and_then(move |AudioRequiredParams { volume }| {
                     stream::iter(volume.iter())
-                        .then(move |param| (param_as_frame_variable_value_easing(array::from_ref(param), reference_functions, argument_reference_range, image_size_request, left, right, frames.clone(), |[v]| v, |_| 1., default_range, key)))
+                        .then(move |param| param_as_frame_variable_value_easing(array::from_ref(param), reference_functions, argument_reference_range, image_size_request, left, right, frames.clone(), |[v]| v, |_| 1., default_range, key))
                         .try_collect()
                         .map(Ok)
                 })

@@ -1,6 +1,7 @@
 use crate::component::class::ComponentClass;
 use crate::component::instance::ComponentInstance;
 use crate::component::parameter::{Parameter, ParameterSelect, ParameterValueType};
+use crate::core::EditEventListener;
 use crate::edit::{InstanceEditCommand, RootComponentEditCommand};
 use crate::project::{Project, RootComponentClass};
 use crate::ptr::StaticPointer;
@@ -12,48 +13,48 @@ use std::path::Path;
 use tokio::sync::RwLock;
 
 #[async_trait]
-pub trait LoadProjectUsecase<K, T> {
+pub trait LoadProjectUsecase<K, T>: Send + Sync {
     type Err: Error + 'static;
     async fn load_project(&self, path: impl AsRef<Path> + Send + Sync) -> Result<StaticPointer<RwLock<Project<K, T>>>, Self::Err>;
 }
 
 #[async_trait]
-pub trait WriteProjectUsecase<K, T> {
+pub trait WriteProjectUsecase<K, T>: Send + Sync {
     type Err: Error + 'static;
     async fn write_project(&self, project: &StaticPointer<RwLock<Project<K, T>>>, path: impl AsRef<Path> + Send + Sync) -> Result<(), Self::Err>;
 }
 
 #[async_trait]
-pub trait NewProjectUsecase<K, T> {
+pub trait NewProjectUsecase<K, T>: Send + Sync {
     async fn new_project(&self) -> StaticPointer<RwLock<Project<K, T>>>;
 }
 
 #[async_trait]
-pub trait NewRootComponentClassUsecase<K, T> {
+pub trait NewRootComponentClassUsecase<K, T>: Send + Sync {
     async fn new_root_component_class(&self) -> StaticPointer<RwLock<RootComponentClass<K, T>>>;
 }
 
 #[async_trait]
-pub trait SetOwnerForRootComponentClassUsecase<K, T> {
+pub trait SetOwnerForRootComponentClassUsecase<K, T>: Send + Sync {
     async fn set_owner_for_root_component_class(&self, component: &StaticPointer<RwLock<RootComponentClass<K, T>>>, owner: &StaticPointer<RwLock<Project<K, T>>>);
 }
 
 #[async_trait]
-pub trait GetLoadedProjectsUsecase<K, T> {
+pub trait GetLoadedProjectsUsecase<K, T>: Send + Sync {
     async fn get_loaded_projects(&self) -> Cow<[StaticPointer<RwLock<Project<K, T>>>]>;
 }
 
 #[async_trait]
-pub trait GetRootComponentClassesUsecase<K, T> {
+pub trait GetRootComponentClassesUsecase<K, T>: Send + Sync {
     async fn get_root_component_classes(&self, project: &StaticPointer<RwLock<Project<K, T>>>) -> Cow<[StaticPointer<RwLock<RootComponentClass<K, T>>>]>;
 }
 
 #[async_trait]
-pub trait GetAvailableComponentClassesUsecase<K, T> {
+pub trait GetAvailableComponentClassesUsecase<K, T>: Send + Sync {
     async fn get_available_component_classes(&self) -> Cow<[StaticPointer<RwLock<dyn ComponentClass<K, T>>>]>;
 }
 
-pub trait RealtimeComponentRenderer<T: ParameterValueType> {
+pub trait RealtimeComponentRenderer<T: ParameterValueType>: Send + Sync {
     type Err: Error + 'static;
     fn get_frame_count(&self) -> usize;
     fn render_frame(&self, frame: usize) -> Result<T::Image, Self::Err>;
@@ -63,27 +64,32 @@ pub trait RealtimeComponentRenderer<T: ParameterValueType> {
 }
 
 #[async_trait]
-pub trait RealtimeRenderComponentUsecase<K, T: ParameterValueType> {
+pub trait RealtimeRenderComponentUsecase<K, T: ParameterValueType>: Send + Sync {
     type Err: Error + 'static;
     type Renderer: RealtimeComponentRenderer<T>;
     async fn render_component(&self, component: &StaticPointer<TCell<K, ComponentInstance<K, T>>>) -> Result<Self::Renderer, Self::Err>;
 }
 
 #[async_trait]
-pub trait EditUsecase<K, T> {
+pub trait EditUsecase<K, T>: Send + Sync {
     type Err: Error + 'static;
     async fn edit(&self, target: &StaticPointer<RwLock<RootComponentClass<K, T>>>, command: RootComponentEditCommand<K, T>) -> Result<(), Self::Err>;
-    async fn edit_instance(&self, root: &StaticPointer<RwLock<RootComponentClass<K, T>>>, target: &StaticPointer<TCell<K, ComponentInstance<K, T>>>, command: InstanceEditCommand) -> Result<(), Self::Err>;
+    async fn edit_instance(&self, root: &StaticPointer<RwLock<RootComponentClass<K, T>>>, target: &StaticPointer<TCell<K, ComponentInstance<K, T>>>, command: InstanceEditCommand<K, T>) -> Result<(), Self::Err>;
+}
+
+pub trait SubscribeEditEventUsecase<K, T>: Send + Sync {
+    type EditEventListenerGuard: Send + Sync;
+    fn add_edit_event_listener(&self, listener: impl EditEventListener<K, T> + 'static) -> Self::EditEventListenerGuard;
 }
 
 #[async_trait]
-pub trait UndoUsecase<K, T> {
+pub trait UndoUsecase<K, T>: Send + Sync {
     async fn undo(&self, component: &StaticPointer<RwLock<RootComponentClass<K, T>>>) -> bool;
     async fn undo_instance(&self, root: &StaticPointer<RwLock<RootComponentClass<K, T>>>, target: &StaticPointer<TCell<K, ComponentInstance<K, T>>>) -> bool;
 }
 
 #[async_trait]
-pub trait RedoUsecase<K, T> {
+pub trait RedoUsecase<K, T>: Send + Sync {
     async fn redo(&self, component: &StaticPointer<RwLock<RootComponentClass<K, T>>>) -> bool;
     async fn redo_instance(&self, root: &StaticPointer<RwLock<RootComponentClass<K, T>>>, target: &StaticPointer<TCell<K, ComponentInstance<K, T>>>) -> bool;
 }

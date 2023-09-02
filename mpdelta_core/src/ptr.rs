@@ -70,7 +70,7 @@ impl<T: ?Sized> StaticPointer<T> {
     }
 
     pub fn upgrade(&self) -> Option<StaticPointerStrongRef<'_, T>> {
-        self.0.upgrade().map(|strong_ref| StaticPointerStrongRef(strong_ref, PhantomData::default()))
+        self.0.upgrade().map(|strong_ref| StaticPointerStrongRef(strong_ref, PhantomData))
     }
 
     pub fn may_upgrade(&self) -> bool {

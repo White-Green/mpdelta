@@ -1,7 +1,7 @@
 use crate::component::class::ComponentClass;
 use crate::component::instance::ComponentInstance;
 use crate::component::parameter::ParameterValueType;
-use crate::edit::{InstanceEditCommand, RootComponentEditCommand};
+use crate::edit::{InstanceEditCommand, InstanceEditEvent, RootComponentEditCommand, RootComponentEditEvent};
 use crate::project::{Project, RootComponentClass};
 use crate::ptr::{StaticPointer, StaticPointerOwned};
 use crate::usecase::*;
@@ -251,12 +251,32 @@ where
     }
 }
 
+pub trait EditEventListener<K, T>: Send + Sync {
+    fn on_edit(&self, target: &StaticPointer<RwLock<RootComponentClass<K, T>>>, event: RootComponentEditEvent<K, T>);
+    fn on_edit_instance(&self, root: &StaticPointer<RwLock<RootComponentClass<K, T>>>, target: &StaticPointer<TCell<K, ComponentInstance<K, T>>>, command: InstanceEditEvent<K, T>);
+}
+
+impl<K, T, V> EditEventListener<K, T> for Arc<V>
+where
+    V: EditEventListener<K, T> + ?Sized,
+{
+    fn on_edit(&self, target: &StaticPointer<RwLock<RootComponentClass<K, T>>>, event: RootComponentEditEvent<K, T>) {
+        V::on_edit(self, target, event)
+    }
+
+    fn on_edit_instance(&self, root: &StaticPointer<RwLock<RootComponentClass<K, T>>>, target: &StaticPointer<TCell<K, ComponentInstance<K, T>>>, command: InstanceEditEvent<K, T>) {
+        V::on_edit_instance(self, root, target, command)
+    }
+}
+
 #[async_trait]
 pub trait Editor<K, T>: Send + Sync {
     type Log: Send + Sync;
     type Err: Error + 'static;
+    type EditEventListenerGuard: Send + Sync;
+    fn add_edit_event_listener(&self, listener: impl EditEventListener<K, T> + 'static) -> Self::EditEventListenerGuard;
     async fn edit(&self, target: &StaticPointer<RwLock<RootComponentClass<K, T>>>, command: RootComponentEditCommand<K, T>) -> Result<Self::Log, Self::Err>;
-    async fn edit_instance(&self, root: &StaticPointer<RwLock<RootComponentClass<K, T>>>, target: &StaticPointer<TCell<K, ComponentInstance<K, T>>>, command: InstanceEditCommand) -> Result<Self::Log, Self::Err>;
+    async fn edit_instance(&self, root: &StaticPointer<RwLock<RootComponentClass<K, T>>>, target: &StaticPointer<TCell<K, ComponentInstance<K, T>>>, command: InstanceEditCommand<K, T>) -> Result<Self::Log, Self::Err>;
     async fn edit_reverse(&self, log: &Self::Log);
     async fn edit_by_log(&self, log: &Self::Log);
 }
@@ -283,10 +303,23 @@ where
         Ok(())
     }
 
-    async fn edit_instance(&self, root: &StaticPointer<RwLock<RootComponentClass<K, T>>>, target: &StaticPointer<TCell<K, ComponentInstance<K, T>>>, command: InstanceEditCommand) -> Result<(), Self::Err> {
+    async fn edit_instance(&self, root: &StaticPointer<RwLock<RootComponentClass<K, T>>>, target: &StaticPointer<TCell<K, ComponentInstance<K, T>>>, command: InstanceEditCommand<K, T>) -> Result<(), Self::Err> {
         let log = self.editor.edit_instance(root, target, command).await?;
         self.edit_history.push_history(root, Some(target), log).await;
         Ok(())
+    }
+}
+
+#[async_trait]
+impl<K, T, T0: Send + Sync, T1: Send + Sync, T2: Send + Sync, T3: Send + Sync, T4: Send + Sync, T5: Send + Sync, T6: Send + Sync, ED: Send + Sync, T8: Send + Sync> SubscribeEditEventUsecase<K, T> for MPDeltaCore<K, T0, T1, T2, T3, T4, T5, T6, ED, T8>
+where
+    StaticPointer<TCell<K, ComponentInstance<K, T>>>: Sync,
+    ED: Editor<K, T>,
+{
+    type EditEventListenerGuard = ED::EditEventListenerGuard;
+
+    fn add_edit_event_listener(&self, listener: impl EditEventListener<K, T> + 'static) -> Self::EditEventListenerGuard {
+        self.editor.add_edit_event_listener(listener)
     }
 }
 
@@ -435,7 +468,7 @@ mod tests {
         }
         let core = MPDeltaCore {
             id_generator: Arc::new(()),
-            project_loader: Arc::new(PL2::default()),
+            project_loader: Arc::new(PL2),
             project_writer: Arc::new(()),
             project_memory: Arc::new(PM::default()),
             root_component_class_memory: Arc::new(()),

@@ -1010,7 +1010,11 @@ type PinSplitValue<K, T> = TimeSplitValue<StaticPointer<TCell<K, MarkerPin>>, T>
 
 pub enum VariableParameterValue<K: 'static, T, Manually, Nullable> {
     Manually(Manually),
-    MayComponent { params: Nullable, components: Vec<StaticPointer<TCell<K, ComponentInstance<K, T>>>>, priority: VariableParameterPriority },
+    MayComponent {
+        params: Nullable,
+        components: Vec<StaticPointer<TCell<K, ComponentInstance<K, T>>>>,
+        priority: VariableParameterPriority,
+    },
 }
 
 impl<K, T, Manually: Debug, Nullable: Debug> Debug for VariableParameterValue<K, T, Manually, Nullable> {
@@ -1053,7 +1057,11 @@ impl<K, T> ImageRequiredParams<K, T> {
         ImageRequiredParams {
             aspect_ratio: (1, 1),
             transform: ImageRequiredParamsTransform::Params {
-                scale: Vector3 { x: one_value.clone(), y: one_value.clone(), z: one_value },
+                scale: Vector3 {
+                    x: one_value.clone(),
+                    y: one_value.clone(),
+                    z: one_value,
+                },
                 translate: Vector3 { x: zero.clone(), y: zero.clone(), z: zero.clone() },
                 rotate: TimeSplitValue::new(
                     marker_left.clone(),

@@ -22,7 +22,11 @@ where
 {
     pub fn handle<H: MessageHandler<P::OutMessage>>(self, additional_handler: H) -> MultipleBuilder<Message, P, PairHandler<T, H>> {
         let MultipleBuilder { prev, tail, _phantom } = self;
-        MultipleBuilder { prev, tail: PairHandler(tail, additional_handler), _phantom }
+        MultipleBuilder {
+            prev,
+            tail: PairHandler(tail, additional_handler),
+            _phantom,
+        }
     }
 
     pub fn build(self) -> P::Out {

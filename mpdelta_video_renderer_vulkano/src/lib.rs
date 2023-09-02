@@ -154,7 +154,17 @@ impl Combiner<ImageType> for ImageCombiner {
         let ImageCombiner { shared: shared_resource, image_size_request, buffer } = self;
         let image_width = image_size_request.width.ceil() as u32;
         let image_height = image_size_request.height.ceil() as u32;
-        let result_image = StorageImage::new(&shared_resource.memory_allocator, ImageDimensions::Dim2d { width: image_width, height: image_height, array_layers: 1 }, Format::R8G8B8A8_UNORM, [shared_resource.context.graphics_queue().queue_family_index()]).unwrap();
+        let result_image = StorageImage::new(
+            &shared_resource.memory_allocator,
+            ImageDimensions::Dim2d {
+                width: image_width,
+                height: image_height,
+                array_layers: 1,
+            },
+            Format::R8G8B8A8_UNORM,
+            [shared_resource.context.graphics_queue().queue_family_index()],
+        )
+        .unwrap();
         let result_image_view = ImageView::new(
             Arc::clone(&result_image),
             ImageViewCreateInfo {
@@ -211,9 +221,21 @@ impl Combiner<ImageType> for ImageCombiner {
             };
             let transform_mat = match image_param.transform {
                 ImageRequiredParamsTransformFixed::Params { scale, translate, rotate, scale_center, rotate_center } => {
-                    scale_mat(Vector3::new(image_native_size.0 as f64 / image_size_request.width as f64, image_native_size.1 as f64 / image_size_request.height as f64, 1.)) * move_mat(-scale_center) * scale_mat(scale) * move_mat(scale_center) * move_mat(-rotate_center) * Matrix4::from(rotate) * move_mat(rotate_center) * move_mat(translate)
+                    scale_mat(Vector3::new(image_native_size.0 as f64 / image_size_request.width as f64, image_native_size.1 as f64 / image_size_request.height as f64, 1.))
+                        * move_mat(-scale_center)
+                        * scale_mat(scale)
+                        * move_mat(scale_center)
+                        * move_mat(-rotate_center)
+                        * Matrix4::from(rotate)
+                        * move_mat(rotate_center)
+                        * move_mat(translate)
                 }
-                ImageRequiredParamsTransformFixed::Free { left_top: _, right_top: _, left_bottom: _, right_bottom: _ } => todo!(),
+                ImageRequiredParamsTransformFixed::Free {
+                    left_top: _,
+                    right_top: _,
+                    left_bottom: _,
+                    right_bottom: _,
+                } => todo!(),
             };
             let transform_matrix = mat4_into_glam(transform_mat);
             // imageを空間に貼る
@@ -266,7 +288,10 @@ impl Combiner<ImageType> for ImageCombiner {
                 PersistentDescriptorSet::new(
                     &shared_resource.descriptor_set_allocator,
                     Arc::clone(&shared_resource.texture_drawing_pipeline.layout().set_layouts()[0]),
-                    [WriteDescriptorSet::image_view(0, image_view), WriteDescriptorSet::sampler(1, Sampler::new(Arc::clone(shared_resource.context.device()), SamplerCreateInfo::simple_repeat_linear_no_mipmap()).unwrap())],
+                    [
+                        WriteDescriptorSet::image_view(0, image_view),
+                        WriteDescriptorSet::sampler(1, Sampler::new(Arc::clone(shared_resource.context.device()), SamplerCreateInfo::simple_repeat_linear_no_mipmap()).unwrap()),
+                    ],
                 )
                 .unwrap(),
             );
@@ -279,7 +304,12 @@ impl Combiner<ImageType> for ImageCombiner {
                 PipelineBindPoint::Compute,
                 Arc::clone(shared_resource.composite_operation_pipeline.layout()),
                 0,
-                PersistentDescriptorSet::new(&shared_resource.descriptor_set_allocator, Arc::clone(&shared_resource.composite_operation_pipeline.layout().set_layouts()[0]), [WriteDescriptorSet::image_view(0, Arc::clone(&result_image_view) as Arc<_>)]).unwrap(),
+                PersistentDescriptorSet::new(
+                    &shared_resource.descriptor_set_allocator,
+                    Arc::clone(&shared_resource.composite_operation_pipeline.layout().set_layouts()[0]),
+                    [WriteDescriptorSet::image_view(0, Arc::clone(&result_image_view) as Arc<_>)],
+                )
+                .unwrap(),
             );
             builder.bind_descriptor_sets(
                 PipelineBindPoint::Compute,

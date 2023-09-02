@@ -63,8 +63,11 @@ impl<K: 'static, T: ParameterValueType, VM: TimelineViewModel<K, T>> Timeline<K,
                     if !from_component.as_ref().is_some_and(|from_component| self.view_model.is_component_instance_selected(from_component)) && !to_component.as_ref().is_some_and(|to_component| self.view_model.is_component_instance_selected(to_component)) {
                         continue;
                     }
-                    ui.painter()
-                        .hline(base_point.x + (from_time.value() * 100.) as f32..=base_point.x + (to_time.value() * 100.) as f32, base_point.y + from_layer.max(*to_layer) * 60. + 55., Stroke::new(1., ui.visuals().text_color()));
+                    ui.painter().hline(
+                        base_point.x + (from_time.value() * 100.) as f32..=base_point.x + (to_time.value() * 100.) as f32,
+                        base_point.y + from_layer.max(*to_layer) * 60. + 55.,
+                        Stroke::new(1., ui.visuals().text_color()),
+                    );
                     ui.allocate_ui_at_rect(Rect::from_min_size(base_point + Vec2::new((from_time.value() * 100.) as f32, from_layer.max(*to_layer) * 60. + 57.), Vec2::new(20., 100.)), |ui| {
                         let mut len = len_str.lock().unwrap();
                         let mut s = String::clone(&len);

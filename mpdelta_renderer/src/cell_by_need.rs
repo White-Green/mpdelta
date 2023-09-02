@@ -123,7 +123,11 @@ impl<Arg: Clone + Eq + Hash + Send + Sync + 'static, Ret: Clone + Send + Sync + 
 impl<Arg: Clone + Eq + Hash + Send + Sync + 'static, Ret: Clone + Send + Sync + 'static, F: FnWrapper<Arg, Fut> + Send + Sync + 'static, Fut: Future<Output = Ret> + Send + 'static> FunctionByNeed<Arg, Ret, F, Fut> {
     pub fn new(function: F) -> FunctionByNeed<Arg, Ret, F, Fut> {
         FunctionByNeed {
-            inner: Arc::new(FunctionByNeedInner { cells: DashMap::new(), function, phantom: Default::default() }),
+            inner: Arc::new(FunctionByNeedInner {
+                cells: DashMap::new(),
+                function,
+                phantom: Default::default(),
+            }),
         }
     }
 

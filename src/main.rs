@@ -115,7 +115,18 @@ fn main() {
     let component_renderer_builder = Arc::new(MPDeltaRendererBuilder::new(Arc::clone(&id_generator), Arc::new(ImageCombinerBuilder::new(Arc::clone(&context))), Arc::new(TmpAudioCombiner), Arc::clone(&key)));
     let project_editor = Arc::new(ProjectEditor::new(Arc::clone(&key)));
     let edit_history = Arc::new(InMemoryEditHistoryStore::new(100));
-    let core = Arc::new(MPDeltaCore::new(id_generator, project_loader, project_writer, Arc::clone(&project_memory), project_memory, component_class_loader, component_renderer_builder, project_editor, edit_history, Arc::clone(&key)));
+    let core = Arc::new(MPDeltaCore::new(
+        id_generator,
+        project_loader,
+        project_writer,
+        Arc::clone(&project_memory),
+        project_memory,
+        component_class_loader,
+        component_renderer_builder,
+        project_editor,
+        edit_history,
+        Arc::clone(&key),
+    ));
     let params = ViewModelParamsImpl::new(
         runtime.handle().clone(),
         Arc::clone(&core),

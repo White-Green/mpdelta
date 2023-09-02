@@ -166,7 +166,14 @@ struct CloneComponentBuilder<K: 'static, T> {
 }
 
 impl<K, T> ProcessorComponentBuilder<K, T> for CloneComponentBuilder<K, T> {
-    fn build(&self, _: &[ParameterValueFixed], _: &[ComponentProcessorInputValue], _: &[(String, ParameterType)], _: &mut dyn Iterator<Item = TimelineTime>, _: &dyn Fn(TimelineTime) -> MarkerTime) -> (Vec<StaticPointerCow<TCell<K, ComponentInstance<K, T>>>>, Vec<StaticPointerCow<TCell<K, MarkerLink<K>>>>) {
+    fn build(
+        &self,
+        _: &[ParameterValueFixed],
+        _: &[ComponentProcessorInputValue],
+        _: &[(String, ParameterType)],
+        _: &mut dyn Iterator<Item = TimelineTime>,
+        _: &dyn Fn(TimelineTime) -> MarkerTime,
+    ) -> (Vec<StaticPointerCow<TCell<K, ComponentInstance<K, T>>>>, Vec<StaticPointerCow<TCell<K, MarkerLink<K>>>>) {
         (self.components.clone(), self.links.clone())
     }
 }
@@ -297,7 +304,10 @@ mod tests {
         }
         assert_eq!(component1.read().await.parent, Some(StaticPointerOwned::reference(&project1).clone()));
 
-        assert_eq!(RootComponentClass::set_parent(StaticPointerOwned::reference(&component0), Some(StaticPointerOwned::reference(&project1).clone())).await, Some(StaticPointerOwned::reference(&project0).clone()));
+        assert_eq!(
+            RootComponentClass::set_parent(StaticPointerOwned::reference(&component0), Some(StaticPointerOwned::reference(&project1).clone())).await,
+            Some(StaticPointerOwned::reference(&project0).clone())
+        );
         {
             let project0 = project0.read().await;
             assert!(project0.children.is_empty());

@@ -83,7 +83,10 @@ where
 }
 
 impl<K: Send + Sync + 'static, T: ParameterValueType> PreviewViewModelImpl<K, T, (), (), (), ()> {
-    pub fn new<S: GlobalUIState<K, T>, P: ViewModelParams<K, T>>(global_ui_state: &Arc<S>, params: &P) -> Arc<PreviewViewModelImpl<K, T, S, P::RealtimeRenderComponent, <P::RealtimeRenderComponent as RealtimeRenderComponentUsecase<K, T>>::Renderer, <P::SubscribeEditEvent as SubscribeEditEventUsecase<K, T>>::EditEventListenerGuard>> {
+    pub fn new<S: GlobalUIState<K, T>, P: ViewModelParams<K, T>>(
+        global_ui_state: &Arc<S>,
+        params: &P,
+    ) -> Arc<PreviewViewModelImpl<K, T, S, P::RealtimeRenderComponent, <P::RealtimeRenderComponent as RealtimeRenderComponentUsecase<K, T>>::Renderer, <P::SubscribeEditEvent as SubscribeEditEventUsecase<K, T>>::EditEventListenerGuard>> {
         let handle = params.runtime().clone();
         let arc = Arc::new(PreviewViewModelImpl {
             renderer: Arc::clone(params.realtime_render_component()),

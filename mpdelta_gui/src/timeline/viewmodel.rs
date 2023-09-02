@@ -40,7 +40,13 @@ impl<K: 'static, T> ComponentInstanceData<StaticPointer<TCell<K, ComponentInstan
         let start_time = component.marker_left().upgrade()?.ro(key).cached_timeline_time();
         let end_time = component.marker_right().upgrade()?.ro(key).cached_timeline_time();
         pin_map.extend(component.markers().iter().map(StaticPointerOwned::reference).chain([component.marker_left().ptr(), component.marker_right().ptr()]).cloned().map(|marker| (marker, handle.clone())));
-        Some(ComponentInstanceData { handle, selected: false, start_time, end_time, layer: i as f32 })
+        Some(ComponentInstanceData {
+            handle,
+            selected: false,
+            start_time,
+            end_time,
+            layer: i as f32,
+        })
     }
 }
 
@@ -216,7 +222,11 @@ where
 }
 
 impl<K: Send + Sync + 'static, T: ParameterValueType> TimelineViewModelImpl<K, T, (), (), ()> {
-    pub fn new<S: GlobalUIState<K, T>, Edit: EditFunnel<K, T> + 'static, P: ViewModelParams<K, T>>(global_ui_state: &Arc<S>, edit: &Arc<Edit>, params: &P) -> Arc<TimelineViewModelImpl<K, T, S, impl MessageHandler<Message<K, T>>, <P::SubscribeEditEvent as SubscribeEditEventUsecase<K, T>>::EditEventListenerGuard>> {
+    pub fn new<S: GlobalUIState<K, T>, Edit: EditFunnel<K, T> + 'static, P: ViewModelParams<K, T>>(
+        global_ui_state: &Arc<S>,
+        edit: &Arc<Edit>,
+        params: &P,
+    ) -> Arc<TimelineViewModelImpl<K, T, S, impl MessageHandler<Message<K, T>>, <P::SubscribeEditEvent as SubscribeEditEventUsecase<K, T>>::EditEventListenerGuard>> {
         let selected_components = Arc::new(RwLock::new(HashSet::new()));
         let component_links = Arc::new(RwLock::new(ComponentLinkDataList { list: Vec::new() }));
         let component_instances = Arc::new(RwLock::new(ComponentInstanceDataList { list: Vec::new() }));

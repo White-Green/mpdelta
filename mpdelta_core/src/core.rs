@@ -47,7 +47,9 @@ impl<K, IdGenerator: Debug, ProjectLoader: Debug, ProjectWriter: Debug, ProjectM
     }
 }
 
-impl<K, IdGenerator, ProjectLoader, ProjectWriter, ProjectMemory, RootComponentClassMemory, ComponentClassLoader, ComponentRendererBuilder, Editor, EditHistory> MPDeltaCore<K, IdGenerator, ProjectLoader, ProjectWriter, ProjectMemory, RootComponentClassMemory, ComponentClassLoader, ComponentRendererBuilder, Editor, EditHistory> {
+impl<K, IdGenerator, ProjectLoader, ProjectWriter, ProjectMemory, RootComponentClassMemory, ComponentClassLoader, ComponentRendererBuilder, Editor, EditHistory>
+    MPDeltaCore<K, IdGenerator, ProjectLoader, ProjectWriter, ProjectMemory, RootComponentClassMemory, ComponentClassLoader, ComponentRendererBuilder, Editor, EditHistory>
+{
     pub fn new(
         id_generator: Arc<IdGenerator>,
         project_loader: Arc<ProjectLoader>,

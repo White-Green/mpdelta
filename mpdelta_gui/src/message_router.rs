@@ -44,7 +44,10 @@ impl<Message> MessageRouterBuilder<Message, EmptyHandler> {
 impl<Message, Handler: MessageHandler<Message>> MessageRouterBuilder<Message, Handler> {
     pub fn handle<AdditionalHandler: MessageHandler<Message>>(self, handler: AdditionalHandler) -> MessageRouterBuilder<Message, PairHandler<AdditionalHandler, Handler>> {
         let MessageRouterBuilder { handler: current_handler, _phantom } = self;
-        MessageRouterBuilder { handler: PairHandler(handler, current_handler), _phantom }
+        MessageRouterBuilder {
+            handler: PairHandler(handler, current_handler),
+            _phantom,
+        }
     }
 
     pub fn build(self, runtime: Handle) -> MessageRouter<Handler> {

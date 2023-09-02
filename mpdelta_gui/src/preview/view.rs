@@ -13,7 +13,11 @@ pub struct Preview<K, T, VM> {
 
 impl<K: 'static, T: ParameterValueType, VM: PreviewViewModel<K, T>> Preview<K, T, VM> {
     pub fn new(view_model: Arc<VM>) -> Preview<K, T, VM> {
-        Preview { previous_preview: None, view_model, _phantom: PhantomData }
+        Preview {
+            previous_preview: None,
+            view_model,
+            _phantom: PhantomData,
+        }
     }
 
     pub fn ui(&mut self, ui: &mut Ui, mut image_register: impl ImageRegister<T::Image>) {

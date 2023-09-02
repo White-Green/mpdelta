@@ -74,7 +74,10 @@ impl<T: ParameterValueType<Image = ImageType>> NativeProcessorBuilder<T> for Rec
     }
 
     fn build(&self, _: &[ParameterValueFixed], _: &[ParameterFrameVariableValue], _: &[(String, ParameterType)], _: &mut dyn Iterator<Item = TimelineTime>, _: &dyn Fn(TimelineTime) -> MarkerTime) -> NativeProcessorExecutable<T> {
-        NativeProcessorExecutable { processor: Arc::new(self.clone()), parameter: Arc::new([]) }
+        NativeProcessorExecutable {
+            processor: Arc::new(self.clone()),
+            parameter: Arc::new([]),
+        }
     }
 }
 

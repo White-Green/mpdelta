@@ -15,8 +15,8 @@ use mpdelta_core::component::marker_pin::{MarkerPin, MarkerTime};
 use mpdelta_core::component::parameter::placeholder::{Placeholder, TagAudio, TagImage};
 use mpdelta_core::component::parameter::value::{EasingValue, FrameVariableValue};
 use mpdelta_core::component::parameter::{
-    AudioRequiredParams, AudioRequiredParamsFrameVariable, ComponentProcessorInputValue, ImageRequiredParams, ImageRequiredParamsFixed, ImageRequiredParamsFrameVariable, ImageRequiredParamsTransform, ImageRequiredParamsTransformFrameVariable, Never, Opacity, Parameter, ParameterAllValues, ParameterFrameVariableValue, ParameterNullableValue,
-    ParameterSelect, ParameterValue, ParameterValueType, VariableParameterPriority, VariableParameterValue,
+    AudioRequiredParams, AudioRequiredParamsFrameVariable, ComponentProcessorInputValue, ImageRequiredParams, ImageRequiredParamsFixed, ImageRequiredParamsFrameVariable, ImageRequiredParamsTransform, ImageRequiredParamsTransformFrameVariable, Never, Opacity, Parameter, ParameterAllValues,
+    ParameterFrameVariableValue, ParameterNullableValue, ParameterSelect, ParameterValue, ParameterValueType, VariableParameterPriority, VariableParameterValue,
 };
 use mpdelta_core::component::processor::{ComponentProcessor, ComponentProcessorBody, NativeProcessorExecutable, NativeProcessorInput};
 use mpdelta_core::core::{ComponentRendererBuilder, IdGenerator};
@@ -56,13 +56,23 @@ pub struct MPDeltaRendererBuilder<K: 'static, Id, ImageCombinerBuilder, AudioCom
 
 impl<K, Id, ImageCombinerBuilder, AudioCombinerBuilder> MPDeltaRendererBuilder<K, Id, ImageCombinerBuilder, AudioCombinerBuilder> {
     pub fn new(id: Arc<Id>, image_combiner_builder: Arc<ImageCombinerBuilder>, audio_combiner_builder: Arc<AudioCombinerBuilder>, key: Arc<RwLock<TCellOwner<K>>>) -> MPDeltaRendererBuilder<K, Id, ImageCombinerBuilder, AudioCombinerBuilder> {
-        MPDeltaRendererBuilder { id, image_combiner_builder, audio_combiner_builder, key }
+        MPDeltaRendererBuilder {
+            id,
+            image_combiner_builder,
+            audio_combiner_builder,
+            key,
+        }
     }
 }
 
 #[async_trait]
-impl<K, T: ParameterValueType + 'static, ImageCombinerBuilder: CombinerBuilder<T::Image, Request = ImageSizeRequest, Param = ImageRequiredParamsFixed> + 'static, AudioCombinerBuilder: CombinerBuilder<T::Audio, Request = (), Param = AudioRequiredParamsFrameVariable> + 'static, Id: IdGenerator + 'static> ComponentRendererBuilder<K, T>
-    for MPDeltaRendererBuilder<K, Id, ImageCombinerBuilder, AudioCombinerBuilder>
+impl<
+        K,
+        T: ParameterValueType + 'static,
+        ImageCombinerBuilder: CombinerBuilder<T::Image, Request = ImageSizeRequest, Param = ImageRequiredParamsFixed> + 'static,
+        AudioCombinerBuilder: CombinerBuilder<T::Audio, Request = (), Param = AudioRequiredParamsFrameVariable> + 'static,
+        Id: IdGenerator + 'static,
+    > ComponentRendererBuilder<K, T> for MPDeltaRendererBuilder<K, Id, ImageCombinerBuilder, AudioCombinerBuilder>
 {
     type Err = Infallible;
     type Renderer = MPDeltaRenderer<K, T, ImageCombinerBuilder, AudioCombinerBuilder, Id>;
@@ -134,8 +144,13 @@ async fn wait_for_drop_arc_inner<T>(arc: Arc<T>) {
     }
 }
 
-impl<K, T: ParameterValueType + 'static, ImageCombinerBuilder: CombinerBuilder<T::Image, Request = ImageSizeRequest, Param = ImageRequiredParamsFixed> + 'static, AudioCombinerBuilder: CombinerBuilder<T::Audio, Request = (), Param = AudioRequiredParamsFrameVariable> + 'static, Id: IdGenerator + 'static> RealtimeComponentRenderer<T>
-    for MPDeltaRenderer<K, T, ImageCombinerBuilder, AudioCombinerBuilder, Id>
+impl<
+        K,
+        T: ParameterValueType + 'static,
+        ImageCombinerBuilder: CombinerBuilder<T::Image, Request = ImageSizeRequest, Param = ImageRequiredParamsFixed> + 'static,
+        AudioCombinerBuilder: CombinerBuilder<T::Audio, Request = (), Param = AudioRequiredParamsFrameVariable> + 'static,
+        Id: IdGenerator + 'static,
+    > RealtimeComponentRenderer<T> for MPDeltaRenderer<K, T, ImageCombinerBuilder, AudioCombinerBuilder, Id>
 {
     type Err = RenderError<K, T>;
 
@@ -147,12 +162,11 @@ impl<K, T: ParameterValueType + 'static, ImageCombinerBuilder: CombinerBuilder<T
         let Some(&at) = self.frames.get(frame) else {
             return Err(RenderError::FrameOutOfRange { length: self.frames.len(), index: frame });
         };
-        let result = self.runtime.block_on(
-            Arc::clone(&self.key)
-                .read_owned()
-                .map(Arc::new)
-                .then(|key| Arc::clone(&self.evaluate_component).evaluate(at, ParameterSelectValue(Parameter::Image(())), self.image_size_request, Arc::clone(&key)).then(|ret| wait_for_drop_arc_inner(key).map(|_| ret))),
-        )?;
+        let result = self.runtime.block_on(Arc::clone(&self.key).read_owned().map(Arc::new).then(|key| {
+            Arc::clone(&self.evaluate_component)
+                .evaluate(at, ParameterSelectValue(Parameter::Image(())), self.image_size_request, Arc::clone(&key))
+                .then(|ret| wait_for_drop_arc_inner(key).map(|_| ret))
+        }))?;
         let (image, _) = result.ok_or(RenderError::NotProvided)?.into_image().unwrap();
         Ok(image)
     }
@@ -162,12 +176,11 @@ impl<K, T: ParameterValueType + 'static, ImageCombinerBuilder: CombinerBuilder<T
     }
 
     fn mix_audio(&self, _offset: usize, _length: usize) -> Result<T::Audio, Self::Err> {
-        let result = self.runtime.block_on(
-            Arc::clone(&self.key)
-                .read_owned()
-                .map(Arc::new)
-                .then(|key| Arc::clone(&self.evaluate_component).evaluate(self.frames[0], ParameterSelectValue(Parameter::Image(())), self.image_size_request, Arc::clone(&key)).then(|ret| wait_for_drop_arc_inner(key).map(|_| ret))),
-        )?;
+        let result = self.runtime.block_on(Arc::clone(&self.key).read_owned().map(Arc::new).then(|key| {
+            Arc::clone(&self.evaluate_component)
+                .evaluate(self.frames[0], ParameterSelectValue(Parameter::Image(())), self.image_size_request, Arc::clone(&key))
+                .then(|ret| wait_for_drop_arc_inner(key).map(|_| ret))
+        }))?;
         let (audio, _) = result.ok_or(RenderError::NotProvided)?.into_audio().unwrap();
         Ok(audio)
     }
@@ -233,7 +246,11 @@ impl<K, T> Clone for EvaluateError<K, T> {
     fn clone(&self) -> Self {
         match self {
             EvaluateError::InvalidComponent(component) => EvaluateError::InvalidComponent(component.clone()),
-            EvaluateError::OutputTypeMismatch { component, expect, actual } => EvaluateError::OutputTypeMismatch { component: component.clone(), expect: *expect, actual: *actual },
+            EvaluateError::OutputTypeMismatch { component, expect, actual } => EvaluateError::OutputTypeMismatch {
+                component: component.clone(),
+                expect: *expect,
+                actual: *actual,
+            },
             EvaluateError::CycleDependency(dependencies) => EvaluateError::CycleDependency(dependencies.clone()),
             EvaluateError::InvalidLinkGraph => EvaluateError::InvalidLinkGraph,
             EvaluateError::InvalidMarker(marker) => EvaluateError::InvalidMarker(marker.clone()),
@@ -526,7 +543,13 @@ fn collect_dependencies<K, T: ParameterValueType>(component: &ComponentInstance<
         })
         .chain(component.image_required_params().into_iter().flat_map(|image_required_params| {
             let array = match &image_required_params.transform {
-                ImageRequiredParamsTransform::Params { scale, translate, rotate: _, scale_center, rotate_center } => [scale, translate, scale_center, rotate_center],
+                ImageRequiredParamsTransform::Params {
+                    scale,
+                    translate,
+                    rotate: _,
+                    scale_center,
+                    rotate_center,
+                } => [scale, translate, scale_center, rotate_center],
                 ImageRequiredParamsTransform::Free { left_top, right_top, left_bottom, right_bottom } => [left_top, right_top, left_bottom, right_bottom],
             };
             array.into_iter().flat_map(AsRef::<[_; 3]>::as_ref).flat_map(|param| {
@@ -1079,7 +1102,12 @@ impl<'a, K, T: ParameterValueType, ImageCombinerBuilder: CombinerBuilder<T::Imag
         Ok::<_, EvaluateError<K, T>>(self.params.as_slice())
     }
 
-    async fn process_all<U, Ret: From<BTreeMap<TimelineTime, U>>>(&mut self, frames: impl Iterator<Item = TimelineTime>, map: impl Fn(ParameterNativeProcessorInputFixed<T::Image, T::Audio>) -> Result<U, EvaluateError<K, T>>, key: &Arc<OwnedRwLockReadGuard<TCellOwner<K>>>) -> Result<Ret, EvaluateError<K, T>> {
+    async fn process_all<U, Ret: From<BTreeMap<TimelineTime, U>>>(
+        &mut self,
+        frames: impl Iterator<Item = TimelineTime>,
+        map: impl Fn(ParameterNativeProcessorInputFixed<T::Image, T::Audio>) -> Result<U, EvaluateError<K, T>>,
+        key: &Arc<OwnedRwLockReadGuard<TCellOwner<K>>>,
+    ) -> Result<Ret, EvaluateError<K, T>> {
         let mut buffer = Vec::with_capacity(frames.size_hint().0);
         for at in frames {
             buffer.push((at, map(self.executable.processor.process(at, self.get(at, key).await?))?));
@@ -1122,8 +1150,13 @@ struct EvaluateComponent<K: 'static, T: ParameterValueType, ImageCombinerBuilder
     default_range: OnceCell<Arc<TimelineRangeSet>>,
 }
 
-impl<K: 'static, T: ParameterValueType + 'static, ImageCombinerBuilder: CombinerBuilder<T::Image, Request = ImageSizeRequest, Param = ImageRequiredParamsFixed> + 'static, AudioCombinerBuilder: CombinerBuilder<T::Audio, Request = (), Param = AudioRequiredParamsFrameVariable> + 'static, Id: IdGenerator + 'static>
-    EvaluateComponent<K, T, ImageCombinerBuilder, AudioCombinerBuilder, Id>
+impl<
+        K: 'static,
+        T: ParameterValueType + 'static,
+        ImageCombinerBuilder: CombinerBuilder<T::Image, Request = ImageSizeRequest, Param = ImageRequiredParamsFixed> + 'static,
+        AudioCombinerBuilder: CombinerBuilder<T::Audio, Request = (), Param = AudioRequiredParamsFrameVariable> + 'static,
+        Id: IdGenerator + 'static,
+    > EvaluateComponent<K, T, ImageCombinerBuilder, AudioCombinerBuilder, Id>
 {
     fn new(
         component: StaticPointer<TCell<K, ComponentInstance<K, T>>>,
@@ -1181,7 +1214,21 @@ impl<K: 'static, T: ParameterValueType + 'static, ImageCombinerBuilder: Combiner
             let right = marker_right.cached_timeline_time();
             let right_marker_time = marker_right.locked_component_time();
             let default_range = default_range.get_or_init(|| Arc::new(TimelineRangeSet(BTreeSet::from([TimelineRange([left, right])]))));
-            let parameters = evaluate_parameters(at, image_size_request, reference_functions, argument_reference_range, image_combiner_builder, audio_combiner_builder, component, component_ref, left, right, default_range, &key_arc).await;
+            let parameters = evaluate_parameters(
+                at,
+                image_size_request,
+                reference_functions,
+                argument_reference_range,
+                image_combiner_builder,
+                audio_combiner_builder,
+                component,
+                component_ref,
+                left,
+                right,
+                default_range,
+                &key_arc,
+            )
+            .await;
             let map_time = Arc::clone(cache_context.map_time.get_or_init(|| {
                 let times_iter = iter::once((left, left_marker_time.map(TimelineTime::from)))
                     .chain(component_ref.markers().iter().map(|marker| {
@@ -1193,7 +1240,24 @@ impl<K: 'static, T: ParameterValueType + 'static, ImageCombinerBuilder: Combiner
             }));
             let frames = frames.clone();
             let processor = component_ref.processor();
-            let processed = process(cache_context, frames.clone(), at, ty, image_size_request, id_generator, image_combiner_builder, audio_combiner_builder, component, component_ref, processor, left, right, parameters?, &map_time, &key_arc);
+            let processed = process(
+                cache_context,
+                frames.clone(),
+                at,
+                ty,
+                image_size_request,
+                id_generator,
+                image_combiner_builder,
+                audio_combiner_builder,
+                component,
+                component_ref,
+                processor,
+                left,
+                right,
+                parameters?,
+                &map_time,
+                &key_arc,
+            );
             let image_required_params = acquire_image_required_param(cache_context, &frames, image_size_request, reference_functions, argument_reference_range, component_ref, left, right, default_range, &key_arc);
             let audio_required_params = acquire_audio_required_param(cache_context, &frames, image_size_request, reference_functions, argument_reference_range, component_ref, left, right, default_range, &key_arc);
             let (result, image_required_params, audio_required_params) = futures::try_join!(processed, image_required_params, audio_required_params)?;
@@ -1231,15 +1295,69 @@ impl<K: 'static, T: ParameterValueType + 'static, ImageCombinerBuilder: Combiner
                     .map(Clone::clone)?
                     .map(Parameter::Audio)),
                 Parameter::Video(_) => unreachable!(),
-                Parameter::File(_) => Ok(cache_context.result_cache.0.file.get_or_try_init(|| result.map(|result| result.into_file().map(Arc::new).map_err(create_error)).transpose()).map(Clone::clone)?.map(Parameter::File)),
-                Parameter::String(_) => Ok(cache_context.result_cache.0.string.get_or_try_init(|| result.map(|result| result.into_string().map(Arc::new).map_err(create_error)).transpose()).map(Clone::clone)?.map(Parameter::String)),
-                Parameter::Select(_) => Ok(cache_context.result_cache.0.select.get_or_try_init(|| result.map(|result| result.into_select().map(Arc::new).map_err(create_error)).transpose()).map(Clone::clone)?.map(Parameter::Select)),
-                Parameter::Boolean(_) => Ok(cache_context.result_cache.0.boolean.get_or_try_init(|| result.map(|result| result.into_boolean().map(Arc::new).map_err(create_error)).transpose()).map(Clone::clone)?.map(Parameter::Boolean)),
-                Parameter::Radio(_) => Ok(cache_context.result_cache.0.radio.get_or_try_init(|| result.map(|result| result.into_radio().map(Arc::new).map_err(create_error)).transpose()).map(Clone::clone)?.map(Parameter::Radio)),
-                Parameter::Integer(_) => Ok(cache_context.result_cache.0.integer.get_or_try_init(|| result.map(|result| result.into_integer().map(Arc::new).map_err(create_error)).transpose()).map(Clone::clone)?.map(Parameter::Integer)),
-                Parameter::RealNumber(_) => Ok(cache_context.result_cache.0.real_number.get_or_try_init(|| result.map(|result| result.into_real_number().map(Arc::new).map_err(create_error)).transpose()).map(Clone::clone)?.map(Parameter::RealNumber)),
-                Parameter::Vec2(_) => Ok(cache_context.result_cache.0.vec2.get_or_try_init(|| result.map(|result| result.into_vec2().map(Arc::new).map_err(create_error)).transpose()).map(Clone::clone)?.map(Parameter::Vec2)),
-                Parameter::Vec3(_) => Ok(cache_context.result_cache.0.vec3.get_or_try_init(|| result.map(|result| result.into_vec3().map(Arc::new).map_err(create_error)).transpose()).map(Clone::clone)?.map(Parameter::Vec3)),
+                Parameter::File(_) => Ok(cache_context
+                    .result_cache
+                    .0
+                    .file
+                    .get_or_try_init(|| result.map(|result| result.into_file().map(Arc::new).map_err(create_error)).transpose())
+                    .map(Clone::clone)?
+                    .map(Parameter::File)),
+                Parameter::String(_) => Ok(cache_context
+                    .result_cache
+                    .0
+                    .string
+                    .get_or_try_init(|| result.map(|result| result.into_string().map(Arc::new).map_err(create_error)).transpose())
+                    .map(Clone::clone)?
+                    .map(Parameter::String)),
+                Parameter::Select(_) => Ok(cache_context
+                    .result_cache
+                    .0
+                    .select
+                    .get_or_try_init(|| result.map(|result| result.into_select().map(Arc::new).map_err(create_error)).transpose())
+                    .map(Clone::clone)?
+                    .map(Parameter::Select)),
+                Parameter::Boolean(_) => Ok(cache_context
+                    .result_cache
+                    .0
+                    .boolean
+                    .get_or_try_init(|| result.map(|result| result.into_boolean().map(Arc::new).map_err(create_error)).transpose())
+                    .map(Clone::clone)?
+                    .map(Parameter::Boolean)),
+                Parameter::Radio(_) => Ok(cache_context
+                    .result_cache
+                    .0
+                    .radio
+                    .get_or_try_init(|| result.map(|result| result.into_radio().map(Arc::new).map_err(create_error)).transpose())
+                    .map(Clone::clone)?
+                    .map(Parameter::Radio)),
+                Parameter::Integer(_) => Ok(cache_context
+                    .result_cache
+                    .0
+                    .integer
+                    .get_or_try_init(|| result.map(|result| result.into_integer().map(Arc::new).map_err(create_error)).transpose())
+                    .map(Clone::clone)?
+                    .map(Parameter::Integer)),
+                Parameter::RealNumber(_) => Ok(cache_context
+                    .result_cache
+                    .0
+                    .real_number
+                    .get_or_try_init(|| result.map(|result| result.into_real_number().map(Arc::new).map_err(create_error)).transpose())
+                    .map(Clone::clone)?
+                    .map(Parameter::RealNumber)),
+                Parameter::Vec2(_) => Ok(cache_context
+                    .result_cache
+                    .0
+                    .vec2
+                    .get_or_try_init(|| result.map(|result| result.into_vec2().map(Arc::new).map_err(create_error)).transpose())
+                    .map(Clone::clone)?
+                    .map(Parameter::Vec2)),
+                Parameter::Vec3(_) => Ok(cache_context
+                    .result_cache
+                    .0
+                    .vec3
+                    .get_or_try_init(|| result.map(|result| result.into_vec3().map(Arc::new).map_err(create_error)).transpose())
+                    .map(Clone::clone)?
+                    .map(Parameter::Vec3)),
                 Parameter::Dictionary(_) => todo!(),
                 Parameter::ComponentClass(_) => unreachable!(),
             }
@@ -1247,7 +1365,14 @@ impl<K: 'static, T: ParameterValueType + 'static, ImageCombinerBuilder: Combiner
     }
 }
 
-fn process<'a, K, T: ParameterValueType + 'static, ImageCombinerBuilder: CombinerBuilder<T::Image, Request = ImageSizeRequest, Param = ImageRequiredParamsFixed> + 'static, AudioCombinerBuilder: CombinerBuilder<T::Audio, Request = (), Param = AudioRequiredParamsFrameVariable> + 'static, Id: IdGenerator + 'static>(
+fn process<
+    'a,
+    K,
+    T: ParameterValueType + 'static,
+    ImageCombinerBuilder: CombinerBuilder<T::Image, Request = ImageSizeRequest, Param = ImageRequiredParamsFixed> + 'static,
+    AudioCombinerBuilder: CombinerBuilder<T::Audio, Request = (), Param = AudioRequiredParamsFrameVariable> + 'static,
+    Id: IdGenerator + 'static,
+>(
     cache_context: &'a Arc<EvaluateComponentCache<K, T, Id>>,
     frames: CloneableIterator<TimelineTime>,
     at: TimelineTime,
@@ -1278,7 +1403,13 @@ where
             match processor {
                 ComponentProcessorBody::Component(processor) => {
                     let (all_component, _, _) = cache_context.result_components_renderer.get_or_try_init(move || {
-                        let (components, links) = processor.build(component_ref.fixed_parameters(), &parameters.into_iter().map(into_component_processor_input_value).collect::<Vec<_>>(), component_ref.variable_parameters_type(), frames.clone().as_dyn_iterator(), &map_time_fn);
+                        let (components, links) = processor.build(
+                            component_ref.fixed_parameters(),
+                            &parameters.into_iter().map(into_component_processor_input_value).collect::<Vec<_>>(),
+                            component_ref.variable_parameters_type(),
+                            frames.clone().as_dyn_iterator(),
+                            &map_time_fn,
+                        );
                         let components_weak = components.iter().map(AsRef::as_ref).cloned().collect::<Vec<_>>();
                         let links_weak = links.iter().map(AsRef::as_ref).cloned().collect::<Vec<_>>();
                         let ret = EvaluateAllComponent::new(
@@ -1324,7 +1455,13 @@ where
                         let placeholder_list = cache_context.placeholder_list.get_or_init(|| iter::from_fn(|| Some(ArcSwapOption::empty())).take(parameters.len()).collect());
                         let mut image_map = HashMap::new();
                         let mut audio_map = HashMap::new();
-                        let generate_variable_parameters = || parameters.into_iter().zip(placeholder_list).map(|(param, placeholder)| into_frame_variable_value(param, frames.clone(), placeholder, &mut image_map, &mut audio_map, &**id_generator)).collect::<Vec<_>>();
+                        let generate_variable_parameters = || {
+                            parameters
+                                .into_iter()
+                                .zip(placeholder_list)
+                                .map(|(param, placeholder)| into_frame_variable_value(param, frames.clone(), placeholder, &mut image_map, &mut audio_map, &**id_generator))
+                                .collect::<Vec<_>>()
+                        };
                         let executable = if let ParameterSelectValue(Parameter::Image(())) = ty {
                             cache_context
                                 .image_executable
@@ -1548,8 +1685,32 @@ fn acquire_image_required_param<'a, K, T: ParameterValueType + 'static, Id: IdGe
                     ImageRequiredParamsTransform::Free { left_top, right_top, left_bottom, right_bottom } => {
                         let (left_top, right_top, left_bottom, right_bottom) = futures::try_join!(
                             param_as_frame_variable_value_easing(left_top.as_ref(), reference_functions, argument_reference_range, image_size_request, left, right, frames.clone(), From::from, |_| 0., default_range, key),
-                            param_as_frame_variable_value_easing(right_top.as_ref(), reference_functions, argument_reference_range, image_size_request, left, right, frames.clone(), From::from, |i| [image_size_request.width as f64, 0., 0.][i], default_range, key),
-                            param_as_frame_variable_value_easing(left_bottom.as_ref(), reference_functions, argument_reference_range, image_size_request, left, right, frames.clone(), From::from, |i| [0., image_size_request.height as f64, 0.][i], default_range, key),
+                            param_as_frame_variable_value_easing(
+                                right_top.as_ref(),
+                                reference_functions,
+                                argument_reference_range,
+                                image_size_request,
+                                left,
+                                right,
+                                frames.clone(),
+                                From::from,
+                                |i| [image_size_request.width as f64, 0., 0.][i],
+                                default_range,
+                                key
+                            ),
+                            param_as_frame_variable_value_easing(
+                                left_bottom.as_ref(),
+                                reference_functions,
+                                argument_reference_range,
+                                image_size_request,
+                                left,
+                                right,
+                                frames.clone(),
+                                From::from,
+                                |i| [0., image_size_request.height as f64, 0.][i],
+                                default_range,
+                                key
+                            ),
                             param_as_frame_variable_value_easing(
                                 right_bottom.as_ref(),
                                 reference_functions,
@@ -1612,7 +1773,13 @@ fn acquire_audio_required_param<'a, K, T: ParameterValueType + 'static, Id: IdGe
         .map_ok(Arc::clone)
 }
 
-fn evaluate_parameters<'a, K: 'static, T: ParameterValueType + 'static, ImageCombinerBuilder: CombinerBuilder<T::Image, Request = ImageSizeRequest, Param = ImageRequiredParamsFixed> + 'static, AudioCombinerBuilder: CombinerBuilder<T::Audio, Request = (), Param = AudioRequiredParamsFrameVariable> + 'static>(
+fn evaluate_parameters<
+    'a,
+    K: 'static,
+    T: ParameterValueType + 'static,
+    ImageCombinerBuilder: CombinerBuilder<T::Image, Request = ImageSizeRequest, Param = ImageRequiredParamsFixed> + 'static,
+    AudioCombinerBuilder: CombinerBuilder<T::Audio, Request = (), Param = AudioRequiredParamsFrameVariable> + 'static,
+>(
     at: TimelineTime,
     image_size_request: ImageSizeRequest,
     reference_functions: &'a ReferenceFunctions<K, T>,
@@ -1627,137 +1794,165 @@ fn evaluate_parameters<'a, K: 'static, T: ParameterValueType + 'static, ImageCom
     key: &'a Arc<OwnedRwLockReadGuard<TCellOwner<K>>>,
 ) -> impl Future<Output = Result<Vec<Parameter<ComponentProcessorInputBuffer<ImageGenerator<K, T, ImageCombinerBuilder>, <T as ParameterValueType>::Audio>>>, EvaluateError<K, T>>> + Send + 'a {
     stream::iter(component_ref.variable_parameters().iter().zip(component_ref.variable_parameters_type()).enumerate())
-        .map(move |(index, (param, (_, ty)))| -> Result<JoinHandle<Result<ComponentProcessorInputValueBuffer<ImageGenerator<K, T, ImageCombinerBuilder>, T::Audio>, EvaluateError<K, T>>>, EvaluateError<K, T>> {
-            match ty {
-                Parameter::Image(_) => {
-                    if let VariableParameterValue::MayComponent { params: Parameter::Image(Option::None), components, priority: _ } = param {
-                        let reference_functions = reference_functions.clone();
-                        let argument_reference_range = Arc::clone(argument_reference_range);
-                        let image_combiner_builder = Arc::clone(image_combiner_builder);
-                        let components = components.clone();
-                        Ok(tokio::spawn(future::ready(Ok(ComponentProcessorInputValueBuffer::Image(ImageGenerator::new(
-                            reference_functions,
-                            argument_reference_range,
-                            image_combiner_builder,
+        .map(
+            move |(index, (param, (_, ty)))| -> Result<JoinHandle<Result<ComponentProcessorInputValueBuffer<ImageGenerator<K, T, ImageCombinerBuilder>, T::Audio>, EvaluateError<K, T>>>, EvaluateError<K, T>> {
+                match ty {
+                    Parameter::Image(_) => {
+                        if let VariableParameterValue::MayComponent {
+                            params: Parameter::Image(Option::None),
                             components,
-                            image_size_request,
-                            Arc::clone(default_range),
-                        ))))))
-                    } else {
-                        Err(EvaluateError::InvalidVariableParameter { component: component.clone(), index })
-                    }
-                }
-                Parameter::Audio(_) => {
-                    if let VariableParameterValue::MayComponent { params: Parameter::Audio(Option::None), components, priority: _ } = param {
-                        let reference_functions = reference_functions.clone();
-                        let components = components.clone();
-                        let combiner = audio_combiner_builder.new_combiner(());
-                        let key = Arc::clone(key);
-                        Ok(tokio::spawn(
-                            stream::iter(components)
-                                .map(move |component| {
-                                    // let range = argument_reference_range.get(&component).unwrap();
-                                    tokio::spawn(reference_functions.0.get(&component).unwrap().call(FunctionArg(at, ParameterSelectValue(Parameter::Audio(())), image_size_request, Arc::clone(&key)))).map(|result| result.unwrap())
-                                })
-                                .buffered(16)
-                                .try_fold(combiner, |mut combiner, param| {
-                                    if let Some(param) = param {
-                                        if let Parameter::Audio((image, param)) = param {
-                                            combiner.add(image, param);
-                                        } else {
-                                            unreachable!()
-                                        }
-                                    }
-                                    future::ready(Ok(combiner))
-                                })
-                                .map_ok(|combiner| ComponentProcessorInputValueBuffer::Audio(combiner.collect())),
-                        ))
-                    } else {
-                        Err(EvaluateError::InvalidVariableParameter { component: component.clone(), index })
-                    }
-                }
-                Parameter::Video(_) => {
-                    if let VariableParameterValue::MayComponent { params: Parameter::Video(Option::None), components, priority: _ } = param {
-                        let reference_functions0 = reference_functions.clone();
-                        let reference_functions1 = reference_functions.clone();
-                        let argument_reference_range = Arc::clone(argument_reference_range);
-                        let components = components.clone();
-                        let image_combiner_builder = Arc::clone(image_combiner_builder);
-                        let audio_combiner = audio_combiner_builder.new_combiner(());
-                        let default_range = Arc::clone(default_range);
-                        let key = Arc::clone(key);
-                        Ok(tokio::spawn(
-                            stream::iter(components.clone())
-                                .map(move |component| {
-                                    // let range = argument_reference_range.get(&component).unwrap();
-                                    tokio::spawn(reference_functions0.0.get(&component).unwrap().call(FunctionArg(at, ParameterSelectValue(Parameter::Audio(())), image_size_request, Arc::clone(&key)))).map(|result| result.unwrap())
-                                })
-                                .buffered(16)
-                                .try_fold(audio_combiner, |mut audio_combiner, param| {
-                                    if let Some(param) = param {
-                                        if let Parameter::Audio((image, param)) = param {
-                                            audio_combiner.add(image, param);
-                                        } else {
-                                            unreachable!()
-                                        }
-                                    }
-                                    future::ready(Ok(audio_combiner))
-                                })
-                                .map_ok(move |audio_combiner| ComponentProcessorInputValueBuffer::Video((ImageGenerator::new(reference_functions1, argument_reference_range, image_combiner_builder, components, image_size_request, default_range), audio_combiner.collect()))),
-                        ))
-                    } else {
-                        Err(EvaluateError::InvalidVariableParameter { component: component.clone(), index })
-                    }
-                }
-                ty @ (Parameter::None | Parameter::File(_) | Parameter::String(_) | Parameter::Select(_) | Parameter::Boolean(_) | Parameter::Radio(_) | Parameter::Integer(_) | Parameter::RealNumber(_) | Parameter::Vec2(_) | Parameter::Vec3(_) | Parameter::Dictionary(_) | Parameter::ComponentClass(_)) => match param {
-                    VariableParameterValue::Manually(param) => Ok(tokio::spawn(future::ready(Ok::<_, EvaluateError<K, T>>(change_type_parameter(value_into_processor_input_buffer(param.clone(), key)))))),
-                    VariableParameterValue::MayComponent { params, components, priority } => {
-                        let params = params.clone();
-                        let reference_functions = reference_functions.clone();
-                        let argument_reference_range = Arc::clone(argument_reference_range);
-                        let ty = ty.select();
-                        let tasks = stream::iter(components.clone())
-                            .map({
-                                let key = Arc::clone(key);
-                                move |component| tokio::spawn(reference_functions.0.get(&component).unwrap().call(FunctionArg(at, ParameterSelectValue(ty), image_size_request, Arc::clone(&key)))).map(|result| result.unwrap().map(|result| (result, component)))
-                            })
-                            .buffered(16);
-                        let default_range = Arc::clone(default_range);
-                        match priority {
-                            VariableParameterPriority::PrioritizeManually => Ok(tokio::spawn(
-                                tasks
-                                    .try_fold(empty_input_buffer(&ty, left, right), move |buffer, (param, component)| {
-                                        if let Some(param) = param {
-                                            let range = argument_reference_range.get(&component).unwrap_or(&default_range);
-                                            future::ready(Ok(combine_params(buffer, &param, range)))
-                                        } else {
-                                            future::ready(Ok(buffer))
-                                        }
-                                    })
-                                    .map_ok({
-                                        let key = Arc::clone(key);
-                                        move |buffer| (buffer, nullable_into_processor_input_buffer_ref(params, &key))
-                                    })
-                                    .map_ok(move |(buffer, param)| combine_params(buffer, &param, &BTreeSet::from([TimelineRange::from([left, right])]).into()))
-                                    .map_ok(change_type_parameter),
-                            )),
-                            VariableParameterPriority::PrioritizeComponent => Ok(tokio::spawn(
-                                tasks
-                                    .try_fold(nullable_into_processor_input_buffer(params, key), move |buffer, (param, component)| {
-                                        if let Some(param) = param {
-                                            let range = argument_reference_range.get(&component).unwrap_or(&default_range);
-                                            future::ready(Ok(combine_params(buffer, &param, range)))
-                                        } else {
-                                            future::ready(Ok(buffer))
-                                        }
-                                    })
-                                    .map_ok(change_type_parameter),
-                            )),
+                            priority: _,
+                        } = param
+                        {
+                            let reference_functions = reference_functions.clone();
+                            let argument_reference_range = Arc::clone(argument_reference_range);
+                            let image_combiner_builder = Arc::clone(image_combiner_builder);
+                            let components = components.clone();
+                            Ok(tokio::spawn(future::ready(Ok(ComponentProcessorInputValueBuffer::Image(ImageGenerator::new(
+                                reference_functions,
+                                argument_reference_range,
+                                image_combiner_builder,
+                                components,
+                                image_size_request,
+                                Arc::clone(default_range),
+                            ))))))
+                        } else {
+                            Err(EvaluateError::InvalidVariableParameter { component: component.clone(), index })
                         }
                     }
-                },
-            }
-        })
+                    Parameter::Audio(_) => {
+                        if let VariableParameterValue::MayComponent {
+                            params: Parameter::Audio(Option::None),
+                            components,
+                            priority: _,
+                        } = param
+                        {
+                            let reference_functions = reference_functions.clone();
+                            let components = components.clone();
+                            let combiner = audio_combiner_builder.new_combiner(());
+                            let key = Arc::clone(key);
+                            Ok(tokio::spawn(
+                                stream::iter(components)
+                                    .map(move |component| {
+                                        // let range = argument_reference_range.get(&component).unwrap();
+                                        tokio::spawn(reference_functions.0.get(&component).unwrap().call(FunctionArg(at, ParameterSelectValue(Parameter::Audio(())), image_size_request, Arc::clone(&key)))).map(|result| result.unwrap())
+                                    })
+                                    .buffered(16)
+                                    .try_fold(combiner, |mut combiner, param| {
+                                        if let Some(param) = param {
+                                            if let Parameter::Audio((image, param)) = param {
+                                                combiner.add(image, param);
+                                            } else {
+                                                unreachable!()
+                                            }
+                                        }
+                                        future::ready(Ok(combiner))
+                                    })
+                                    .map_ok(|combiner| ComponentProcessorInputValueBuffer::Audio(combiner.collect())),
+                            ))
+                        } else {
+                            Err(EvaluateError::InvalidVariableParameter { component: component.clone(), index })
+                        }
+                    }
+                    Parameter::Video(_) => {
+                        if let VariableParameterValue::MayComponent {
+                            params: Parameter::Video(Option::None),
+                            components,
+                            priority: _,
+                        } = param
+                        {
+                            let reference_functions0 = reference_functions.clone();
+                            let reference_functions1 = reference_functions.clone();
+                            let argument_reference_range = Arc::clone(argument_reference_range);
+                            let components = components.clone();
+                            let image_combiner_builder = Arc::clone(image_combiner_builder);
+                            let audio_combiner = audio_combiner_builder.new_combiner(());
+                            let default_range = Arc::clone(default_range);
+                            let key = Arc::clone(key);
+                            Ok(tokio::spawn(
+                                stream::iter(components.clone())
+                                    .map(move |component| {
+                                        // let range = argument_reference_range.get(&component).unwrap();
+                                        tokio::spawn(reference_functions0.0.get(&component).unwrap().call(FunctionArg(at, ParameterSelectValue(Parameter::Audio(())), image_size_request, Arc::clone(&key)))).map(|result| result.unwrap())
+                                    })
+                                    .buffered(16)
+                                    .try_fold(audio_combiner, |mut audio_combiner, param| {
+                                        if let Some(param) = param {
+                                            if let Parameter::Audio((image, param)) = param {
+                                                audio_combiner.add(image, param);
+                                            } else {
+                                                unreachable!()
+                                            }
+                                        }
+                                        future::ready(Ok(audio_combiner))
+                                    })
+                                    .map_ok(move |audio_combiner| ComponentProcessorInputValueBuffer::Video((ImageGenerator::new(reference_functions1, argument_reference_range, image_combiner_builder, components, image_size_request, default_range), audio_combiner.collect()))),
+                            ))
+                        } else {
+                            Err(EvaluateError::InvalidVariableParameter { component: component.clone(), index })
+                        }
+                    }
+                    ty @ (Parameter::None
+                    | Parameter::File(_)
+                    | Parameter::String(_)
+                    | Parameter::Select(_)
+                    | Parameter::Boolean(_)
+                    | Parameter::Radio(_)
+                    | Parameter::Integer(_)
+                    | Parameter::RealNumber(_)
+                    | Parameter::Vec2(_)
+                    | Parameter::Vec3(_)
+                    | Parameter::Dictionary(_)
+                    | Parameter::ComponentClass(_)) => match param {
+                        VariableParameterValue::Manually(param) => Ok(tokio::spawn(future::ready(Ok::<_, EvaluateError<K, T>>(change_type_parameter(value_into_processor_input_buffer(param.clone(), key)))))),
+                        VariableParameterValue::MayComponent { params, components, priority } => {
+                            let params = params.clone();
+                            let reference_functions = reference_functions.clone();
+                            let argument_reference_range = Arc::clone(argument_reference_range);
+                            let ty = ty.select();
+                            let tasks = stream::iter(components.clone())
+                                .map({
+                                    let key = Arc::clone(key);
+                                    move |component| tokio::spawn(reference_functions.0.get(&component).unwrap().call(FunctionArg(at, ParameterSelectValue(ty), image_size_request, Arc::clone(&key)))).map(|result| result.unwrap().map(|result| (result, component)))
+                                })
+                                .buffered(16);
+                            let default_range = Arc::clone(default_range);
+                            match priority {
+                                VariableParameterPriority::PrioritizeManually => Ok(tokio::spawn(
+                                    tasks
+                                        .try_fold(empty_input_buffer(&ty, left, right), move |buffer, (param, component)| {
+                                            if let Some(param) = param {
+                                                let range = argument_reference_range.get(&component).unwrap_or(&default_range);
+                                                future::ready(Ok(combine_params(buffer, &param, range)))
+                                            } else {
+                                                future::ready(Ok(buffer))
+                                            }
+                                        })
+                                        .map_ok({
+                                            let key = Arc::clone(key);
+                                            move |buffer| (buffer, nullable_into_processor_input_buffer_ref(params, &key))
+                                        })
+                                        .map_ok(move |(buffer, param)| combine_params(buffer, &param, &BTreeSet::from([TimelineRange::from([left, right])]).into()))
+                                        .map_ok(change_type_parameter),
+                                )),
+                                VariableParameterPriority::PrioritizeComponent => Ok(tokio::spawn(
+                                    tasks
+                                        .try_fold(nullable_into_processor_input_buffer(params, key), move |buffer, (param, component)| {
+                                            if let Some(param) = param {
+                                                let range = argument_reference_range.get(&component).unwrap_or(&default_range);
+                                                future::ready(Ok(combine_params(buffer, &param, range)))
+                                            } else {
+                                                future::ready(Ok(buffer))
+                                            }
+                                        })
+                                        .map_ok(change_type_parameter),
+                                )),
+                            }
+                        }
+                    },
+                }
+            },
+        )
         .map_ok(|task| task.map(Result::unwrap))
         .try_buffered(16)
         .try_collect::<Vec<_>>()
@@ -2087,7 +2282,10 @@ fn into_frame_variable_value<Image: Clone + Send + Sync + 'static, Audio: Clone 
         Parameter::None => Parameter::None,
         Parameter::Image(image) => {
             let id = id.load().as_deref().copied().unwrap_or_else(|| {
-                let new_id = PlaceholderListItem { image: Some(Placeholder::new(id_generator)), audio: None };
+                let new_id = PlaceholderListItem {
+                    image: Some(Placeholder::new(id_generator)),
+                    audio: None,
+                };
                 id.compare_and_swap(&None::<Arc<_>>, Some(Arc::new(new_id))).as_deref().copied().unwrap_or(new_id)
             });
             let id = id.image.unwrap();
@@ -2096,7 +2294,10 @@ fn into_frame_variable_value<Image: Clone + Send + Sync + 'static, Audio: Clone 
         }
         Parameter::Audio(audio) => {
             let id = id.load().as_deref().copied().unwrap_or_else(|| {
-                let new_id = PlaceholderListItem { image: None, audio: Some(Placeholder::new(id_generator)) };
+                let new_id = PlaceholderListItem {
+                    image: None,
+                    audio: Some(Placeholder::new(id_generator)),
+                };
                 id.compare_and_swap(&None::<Arc<_>>, Some(Arc::new(new_id))).as_deref().copied().unwrap_or(new_id)
             });
             let id = id.audio.unwrap();
@@ -2432,7 +2633,11 @@ mod tests {
             time_split_value![time!(0), Some('a'), time!(0.3), Some('c'), time!(0.7), Some('a'), time!(1), Some('b'), time!(2)]
         );
         assert_eq!(
-            override_time_split_value(time_split_value![time!(0), Some('a'), time!(1), Some('b'), time!(2)], &time_split_value![time!(0), None, time!(0.3), Some('c'), time!(0.7), None, time!(2)], &[time![0, 1], time![1.5, 2]].into()),
+            override_time_split_value(
+                time_split_value![time!(0), Some('a'), time!(1), Some('b'), time!(2)],
+                &time_split_value![time!(0), None, time!(0.3), Some('c'), time!(0.7), None, time!(2)],
+                &[time![0, 1], time![1.5, 2]].into()
+            ),
             time_split_value![time!(0), Some('a'), time!(0.3), Some('c'), time!(0.7), Some('a'), time!(1), Some('b'), time!(2)]
         );
         assert_eq!(

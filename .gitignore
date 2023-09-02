@@ -3,6 +3,7 @@
 !/src
 !/Cargo.lock
 !/Cargo.toml
+!/rustfmt.toml
 !/mpdelta_build_utils
 !/mpdelta_components
 !/mpdelta_core

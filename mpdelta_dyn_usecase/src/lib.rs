@@ -120,7 +120,6 @@ where
         Self: 'async_trait,
         'life0: 'async_trait,
     {
-        println!("new_project_dyn");
         Box::pin(async move { self.new_project().await })
     }
 }

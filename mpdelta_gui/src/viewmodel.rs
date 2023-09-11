@@ -359,11 +359,8 @@ impl<K: 'static, T: ParameterValueType> MainWindowViewModelImpl<K, T, (), (), ()
                         move |_| {
                             use_arc!(new_project, get_loaded_projects, projects);
                             let reset_root_component_classes = reset_root_component_classes.clone();
-                            println!("new_project");
                             async move {
-                                println!("new_project");
                                 tokio::join!(new_project.new_project(), reset_root_component_classes());
-                                println!("new_project_return");
                                 let new_projects: Vec<_> = match get_loaded_projects.get_loaded_projects().await {
                                     Cow::Borrowed(slice) => slice.iter().cloned().map(ProjectData::new).collect(),
                                     Cow::Owned(vec) => vec.into_iter().map(ProjectData::new).collect(),
@@ -468,7 +465,6 @@ where
     Runtime: AsyncRuntime<()> + Clone + 'static,
 {
     fn new_project(&self) {
-        println!("new_project");
         self.message_router.handle(Message::NewProject);
     }
 

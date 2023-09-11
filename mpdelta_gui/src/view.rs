@@ -90,7 +90,6 @@ where
                         }
                     });
                     if ui.button("+").clicked() {
-                        println!("new_project1");
                         self.view_model.new_project();
                     }
                 });

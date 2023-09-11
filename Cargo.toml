@@ -2,6 +2,7 @@
 name = "mpdelta"
 version = "0.1.0"
 edition = "2021"
+default-run = "mpdelta"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -10,10 +11,14 @@ members = [
     ".",
     "mpdelta_build_utils/rust_gpu_builder",
     "mpdelta_build_utils/shader_builder",
+    "mpdelta_common/mpdelta_async_runtime",
     "mpdelta_components",
     "mpdelta_core",
     "mpdelta_core_vulkano",
+    "mpdelta_dyn_usecase",
     "mpdelta_gui",
+    "mpdelta_gui_hot_reload",
+    "mpdelta_gui_hot_reload/mpdelta_gui_hot_reload_lib",
     "mpdelta_gui_vulkano",
     "mpdelta_services",
     "mpdelta_renderer",
@@ -24,10 +29,14 @@ members = [
 default-members = [
     ".",
     "mpdelta_build_utils/shader_builder",
+    "mpdelta_common/mpdelta_async_runtime",
     "mpdelta_components",
     "mpdelta_core",
     "mpdelta_core_vulkano",
+    "mpdelta_dyn_usecase",
     "mpdelta_gui",
+    "mpdelta_gui_hot_reload",
+    "mpdelta_gui_hot_reload/mpdelta_gui_hot_reload_lib",
     "mpdelta_gui_vulkano",
     "mpdelta_services",
     "mpdelta_renderer",
@@ -49,14 +58,18 @@ egui_winit_vulkano = "0.24.0"
 either = "1.7.0"
 futures = "0.3.21"
 glam = { version = "0.24", default-features = false, features = ["libm"] }
+hot-lib-reloader = "0.6.5"
 mpdelta_components = { path = "mpdelta_components" }
+mpdelta_async_runtime = { path = "mpdelta_common/mpdelta_async_runtime" }
 mpdelta_core = { path = "mpdelta_core" }
 mpdelta_core_vulkano = { path = "mpdelta_core_vulkano" }
+mpdelta_dyn_usecase = { path = "mpdelta_dyn_usecase" }
 mpdelta_gui = { path = "mpdelta_gui" }
 mpdelta_gui_vulkano = { path = "mpdelta_gui_vulkano" }
 mpdelta_renderer = { path = "mpdelta_renderer" }
 mpdelta_services = { path = "mpdelta_services" }
 mpdelta_video_renderer_vulkano = { path = "mpdelta_video_renderer_vulkano" }
+notify = "6.1.1"
 once_cell = "1.13.1"
 qcell = "0.5.2"
 regex = "1.6.0"
@@ -65,7 +78,7 @@ spirv-builder = "0.9.0"
 spirv-std = "0.9.0"
 thiserror = "1.0.31"
 time = { version = "0.3.11", features = ["std"] }
-tokio = { version = "1.19.2", features = ["full"] }
+tokio = { version = "1.19.2", features = ["fs", "macros", "sync", "time"] }
 uuid = "1.0.0"
 vulkano = "0.33.0"
 vulkano-util = "0.33.0"
@@ -75,6 +88,7 @@ winit = "0.28.3"
 
 [dependencies]
 async-trait = { workspace = true }
+mpdelta_async_runtime = { workspace = true, features = ["tokio"] }
 mpdelta_components = { workspace = true }
 mpdelta_core = { workspace = true }
 mpdelta_core_vulkano = { workspace = true }

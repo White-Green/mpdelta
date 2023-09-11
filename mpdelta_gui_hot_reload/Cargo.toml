@@ -1,0 +1,29 @@
+[package]
+name = "mpdelta_gui_hot_reload"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+async-trait = { workspace = true }
+egui = { workspace = true }
+hot-lib-reloader = { workspace = true }
+mpdelta_async_runtime = { workspace = true, features = ["tokio"] }
+mpdelta_components = { workspace = true }
+mpdelta_core = { workspace = true }
+mpdelta_core_vulkano = { workspace = true }
+mpdelta_dyn_usecase = { workspace = true }
+mpdelta_gui = { workspace = true }
+mpdelta_gui_hot_reload_lib = { path = "./mpdelta_gui_hot_reload_lib" }
+mpdelta_gui_vulkano = { workspace = true }
+mpdelta_renderer = { workspace = true }
+mpdelta_services = { workspace = true }
+mpdelta_video_renderer_vulkano = { workspace = true }
+notify = { workspace = true }
+qcell = { workspace = true }
+tokio = { workspace = true }
+vulkano = { workspace = true }
+vulkano-util = { workspace = true }
+vulkano-win = { workspace = true }
+winit = { workspace = true }

@@ -2,6 +2,7 @@ use crate::global_ui_state::GlobalUIState;
 use crate::message_router::handler::{IntoAsyncFunctionHandler, IntoDerefHandler, MessageHandlerBuilder};
 use crate::message_router::{handler, MessageHandler, MessageRouter};
 use crate::view_model_util::use_arc;
+use mpdelta_async_runtime::AsyncRuntime;
 use mpdelta_core::component::parameter::ParameterValueType;
 use mpdelta_core::project::{Project, RootComponentClass};
 use mpdelta_core::ptr::StaticPointer;
@@ -14,10 +15,9 @@ use std::borrow::Cow;
 use std::hash::Hash;
 use std::mem;
 use std::sync::Arc;
-use tokio::runtime::Handle;
 use tokio::sync::RwLock;
-
 pub trait ViewModelParams<K: 'static, T: ParameterValueType> {
+    type AsyncRuntime: AsyncRuntime<()> + Clone + 'static;
     type Edit: EditUsecase<K, T> + 'static;
     type SubscribeEditEvent: SubscribeEditEventUsecase<K, T> + 'static;
     type GetAvailableComponentClasses: GetAvailableComponentClassesUsecase<K, T> + 'static;
@@ -32,7 +32,7 @@ pub trait ViewModelParams<K: 'static, T: ParameterValueType> {
     type Undo: UndoUsecase<K, T> + 'static;
     type WriteProject: WriteProjectUsecase<K, T> + 'static;
 
-    fn runtime(&self) -> &Handle;
+    fn runtime(&self) -> &Self::AsyncRuntime;
     fn key(&self) -> &Arc<RwLock<TCellOwner<K>>>;
     fn edit(&self) -> &Arc<Self::Edit>;
     fn subscribe_edit_event(&self) -> &Arc<Self::SubscribeEditEvent>;
@@ -49,8 +49,8 @@ pub trait ViewModelParams<K: 'static, T: ParameterValueType> {
     fn write_project(&self) -> &Arc<Self::WriteProject>;
 }
 
-pub struct ViewModelParamsImpl<K: 'static, Edit, SubscribeEditEvent, GetAvailableComponentClasses, GetLoadedProjects, GetRootComponentClasses, LoadProject, NewProject, NewRootComponentClass, RealtimeRenderComponent, Redo, SetOwnerForRootComponentClass, Undo, WriteProject> {
-    runtime: Handle,
+pub struct ViewModelParamsImpl<K: 'static, Runtime, Edit, SubscribeEditEvent, GetAvailableComponentClasses, GetLoadedProjects, GetRootComponentClasses, LoadProject, NewProject, NewRootComponentClass, RealtimeRenderComponent, Redo, SetOwnerForRootComponentClass, Undo, WriteProject> {
+    runtime: Runtime,
     edit: Arc<Edit>,
     subscribe_edit_event: Arc<SubscribeEditEvent>,
     get_available_component_classes: Arc<GetAvailableComponentClasses>,
@@ -67,11 +67,11 @@ pub struct ViewModelParamsImpl<K: 'static, Edit, SubscribeEditEvent, GetAvailabl
     key: Arc<RwLock<TCellOwner<K>>>,
 }
 
-impl<K, Edit, SubscribeEditEvent, GetAvailableComponentClasses, GetLoadedProjects, GetRootComponentClasses, LoadProject, NewProject, NewRootComponentClass, RealtimeRenderComponent, Redo, SetOwnerForRootComponentClass, Undo, WriteProject>
-    ViewModelParamsImpl<K, Edit, SubscribeEditEvent, GetAvailableComponentClasses, GetLoadedProjects, GetRootComponentClasses, LoadProject, NewProject, NewRootComponentClass, RealtimeRenderComponent, Redo, SetOwnerForRootComponentClass, Undo, WriteProject>
+impl<K, Runtime, Edit, SubscribeEditEvent, GetAvailableComponentClasses, GetLoadedProjects, GetRootComponentClasses, LoadProject, NewProject, NewRootComponentClass, RealtimeRenderComponent, Redo, SetOwnerForRootComponentClass, Undo, WriteProject>
+    ViewModelParamsImpl<K, Runtime, Edit, SubscribeEditEvent, GetAvailableComponentClasses, GetLoadedProjects, GetRootComponentClasses, LoadProject, NewProject, NewRootComponentClass, RealtimeRenderComponent, Redo, SetOwnerForRootComponentClass, Undo, WriteProject>
 {
     pub fn new(
-        runtime: Handle,
+        runtime: Runtime,
         edit: Arc<Edit>,
         subscribe_edit_event: Arc<SubscribeEditEvent>,
         get_available_component_classes: Arc<GetAvailableComponentClasses>,
@@ -86,7 +86,7 @@ impl<K, Edit, SubscribeEditEvent, GetAvailableComponentClasses, GetLoadedProject
         undo: Arc<Undo>,
         write_project: Arc<WriteProject>,
         key: Arc<RwLock<TCellOwner<K>>>,
-    ) -> ViewModelParamsImpl<K, Edit, SubscribeEditEvent, GetAvailableComponentClasses, GetLoadedProjects, GetRootComponentClasses, LoadProject, NewProject, NewRootComponentClass, RealtimeRenderComponent, Redo, SetOwnerForRootComponentClass, Undo, WriteProject> {
+    ) -> ViewModelParamsImpl<K, Runtime, Edit, SubscribeEditEvent, GetAvailableComponentClasses, GetLoadedProjects, GetRootComponentClasses, LoadProject, NewProject, NewRootComponentClass, RealtimeRenderComponent, Redo, SetOwnerForRootComponentClass, Undo, WriteProject> {
         ViewModelParamsImpl {
             runtime,
             edit,
@@ -107,9 +107,53 @@ impl<K, Edit, SubscribeEditEvent, GetAvailableComponentClasses, GetLoadedProject
     }
 }
 
-impl<K, T: ParameterValueType, Edit, SubscribeEditEvent, GetAvailableComponentClasses, GetLoadedProjects, GetRootComponentClasses, LoadProject, NewProject, NewRootComponentClass, RealtimeRenderComponent, Redo, SetOwnerForRootComponentClass, Undo, WriteProject> ViewModelParams<K, T>
-    for ViewModelParamsImpl<K, Edit, SubscribeEditEvent, GetAvailableComponentClasses, GetLoadedProjects, GetRootComponentClasses, LoadProject, NewProject, NewRootComponentClass, RealtimeRenderComponent, Redo, SetOwnerForRootComponentClass, Undo, WriteProject>
+impl<K, Runtime, Edit, SubscribeEditEvent, GetAvailableComponentClasses, GetLoadedProjects, GetRootComponentClasses, LoadProject, NewProject, NewRootComponentClass, RealtimeRenderComponent, Redo, SetOwnerForRootComponentClass, Undo, WriteProject> Clone
+    for ViewModelParamsImpl<K, Runtime, Edit, SubscribeEditEvent, GetAvailableComponentClasses, GetLoadedProjects, GetRootComponentClasses, LoadProject, NewProject, NewRootComponentClass, RealtimeRenderComponent, Redo, SetOwnerForRootComponentClass, Undo, WriteProject>
 where
+    Runtime: Clone,
+{
+    fn clone(&self) -> Self {
+        let ViewModelParamsImpl {
+            runtime,
+            edit,
+            subscribe_edit_event,
+            get_available_component_classes,
+            get_loaded_projects,
+            get_root_component_classes,
+            load_project,
+            new_project,
+            new_root_component_class,
+            realtime_render_component,
+            redo,
+            set_owner_for_root_component_class,
+            undo,
+            write_project,
+            key,
+        } = self;
+        ViewModelParamsImpl {
+            runtime: runtime.clone(),
+            edit: Arc::clone(edit),
+            subscribe_edit_event: Arc::clone(subscribe_edit_event),
+            get_available_component_classes: Arc::clone(get_available_component_classes),
+            get_loaded_projects: Arc::clone(get_loaded_projects),
+            get_root_component_classes: Arc::clone(get_root_component_classes),
+            load_project: Arc::clone(load_project),
+            new_project: Arc::clone(new_project),
+            new_root_component_class: Arc::clone(new_root_component_class),
+            realtime_render_component: Arc::clone(realtime_render_component),
+            redo: Arc::clone(redo),
+            set_owner_for_root_component_class: Arc::clone(set_owner_for_root_component_class),
+            undo: Arc::clone(undo),
+            write_project: Arc::clone(write_project),
+            key: Arc::clone(key),
+        }
+    }
+}
+
+impl<K, T: ParameterValueType, Runtime, Edit, SubscribeEditEvent, GetAvailableComponentClasses, GetLoadedProjects, GetRootComponentClasses, LoadProject, NewProject, NewRootComponentClass, RealtimeRenderComponent, Redo, SetOwnerForRootComponentClass, Undo, WriteProject> ViewModelParams<K, T>
+    for ViewModelParamsImpl<K, Runtime, Edit, SubscribeEditEvent, GetAvailableComponentClasses, GetLoadedProjects, GetRootComponentClasses, LoadProject, NewProject, NewRootComponentClass, RealtimeRenderComponent, Redo, SetOwnerForRootComponentClass, Undo, WriteProject>
+where
+    Runtime: AsyncRuntime<()> + Clone + 'static,
     Edit: EditUsecase<K, T> + 'static,
     SubscribeEditEvent: SubscribeEditEventUsecase<K, T> + 'static,
     GetAvailableComponentClasses: GetAvailableComponentClassesUsecase<K, T> + 'static,
@@ -125,6 +169,7 @@ where
     Undo: UndoUsecase<K, T> + 'static,
     WriteProject: WriteProjectUsecase<K, T> + 'static,
 {
+    type AsyncRuntime = Runtime;
     type Edit = Edit;
     type SubscribeEditEvent = SubscribeEditEvent;
     type GetAvailableComponentClasses = GetAvailableComponentClasses;
@@ -138,7 +183,7 @@ where
     type SetOwnerForRootComponentClass = SetOwnerForRootComponentClass;
     type Undo = Undo;
     type WriteProject = WriteProject;
-    fn runtime(&self) -> &Handle {
+    fn runtime(&self) -> &Self::AsyncRuntime {
         &self.runtime
     }
     fn key(&self) -> &Arc<RwLock<TCellOwner<K>>> {
@@ -229,11 +274,11 @@ pub trait MainWindowViewModel<K: 'static, T> {
     fn render_frame<R>(&self, f: impl FnOnce() -> R) -> R;
 }
 
-pub struct MainWindowViewModelImpl<K: 'static, T, GlobalUIState, MessageHandler> {
+pub struct MainWindowViewModelImpl<K: 'static, T, GlobalUIState, MessageHandler, Runtime> {
     projects: Arc<RwLock<ProjectDataList<StaticPointer<RwLock<Project<K, T>>>>>>,
     root_component_classes: Arc<RwLock<RootComponentClassDataList<StaticPointer<RwLock<RootComponentClass<K, T>>>>>>,
     global_ui_state: Arc<GlobalUIState>,
-    message_router: MessageRouter<MessageHandler>,
+    message_router: MessageRouter<MessageHandler, Runtime>,
 }
 
 #[derive(Debug)]
@@ -272,8 +317,8 @@ impl<K: 'static, T> PartialEq for Message<K, T> {
 
 impl<K: 'static, T> Eq for Message<K, T> {}
 
-impl<K: 'static, T: ParameterValueType> MainWindowViewModelImpl<K, T, (), ()> {
-    pub fn new<S: GlobalUIState<K, T>, P: ViewModelParams<K, T>>(global_ui_state: &Arc<S>, params: &P) -> Arc<MainWindowViewModelImpl<K, T, S, impl MessageHandler<Message<K, T>>>> {
+impl<K: 'static, T: ParameterValueType> MainWindowViewModelImpl<K, T, (), (), ()> {
+    pub fn new<S: GlobalUIState<K, T>, P: ViewModelParams<K, T>>(global_ui_state: &Arc<S>, params: &P) -> Arc<MainWindowViewModelImpl<K, T, S, impl MessageHandler<Message<K, T>, P::AsyncRuntime>, P::AsyncRuntime>> {
         let projects = Arc::new(RwLock::new(ProjectDataList { list: Vec::new(), selected: 0 }));
         let root_component_classes = Arc::new(RwLock::new(RootComponentClassDataList { list: Vec::new(), selected: 0 }));
         let reset_root_component_classes = {
@@ -282,7 +327,7 @@ impl<K: 'static, T: ParameterValueType> MainWindowViewModelImpl<K, T, (), ()> {
                 root_component_classes.write().await.list.clear();
             }
         };
-        let update_selected_project = Arc::new(handler::handle_async({
+        let update_selected_project = Arc::new(handler::handle_async::<_, P::AsyncRuntime, _, _>({
             use_arc!(projects, get_root_component_classes = params.get_root_component_classes(), root_component_classes, global_ui_state);
             move |_project| {
                 use_arc!(projects, get_root_component_classes, root_component_classes, global_ui_state);
@@ -305,16 +350,20 @@ impl<K: 'static, T: ParameterValueType> MainWindowViewModelImpl<K, T, (), ()> {
             }
         }));
         let message_router = MessageRouter::builder()
-            .handle(
-                handler::filter(|message| *message == Message::NewProject)
+            .handle(|handler| {
+                handler
+                    .filter(|message| *message == Message::NewProject)
                     .then({
                         use_arc!(new_project = params.new_project(), get_loaded_projects = params.get_loaded_projects(), projects);
                         let reset_root_component_classes = reset_root_component_classes.clone();
                         move |_| {
                             use_arc!(new_project, get_loaded_projects, projects);
                             let reset_root_component_classes = reset_root_component_classes.clone();
+                            println!("new_project");
                             async move {
+                                println!("new_project");
                                 tokio::join!(new_project.new_project(), reset_root_component_classes());
+                                println!("new_project_return");
                                 let new_projects: Vec<_> = match get_loaded_projects.get_loaded_projects().await {
                                     Cow::Borrowed(slice) => slice.iter().cloned().map(ProjectData::new).collect(),
                                     Cow::Owned(vec) => vec.into_iter().map(ProjectData::new).collect(),
@@ -324,10 +373,11 @@ impl<K: 'static, T: ParameterValueType> MainWindowViewModelImpl<K, T, (), ()> {
                             }
                         }
                     })
-                    .handle_by(Arc::clone(&update_selected_project)),
-            )
-            .handle(
-                handler::filter_map(|message| if let Message::SelectProject(project) = message { Some(project) } else { None })
+                    .handle_by(Arc::clone(&update_selected_project))
+            })
+            .handle(|handler| {
+                handler
+                    .filter_map(|message| if let Message::SelectProject(project) = message { Some(project) } else { None })
                     .then({
                         let reset_root_component_classes = reset_root_component_classes.clone();
                         use_arc!(projects);
@@ -343,58 +393,62 @@ impl<K: 'static, T: ParameterValueType> MainWindowViewModelImpl<K, T, (), ()> {
                             }
                         }
                     })
-                    .handle_by(Arc::clone(&update_selected_project)),
-            )
-            .handle(handler::filter(|message| *message == Message::NewRootComponentClass).handle_async({
-                use_arc!(
-                    new_root_component_class = params.new_root_component_class(),
-                    set_owner_for_root_component_class = params.set_owner_for_root_component_class(),
-                    get_root_component_classes = params.get_root_component_classes(),
-                    projects,
-                    root_component_classes,
-                    global_ui_state
-                );
-                move |_| {
-                    use_arc!(new_root_component_class, set_owner_for_root_component_class, get_root_component_classes, projects, root_component_classes, global_ui_state);
-                    async move {
-                        let new_root_component_class = new_root_component_class.new_root_component_class().await;
-                        global_ui_state.select_root_component_class(&new_root_component_class);
-                        let projects = projects.read().await;
-                        let mut root_component_classes = root_component_classes.write().await;
-                        if let Some(ProjectData { handle: project, .. }) = projects.list.get(projects.selected) {
-                            set_owner_for_root_component_class.set_owner_for_root_component_class(&new_root_component_class, project).await;
-                            let new_root_component_classes: Vec<_> = match get_root_component_classes.get_root_component_classes(project).await {
-                                Cow::Borrowed(slice) => slice.iter().cloned().map(RootComponentClassData::new).collect(),
-                                Cow::Owned(vec) => vec.into_iter().map(RootComponentClassData::new).collect(),
-                            };
-                            let selected = new_root_component_classes.iter().enumerate().find_map(|(i, RootComponentClassData { handle, .. })| (*handle == new_root_component_class).then_some(i));
-                            *root_component_classes = RootComponentClassDataList {
-                                list: new_root_component_classes,
-                                selected: selected.unwrap_or(0),
-                            };
-                        } else {
-                            root_component_classes.list.push(RootComponentClassData {
-                                handle: new_root_component_class,
-                                name: "RootComponentClass".to_string(),
-                            });
-                            root_component_classes.selected = root_component_classes.list.len() - 1;
+                    .handle_by(Arc::clone(&update_selected_project))
+            })
+            .handle(|handler| {
+                handler.filter(|message| *message == Message::NewRootComponentClass).handle_async({
+                    use_arc!(
+                        new_root_component_class = params.new_root_component_class(),
+                        set_owner_for_root_component_class = params.set_owner_for_root_component_class(),
+                        get_root_component_classes = params.get_root_component_classes(),
+                        projects,
+                        root_component_classes,
+                        global_ui_state
+                    );
+                    move |_| {
+                        use_arc!(new_root_component_class, set_owner_for_root_component_class, get_root_component_classes, projects, root_component_classes, global_ui_state);
+                        async move {
+                            let new_root_component_class = new_root_component_class.new_root_component_class().await;
+                            global_ui_state.select_root_component_class(&new_root_component_class);
+                            let projects = projects.read().await;
+                            let mut root_component_classes = root_component_classes.write().await;
+                            if let Some(ProjectData { handle: project, .. }) = projects.list.get(projects.selected) {
+                                set_owner_for_root_component_class.set_owner_for_root_component_class(&new_root_component_class, project).await;
+                                let new_root_component_classes: Vec<_> = match get_root_component_classes.get_root_component_classes(project).await {
+                                    Cow::Borrowed(slice) => slice.iter().cloned().map(RootComponentClassData::new).collect(),
+                                    Cow::Owned(vec) => vec.into_iter().map(RootComponentClassData::new).collect(),
+                                };
+                                let selected = new_root_component_classes.iter().enumerate().find_map(|(i, RootComponentClassData { handle, .. })| (*handle == new_root_component_class).then_some(i));
+                                *root_component_classes = RootComponentClassDataList {
+                                    list: new_root_component_classes,
+                                    selected: selected.unwrap_or(0),
+                                };
+                            } else {
+                                root_component_classes.list.push(RootComponentClassData {
+                                    handle: new_root_component_class,
+                                    name: "RootComponentClass".to_string(),
+                                });
+                                root_component_classes.selected = root_component_classes.list.len() - 1;
+                            }
                         }
                     }
-                }
-            }))
-            .handle(handler::filter_map(|message| if let Message::SelectRootComponentClass(root_component_class) = message { Some(root_component_class) } else { None }).handle_async({
-                use_arc!(root_component_classes, global_ui_state);
-                move |root_component_class| {
+                })
+            })
+            .handle(|handler| {
+                handler.filter_map(|message| if let Message::SelectRootComponentClass(root_component_class) = message { Some(root_component_class) } else { None }).handle_async({
                     use_arc!(root_component_classes, global_ui_state);
-                    async move {
-                        global_ui_state.select_root_component_class(&root_component_class);
-                        let mut root_component_classes = root_component_classes.write().await;
-                        if let Some(selected) = root_component_classes.list.iter().enumerate().find_map(|(i, RootComponentClassData { handle, .. })| (*handle == root_component_class).then_some(i)) {
-                            root_component_classes.selected = selected;
+                    move |root_component_class| {
+                        use_arc!(root_component_classes, global_ui_state);
+                        async move {
+                            global_ui_state.select_root_component_class(&root_component_class);
+                            let mut root_component_classes = root_component_classes.write().await;
+                            if let Some(selected) = root_component_classes.list.iter().enumerate().find_map(|(i, RootComponentClassData { handle, .. })| (*handle == root_component_class).then_some(i)) {
+                                root_component_classes.selected = selected;
+                            }
                         }
                     }
-                }
-            }))
+                })
+            })
             .build(params.runtime().clone());
         Arc::new(MainWindowViewModelImpl {
             projects,
@@ -405,14 +459,16 @@ impl<K: 'static, T: ParameterValueType> MainWindowViewModelImpl<K, T, (), ()> {
     }
 }
 
-impl<K, T, S, Handler> MainWindowViewModel<K, T> for MainWindowViewModelImpl<K, T, S, Handler>
+impl<K, T, S, Handler, Runtime> MainWindowViewModel<K, T> for MainWindowViewModelImpl<K, T, S, Handler, Runtime>
 where
     K: 'static,
     T: ParameterValueType,
     S: GlobalUIState<K, T>,
-    Handler: MessageHandler<Message<K, T>>,
+    Handler: MessageHandler<Message<K, T>, Runtime>,
+    Runtime: AsyncRuntime<()> + Clone + 'static,
 {
     fn new_project(&self) {
+        println!("new_project");
         self.message_router.handle(Message::NewProject);
     }
 

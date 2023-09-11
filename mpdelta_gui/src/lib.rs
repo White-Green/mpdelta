@@ -17,7 +17,7 @@ pub trait ImageRegister<T> {
 
 impl<'a, I, T> ImageRegister<T> for &'a mut I
 where
-    I: ImageRegister<T>,
+    I: ImageRegister<T> + ?Sized,
 {
     fn register_image(&mut self, texture: T) -> TextureId {
         I::register_image(self, texture)

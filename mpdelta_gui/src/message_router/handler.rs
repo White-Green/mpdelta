@@ -8,9 +8,9 @@ use crate::message_router::handler::then::ThenBuilder;
 use crate::message_router::static_cow::StaticCow;
 use crate::message_router::MessageHandler;
 use filter::FilterBuilder;
+use mpdelta_async_runtime::AsyncRuntime;
 use std::future::IntoFuture;
 use std::ops::Deref;
-use tokio::runtime::Handle;
 
 pub mod async_function;
 pub mod empty;
@@ -23,13 +23,14 @@ pub mod then;
 
 pub struct PairHandler<HandlerLeft, HandlerRight>(pub(super) HandlerLeft, pub(super) HandlerRight);
 
-impl<Message, HandlerLeft, HandlerRight> MessageHandler<Message> for PairHandler<HandlerLeft, HandlerRight>
+impl<Message, Runtime, HandlerLeft, HandlerRight> MessageHandler<Message, Runtime> for PairHandler<HandlerLeft, HandlerRight>
 where
     Message: Clone,
-    HandlerLeft: MessageHandler<Message>,
-    HandlerRight: MessageHandler<Message>,
+    Runtime: AsyncRuntime<()> + Clone,
+    HandlerLeft: MessageHandler<Message, Runtime>,
+    HandlerRight: MessageHandler<Message, Runtime>,
 {
-    fn handle<MessageValue: StaticCow<Message>>(&self, message: MessageValue, runtime: &Handle) {
+    fn handle<MessageValue: StaticCow<Message>>(&self, message: MessageValue, runtime: &Runtime) {
         let PairHandler(handler_left, handler_right) = self;
         handler_left.handle(message.clone(), runtime);
         handler_right.handle(message, runtime);
@@ -38,67 +39,68 @@ where
 
 pub struct DerefHandler<T>(pub T);
 
-impl<Message, T> MessageHandler<Message> for DerefHandler<T>
+impl<Message, Runtime, T> MessageHandler<Message, Runtime> for DerefHandler<T>
 where
+    Runtime: AsyncRuntime<()> + Clone,
     T: Deref,
-    T::Target: MessageHandler<Message>,
+    T::Target: MessageHandler<Message, Runtime>,
 {
-    fn handle<MessageValue: StaticCow<Message>>(&self, message: MessageValue, runtime: &Handle) {
+    fn handle<MessageValue: StaticCow<Message>>(&self, message: MessageValue, runtime: &Runtime) {
         <T as Deref>::deref(&self.0).handle(message, runtime);
     }
 }
 
-pub trait MessageHandlerBuilder<Message>: Sized {
+pub trait MessageHandlerBuilder<Message, Runtime>: Sized {
     type OutMessage;
-    fn filter<F: Fn(&Self::OutMessage) -> bool>(self, f: F) -> FilterBuilder<Self, F> {
+    fn filter<F: Fn(&Self::OutMessage) -> bool>(self, f: F) -> FilterBuilder<Self, F, Runtime> {
         FilterBuilder::new(self, f)
     }
 
-    fn filter_map<O, F: Fn(Self::OutMessage) -> Option<O>>(self, f: F) -> FilterMapBuilder<Self, F> {
+    fn filter_map<O, F: Fn(Self::OutMessage) -> Option<O>>(self, f: F) -> FilterMapBuilder<Self, F, Runtime> {
         FilterMapBuilder::new(self, f)
     }
 
-    fn map<O, F: Fn(Self::OutMessage) -> O>(self, f: F) -> MapBuilder<Self, F> {
+    fn map<O, F: Fn(Self::OutMessage) -> O>(self, f: F) -> MapBuilder<Self, F, Runtime> {
         MapBuilder::new(self, f)
     }
 
-    fn then<Fut: IntoFuture, F: Fn(Self::OutMessage) -> Fut>(self, f: F) -> ThenBuilder<Self, F> {
+    fn then<Fut: IntoFuture, F: Fn(Self::OutMessage) -> Fut>(self, f: F) -> ThenBuilder<Self, F, Runtime> {
         ThenBuilder::new(self, f)
     }
 
-    fn multiple(self) -> MultipleBuilder<Message, Self, EmptyHandler> {
+    fn multiple(self) -> MultipleBuilder<Message, Runtime, Self, EmptyHandler> {
         MultipleBuilder::new(self)
     }
 }
 
-pub trait IntoMessageHandler<Message, Tail>: MessageHandlerBuilder<Message> {
-    type Out: MessageHandler<Message>;
+pub trait IntoMessageHandler<Message, Runtime, Tail>: MessageHandlerBuilder<Message, Runtime> {
+    type Out: MessageHandler<Message, Runtime>;
     fn into_message_handler(self, tail: Tail) -> Self::Out;
 }
 
-pub trait IntoFunctionHandler<Message: Clone, F>: IntoMessageHandler<Message, FunctionHandler<F>> {
+pub trait IntoFunctionHandler<Message: Clone, Runtime, F>: IntoMessageHandler<Message, Runtime, FunctionHandler<F>> {
     fn handle(self, f: F) -> Self::Out {
         self.into_message_handler(FunctionHandler(f))
     }
 }
 
-impl<T, Message, F> IntoFunctionHandler<Message, F> for T
+impl<T, Message, Runtime, F> IntoFunctionHandler<Message, Runtime, F> for T
 where
-    T: IntoMessageHandler<Message, FunctionHandler<F>>,
+    T: IntoMessageHandler<Message, Runtime, FunctionHandler<F>>,
     Message: Clone,
     F: Fn(T::OutMessage),
 {
 }
 
-pub trait IntoAsyncFunctionHandler<Message: Clone, F>: IntoMessageHandler<Message, AsyncFunctionHandler<F>> {
+pub trait IntoAsyncFunctionHandler<Message: Clone, Runtime, F>: IntoMessageHandler<Message, Runtime, AsyncFunctionHandler<F>> {
     fn handle_async(self, f: F) -> Self::Out {
         self.into_message_handler(AsyncFunctionHandler::new(f))
     }
 }
 
-impl<T, Message, F, Future> IntoAsyncFunctionHandler<Message, F> for T
+impl<T, Message, Runtime, F, Future> IntoAsyncFunctionHandler<Message, Runtime, F> for T
 where
-    T: IntoMessageHandler<Message, AsyncFunctionHandler<F>>,
+    T: IntoMessageHandler<Message, Runtime, AsyncFunctionHandler<F>>,
     Message: Clone,
     F: Fn(Self::OutMessage) -> Future,
     Future: IntoFuture<Output = ()>,
@@ -106,103 +108,112 @@ where
 {
 }
 
-pub trait IntoAsyncFunctionHandlerSingle<Message: Clone, F>: IntoMessageHandler<Message, AsyncFunctionHandlerSingle<Message, F>> {
+pub trait IntoAsyncFunctionHandlerSingle<Message: Clone, Runtime: AsyncRuntime<()>, F>: IntoMessageHandler<Message, Runtime, AsyncFunctionHandlerSingle<Message, F, Runtime::JoinHandle>> {
     fn handle_async_single(self, f: F) -> Self::Out {
-        self.into_message_handler(AsyncFunctionHandlerSingle::new(f))
+        self.into_message_handler(AsyncFunctionHandlerSingle::new::<Runtime>(f))
     }
 }
 
-impl<T, Message, F, Future> IntoAsyncFunctionHandlerSingle<Message, F> for T
+impl<T, Message, Runtime, F, Future> IntoAsyncFunctionHandlerSingle<Message, Runtime, F> for T
 where
-    T: IntoMessageHandler<Message, AsyncFunctionHandlerSingle<Message, F>>,
+    T: IntoMessageHandler<Message, Runtime, AsyncFunctionHandlerSingle<Message, F, Runtime::JoinHandle>>,
     Message: Clone,
+    Runtime: AsyncRuntime<()>,
     F: Fn(MessageReceiver<Self::OutMessage>) -> Future,
     Future: IntoFuture<Output = ()>,
     Future::IntoFuture: Send + 'static,
 {
 }
 
-pub trait IntoDerefHandler<Message: Clone, H>: IntoMessageHandler<Message, DerefHandler<H>> {
+pub trait IntoDerefHandler<Message: Clone, Runtime, H>: IntoMessageHandler<Message, Runtime, DerefHandler<H>> {
     fn handle_by(self, f: H) -> Self::Out {
         self.into_message_handler(DerefHandler(f))
     }
 }
 
-impl<T, Message, H> IntoDerefHandler<Message, H> for T
+impl<T, Message, Runtime, H> IntoDerefHandler<Message, Runtime, H> for T
 where
-    T: IntoMessageHandler<Message, DerefHandler<H>>,
+    T: IntoMessageHandler<Message, Runtime, DerefHandler<H>>,
     Message: Clone,
     H: Deref,
-    H::Target: MessageHandler<Self::OutMessage>,
+    H::Target: MessageHandler<Self::OutMessage, Runtime>,
 {
 }
 
-pub fn filter<Message, NewF>(condition: NewF) -> FilterBuilder<EmptyHandlerBuilder, NewF>
+pub fn filter<Message, Runtime, NewF>(condition: NewF) -> FilterBuilder<EmptyHandlerBuilder<Runtime>, NewF, Runtime>
 where
     Message: Clone,
+    Runtime: AsyncRuntime<()> + Clone,
     NewF: Fn(&Message) -> bool,
 {
-    EmptyHandlerBuilder.filter(condition)
+    EmptyHandlerBuilder::<Runtime>::new().filter(condition)
 }
 
-pub fn map<Message, NewI, NewF>(new_function: NewF) -> MapBuilder<EmptyHandlerBuilder, NewF>
+pub fn map<Message, Runtime, NewI, NewF>(new_function: NewF) -> MapBuilder<EmptyHandlerBuilder<Runtime>, NewF, Runtime>
 where
     Message: Clone,
+    Runtime: AsyncRuntime<()> + Clone,
     NewF: Fn(Message) -> NewI,
 {
-    EmptyHandlerBuilder.map(new_function)
+    EmptyHandlerBuilder::<Runtime>::new().map(new_function)
 }
 
-pub fn then<Message, Fut, NewF>(new_function: NewF) -> ThenBuilder<EmptyHandlerBuilder, NewF>
+pub fn then<Message, Runtime, Fut, NewF>(new_function: NewF) -> ThenBuilder<EmptyHandlerBuilder<Runtime>, NewF, Runtime>
 where
     Message: Clone,
+    Runtime: AsyncRuntime<()> + Clone,
     Fut: IntoFuture,
     NewF: Fn(Message) -> Fut,
 {
-    EmptyHandlerBuilder.then(new_function)
+    EmptyHandlerBuilder::<Runtime>::new().then(new_function)
 }
 
-pub fn filter_map<Message, NewI, NewF>(new_function: NewF) -> FilterMapBuilder<EmptyHandlerBuilder, NewF>
+pub fn filter_map<Message, Runtime, NewI, NewF>(new_function: NewF) -> FilterMapBuilder<EmptyHandlerBuilder<Runtime>, NewF, Runtime>
 where
     Message: Clone,
+    Runtime: AsyncRuntime<()> + Clone,
     NewF: Fn(Message) -> Option<NewI>,
 {
-    EmptyHandlerBuilder.filter_map(new_function)
+    EmptyHandlerBuilder::<Runtime>::new().filter_map(new_function)
 }
 
-pub fn handle<Message, NewF>(new_function: NewF) -> FunctionHandler<NewF>
+pub fn handle<Message, Runtime, NewF>(new_function: NewF) -> FunctionHandler<NewF>
 where
     Message: Clone,
+    Runtime: AsyncRuntime<()> + Clone,
     NewF: Fn(Message),
 {
-    EmptyHandlerBuilder.handle(new_function)
+    EmptyHandlerBuilder::<Runtime>::new().handle(new_function)
 }
 
-pub fn handle_async<Message, Future, NewF>(new_function: NewF) -> AsyncFunctionHandler<NewF>
+pub fn handle_async<Message, Runtime, Future, NewF>(new_function: NewF) -> AsyncFunctionHandler<NewF>
 where
     Message: Clone,
+    Runtime: AsyncRuntime<()> + Clone,
     Future: IntoFuture<Output = ()>,
     Future::IntoFuture: Send + 'static,
     NewF: Fn(Message) -> Future,
 {
-    EmptyHandlerBuilder.handle_async(new_function)
+    EmptyHandlerBuilder::<Runtime>::new().handle_async(new_function)
 }
 
-pub fn handle_async_single<Message, Future, NewF>(new_function: NewF) -> AsyncFunctionHandlerSingle<Message, NewF>
+pub fn handle_async_single<Message, Runtime, Future, NewF>(new_function: NewF) -> AsyncFunctionHandlerSingle<Message, NewF, Runtime::JoinHandle>
 where
     Message: Clone,
+    Runtime: AsyncRuntime<()> + Clone,
     Future: IntoFuture<Output = ()>,
     Future::IntoFuture: Send + 'static,
     NewF: Fn(MessageReceiver<Message>) -> Future,
 {
-    EmptyHandlerBuilder.handle_async_single(new_function)
+    EmptyHandlerBuilder::<Runtime>::new().handle_async_single(new_function)
 }
 
-pub fn handle_by<Message, H>(handler: H) -> DerefHandler<H>
+pub fn handle_by<Message, Runtime, H>(handler: H) -> DerefHandler<H>
 where
     Message: Clone,
+    Runtime: AsyncRuntime<()> + Clone,
     H: Deref,
-    H::Target: MessageHandler<Message>,
+    H::Target: MessageHandler<Message, Runtime>,
 {
-    EmptyHandlerBuilder.handle_by(handler)
+    EmptyHandlerBuilder::<Runtime>::new().handle_by(handler)
 }

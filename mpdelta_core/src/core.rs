@@ -10,6 +10,7 @@ use qcell::{TCell, TCellOwner};
 use std::borrow::Cow;
 use std::error::Error;
 use std::fmt::{Debug, Formatter};
+use std::ops::Deref;
 use std::path::Path;
 use std::sync::Arc;
 use thiserror::Error;
@@ -235,7 +236,7 @@ where
 #[async_trait]
 pub trait ComponentRendererBuilder<K, T: ParameterValueType>: Send + Sync {
     type Err: Error + 'static;
-    type Renderer: RealtimeComponentRenderer<T> + Send + Sync;
+    type Renderer: RealtimeComponentRenderer<T> + Send + Sync + 'static;
     async fn create_renderer(&self, component: &StaticPointer<TCell<K, ComponentInstance<K, T>>>) -> Result<Self::Renderer, Self::Err>;
 }
 
@@ -258,16 +259,17 @@ pub trait EditEventListener<K, T>: Send + Sync {
     fn on_edit_instance(&self, root: &StaticPointer<RwLock<RootComponentClass<K, T>>>, target: &StaticPointer<TCell<K, ComponentInstance<K, T>>>, command: InstanceEditEvent<K, T>);
 }
 
-impl<K, T, V> EditEventListener<K, T> for Arc<V>
+impl<K, T, O> EditEventListener<K, T> for O
 where
-    V: EditEventListener<K, T> + ?Sized,
+    O: Deref + Send + Sync,
+    O::Target: EditEventListener<K, T>,
 {
     fn on_edit(&self, target: &StaticPointer<RwLock<RootComponentClass<K, T>>>, event: RootComponentEditEvent<K, T>) {
-        V::on_edit(self, target, event)
+        self.deref().on_edit(target, event)
     }
 
     fn on_edit_instance(&self, root: &StaticPointer<RwLock<RootComponentClass<K, T>>>, target: &StaticPointer<TCell<K, ComponentInstance<K, T>>>, command: InstanceEditEvent<K, T>) {
-        V::on_edit_instance(self, root, target, command)
+        self.deref().on_edit_instance(root, target, command)
     }
 }
 
@@ -275,7 +277,7 @@ where
 pub trait Editor<K, T>: Send + Sync {
     type Log: Send + Sync;
     type Err: Error + 'static;
-    type EditEventListenerGuard: Send + Sync;
+    type EditEventListenerGuard: Send + Sync + 'static;
     fn add_edit_event_listener(&self, listener: impl EditEventListener<K, T> + 'static) -> Self::EditEventListenerGuard;
     async fn edit(&self, target: &StaticPointer<RwLock<RootComponentClass<K, T>>>, command: RootComponentEditCommand<K, T>) -> Result<Self::Log, Self::Err>;
     async fn edit_instance(&self, root: &StaticPointer<RwLock<RootComponentClass<K, T>>>, target: &StaticPointer<TCell<K, ComponentInstance<K, T>>>, command: InstanceEditCommand<K, T>) -> Result<Self::Log, Self::Err>;

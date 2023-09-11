@@ -205,7 +205,7 @@ mod tests {
                 counter.fetch_add(1, atomic::Ordering::SeqCst);
                 let lock = Arc::clone(&lock);
                 async move {
-                    lock.lock().await;
+                    let _ = lock.lock().await;
                     arg
                 }
             }

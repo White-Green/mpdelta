@@ -2,6 +2,7 @@ use crate::edit_funnel::EditFunnel;
 use crate::global_ui_state::{GlobalUIEvent, GlobalUIEventHandler, GlobalUIState};
 use crate::view_model_util::use_arc;
 use crate::viewmodel::ViewModelParams;
+use mpdelta_async_runtime::{AsyncRuntime, JoinHandle};
 use mpdelta_core::component::instance::ComponentInstance;
 use mpdelta_core::component::parameter::{ImageRequiredParams, ParameterValueType};
 use mpdelta_core::edit::InstanceEditCommand;
@@ -11,9 +12,7 @@ use qcell::{TCell, TCellOwner};
 use std::future;
 use std::ops::DerefMut;
 use std::sync::{Arc, Mutex, MutexGuard, RwLock as StdRwLock};
-use tokio::runtime::Handle;
 use tokio::sync::RwLock;
-use tokio::task::JoinHandle;
 
 pub trait PropertyWindowViewModel<K: 'static, T: ParameterValueType> {
     type ImageRequiredParams<'a>: DerefMut<Target = Option<ImageRequiredParams<K, T>>> + 'a
@@ -23,17 +22,24 @@ pub trait PropertyWindowViewModel<K: 'static, T: ParameterValueType> {
     fn updated_image_required_params(&self, image_required_params: &ImageRequiredParams<K, T>);
 }
 
-pub struct PropertyWindowViewModelImpl<K: 'static, T, GlobalUIState, Edit> {
+pub struct PropertyWindowViewModelImpl<K: 'static, T, GlobalUIState, Edit, Runtime, JoinHandle> {
     global_ui_state: Arc<GlobalUIState>,
     edit: Arc<Edit>,
     selected: Arc<StdRwLock<(Option<StaticPointer<RwLock<RootComponentClass<K, T>>>>, Option<StaticPointer<TCell<K, ComponentInstance<K, T>>>>)>>,
     image_required_params: Arc<Mutex<Option<ImageRequiredParams<K, T>>>>,
-    image_required_params_update_task: Mutex<JoinHandle<()>>,
-    runtime: Handle,
+    image_required_params_update_task: Mutex<JoinHandle>,
+    runtime: Runtime,
     key: Arc<RwLock<TCellOwner<K>>>,
 }
 
-impl<K: 'static, T: ParameterValueType, S: GlobalUIState<K, T>, Edit: EditFunnel<K, T>> GlobalUIEventHandler<K, T> for PropertyWindowViewModelImpl<K, T, S, Edit> {
+impl<K, T, S, Edit, Runtime> GlobalUIEventHandler<K, T> for PropertyWindowViewModelImpl<K, T, S, Edit, Runtime, Runtime::JoinHandle>
+where
+    K: 'static,
+    T: ParameterValueType,
+    S: GlobalUIState<K, T>,
+    Edit: EditFunnel<K, T>,
+    Runtime: AsyncRuntime<()> + Clone,
+{
     fn handle(&self, event: GlobalUIEvent<K, T>) {
         match event {
             GlobalUIEvent::SelectRootComponentClass(target) => {
@@ -69,8 +75,8 @@ impl<K: 'static, T: ParameterValueType, S: GlobalUIState<K, T>, Edit: EditFunnel
     }
 }
 
-impl<K: 'static, T: ParameterValueType> PropertyWindowViewModelImpl<K, T, (), ()> {
-    pub fn new<S: GlobalUIState<K, T>, Edit: EditFunnel<K, T> + 'static, P: ViewModelParams<K, T>>(global_ui_state: &Arc<S>, edit: &Arc<Edit>, params: &P) -> Arc<PropertyWindowViewModelImpl<K, T, S, Edit>> {
+impl<K: 'static, T: ParameterValueType> PropertyWindowViewModelImpl<K, T, (), (), (), ()> {
+    pub fn new<S: GlobalUIState<K, T>, Edit: EditFunnel<K, T> + 'static, P: ViewModelParams<K, T>>(global_ui_state: &Arc<S>, edit: &Arc<Edit>, params: &P) -> Arc<PropertyWindowViewModelImpl<K, T, S, Edit, P::AsyncRuntime, <P::AsyncRuntime as AsyncRuntime<()>>::JoinHandle>> {
         let runtime = params.runtime().clone();
         let arc = Arc::new(PropertyWindowViewModelImpl {
             global_ui_state: Arc::clone(global_ui_state),
@@ -86,7 +92,14 @@ impl<K: 'static, T: ParameterValueType> PropertyWindowViewModelImpl<K, T, (), ()
     }
 }
 
-impl<K: 'static, T: ParameterValueType, S: GlobalUIState<K, T>, Edit: EditFunnel<K, T>> PropertyWindowViewModel<K, T> for PropertyWindowViewModelImpl<K, T, S, Edit> {
+impl<K, T, S, Edit, Runtime> PropertyWindowViewModel<K, T> for PropertyWindowViewModelImpl<K, T, S, Edit, Runtime, Runtime::JoinHandle>
+where
+    K: 'static,
+    T: ParameterValueType,
+    S: GlobalUIState<K, T>,
+    Edit: EditFunnel<K, T>,
+    Runtime: AsyncRuntime<()> + Clone,
+{
     type ImageRequiredParams<'a> = MutexGuard<'a, Option<ImageRequiredParams<K, T>>> where Self: 'a;
 
     fn image_required_params(&self) -> Self::ImageRequiredParams<'_> {

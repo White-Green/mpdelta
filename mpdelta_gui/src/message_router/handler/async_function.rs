@@ -1,11 +1,10 @@
 use crate::message_router::static_cow::StaticCow;
 use crate::message_router::MessageHandler;
+use mpdelta_async_runtime::{AsyncRuntime, JoinHandle};
 use std::future::IntoFuture;
 use std::sync::mpsc::{Receiver, SyncSender};
 use std::sync::{PoisonError, RwLock};
-use tokio::runtime::Handle;
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
-use tokio::task::JoinHandle;
 
 pub struct AsyncFunctionHandler<F> {
     f: F,
@@ -17,14 +16,15 @@ impl<F> AsyncFunctionHandler<F> {
     }
 }
 
-impl<Message, F, Future> MessageHandler<Message> for AsyncFunctionHandler<F>
+impl<Message, Runtime, F, Future> MessageHandler<Message, Runtime> for AsyncFunctionHandler<F>
 where
     Message: Clone,
+    Runtime: AsyncRuntime<()> + Clone,
     Future: IntoFuture<Output = ()>,
     Future::IntoFuture: Send + 'static,
     F: Fn(Message) -> Future,
 {
-    fn handle<MessageValue: StaticCow<Message>>(&self, message: MessageValue, runtime: &Handle) {
+    fn handle<MessageValue: StaticCow<Message>>(&self, message: MessageValue, runtime: &Runtime) {
         let message = message.into_owned();
         let future = (self.f)(message);
         runtime.spawn(future.into_future());
@@ -58,15 +58,15 @@ impl<T> MessageReceiver<T> {
     }
 }
 
-pub struct AsyncFunctionHandlerSingle<Message, F> {
+pub struct AsyncFunctionHandlerSingle<Message, F, JoinHandle> {
     f: F,
-    handle: RwLock<(Option<JoinHandle<()>>, Receiver<UnboundedReceiver<Message>>)>,
+    handle: RwLock<(Option<JoinHandle>, Receiver<UnboundedReceiver<Message>>)>,
     receiver_return: SyncSender<UnboundedReceiver<Message>>,
     message_sender: UnboundedSender<Message>,
 }
 
-impl<Message: Clone, F> AsyncFunctionHandlerSingle<Message, F> {
-    pub(super) fn new(f: F) -> AsyncFunctionHandlerSingle<Message, F> {
+impl<Message: Clone, F> AsyncFunctionHandlerSingle<Message, F, ()> {
+    pub(super) fn new<Runtime: AsyncRuntime<()>>(f: F) -> AsyncFunctionHandlerSingle<Message, F, Runtime::JoinHandle> {
         let (sender, receiver) = mpsc::unbounded_channel();
         let (sender_return, receiver_return) = std::sync::mpsc::sync_channel(1);
         sender_return.send(receiver).unwrap();
@@ -79,14 +79,15 @@ impl<Message: Clone, F> AsyncFunctionHandlerSingle<Message, F> {
     }
 }
 
-impl<Message, F, Future> MessageHandler<Message> for AsyncFunctionHandlerSingle<Message, F>
+impl<Message, Runtime, F, Future> MessageHandler<Message, Runtime> for AsyncFunctionHandlerSingle<Message, F, Runtime::JoinHandle>
 where
     Message: Clone,
+    Runtime: AsyncRuntime<()> + Clone,
     Future: IntoFuture<Output = ()>,
     Future::IntoFuture: Send + 'static,
     F: Fn(MessageReceiver<Message>) -> Future,
 {
-    fn handle<MessageValue: StaticCow<Message>>(&self, message: MessageValue, runtime: &Handle) {
+    fn handle<MessageValue: StaticCow<Message>>(&self, message: MessageValue, runtime: &Runtime) {
         let message = message.into_owned();
         self.message_sender.send(message.clone()).ok().unwrap();
         let read_lock = self.handle.read().unwrap_or_else(PoisonError::into_inner);

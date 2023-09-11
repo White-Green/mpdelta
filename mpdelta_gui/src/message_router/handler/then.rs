@@ -1,65 +1,69 @@
 use crate::message_router::handler::{IntoMessageHandler, MessageHandler, MessageHandlerBuilder};
 use crate::message_router::static_cow::{Owned, StaticCow};
 use futures::FutureExt;
+use mpdelta_async_runtime::AsyncRuntime;
 use std::future::IntoFuture;
+use std::marker::PhantomData;
 use std::sync::Arc;
-use tokio::runtime::Handle;
 
 pub struct Then<F, T> {
     map: F,
     tail: Arc<T>,
 }
 
-pub struct ThenBuilder<P, F> {
+pub struct ThenBuilder<P, F, Runtime> {
     prev: P,
     map: F,
+    _phantom: PhantomData<Runtime>,
 }
 
-impl<P, F> ThenBuilder<P, F> {
+impl<P, F, Runtime> ThenBuilder<P, F, Runtime> {
     pub(super) fn new(prev: P, map: F) -> Self {
-        ThenBuilder { prev, map }
+        ThenBuilder { prev, map, _phantom: PhantomData }
     }
 }
 
-impl<Message, P, F, Fut> MessageHandlerBuilder<Message> for ThenBuilder<P, F>
+impl<Message, Runtime, P, F, Fut> MessageHandlerBuilder<Message, Runtime> for ThenBuilder<P, F, Runtime>
 where
     Message: Clone,
     Fut: IntoFuture,
     Fut::IntoFuture: 'static,
     Fut::Output: Clone,
-    P: MessageHandlerBuilder<Message>,
+    P: MessageHandlerBuilder<Message, Runtime>,
     F: Fn(P::OutMessage) -> Fut,
 {
     type OutMessage = Fut::Output;
 }
 
-impl<Message, Tail, P, F, Fut> IntoMessageHandler<Message, Tail> for ThenBuilder<P, F>
+impl<Message, Runtime, Tail, P, F, Fut> IntoMessageHandler<Message, Runtime, Tail> for ThenBuilder<P, F, Runtime>
 where
     Message: Clone,
+    Runtime: AsyncRuntime<()> + Clone,
     Fut: IntoFuture,
     Fut::IntoFuture: 'static,
     Fut::Output: Clone,
-    P: IntoMessageHandler<Message, Then<F, Tail>>,
+    P: IntoMessageHandler<Message, Runtime, Then<F, Tail>>,
     F: Fn(P::OutMessage) -> Fut,
 {
     type Out = P::Out;
 
     fn into_message_handler(self, tail: Tail) -> Self::Out {
-        let ThenBuilder { prev, map } = self;
+        let ThenBuilder { prev, map, _phantom } = self;
         prev.into_message_handler(Then { map, tail: Arc::new(tail) })
     }
 }
 
-impl<Message, F, T, Fut> MessageHandler<Message> for Then<F, T>
+impl<Message, Runtime, F, T, Fut> MessageHandler<Message, Runtime> for Then<F, T>
 where
     Message: Clone,
+    Runtime: AsyncRuntime<()> + Clone + 'static,
     Fut: IntoFuture,
     Fut::IntoFuture: Send + 'static,
     Fut::Output: Clone,
     F: Fn(Message) -> Fut,
-    T: MessageHandler<Fut::Output> + Send + Sync + 'static,
+    T: MessageHandler<Fut::Output, Runtime> + Send + Sync + 'static,
 {
-    fn handle<MessageValue: StaticCow<Message>>(&self, message: MessageValue, runtime: &Handle) {
+    fn handle<MessageValue: StaticCow<Message>>(&self, message: MessageValue, runtime: &Runtime) {
         let Then { map, tail } = self;
         let message = map(message.into_owned());
         let future = {

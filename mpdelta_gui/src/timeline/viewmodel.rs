@@ -1,10 +1,11 @@
 use crate::edit_funnel::EditFunnel;
 use crate::global_ui_state::{GlobalUIEvent, GlobalUIEventHandler, GlobalUIState};
 use crate::message_router::handler::{IntoAsyncFunctionHandler, IntoFunctionHandler, MessageHandlerBuilder};
-use crate::message_router::{handler, MessageHandler, MessageRouter};
+use crate::message_router::{MessageHandler, MessageRouter};
 use crate::view_model_util::use_arc;
 use crate::viewmodel::ViewModelParams;
 use egui::epaint::ahash::{HashSet, HashSetExt};
+use mpdelta_async_runtime::{AsyncRuntime, JoinHandle};
 use mpdelta_core::component::instance::ComponentInstance;
 use mpdelta_core::component::link::MarkerLink;
 use mpdelta_core::component::marker_pin::MarkerPin;
@@ -20,9 +21,7 @@ use std::collections::HashMap;
 use std::hash::Hash;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::{future, mem};
-use tokio::runtime::Handle;
 use tokio::sync::RwLock;
-use tokio::task::JoinHandle;
 
 #[derive(Clone)]
 pub struct ComponentInstanceData<Handle> {
@@ -134,16 +133,16 @@ pub trait TimelineViewModel<K: 'static, T: ParameterValueType> {
     fn add_component_instance(&self);
 }
 
-pub struct TimelineViewModelImpl<K: 'static, T, GlobalUIState, MessageHandler, G> {
+pub struct TimelineViewModelImpl<K: 'static, T, GlobalUIState, MessageHandler, G, Runtime, JoinHandle> {
     key: Arc<RwLock<TCellOwner<K>>>,
     global_ui_state: Arc<GlobalUIState>,
     component_instances: Arc<RwLock<ComponentInstanceDataList<StaticPointer<TCell<K, ComponentInstance<K, T>>>>>>,
     component_links: Arc<RwLock<ComponentLinkDataList<StaticPointer<TCell<K, MarkerLink<K>>>, StaticPointer<TCell<K, ComponentInstance<K, T>>>>>>,
     selected_components: Arc<RwLock<HashSet<StaticPointer<TCell<K, ComponentInstance<K, T>>>>>>,
     selected_root_component_class: Arc<RwLock<Option<StaticPointer<RwLock<RootComponentClass<K, T>>>>>>,
-    message_router: MessageRouter<MessageHandler>,
-    runtime: Handle,
-    load_timeline_task: Arc<Mutex<JoinHandle<()>>>,
+    message_router: MessageRouter<MessageHandler, Runtime>,
+    runtime: Runtime,
+    load_timeline_task: Arc<Mutex<JoinHandle>>,
     guard: OnceLock<G>,
 }
 
@@ -185,26 +184,28 @@ impl<K: 'static, T> PartialEq for Message<K, T> {
 
 impl<K: 'static, T> Eq for Message<K, T> {}
 
-impl<K, T, S, M, G> GlobalUIEventHandler<K, T> for TimelineViewModelImpl<K, T, S, M, G>
+impl<K, T, S, M, G, Runtime> GlobalUIEventHandler<K, T> for TimelineViewModelImpl<K, T, S, M, G, Runtime, Runtime::JoinHandle>
 where
     K: Send + Sync + 'static,
     T: ParameterValueType,
     S: GlobalUIState<K, T>,
-    M: MessageHandler<Message<K, T>>,
+    M: MessageHandler<Message<K, T>, Runtime>,
     G: Send + Sync + 'static,
+    Runtime: AsyncRuntime<()> + Clone,
 {
     fn handle(&self, event: GlobalUIEvent<K, T>) {
         self.message_router.handle(Message::GlobalUIEvent(event));
     }
 }
 
-impl<K, T, S, M, G> EditEventListener<K, T> for TimelineViewModelImpl<K, T, S, M, G>
+impl<K, T, S, M, G, Runtime> EditEventListener<K, T> for TimelineViewModelImpl<K, T, S, M, G, Runtime, Runtime::JoinHandle>
 where
     K: Send + Sync + 'static,
     T: ParameterValueType,
     S: GlobalUIState<K, T>,
-    M: MessageHandler<Message<K, T>> + Send + Sync,
+    M: MessageHandler<Message<K, T>, Runtime> + Send + Sync,
     G: Send + Sync + 'static,
+    Runtime: AsyncRuntime<()> + Clone,
 {
     fn on_edit(&self, _: &StaticPointer<RwLock<RootComponentClass<K, T>>>, _: RootComponentEditEvent<K, T>) {
         use_arc!(key = self.key, component_instances = self.component_instances, component_links = self.component_links, selected_root_component_class = self.selected_root_component_class);
@@ -221,78 +222,87 @@ where
     }
 }
 
-impl<K: Send + Sync + 'static, T: ParameterValueType> TimelineViewModelImpl<K, T, (), (), ()> {
+impl<K: Send + Sync + 'static, T: ParameterValueType> TimelineViewModelImpl<K, T, (), (), (), (), ()> {
     pub fn new<S: GlobalUIState<K, T>, Edit: EditFunnel<K, T> + 'static, P: ViewModelParams<K, T>>(
         global_ui_state: &Arc<S>,
         edit: &Arc<Edit>,
         params: &P,
-    ) -> Arc<TimelineViewModelImpl<K, T, S, impl MessageHandler<Message<K, T>>, <P::SubscribeEditEvent as SubscribeEditEventUsecase<K, T>>::EditEventListenerGuard>> {
+    ) -> Arc<TimelineViewModelImpl<K, T, S, impl MessageHandler<Message<K, T>, P::AsyncRuntime>, <P::SubscribeEditEvent as SubscribeEditEventUsecase<K, T>>::EditEventListenerGuard, P::AsyncRuntime, <P::AsyncRuntime as AsyncRuntime<()>>::JoinHandle>> {
         let selected_components = Arc::new(RwLock::new(HashSet::new()));
         let component_links = Arc::new(RwLock::new(ComponentLinkDataList { list: Vec::new() }));
         let component_instances = Arc::new(RwLock::new(ComponentInstanceDataList { list: Vec::new() }));
         let selected_root_component_class = Arc::new(RwLock::new(None));
         let load_timeline_task = Arc::new(Mutex::new(params.runtime().spawn(future::ready(()))));
         let message_router = MessageRouter::builder()
-            .handle(
-                handler::filter_map(|message| if let Message::GlobalUIEvent(value) = message { Some(value) } else { None })
+            .handle(|handler| {
+                handler
+                    .filter_map(|message| if let Message::GlobalUIEvent(value) = message { Some(value) } else { None })
                     .multiple()
-                    .handle(handler::filter_map(|event| if let GlobalUIEvent::SelectRootComponentClass(value) = event { Some(value) } else { None }).handle({
-                        let runtime = params.runtime().clone();
-                        use_arc!(key = params.key(), selected_root_component_class, component_instances, component_links, load_timeline_task);
-                        move |root_component_class| {
-                            use_arc!(key, selected_root_component_class, component_instances, component_links);
-                            let mut task = load_timeline_task.lock().unwrap();
-                            task.abort();
-                            *task = runtime.spawn(Self::load_timeline_by_new_root_component_class(key, root_component_class, component_instances, component_links, selected_root_component_class));
+                    .handle(|handler| {
+                        handler.filter_map(|event| if let GlobalUIEvent::SelectRootComponentClass(value) = event { Some(value) } else { None }).handle({
+                            let runtime = params.runtime().clone();
+                            use_arc!(key = params.key(), selected_root_component_class, component_instances, component_links, load_timeline_task);
+                            move |root_component_class| {
+                                use_arc!(key, selected_root_component_class, component_instances, component_links);
+                                let mut task = load_timeline_task.lock().unwrap();
+                                task.abort();
+                                *task = runtime.spawn(Self::load_timeline_by_new_root_component_class(key, root_component_class, component_instances, component_links, selected_root_component_class));
+                            }
+                        })
+                    })
+                    .build()
+            })
+            .handle(|handler| {
+                handler.filter(|message| *message == Message::AddComponentInstance).handle_async({
+                    use_arc!(selected_root_component_class, edit, get_available_component_classes = params.get_available_component_classes());
+                    move |_| {
+                        use_arc!(selected_root_component_class, edit, get_available_component_classes);
+                        async move {
+                            let selected_root_component_class = selected_root_component_class.read().await;
+                            let Some(target) = selected_root_component_class.clone() else {
+                                return;
+                            };
+                            drop(selected_root_component_class);
+                            let pointer = &get_available_component_classes.get_available_component_classes().await[0];
+                            let class = pointer.upgrade().unwrap();
+                            let instance = class.read().await.instantiate(pointer).await;
+                            let instance = StaticPointerOwned::new(TCell::new(instance));
+                            edit.edit(&target, RootComponentEditCommand::AddComponentInstance(instance));
                         }
-                    }))
-                    .build(),
-            )
-            .handle(handler::filter(|message| *message == Message::AddComponentInstance).handle_async({
-                use_arc!(selected_root_component_class, edit, get_available_component_classes = params.get_available_component_classes());
-                move |_| {
-                    use_arc!(selected_root_component_class, edit, get_available_component_classes);
-                    async move {
-                        let selected_root_component_class = selected_root_component_class.read().await;
-                        let Some(target) = selected_root_component_class.clone() else {
-                            return;
-                        };
-                        drop(selected_root_component_class);
-                        let pointer = &get_available_component_classes.get_available_component_classes().await[0];
-                        let class = pointer.upgrade().unwrap();
-                        let instance = class.read().await.instantiate(pointer).await;
-                        let instance = StaticPointerOwned::new(TCell::new(instance));
-                        edit.edit(&target, RootComponentEditCommand::AddComponentInstance(instance));
                     }
-                }
-            }))
-            .handle(handler::filter_map(|message| if let Message::ClickComponentInstance(value) = message { Some(value) } else { None }).handle_async({
-                use_arc!(selected_components, component_instances, global_ui_state);
-                move |target| {
-                    global_ui_state.select_component_instance(&target);
-                    use_arc!(selected_components, component_instances);
-                    async move {
-                        let (mut selected_components, mut component_instances) = tokio::join!(selected_components.write(), component_instances.write());
-                        component_instances.list.iter_mut().for_each(|ComponentInstanceData { handle, selected, .. }| *selected = *handle == target);
-                        selected_components.clear();
-                        selected_components.insert(target);
+                })
+            })
+            .handle(|handler| {
+                handler.filter_map(|message| if let Message::ClickComponentInstance(value) = message { Some(value) } else { None }).handle_async({
+                    use_arc!(selected_components, component_instances, global_ui_state);
+                    move |target| {
+                        global_ui_state.select_component_instance(&target);
+                        use_arc!(selected_components, component_instances);
+                        async move {
+                            let (mut selected_components, mut component_instances) = tokio::join!(selected_components.write(), component_instances.write());
+                            component_instances.list.iter_mut().for_each(|ComponentInstanceData { handle, selected, .. }| *selected = *handle == target);
+                            selected_components.clear();
+                            selected_components.insert(target);
+                        }
                     }
-                }
-            }))
-            .handle(handler::filter_map(|message| if let Message::DragComponentInstance(value, x, y) = message { Some((value, x, y)) } else { None }).handle_async(move |_| async move {}))
-            .handle(handler::filter_map(|message| if let Message::EditMarkerLinkLength(value, time) = message { Some((value, time)) } else { None }).handle_async({
-                use_arc!(selected_root_component_class, edit);
-                move |(target, len)| {
+                })
+            })
+            .handle(|handler| handler.filter_map(|message| if let Message::DragComponentInstance(value, x, y) = message { Some((value, x, y)) } else { None }).handle_async(move |_| async move {}))
+            .handle(|handler| {
+                handler.filter_map(|message| if let Message::EditMarkerLinkLength(value, time) = message { Some((value, time)) } else { None }).handle_async({
                     use_arc!(selected_root_component_class, edit);
-                    async move {
-                        let guard = selected_root_component_class.read().await;
-                        let Some(root_component_class) = guard.as_ref() else {
-                            return;
-                        };
-                        edit.edit(root_component_class, RootComponentEditCommand::EditMarkerLinkLength(target, len));
+                    move |(target, len)| {
+                        use_arc!(selected_root_component_class, edit);
+                        async move {
+                            let guard = selected_root_component_class.read().await;
+                            let Some(root_component_class) = guard.as_ref() else {
+                                return;
+                            };
+                            edit.edit(root_component_class, RootComponentEditCommand::EditMarkerLinkLength(target, len));
+                        }
                     }
-                }
-            }))
+                })
+            })
             .build(params.runtime().clone());
         let arc = Arc::new(TimelineViewModelImpl {
             key: Arc::clone(params.key()),
@@ -356,7 +366,14 @@ impl<K: Send + Sync + 'static, T: ParameterValueType> TimelineViewModelImpl<K, T
     }
 }
 
-impl<K: 'static, T: ParameterValueType, S: GlobalUIState<K, T>, M: MessageHandler<Message<K, T>>, G> TimelineViewModel<K, T> for TimelineViewModelImpl<K, T, S, M, G> {
+impl<K, T, S, M, G, Runtime> TimelineViewModel<K, T> for TimelineViewModelImpl<K, T, S, M, G, Runtime, Runtime::JoinHandle>
+where
+    K: 'static,
+    T: ParameterValueType,
+    S: GlobalUIState<K, T>,
+    M: MessageHandler<Message<K, T>, Runtime>,
+    Runtime: AsyncRuntime<()> + Clone,
+{
     fn seek(&self) -> usize {
         self.global_ui_state.seek()
     }

@@ -1,7 +1,9 @@
 use crate::message_router::handler::IntoFunctionHandler;
-use crate::message_router::{handler, MessageHandler, MessageRouter};
+use crate::message_router::handler::MessageHandlerBuilder;
+use crate::message_router::{MessageHandler, MessageRouter};
 use crate::view_model_util::use_arc;
 use crate::viewmodel::ViewModelParams;
+use mpdelta_async_runtime::AsyncRuntime;
 use mpdelta_core::component::instance::ComponentInstance;
 use mpdelta_core::component::parameter::ParameterValueType;
 use mpdelta_core::project::RootComponentClass;
@@ -74,36 +76,38 @@ pub trait GlobalUIState<K: 'static, T>: Send + Sync + 'static {
     fn select_component_instance(&self, target: &StaticPointer<TCell<K, ComponentInstance<K, T>>>);
 }
 
-pub struct GlobalUIStateImpl<K: 'static, T, H> {
+pub struct GlobalUIStateImpl<K: 'static, T, H, Runtime> {
     request_play: Arc<AtomicBool>,
     playing: Arc<AtomicBool>,
     seek: Arc<AtomicUsize>,
     handlers: StdRwLock<Vec<Arc<dyn GlobalUIEventHandler<K, T> + Send + Sync>>>,
-    message_router: MessageRouter<H>,
+    message_router: MessageRouter<H, Runtime>,
 }
 
-impl<K: 'static, T: ParameterValueType> GlobalUIStateImpl<K, T, ()> {
-    pub fn new<P: ViewModelParams<K, T>>(params: &P) -> GlobalUIStateImpl<K, T, impl MessageHandler<Message> + Send + Sync> {
+impl<K: 'static, T: ParameterValueType> GlobalUIStateImpl<K, T, (), ()> {
+    pub fn new<P: ViewModelParams<K, T>>(params: &P) -> GlobalUIStateImpl<K, T, impl MessageHandler<Message, P::AsyncRuntime> + Send + Sync, P::AsyncRuntime> {
         let request_play = Arc::new(AtomicBool::new(false));
         let playing = Arc::new(AtomicBool::new(false));
         let seek = Arc::new(AtomicUsize::new(0));
         let play_start_seek = AtomicUsize::new(0);
         let play_start_at = Mutex::new(Instant::now());
         let message_router = MessageRouter::builder()
-            .handle(handler::filter(|message| *message == Message::BeginRenderFrame).handle({
-                use_arc!(request_play, playing, seek);
-                move |_| {
-                    let now = Instant::now();
-                    let mut lock = play_start_at.lock().unwrap();
-                    if request_play.compare_exchange(true, false, atomic::Ordering::AcqRel, atomic::Ordering::Acquire).is_ok() && playing.compare_exchange(false, true, atomic::Ordering::AcqRel, atomic::Ordering::Acquire).is_ok() {
-                        *lock = now;
-                        play_start_seek.store(seek.load(atomic::Ordering::Acquire), atomic::Ordering::Release);
+            .handle(|handler| {
+                handler.filter(|message| *message == Message::BeginRenderFrame).handle({
+                    use_arc!(request_play, playing, seek);
+                    move |_| {
+                        let now = Instant::now();
+                        let mut lock = play_start_at.lock().unwrap();
+                        if request_play.compare_exchange(true, false, atomic::Ordering::AcqRel, atomic::Ordering::Acquire).is_ok() && playing.compare_exchange(false, true, atomic::Ordering::AcqRel, atomic::Ordering::Acquire).is_ok() {
+                            *lock = now;
+                            play_start_seek.store(seek.load(atomic::Ordering::Acquire), atomic::Ordering::Release);
+                        }
+                        if playing.load(atomic::Ordering::Acquire) {
+                            seek.store((((now - *lock).as_secs_f64() * 60.) as usize + play_start_seek.load(atomic::Ordering::Acquire)) % 600, atomic::Ordering::Release);
+                        }
                     }
-                    if playing.load(atomic::Ordering::Acquire) {
-                        seek.store((((now - *lock).as_secs_f64() * 60.) as usize + play_start_seek.load(atomic::Ordering::Acquire)) % 600, atomic::Ordering::Release);
-                    }
-                }
-            }))
+                })
+            })
             .build(params.runtime().clone());
         GlobalUIStateImpl {
             request_play,
@@ -115,7 +119,7 @@ impl<K: 'static, T: ParameterValueType> GlobalUIStateImpl<K, T, ()> {
     }
 }
 
-impl<K: 'static, T: ParameterValueType, H: MessageHandler<Message> + Send + Sync + 'static> GlobalUIStateImpl<K, T, H> {
+impl<K: 'static, T: ParameterValueType, H: MessageHandler<Message, Runtime> + Send + Sync + 'static, Runtime> GlobalUIStateImpl<K, T, H, Runtime> {
     fn handle_by(handlers: &StdRwLock<Vec<Arc<dyn GlobalUIEventHandler<K, T> + Send + Sync>>>, event: GlobalUIEvent<K, T>) {
         for handler in handlers.read().unwrap().iter() {
             handler.handle(event.clone());
@@ -127,7 +131,13 @@ impl<K: 'static, T: ParameterValueType, H: MessageHandler<Message> + Send + Sync
     }
 }
 
-impl<K: 'static, T: ParameterValueType, H: MessageHandler<Message> + Send + Sync + 'static> GlobalUIState<K, T> for GlobalUIStateImpl<K, T, H> {
+impl<K, T, H, Runtime> GlobalUIState<K, T> for GlobalUIStateImpl<K, T, H, Runtime>
+where
+    K: 'static,
+    T: ParameterValueType,
+    H: MessageHandler<Message, Runtime> + Send + Sync + 'static,
+    Runtime: AsyncRuntime<()> + Clone + 'static,
+{
     fn register_global_ui_event_handler(&self, handler: Arc<impl GlobalUIEventHandler<K, T> + Send + Sync + 'static>) {
         self.handlers.write().unwrap().push(handler as Arc<dyn GlobalUIEventHandler<K, T> + Send + Sync + 'static>);
     }

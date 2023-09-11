@@ -1,20 +1,21 @@
 [package]
-name = "mpdelta_gui"
+name = "mpdelta_gui_hot_reload_lib"
 version = "0.1.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[lib]
+crate-type = ["rlib", "dylib"]
+
 [dependencies]
-arc-swap = { workspace = true }
-bitflags = { workspace = true }
-cgmath = { workspace = true }
-dashmap = { workspace = true }
+async-trait = { workspace = true }
 egui = { workspace = true }
-futures = { workspace = true }
 mpdelta_async_runtime = { workspace = true }
 mpdelta_core = { workspace = true }
-once_cell = { workspace = true }
+mpdelta_core_vulkano = { workspace = true }
+mpdelta_dyn_usecase = { workspace = true }
+mpdelta_gui = { workspace = true }
+mpdelta_renderer = { workspace = true }
 qcell = { workspace = true }
-regex = { workspace = true }
 tokio = { workspace = true }

@@ -13,7 +13,10 @@ use mpdelta_core::component::parameter::ParameterValueType;
 use std::sync::Arc;
 
 pub trait Gui<T> {
-    fn ui(&mut self, ctx: &Context, image: &mut impl ImageRegister<T>);
+    fn ui(&mut self, ctx: &Context, image: &mut impl ImageRegister<T>)
+    where
+        Self: Sized;
+    fn ui_dyn(&mut self, ctx: &Context, image: &mut dyn ImageRegister<T>);
 }
 
 pub struct MPDeltaGUI<K: 'static, T, VM, PreviewViewModel, TimelineViewModel, PropertyWindowViewModel> {
@@ -87,6 +90,7 @@ where
                         }
                     });
                     if ui.button("+").clicked() {
+                        println!("new_project1");
                         self.view_model.new_project();
                     }
                 });
@@ -127,5 +131,9 @@ where
                 self.preview.ui(ui, image);
             });
         });
+    }
+
+    fn ui_dyn(&mut self, ctx: &Context, mut image: &mut dyn ImageRegister<T::Image>) {
+        self.ui(ctx, &mut image);
     }
 }

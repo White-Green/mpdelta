@@ -52,7 +52,7 @@ impl<K, T> Drop for ProjectEditListenerGuard<K, T> {
 }
 
 #[async_trait]
-impl<K, T> Editor<K, T> for ProjectEditor<K, T> {
+impl<K, T: 'static> Editor<K, T> for ProjectEditor<K, T> {
     type Log = ProjectEditLog;
     type Err = ProjectEditError;
     type EditEventListenerGuard = ProjectEditListenerGuard<K, T>;

@@ -1,6 +1,7 @@
 use crate::global_ui_state::{GlobalUIEvent, GlobalUIEventHandler, GlobalUIState};
 use crate::viewmodel::ViewModelParams;
 use arc_swap::ArcSwapOption;
+use mpdelta_async_runtime::{AsyncRuntime, JoinHandle};
 use mpdelta_core::component::class::ComponentClass;
 use mpdelta_core::component::instance::ComponentInstance;
 use mpdelta_core::component::parameter::ParameterValueType;
@@ -12,9 +13,7 @@ use mpdelta_core::usecase::{RealtimeComponentRenderer, RealtimeRenderComponentUs
 use qcell::TCell;
 use std::future;
 use std::sync::{Arc, Mutex, OnceLock};
-use tokio::runtime::Handle;
 use tokio::sync::RwLock;
-use tokio::task::JoinHandle;
 
 pub trait PreviewViewModel<K: 'static, T: ParameterValueType> {
     fn get_preview_image(&self) -> Option<T::Image>;
@@ -25,16 +24,16 @@ pub trait PreviewViewModel<K: 'static, T: ParameterValueType> {
     fn set_seek(&self, seek: usize);
 }
 
-pub struct PreviewViewModelImpl<K: 'static, T, GlobalUIState, RealtimeRenderComponent, R, G> {
+pub struct PreviewViewModelImpl<K: 'static, T, GlobalUIState, RealtimeRenderComponent, R, G, Runtime, JoinHandle> {
     renderer: Arc<RealtimeRenderComponent>,
     real_time_renderer: Arc<ArcSwapOption<(R, StaticPointerOwned<TCell<K, ComponentInstance<K, T>>>, StaticPointer<RwLock<RootComponentClass<K, T>>>)>>,
     global_ui_state: Arc<GlobalUIState>,
-    create_renderer: Mutex<JoinHandle<()>>,
-    handle: Handle,
+    create_renderer: Mutex<JoinHandle>,
+    handle: Runtime,
     guard: OnceLock<G>,
 }
 
-impl<K, T, S, R, G> GlobalUIEventHandler<K, T> for PreviewViewModelImpl<K, T, S, R, R::Renderer, G>
+impl<K, T, S, R, G, Runtime> GlobalUIEventHandler<K, T> for PreviewViewModelImpl<K, T, S, R, R::Renderer, G, Runtime, Runtime::JoinHandle>
 where
     K: Send + Sync + 'static,
     T: ParameterValueType,
@@ -42,6 +41,7 @@ where
     R: RealtimeRenderComponentUsecase<K, T> + 'static,
     R::Renderer: 'static,
     G: Send + Sync + 'static,
+    Runtime: AsyncRuntime<()> + Clone + 'static,
 {
     fn handle(&self, event: GlobalUIEvent<K, T>) {
         match event {
@@ -54,7 +54,7 @@ where
     }
 }
 
-impl<K, T, S, R, G> EditEventListener<K, T> for PreviewViewModelImpl<K, T, S, R, R::Renderer, G>
+impl<K, T, S, R, G, Runtime> EditEventListener<K, T> for PreviewViewModelImpl<K, T, S, R, R::Renderer, G, Runtime, Runtime::JoinHandle>
 where
     K: Send + Sync + 'static,
     T: ParameterValueType,
@@ -62,6 +62,7 @@ where
     R: RealtimeRenderComponentUsecase<K, T> + 'static,
     R::Renderer: 'static,
     G: Send + Sync + 'static,
+    Runtime: AsyncRuntime<()> + Clone + 'static,
 {
     fn on_edit(&self, _: &StaticPointer<RwLock<RootComponentClass<K, T>>>, _: RootComponentEditEvent<K, T>) {
         let real_time_renderer = self.real_time_renderer.load();
@@ -82,11 +83,13 @@ where
     }
 }
 
-impl<K: Send + Sync + 'static, T: ParameterValueType> PreviewViewModelImpl<K, T, (), (), (), ()> {
+impl<K: Send + Sync + 'static, T: ParameterValueType> PreviewViewModelImpl<K, T, (), (), (), (), (), ()> {
     pub fn new<S: GlobalUIState<K, T>, P: ViewModelParams<K, T>>(
         global_ui_state: &Arc<S>,
         params: &P,
-    ) -> Arc<PreviewViewModelImpl<K, T, S, P::RealtimeRenderComponent, <P::RealtimeRenderComponent as RealtimeRenderComponentUsecase<K, T>>::Renderer, <P::SubscribeEditEvent as SubscribeEditEventUsecase<K, T>>::EditEventListenerGuard>> {
+    ) -> Arc<
+        PreviewViewModelImpl<K, T, S, P::RealtimeRenderComponent, <P::RealtimeRenderComponent as RealtimeRenderComponentUsecase<K, T>>::Renderer, <P::SubscribeEditEvent as SubscribeEditEventUsecase<K, T>>::EditEventListenerGuard, P::AsyncRuntime, <P::AsyncRuntime as AsyncRuntime<()>>::JoinHandle>,
+    > {
         let handle = params.runtime().clone();
         let arc = Arc::new(PreviewViewModelImpl {
             renderer: Arc::clone(params.realtime_render_component()),
@@ -103,7 +106,7 @@ impl<K: Send + Sync + 'static, T: ParameterValueType> PreviewViewModelImpl<K, T,
     }
 }
 
-impl<K, T, S, R, G> PreviewViewModelImpl<K, T, S, R, R::Renderer, G>
+impl<K, T, S, R, G, Runtime> PreviewViewModelImpl<K, T, S, R, R::Renderer, G, Runtime, Runtime::JoinHandle>
 where
     K: Send + Sync + 'static,
     T: ParameterValueType,
@@ -111,6 +114,7 @@ where
     R: RealtimeRenderComponentUsecase<K, T> + 'static,
     R::Renderer: 'static,
     G: Send + Sync + 'static,
+    Runtime: AsyncRuntime<()> + Clone + 'static,
 {
     fn create_real_time_renderer(&self, root_component_class: StaticPointer<RwLock<RootComponentClass<K, T>>>) {
         let mut create_renderer = self.create_renderer.lock().unwrap();
@@ -137,12 +141,13 @@ where
     }
 }
 
-impl<K, T, S, R, G> PreviewViewModel<K, T> for PreviewViewModelImpl<K, T, S, R, R::Renderer, G>
+impl<K, T, S, R, G, Runtime> PreviewViewModel<K, T> for PreviewViewModelImpl<K, T, S, R, R::Renderer, G, Runtime, Runtime::JoinHandle>
 where
     K: 'static,
     T: ParameterValueType,
     S: GlobalUIState<K, T>,
     R: RealtimeRenderComponentUsecase<K, T>,
+    Runtime: AsyncRuntime<()> + Clone,
 {
     fn get_preview_image(&self) -> Option<T::Image> {
         self.real_time_renderer.load().as_deref().and_then(|(renderer, _, _)| renderer.render_frame(self.seek()).ok())

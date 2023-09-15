@@ -3,15 +3,15 @@ use crate::component::link::MarkerLink;
 use crate::component::marker_pin::MarkerTime;
 use crate::component::parameter::placeholder::{Placeholder, TagAudio, TagImage};
 use crate::component::parameter::value::FrameVariableValue;
-use crate::component::parameter::{ComponentProcessorInputValue, Never, Parameter, ParameterFrameVariableValue, ParameterSelect, ParameterType, ParameterValueFixed, ParameterValueType};
+use crate::component::parameter::{AbstractFile, ComponentProcessorInputValue, Never, Parameter, ParameterFrameVariableValue, ParameterSelect, ParameterType, ParameterValueFixed, ParameterValueType};
 use crate::native::processor::NativeProcessor;
 use crate::ptr::StaticPointerCow;
 use crate::time::TimelineTime;
 use async_trait::async_trait;
-use cgmath::{Vector2, Vector3};
+
 use qcell::TCell;
 use std::borrow::Cow;
-use std::path::PathBuf;
+
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -55,17 +55,13 @@ pub struct NativeProcessorInput;
 impl ParameterValueType for NativeProcessorInput {
     type Image = Placeholder<TagImage>;
     type Audio = Placeholder<TagAudio>;
-    type Video = (Placeholder<TagImage>, Placeholder<TagAudio>);
-    type File = FrameVariableValue<PathBuf>;
+    type Binary = FrameVariableValue<AbstractFile>;
     type String = FrameVariableValue<String>;
-    type Select = FrameVariableValue<usize>;
-    type Boolean = FrameVariableValue<bool>;
-    type Radio = FrameVariableValue<bool>;
     type Integer = FrameVariableValue<i64>;
     type RealNumber = FrameVariableValue<f64>;
-    type Vec2 = FrameVariableValue<Vector2<f64>>;
-    type Vec3 = FrameVariableValue<Vector3<f64>>;
+    type Boolean = FrameVariableValue<bool>;
     type Dictionary = Never;
+    type Array = Never;
     type ComponentClass = Never;
 }
 

@@ -1,6 +1,6 @@
-use crate::component::parameter::{Never, Parameter, ParameterTypeExceptComponentClass, ParameterValueType};
+use crate::component::parameter::{AbstractFile, Never, Parameter, ParameterTypeExceptComponentClass, ParameterValueType};
 use crate::time::TimelineTime;
-use cgmath::{Vector2, Vector3};
+
 use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::path::PathBuf;
@@ -19,17 +19,13 @@ pub type ParameterNativeProcessorInputFixed<Image, Audio> = Parameter<NativeProc
 impl<Image: Clone + Send + Sync + 'static, Audio: Clone + Send + Sync + 'static> ParameterValueType for NativeProcessorInputFixed<Image, Audio> {
     type Image = Image;
     type Audio = Audio;
-    type Video = (Image, Audio);
-    type File = PathBuf;
+    type Binary = AbstractFile;
     type String = String;
-    type Select = usize;
-    type Boolean = bool;
-    type Radio = bool;
     type Integer = i64;
     type RealNumber = f64;
-    type Vec2 = Vector2<f64>;
-    type Vec3 = Vector3<f64>;
+    type Boolean = bool;
     type Dictionary = Never;
+    type Array = Never;
     type ComponentClass = Never;
 }
 
@@ -40,16 +36,12 @@ pub type ParameterNativeProcessorOutput<Image, Audio> = Parameter<NativeProcesso
 impl<Image: Clone + Send + Sync + 'static, Audio: Clone + Send + Sync + 'static> ParameterValueType for NativeProcessorOutput<Image, Audio> {
     type Image = Image;
     type Audio = Audio;
-    type Video = (Image, Audio);
-    type File = PathBuf;
+    type Binary = PathBuf;
     type String = String;
-    type Select = usize;
-    type Boolean = bool;
-    type Radio = bool;
     type Integer = i64;
     type RealNumber = f64;
-    type Vec2 = Vector2<f64>;
-    type Vec3 = Vector3<f64>;
+    type Boolean = bool;
     type Dictionary = HashMap<String, Parameter<NativeProcessorOutput<Image, Audio>>>;
+    type Array = Vec<Parameter<NativeProcessorOutput<Image, Audio>>>;
     type ComponentClass = Never;
 }

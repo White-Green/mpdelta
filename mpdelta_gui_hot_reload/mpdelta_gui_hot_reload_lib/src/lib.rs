@@ -23,17 +23,13 @@ pub struct ValueType;
 impl ParameterValueType for ValueType {
     type Image = ImageType;
     type Audio = ();
-    type Video = ();
-    type File = ();
+    type Binary = ();
     type String = ();
-    type Select = ();
-    type Boolean = ();
-    type Radio = ();
     type Integer = ();
     type RealNumber = ();
-    type Vec2 = ();
-    type Vec3 = ();
+    type Boolean = ();
     type Dictionary = ();
+    type Array = ();
     type ComponentClass = ();
 }
 

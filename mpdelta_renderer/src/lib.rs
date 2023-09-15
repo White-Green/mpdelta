@@ -3,7 +3,7 @@ use crate::cloneable_iterator::{CloneableIterator, CloneableIteratorMarker};
 use arc_swap::ArcSwapOption;
 use arrayvec::ArrayVec;
 use async_trait::async_trait;
-use cgmath::{One, Quaternion, Vector2, Vector3};
+use cgmath::{One, Quaternion};
 use dashmap::DashMap;
 use either::Either;
 use futures::stream::{self, StreamExt};
@@ -15,8 +15,8 @@ use mpdelta_core::component::marker_pin::{MarkerPin, MarkerTime};
 use mpdelta_core::component::parameter::placeholder::{Placeholder, TagAudio, TagImage};
 use mpdelta_core::component::parameter::value::{EasingValue, FrameVariableValue};
 use mpdelta_core::component::parameter::{
-    AudioRequiredParams, AudioRequiredParamsFrameVariable, ComponentProcessorInputValue, ImageRequiredParams, ImageRequiredParamsFixed, ImageRequiredParamsFrameVariable, ImageRequiredParamsTransform, ImageRequiredParamsTransformFrameVariable, Never, Opacity, Parameter, ParameterAllValues,
-    ParameterFrameVariableValue, ParameterNullableValue, ParameterSelect, ParameterValue, ParameterValueType, VariableParameterPriority, VariableParameterValue,
+    AbstractFile, AudioRequiredParams, AudioRequiredParamsFrameVariable, ComponentProcessorInputValue, ImageRequiredParams, ImageRequiredParamsFixed, ImageRequiredParamsFrameVariable, ImageRequiredParamsTransform, ImageRequiredParamsTransformFrameVariable, Never, Opacity, Parameter,
+    ParameterAllValues, ParameterFrameVariableValue, ParameterNullableValue, ParameterSelect, ParameterValue, ParameterValueType, VariableParameterPriority, VariableParameterValue,
 };
 use mpdelta_core::component::processor::{ComponentProcessor, ComponentProcessorBody, NativeProcessorExecutable, NativeProcessorInput};
 use mpdelta_core::core::{ComponentRendererBuilder, IdGenerator};
@@ -36,7 +36,7 @@ use std::future::Future;
 use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
 use std::ops::{Deref, Range};
-use std::path::PathBuf;
+
 use std::sync::Arc;
 use std::{array, future, iter};
 use thiserror::Error;
@@ -195,17 +195,13 @@ struct ValueCacheType<Image, Audio>(PhantomData<(Image, Audio)>);
 impl<Image: Send + Sync + 'static, Audio: Send + Sync + Clone + 'static> ParameterValueType for ValueCacheType<Image, Audio> {
     type Image = Arc<RwLock<BTreeMap<TimelineTime, Option<(Image, ImageRequiredParamsFixed)>>>>;
     type Audio = OnceCell<Option<(Audio, AudioRequiredParamsFrameVariable)>>;
-    type Video = ();
-    type File = OnceCell<Option<Arc<TimeSplitValue<TimelineTime, Option<Either<PathBuf, FrameVariableValue<PathBuf>>>>>>>;
+    type Binary = OnceCell<Option<Arc<TimeSplitValue<TimelineTime, Option<Either<AbstractFile, FrameVariableValue<AbstractFile>>>>>>>;
     type String = OnceCell<Option<Arc<TimeSplitValue<TimelineTime, Option<Either<String, FrameVariableValue<String>>>>>>>;
-    type Select = OnceCell<Option<Arc<TimeSplitValue<TimelineTime, Option<Either<usize, FrameVariableValue<usize>>>>>>>;
-    type Boolean = OnceCell<Option<Arc<TimeSplitValue<TimelineTime, Option<Either<bool, FrameVariableValue<bool>>>>>>>;
-    type Radio = OnceCell<Option<Arc<TimeSplitValue<TimelineTime, Option<Either<bool, FrameVariableValue<bool>>>>>>>;
     type Integer = OnceCell<Option<Arc<TimeSplitValue<TimelineTime, Option<Either<i64, FrameVariableValue<i64>>>>>>>;
     type RealNumber = OnceCell<Option<Arc<TimeSplitValue<TimelineTime, Option<Either<EasingValue<f64>, FrameVariableValue<f64>>>>>>>;
-    type Vec2 = OnceCell<Option<Arc<Vector2<TimeSplitValue<TimelineTime, Option<Either<EasingValue<f64>, FrameVariableValue<f64>>>>>>>>;
-    type Vec3 = OnceCell<Option<Arc<Vector3<TimeSplitValue<TimelineTime, Option<Either<EasingValue<f64>, FrameVariableValue<f64>>>>>>>>;
+    type Boolean = OnceCell<Option<Arc<TimeSplitValue<TimelineTime, Option<Either<bool, FrameVariableValue<bool>>>>>>>;
     type Dictionary = ();
+    type Array = ();
     type ComponentClass = ();
 }
 
@@ -273,17 +269,16 @@ fn value_into_processor_input_buffer<K: 'static>(param: ParameterValue<K>, key: 
         ParameterValue::None => ComponentProcessorInputValueBuffer::None,
         ParameterValue::Image(_) => unreachable!(),
         ParameterValue::Audio(_) => unreachable!(),
-        ParameterValue::Video(_) => unreachable!(),
-        ParameterValue::File(value) => ComponentProcessorInputValueBuffer::File(convert(value, key)),
+        ParameterValue::Binary(value) => ComponentProcessorInputValueBuffer::Binary(convert(value, key)),
         ParameterValue::String(value) => ComponentProcessorInputValueBuffer::String(convert(value, key)),
-        ParameterValue::Select(value) => ComponentProcessorInputValueBuffer::Select(convert(value, key)),
-        ParameterValue::Boolean(value) => ComponentProcessorInputValueBuffer::Boolean(convert(value, key)),
-        ParameterValue::Radio(value) => ComponentProcessorInputValueBuffer::Radio(convert(value, key)),
         ParameterValue::Integer(value) => ComponentProcessorInputValueBuffer::Integer(convert(value, key)),
         ParameterValue::RealNumber(value) => ComponentProcessorInputValueBuffer::RealNumber(convert(value, key)),
-        ParameterValue::Vec2(Vector2 { x, y }) => ComponentProcessorInputValueBuffer::Vec2(Vector2::new(convert(x, key), convert(y, key))),
-        ParameterValue::Vec3(Vector3 { x, y, z }) => ComponentProcessorInputValueBuffer::Vec3(Vector3::new(convert(x, key), convert(y, key), convert(z, key))),
+        ParameterValue::Boolean(value) => ComponentProcessorInputValueBuffer::Boolean(convert(value, key)),
         ParameterValue::Dictionary(value) => {
+            let _: Never = value;
+            unreachable!()
+        }
+        ParameterValue::Array(value) => {
             let _: Never = value;
             unreachable!()
         }
@@ -298,17 +293,13 @@ type ComponentProcessorInputValueBuffer<Image, Audio> = Parameter<ComponentProce
 impl<Image: Clone + Send + Sync + 'static, Audio: Clone + Send + Sync + 'static> ParameterValueType for ComponentProcessorInputBuffer<Image, Audio> {
     type Image = Image;
     type Audio = Audio;
-    type Video = (Image, Audio);
-    type File = TimeSplitValue<TimelineTime, Option<Either<PathBuf, FrameVariableValue<PathBuf>>>>;
+    type Binary = TimeSplitValue<TimelineTime, Option<Either<AbstractFile, FrameVariableValue<AbstractFile>>>>;
     type String = TimeSplitValue<TimelineTime, Option<Either<String, FrameVariableValue<String>>>>;
-    type Select = TimeSplitValue<TimelineTime, Option<Either<usize, FrameVariableValue<usize>>>>;
-    type Boolean = TimeSplitValue<TimelineTime, Option<Either<bool, FrameVariableValue<bool>>>>;
-    type Radio = TimeSplitValue<TimelineTime, Option<Either<bool, FrameVariableValue<bool>>>>;
     type Integer = TimeSplitValue<TimelineTime, Option<Either<i64, FrameVariableValue<i64>>>>;
     type RealNumber = TimeSplitValue<TimelineTime, Option<Either<EasingValue<f64>, FrameVariableValue<f64>>>>;
-    type Vec2 = Vector2<TimeSplitValue<TimelineTime, Option<Either<EasingValue<f64>, FrameVariableValue<f64>>>>>;
-    type Vec3 = Vector3<TimeSplitValue<TimelineTime, Option<Either<EasingValue<f64>, FrameVariableValue<f64>>>>>;
+    type Boolean = TimeSplitValue<TimelineTime, Option<Either<bool, FrameVariableValue<bool>>>>;
     type Dictionary = Never;
+    type Array = Never;
     type ComponentClass = ();
 }
 
@@ -319,17 +310,13 @@ type ComponentProcessorInputValueBufferRef<Image, Audio> = Parameter<ComponentPr
 impl<Image: Clone + Send + Sync + 'static, Audio: Clone + Send + Sync + 'static> ParameterValueType for ComponentProcessorInputBufferRef<Image, Audio> {
     type Image = Image;
     type Audio = Audio;
-    type Video = (Image, Audio);
-    type File = Arc<TimeSplitValue<TimelineTime, Option<Either<PathBuf, FrameVariableValue<PathBuf>>>>>;
+    type Binary = Arc<TimeSplitValue<TimelineTime, Option<Either<AbstractFile, FrameVariableValue<AbstractFile>>>>>;
     type String = Arc<TimeSplitValue<TimelineTime, Option<Either<String, FrameVariableValue<String>>>>>;
-    type Select = Arc<TimeSplitValue<TimelineTime, Option<Either<usize, FrameVariableValue<usize>>>>>;
-    type Boolean = Arc<TimeSplitValue<TimelineTime, Option<Either<bool, FrameVariableValue<bool>>>>>;
-    type Radio = Arc<TimeSplitValue<TimelineTime, Option<Either<bool, FrameVariableValue<bool>>>>>;
     type Integer = Arc<TimeSplitValue<TimelineTime, Option<Either<i64, FrameVariableValue<i64>>>>>;
     type RealNumber = Arc<TimeSplitValue<TimelineTime, Option<Either<EasingValue<f64>, FrameVariableValue<f64>>>>>;
-    type Vec2 = Arc<Vector2<TimeSplitValue<TimelineTime, Option<Either<EasingValue<f64>, FrameVariableValue<f64>>>>>>;
-    type Vec3 = Arc<Vector3<TimeSplitValue<TimelineTime, Option<Either<EasingValue<f64>, FrameVariableValue<f64>>>>>>;
+    type Boolean = Arc<TimeSplitValue<TimelineTime, Option<Either<bool, FrameVariableValue<bool>>>>>;
     type Dictionary = Never;
+    type Array = Never;
     type ComponentClass = ();
 }
 
@@ -344,17 +331,16 @@ fn nullable_into_processor_input_buffer_ref<K: 'static>(param: ParameterNullable
         ParameterNullableValue::None => Parameter::None,
         ParameterNullableValue::Image(_) => unreachable!(),
         ParameterNullableValue::Audio(_) => unreachable!(),
-        ParameterNullableValue::Video(_) => unreachable!(),
-        ParameterNullableValue::File(value) => Parameter::File(Arc::new(convert(value, key))),
+        ParameterNullableValue::Binary(value) => Parameter::Binary(Arc::new(convert(value, key))),
         ParameterNullableValue::String(value) => Parameter::String(Arc::new(convert(value, key))),
-        ParameterNullableValue::Select(value) => Parameter::Select(Arc::new(convert(value, key))),
-        ParameterNullableValue::Boolean(value) => Parameter::Boolean(Arc::new(convert(value, key))),
-        ParameterNullableValue::Radio(value) => Parameter::Radio(Arc::new(convert(value, key))),
         ParameterNullableValue::Integer(value) => Parameter::Integer(Arc::new(convert(value, key))),
         ParameterNullableValue::RealNumber(value) => Parameter::RealNumber(Arc::new(convert_easing(value, key))),
-        ParameterNullableValue::Vec2(Vector2 { x, y }) => Parameter::Vec2(Arc::new(Vector2::new(convert_easing(x, key), convert_easing(y, key)))),
-        ParameterNullableValue::Vec3(Vector3 { x, y, z }) => Parameter::Vec3(Arc::new(Vector3::new(convert_easing(x, key), convert_easing(y, key), convert_easing(z, key)))),
+        ParameterNullableValue::Boolean(value) => Parameter::Boolean(Arc::new(convert(value, key))),
         ParameterNullableValue::Dictionary(value) => {
+            let _: Never = value;
+            unreachable!()
+        }
+        ParameterNullableValue::Array(value) => {
             let _: Never = value;
             unreachable!()
         }
@@ -373,17 +359,16 @@ fn nullable_into_processor_input_buffer<K: 'static, Image: Clone + Send + Sync +
         ParameterNullableValue::None => Parameter::None,
         ParameterNullableValue::Image(_) => unreachable!(),
         ParameterNullableValue::Audio(_) => unreachable!(),
-        ParameterNullableValue::Video(_) => unreachable!(),
-        ParameterNullableValue::File(value) => Parameter::File(convert(value, key)),
+        ParameterNullableValue::Binary(value) => Parameter::Binary(convert(value, key)),
         ParameterNullableValue::String(value) => Parameter::String(convert(value, key)),
-        ParameterNullableValue::Select(value) => Parameter::Select(convert(value, key)),
-        ParameterNullableValue::Boolean(value) => Parameter::Boolean(convert(value, key)),
-        ParameterNullableValue::Radio(value) => Parameter::Radio(convert(value, key)),
         ParameterNullableValue::Integer(value) => Parameter::Integer(convert(value, key)),
         ParameterNullableValue::RealNumber(value) => Parameter::RealNumber(convert_easing(value, key)),
-        ParameterNullableValue::Vec2(Vector2 { x, y }) => Parameter::Vec2(Vector2::new(convert_easing(x, key), convert_easing(y, key))),
-        ParameterNullableValue::Vec3(Vector3 { x, y, z }) => Parameter::Vec3(Vector3::new(convert_easing(x, key), convert_easing(y, key), convert_easing(z, key))),
+        ParameterNullableValue::Boolean(value) => Parameter::Boolean(convert(value, key)),
         ParameterNullableValue::Dictionary(value) => {
+            let _: Never = value;
+            unreachable!()
+        }
+        ParameterNullableValue::Array(value) => {
             let _: Never = value;
             unreachable!()
         }
@@ -396,24 +381,13 @@ fn empty_input_buffer<T: ParameterValueType>(ty: &Parameter<T>, left: TimelineTi
         Parameter::None => Parameter::None,
         Parameter::Image(_) => unreachable!(),
         Parameter::Audio(_) => unreachable!(),
-        Parameter::Video(_) => unreachable!(),
-        Parameter::File(_) => Parameter::File(TimeSplitValue::new(left, None, right)),
+        Parameter::Binary(_) => Parameter::Binary(TimeSplitValue::new(left, None, right)),
         Parameter::String(_) => Parameter::String(TimeSplitValue::new(left, None, right)),
-        Parameter::Select(_) => Parameter::Select(TimeSplitValue::new(left, None, right)),
-        Parameter::Boolean(_) => Parameter::Boolean(TimeSplitValue::new(left, None, right)),
-        Parameter::Radio(_) => Parameter::Boolean(TimeSplitValue::new(left, None, right)),
         Parameter::Integer(_) => Parameter::Integer(TimeSplitValue::new(left, None, right)),
         Parameter::RealNumber(_) => Parameter::RealNumber(TimeSplitValue::new(left, None, right)),
-        Parameter::Vec2(_) => Parameter::Vec2(Vector2 {
-            x: TimeSplitValue::new(left, None, right),
-            y: TimeSplitValue::new(left, None, right),
-        }),
-        Parameter::Vec3(_) => Parameter::Vec3(Vector3 {
-            x: TimeSplitValue::new(left, None, right),
-            y: TimeSplitValue::new(left, None, right),
-            z: TimeSplitValue::new(left, None, right),
-        }),
+        Parameter::Boolean(_) => Parameter::Boolean(TimeSplitValue::new(left, None, right)),
         Parameter::Dictionary(_) => unreachable!(),
+        Parameter::Array(_) => unreachable!(),
         Parameter::ComponentClass(_) => Parameter::ComponentClass(()),
     }
 }
@@ -488,30 +462,13 @@ fn combine_params<Image: Clone + Send + Sync + 'static, Audio: Clone + Send + Sy
         }
         Parameter::Image(_) => unreachable!(),
         Parameter::Audio(_) => unreachable!(),
-        Parameter::Video(_) => unreachable!(),
-        Parameter::File(value1) => Parameter::File(override_time_split_value(value1, value2.as_file().unwrap(), ranges)),
+        Parameter::Binary(value1) => Parameter::Binary(override_time_split_value(value1, value2.as_file().unwrap(), ranges)),
         Parameter::String(value1) => Parameter::String(override_time_split_value(value1, value2.as_string().unwrap(), ranges)),
-        Parameter::Select(value1) => Parameter::Select(override_time_split_value(value1, value2.as_select().unwrap(), ranges)),
         Parameter::Boolean(value1) => Parameter::Boolean(override_time_split_value(value1, value2.as_boolean().unwrap(), ranges)),
-        Parameter::Radio(value1) => Parameter::Radio(override_time_split_value(value1, value2.as_radio().unwrap(), ranges)),
         Parameter::Integer(value1) => Parameter::Integer(override_time_split_value(value1, value2.as_integer().unwrap(), ranges)),
         Parameter::RealNumber(value1) => Parameter::RealNumber(override_time_split_value(value1, value2.as_real_number().unwrap(), ranges)),
-        Parameter::Vec2(Vector2 { x: value1x, y: value1y }) => {
-            let Vector2 { x: value2x, y: value2y } = &**value2.as_vec2().unwrap();
-            Parameter::Vec2(Vector2 {
-                x: override_time_split_value(value1x, value2x, ranges),
-                y: override_time_split_value(value1y, value2y, ranges),
-            })
-        }
-        Parameter::Vec3(Vector3 { x: value1x, y: value1y, z: value1z }) => {
-            let Vector3 { x: value2x, y: value2y, z: value2z } = &**value2.as_vec3().unwrap();
-            Parameter::Vec3(Vector3 {
-                x: override_time_split_value(value1x, value2x, ranges),
-                y: override_time_split_value(value1y, value2y, ranges),
-                z: override_time_split_value(value1z, value2z, ranges),
-            })
-        }
         Parameter::Dictionary(_) => unreachable!(),
+        Parameter::Array(_) => unreachable!(),
         Parameter::ComponentClass(_) => Parameter::ComponentClass(()),
     }
 }
@@ -873,8 +830,7 @@ impl<K, T: ParameterValueType, Id: IdGenerator + 'static> EvaluateAllComponent<K
                 }
                 Ok(Parameter::Audio(()))
             }
-            Parameter::Video(_) => unreachable!(),
-            Parameter::File(_) | Parameter::String(_) | Parameter::Select(_) | Parameter::Boolean(_) | Parameter::Radio(_) | Parameter::Integer(_) | Parameter::RealNumber(_) | Parameter::Vec2(_) | Parameter::Vec3(_) | Parameter::Dictionary(_) | Parameter::ComponentClass(_) => {
+            Parameter::Binary(_) | Parameter::String(_) | Parameter::Integer(_) | Parameter::RealNumber(_) | Parameter::Boolean(_) | Parameter::Dictionary(_) | Parameter::Array(_) | Parameter::ComponentClass(_) => {
                 let tasks = self
                     .functions
                     .iter()
@@ -1294,14 +1250,13 @@ impl<
                     .get_or_try_init(|| result.map(|result| Ok((result.into_audio().map_err(create_error)?, (*audio_required_params).as_ref().cloned().unwrap()))).transpose())
                     .map(Clone::clone)?
                     .map(Parameter::Audio)),
-                Parameter::Video(_) => unreachable!(),
-                Parameter::File(_) => Ok(cache_context
+                Parameter::Binary(_) => Ok(cache_context
                     .result_cache
                     .0
-                    .file
+                    .binary
                     .get_or_try_init(|| result.map(|result| result.into_file().map(Arc::new).map_err(create_error)).transpose())
                     .map(Clone::clone)?
-                    .map(Parameter::File)),
+                    .map(Parameter::Binary)),
                 Parameter::String(_) => Ok(cache_context
                     .result_cache
                     .0
@@ -1309,27 +1264,6 @@ impl<
                     .get_or_try_init(|| result.map(|result| result.into_string().map(Arc::new).map_err(create_error)).transpose())
                     .map(Clone::clone)?
                     .map(Parameter::String)),
-                Parameter::Select(_) => Ok(cache_context
-                    .result_cache
-                    .0
-                    .select
-                    .get_or_try_init(|| result.map(|result| result.into_select().map(Arc::new).map_err(create_error)).transpose())
-                    .map(Clone::clone)?
-                    .map(Parameter::Select)),
-                Parameter::Boolean(_) => Ok(cache_context
-                    .result_cache
-                    .0
-                    .boolean
-                    .get_or_try_init(|| result.map(|result| result.into_boolean().map(Arc::new).map_err(create_error)).transpose())
-                    .map(Clone::clone)?
-                    .map(Parameter::Boolean)),
-                Parameter::Radio(_) => Ok(cache_context
-                    .result_cache
-                    .0
-                    .radio
-                    .get_or_try_init(|| result.map(|result| result.into_radio().map(Arc::new).map_err(create_error)).transpose())
-                    .map(Clone::clone)?
-                    .map(Parameter::Radio)),
                 Parameter::Integer(_) => Ok(cache_context
                     .result_cache
                     .0
@@ -1344,21 +1278,15 @@ impl<
                     .get_or_try_init(|| result.map(|result| result.into_real_number().map(Arc::new).map_err(create_error)).transpose())
                     .map(Clone::clone)?
                     .map(Parameter::RealNumber)),
-                Parameter::Vec2(_) => Ok(cache_context
+                Parameter::Boolean(_) => Ok(cache_context
                     .result_cache
                     .0
-                    .vec2
-                    .get_or_try_init(|| result.map(|result| result.into_vec2().map(Arc::new).map_err(create_error)).transpose())
+                    .boolean
+                    .get_or_try_init(|| result.map(|result| result.into_boolean().map(Arc::new).map_err(create_error)).transpose())
                     .map(Clone::clone)?
-                    .map(Parameter::Vec2)),
-                Parameter::Vec3(_) => Ok(cache_context
-                    .result_cache
-                    .0
-                    .vec3
-                    .get_or_try_init(|| result.map(|result| result.into_vec3().map(Arc::new).map_err(create_error)).transpose())
-                    .map(Clone::clone)?
-                    .map(Parameter::Vec3)),
+                    .map(Parameter::Boolean)),
                 Parameter::Dictionary(_) => todo!(),
+                Parameter::Array(_) => todo!(),
                 Parameter::ComponentClass(_) => unreachable!(),
             }
         })
@@ -1432,17 +1360,13 @@ where
                         Parameter::None => ComponentProcessorInputValueBuffer::<T::Image, T::Audio>::None,
                         Parameter::Image(()) => ComponentProcessorInputValueBuffer::<T::Image, T::Audio>::Image(image_combiner.unwrap().collect()),
                         Parameter::Audio(()) => ComponentProcessorInputValueBuffer::<T::Image, T::Audio>::Audio(audio_combiner.unwrap().collect()),
-                        Parameter::Video(((), ())) => unreachable!(),
-                        Parameter::File(value) => ComponentProcessorInputValueBuffer::<T::Image, T::Audio>::File(value),
+                        Parameter::Binary(value) => ComponentProcessorInputValueBuffer::<T::Image, T::Audio>::Binary(value),
                         Parameter::String(value) => ComponentProcessorInputValueBuffer::<T::Image, T::Audio>::String(value),
-                        Parameter::Select(value) => ComponentProcessorInputValueBuffer::<T::Image, T::Audio>::Select(value),
-                        Parameter::Boolean(value) => ComponentProcessorInputValueBuffer::<T::Image, T::Audio>::Boolean(value),
-                        Parameter::Radio(value) => ComponentProcessorInputValueBuffer::<T::Image, T::Audio>::Radio(value),
                         Parameter::Integer(value) => ComponentProcessorInputValueBuffer::<T::Image, T::Audio>::Integer(value),
                         Parameter::RealNumber(value) => ComponentProcessorInputValueBuffer::<T::Image, T::Audio>::RealNumber(value),
-                        Parameter::Vec2(value) => ComponentProcessorInputValueBuffer::<T::Image, T::Audio>::Vec2(value),
-                        Parameter::Vec3(value) => ComponentProcessorInputValueBuffer::<T::Image, T::Audio>::Vec3(value),
+                        Parameter::Boolean(value) => ComponentProcessorInputValueBuffer::<T::Image, T::Audio>::Boolean(value),
                         Parameter::Dictionary(value) => ComponentProcessorInputValueBuffer::<T::Image, T::Audio>::Dictionary(value),
+                        Parameter::Array(value) => ComponentProcessorInputValueBuffer::<T::Image, T::Audio>::Array(value),
                         Parameter::ComponentClass(value) => ComponentProcessorInputValueBuffer::<T::Image, T::Audio>::ComponentClass(value),
                     }))
                 }
@@ -1483,15 +1407,14 @@ where
                                 expect: Parameter::Image(()),
                                 actual: actual.select(),
                             })?))),
-                            Parameter::Video(_) => unreachable!(),
-                            Parameter::File(_) => Ok(Some(Parameter::File(
+                            Parameter::Binary(_) => Ok(Some(Parameter::Binary(
                                 get_param
                                     .get_time_split_value(
                                         frames,
                                         |value| {
                                             Parameter::into_file(value).map_err(|actual| EvaluateError::OutputTypeMismatch {
                                                 component: component.clone(),
-                                                expect: Parameter::File(()),
+                                                expect: Parameter::Binary(()),
                                                 actual: actual.select(),
                                             })
                                         },
@@ -1509,57 +1432,6 @@ where
                                             Parameter::into_string(value).map_err(|actual| EvaluateError::OutputTypeMismatch {
                                                 component: component.clone(),
                                                 expect: Parameter::String(()),
-                                                actual: actual.select(),
-                                            })
-                                        },
-                                        left,
-                                        right,
-                                        key_arc,
-                                    )
-                                    .await?,
-                            ))),
-                            Parameter::Select(_) => Ok(Some(Parameter::Select(
-                                get_param
-                                    .get_time_split_value(
-                                        frames,
-                                        |value| {
-                                            Parameter::into_select(value).map_err(|actual| EvaluateError::OutputTypeMismatch {
-                                                component: component.clone(),
-                                                expect: Parameter::Select(()),
-                                                actual: actual.select(),
-                                            })
-                                        },
-                                        left,
-                                        right,
-                                        key_arc,
-                                    )
-                                    .await?,
-                            ))),
-                            Parameter::Boolean(_) => Ok(Some(Parameter::Boolean(
-                                get_param
-                                    .get_time_split_value(
-                                        frames,
-                                        |value| {
-                                            Parameter::into_boolean(value).map_err(|actual| EvaluateError::OutputTypeMismatch {
-                                                component: component.clone(),
-                                                expect: Parameter::Boolean(()),
-                                                actual: actual.select(),
-                                            })
-                                        },
-                                        left,
-                                        right,
-                                        key_arc,
-                                    )
-                                    .await?,
-                            ))),
-                            Parameter::Radio(_) => Ok(Some(Parameter::Radio(
-                                get_param
-                                    .get_time_split_value(
-                                        frames,
-                                        |value| {
-                                            Parameter::into_radio(value).map_err(|actual| EvaluateError::OutputTypeMismatch {
-                                                component: component.clone(),
-                                                expect: Parameter::Radio(()),
                                                 actual: actual.select(),
                                             })
                                         },
@@ -1603,31 +1475,14 @@ where
                                     )
                                     .await?,
                             ))),
-                            Parameter::Vec2(_) => Ok(Some(Parameter::Vec2(
+                            Parameter::Boolean(_) => Ok(Some(Parameter::Boolean(
                                 get_param
-                                    .get_time_split_value_array(
+                                    .get_time_split_value(
                                         frames,
                                         |value| {
-                                            Parameter::into_vec2(value).map_err(|actual| EvaluateError::OutputTypeMismatch {
+                                            Parameter::into_boolean(value).map_err(|actual| EvaluateError::OutputTypeMismatch {
                                                 component: component.clone(),
-                                                expect: Parameter::Vec2(()),
-                                                actual: actual.select(),
-                                            })
-                                        },
-                                        left,
-                                        right,
-                                        key_arc,
-                                    )
-                                    .await?,
-                            ))),
-                            Parameter::Vec3(_) => Ok(Some(Parameter::Vec3(
-                                get_param
-                                    .get_time_split_value_array(
-                                        frames,
-                                        |value| {
-                                            Parameter::into_vec3(value).map_err(|actual| EvaluateError::OutputTypeMismatch {
-                                                component: component.clone(),
-                                                expect: Parameter::Vec3(()),
+                                                expect: Parameter::Boolean(()),
                                                 actual: actual.select(),
                                             })
                                         },
@@ -1638,6 +1493,7 @@ where
                                     .await?,
                             ))),
                             Parameter::Dictionary(_) => todo!(),
+                            Parameter::Array(_) => todo!(),
                             Parameter::ComponentClass(_) => Ok(Some(Parameter::ComponentClass(()))),
                         }
                     }
@@ -1854,56 +1710,7 @@ fn evaluate_parameters<
                             Err(EvaluateError::InvalidVariableParameter { component: component.clone(), index })
                         }
                     }
-                    Parameter::Video(_) => {
-                        if let VariableParameterValue::MayComponent {
-                            params: Parameter::Video(Option::None),
-                            components,
-                            priority: _,
-                        } = param
-                        {
-                            let reference_functions0 = reference_functions.clone();
-                            let reference_functions1 = reference_functions.clone();
-                            let argument_reference_range = Arc::clone(argument_reference_range);
-                            let components = components.clone();
-                            let image_combiner_builder = Arc::clone(image_combiner_builder);
-                            let audio_combiner = audio_combiner_builder.new_combiner(());
-                            let default_range = Arc::clone(default_range);
-                            let key = Arc::clone(key);
-                            Ok(tokio::spawn(
-                                stream::iter(components.clone())
-                                    .map(move |component| {
-                                        // let range = argument_reference_range.get(&component).unwrap();
-                                        tokio::spawn(reference_functions0.0.get(&component).unwrap().call(FunctionArg(at, ParameterSelectValue(Parameter::Audio(())), image_size_request, Arc::clone(&key)))).map(|result| result.unwrap())
-                                    })
-                                    .buffered(16)
-                                    .try_fold(audio_combiner, |mut audio_combiner, param| {
-                                        if let Some(param) = param {
-                                            if let Parameter::Audio((image, param)) = param {
-                                                audio_combiner.add(image, param);
-                                            } else {
-                                                unreachable!()
-                                            }
-                                        }
-                                        future::ready(Ok(audio_combiner))
-                                    })
-                                    .map_ok(move |audio_combiner| ComponentProcessorInputValueBuffer::Video((ImageGenerator::new(reference_functions1, argument_reference_range, image_combiner_builder, components, image_size_request, default_range), audio_combiner.collect()))),
-                            ))
-                        } else {
-                            Err(EvaluateError::InvalidVariableParameter { component: component.clone(), index })
-                        }
-                    }
-                    ty @ (Parameter::None
-                    | Parameter::File(_)
-                    | Parameter::String(_)
-                    | Parameter::Select(_)
-                    | Parameter::Boolean(_)
-                    | Parameter::Radio(_)
-                    | Parameter::Integer(_)
-                    | Parameter::RealNumber(_)
-                    | Parameter::Vec2(_)
-                    | Parameter::Vec3(_)
-                    | Parameter::Dictionary(_)
-                    | Parameter::ComponentClass(_)) => match param {
+                    ty @ (Parameter::None | Parameter::Binary(_) | Parameter::String(_) | Parameter::Integer(_) | Parameter::RealNumber(_) | Parameter::Boolean(_) | Parameter::Dictionary(_) | Parameter::Array(_) | Parameter::ComponentClass(_)) => match param {
                         VariableParameterValue::Manually(param) => Ok(tokio::spawn(future::ready(Ok::<_, EvaluateError<K, T>>(change_type_parameter(value_into_processor_input_buffer(param.clone(), key)))))),
                         VariableParameterValue::MayComponent { params, components, priority } => {
                             let params = params.clone();
@@ -1973,30 +1780,14 @@ async fn check_in_cache<K, T: ParameterValueType + 'static, Id: IdGenerator + 's
                 return Some(Ok(cache.clone().map(Parameter::Audio)));
             }
         }
-        Parameter::Video(_) => unreachable!(),
-        Parameter::File(_) => {
-            if let Some(cache) = cache_context.result_cache.0.file.get() {
-                return Some(Ok(cache.clone().map(Parameter::File)));
+        Parameter::Binary(_) => {
+            if let Some(cache) = cache_context.result_cache.0.binary.get() {
+                return Some(Ok(cache.clone().map(Parameter::Binary)));
             }
         }
         Parameter::String(_) => {
             if let Some(cache) = cache_context.result_cache.0.string.get() {
                 return Some(Ok(cache.clone().map(Parameter::String)));
-            }
-        }
-        Parameter::Select(_) => {
-            if let Some(cache) = cache_context.result_cache.0.select.get() {
-                return Some(Ok(cache.clone().map(Parameter::Select)));
-            }
-        }
-        Parameter::Boolean(_) => {
-            if let Some(cache) = cache_context.result_cache.0.boolean.get() {
-                return Some(Ok(cache.clone().map(Parameter::Boolean)));
-            }
-        }
-        Parameter::Radio(_) => {
-            if let Some(cache) = cache_context.result_cache.0.radio.get() {
-                return Some(Ok(cache.clone().map(Parameter::Radio)));
             }
         }
         Parameter::Integer(_) => {
@@ -2009,17 +1800,13 @@ async fn check_in_cache<K, T: ParameterValueType + 'static, Id: IdGenerator + 's
                 return Some(Ok(cache.clone().map(Parameter::RealNumber)));
             }
         }
-        Parameter::Vec2(_) => {
-            if let Some(cache) = cache_context.result_cache.0.vec2.get() {
-                return Some(Ok(cache.clone().map(Parameter::Vec2)));
-            }
-        }
-        Parameter::Vec3(_) => {
-            if let Some(cache) = cache_context.result_cache.0.vec3.get() {
-                return Some(Ok(cache.clone().map(Parameter::Vec3)));
+        Parameter::Boolean(_) => {
+            if let Some(cache) = cache_context.result_cache.0.boolean.get() {
+                return Some(Ok(cache.clone().map(Parameter::Boolean)));
             }
         }
         Parameter::Dictionary(_) => todo!(),
+        Parameter::Array(_) => todo!(),
         Parameter::ComponentClass(_) => unreachable!(),
     }
     None
@@ -2153,17 +1940,16 @@ async fn get_param_at<K, T: ParameterValueType>(
         Parameter::None => Parameter::None,
         Parameter::Image(image_placeholder) => Parameter::Image(image_map.get(image_placeholder).unwrap().get(at, key).await?),
         Parameter::Audio(audio_placeholder) => Parameter::Audio(audio_map.get(audio_placeholder).unwrap().clone()),
-        Parameter::Video((image_placeholder, audio_placeholder)) => Parameter::Video((image_map.get(image_placeholder).unwrap().get(at, key).await?, audio_map.get(audio_placeholder).unwrap().clone())),
-        Parameter::File(value) => Parameter::File(value.get(at).unwrap().clone()),
+        Parameter::Binary(value) => Parameter::Binary(value.get(at).unwrap().clone()),
         Parameter::String(value) => Parameter::String(value.get(at).unwrap().clone()),
-        Parameter::Select(value) => Parameter::Select(*value.get(at).unwrap()),
-        Parameter::Boolean(value) => Parameter::Boolean(*value.get(at).unwrap()),
-        Parameter::Radio(value) => Parameter::Radio(*value.get(at).unwrap()),
         Parameter::Integer(value) => Parameter::Integer(*value.get(at).unwrap()),
         Parameter::RealNumber(value) => Parameter::RealNumber(*value.get(at).unwrap()),
-        Parameter::Vec2(value) => Parameter::Vec2(*value.get(at).unwrap()),
-        Parameter::Vec3(value) => Parameter::Vec3(*value.get(at).unwrap()),
+        Parameter::Boolean(value) => Parameter::Boolean(*value.get(at).unwrap()),
         Parameter::Dictionary(value) => {
+            let _: &Never = value;
+            unreachable!()
+        }
+        Parameter::Array(value) => {
             let _: &Never = value;
             unreachable!()
         }
@@ -2304,30 +2090,13 @@ fn into_frame_variable_value<Image: Clone + Send + Sync + 'static, Audio: Clone 
             audio_map.insert(id, audio);
             Parameter::Audio(id)
         }
-        Parameter::Video((image, audio)) => {
-            let id = id.load().as_deref().copied().unwrap_or_else(|| {
-                let new_id = PlaceholderListItem {
-                    image: Some(Placeholder::new(id_generator)),
-                    audio: Some(Placeholder::new(id_generator)),
-                };
-                id.compare_and_swap(&None::<Arc<_>>, Some(Arc::new(new_id))).as_deref().copied().unwrap_or(new_id)
-            });
-            let image_id = id.image.unwrap();
-            let audio_id = id.audio.unwrap();
-            image_map.insert(image_id, image);
-            audio_map.insert(audio_id, audio);
-            Parameter::Video((image_id, audio_id))
-        }
-        Parameter::File(value) => Parameter::File(FrameValues::new([value]).collect(frames, |[v]| v)),
+        Parameter::Binary(value) => Parameter::Binary(FrameValues::new([value]).collect(frames, |[v]| v)),
         Parameter::String(value) => Parameter::String(FrameValues::new([value]).collect(frames, |[v]| v)),
-        Parameter::Select(value) => Parameter::Select(FrameValues::new([value]).collect(frames, |[v]| v)),
-        Parameter::Boolean(value) => Parameter::Boolean(FrameValues::new([value]).collect(frames, |[v]| v)),
-        Parameter::Radio(value) => Parameter::Radio(FrameValues::new([value]).collect(frames, |[v]| v)),
         Parameter::Integer(value) => Parameter::Integer(FrameValues::new([value]).collect(frames, |[v]| v)),
         Parameter::RealNumber(value) => Parameter::RealNumber(FrameValuesEasing::new([value]).collect(frames, |[v]| v, |_| 0.)),
-        Parameter::Vec2(value) => Parameter::Vec2(FrameValuesEasing::new(value.into()).collect(frames, From::from, |_| 0.)),
-        Parameter::Vec3(value) => Parameter::Vec3(FrameValuesEasing::new(value.into()).collect(frames, From::from, |_| 0.)),
+        Parameter::Boolean(value) => Parameter::Boolean(FrameValues::new([value]).collect(frames, |[v]| v)),
         Parameter::Dictionary(_value) => todo!(),
+        Parameter::Array(_value) => todo!(),
         Parameter::ComponentClass(()) => todo!(),
     }
 }
@@ -2337,17 +2106,13 @@ fn into_component_processor_input_value<Image: Clone + Send + Sync + 'static, Au
         Parameter::None => Parameter::None,
         Parameter::Image(_) => Parameter::Image(todo!()),
         Parameter::Audio(_) => Parameter::Audio(todo!()),
-        Parameter::Video(_) => Parameter::Video(todo!()),
-        Parameter::File(value) => Parameter::File(value),
+        Parameter::Binary(value) => Parameter::Binary(value),
         Parameter::String(value) => Parameter::String(value),
-        Parameter::Select(value) => Parameter::Select(value),
-        Parameter::Boolean(value) => Parameter::Boolean(value),
-        Parameter::Radio(value) => Parameter::Radio(value),
         Parameter::Integer(value) => Parameter::Integer(value),
         Parameter::RealNumber(value) => Parameter::RealNumber(value),
-        Parameter::Vec2(value) => Parameter::Vec2(value),
-        Parameter::Vec3(value) => Parameter::Vec3(value),
+        Parameter::Boolean(value) => Parameter::Boolean(value),
         Parameter::Dictionary(value) => Parameter::Dictionary(value),
+        Parameter::Array(value) => Parameter::Array(value),
         Parameter::ComponentClass(value) => Parameter::ComponentClass(value),
     }
 }
@@ -2430,17 +2195,13 @@ fn change_type_parameter<Image1: Clone + Send + Sync + 'static, Image2: Clone + 
         ComponentProcessorInputValueBuffer::None => Parameter::None,
         ComponentProcessorInputValueBuffer::Image(_) => unreachable!(),
         ComponentProcessorInputValueBuffer::Audio(_) => unreachable!(),
-        ComponentProcessorInputValueBuffer::Video(_) => unreachable!(),
-        ComponentProcessorInputValueBuffer::File(value) => Parameter::File(value),
+        ComponentProcessorInputValueBuffer::Binary(value) => Parameter::Binary(value),
         ComponentProcessorInputValueBuffer::String(value) => Parameter::String(value),
-        ComponentProcessorInputValueBuffer::Select(value) => Parameter::Select(value),
-        ComponentProcessorInputValueBuffer::Boolean(value) => Parameter::Boolean(value),
-        ComponentProcessorInputValueBuffer::Radio(value) => Parameter::Radio(value),
         ComponentProcessorInputValueBuffer::Integer(value) => Parameter::Integer(value),
         ComponentProcessorInputValueBuffer::RealNumber(value) => Parameter::RealNumber(value),
-        ComponentProcessorInputValueBuffer::Vec2(value) => Parameter::Vec2(value),
-        ComponentProcessorInputValueBuffer::Vec3(value) => Parameter::Vec3(value),
+        ComponentProcessorInputValueBuffer::Boolean(value) => Parameter::Boolean(value),
         ComponentProcessorInputValueBuffer::Dictionary(value) => Parameter::Dictionary(value),
+        ComponentProcessorInputValueBuffer::Array(value) => Parameter::Array(value),
         ComponentProcessorInputValueBuffer::ComponentClass(value) => Parameter::ComponentClass(value),
     }
 }

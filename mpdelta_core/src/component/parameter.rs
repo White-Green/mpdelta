@@ -34,44 +34,6 @@ pub trait ParameterValueType: 'static + Send + Sync {
     type ComponentClass: 'static + Clone + Send + Sync;
 }
 
-// impl<A, B> ParameterValueType for (A, B)
-// where
-//     A: ParameterValueType,
-//     B: ParameterValueType,
-// {
-//     type Image = (A::Image, B::Image);
-//     type Audio = (A::Audio, B::Audio);
-//     type Video = (A::Video, B::Video);
-//     type Binary = (A::Binary, B::Binary);
-//     type String = (A::String, B::String);
-//     type Select = (A::Select, B::Select);
-//     type Boolean = (A::Boolean, B::Boolean);
-//     type Radio = (A::Radio, B::Radio);
-//     type Integer = (A::Integer, B::Integer);
-//     type RealNumber = (A::RealNumber, B::RealNumber);
-//     type Vec2 = (A::Vec2, B::Vec2);
-//     type Vec3 = (A::Vec3, B::Vec3);
-//     type Dictionary = (A::Dictionary, B::Dictionary);
-//     type ComponentClass = (A::ComponentClass, B::ComponentClass);
-// }
-
-// impl<T: ParameterValueType> ParameterValueType for Option<T> {
-//     type Image = Option<T::Image>;
-//     type Audio = Option<T::Audio>;
-//     type Video = Option<T::Video>;
-//     type Binary = Option<T::Binary>;
-//     type String = Option<T::String>;
-//     type Select = Option<T::Select>;
-//     type Boolean = Option<T::Boolean>;
-//     type Radio = Option<T::Radio>;
-//     type Integer = Option<T::Integer>;
-//     type RealNumber = Option<T::RealNumber>;
-//     type Vec2 = Option<T::Vec2>;
-//     type Vec3 = Option<T::Vec3>;
-//     type Dictionary = Option<T::Dictionary>;
-//     type ComponentClass = Option<T::ComponentClass>;
-// }
-
 pub enum Parameter<Type: ParameterValueType> {
     None,
     Image(Type::Image),
@@ -108,7 +70,7 @@ impl<Type: ParameterValueType> Parameter<Type> {
             Err(self)
         }
     }
-    pub fn into_file(self) -> Result<Type::Binary, Self> {
+    pub fn into_binary(self) -> Result<Type::Binary, Self> {
         if let Parameter::Binary(value) = self {
             Ok(value)
         } else {
@@ -185,7 +147,7 @@ impl<Type: ParameterValueType> Parameter<Type> {
             None
         }
     }
-    pub fn as_file(&self) -> Option<&Type::Binary> {
+    pub fn as_binary(&self) -> Option<&Type::Binary> {
         if let Parameter::Binary(value) = self {
             Some(value)
         } else {

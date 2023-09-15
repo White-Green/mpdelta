@@ -462,11 +462,11 @@ fn combine_params<Image: Clone + Send + Sync + 'static, Audio: Clone + Send + Sy
         }
         Parameter::Image(_) => unreachable!(),
         Parameter::Audio(_) => unreachable!(),
-        Parameter::Binary(value1) => Parameter::Binary(override_time_split_value(value1, value2.as_file().unwrap(), ranges)),
+        Parameter::Binary(value1) => Parameter::Binary(override_time_split_value(value1, value2.as_binary().unwrap(), ranges)),
         Parameter::String(value1) => Parameter::String(override_time_split_value(value1, value2.as_string().unwrap(), ranges)),
-        Parameter::Boolean(value1) => Parameter::Boolean(override_time_split_value(value1, value2.as_boolean().unwrap(), ranges)),
         Parameter::Integer(value1) => Parameter::Integer(override_time_split_value(value1, value2.as_integer().unwrap(), ranges)),
         Parameter::RealNumber(value1) => Parameter::RealNumber(override_time_split_value(value1, value2.as_real_number().unwrap(), ranges)),
+        Parameter::Boolean(value1) => Parameter::Boolean(override_time_split_value(value1, value2.as_boolean().unwrap(), ranges)),
         Parameter::Dictionary(_) => unreachable!(),
         Parameter::Array(_) => unreachable!(),
         Parameter::ComponentClass(_) => Parameter::ComponentClass(()),
@@ -1254,7 +1254,7 @@ impl<
                     .result_cache
                     .0
                     .binary
-                    .get_or_try_init(|| result.map(|result| result.into_file().map(Arc::new).map_err(create_error)).transpose())
+                    .get_or_try_init(|| result.map(|result| result.into_binary().map(Arc::new).map_err(create_error)).transpose())
                     .map(Clone::clone)?
                     .map(Parameter::Binary)),
                 Parameter::String(_) => Ok(cache_context
@@ -1412,7 +1412,7 @@ where
                                     .get_time_split_value(
                                         frames,
                                         |value| {
-                                            Parameter::into_file(value).map_err(|actual| EvaluateError::OutputTypeMismatch {
+                                            Parameter::into_binary(value).map_err(|actual| EvaluateError::OutputTypeMismatch {
                                                 component: component.clone(),
                                                 expect: Parameter::Binary(()),
                                                 actual: actual.select(),

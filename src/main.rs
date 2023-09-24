@@ -96,7 +96,7 @@ fn main() {
         },
         ..VulkanoConfig::default()
     }));
-    let event_loop = EventLoop::new();
+    let event_loop=EventLoop::new();
     let windows = VulkanoWindows::default();
     let runtime = Runtime::new().unwrap();
     let id_generator = Arc::new(UniqueIdGenerator::new());

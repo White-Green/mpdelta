@@ -2,7 +2,7 @@ use crate::common::time_split_value::TimeSplitValue;
 use crate::component::instance::ComponentInstance;
 use crate::component::marker_pin::MarkerPin;
 use crate::component::parameter::placeholder::{Placeholder, TagAudio, TagImage};
-use crate::component::parameter::value::{DefaultEasing, EasingValue, FrameVariableValue};
+use crate::component::parameter::value::{DefaultEasing, DynEditableSelfEasingValue, DynEditableSingleValue, EasingValue, FrameVariableValue};
 use crate::ptr::StaticPointer;
 use crate::time::TimelineTime;
 use cgmath::{One, Quaternion, Vector3};
@@ -629,11 +629,11 @@ pub type ParameterValue<K> = Parameter<Value<K>>;
 impl<K: 'static> ParameterValueType for Value<K> {
     type Image = Placeholder<TagImage>;
     type Audio = Placeholder<TagAudio>;
-    type Binary = TimeSplitValue<StaticPointer<TCell<K, MarkerPin>>, AbstractFile>;
-    type String = TimeSplitValue<StaticPointer<TCell<K, MarkerPin>>, String>;
-    type Integer = TimeSplitValue<StaticPointer<TCell<K, MarkerPin>>, i64>;
+    type Binary = TimeSplitValue<StaticPointer<TCell<K, MarkerPin>>, EasingValue<AbstractFile>>;
+    type String = TimeSplitValue<StaticPointer<TCell<K, MarkerPin>>, EasingValue<String>>;
+    type Integer = TimeSplitValue<StaticPointer<TCell<K, MarkerPin>>, EasingValue<i64>>;
     type RealNumber = TimeSplitValue<StaticPointer<TCell<K, MarkerPin>>, EasingValue<f64>>;
-    type Boolean = TimeSplitValue<StaticPointer<TCell<K, MarkerPin>>, bool>;
+    type Boolean = TimeSplitValue<StaticPointer<TCell<K, MarkerPin>>, EasingValue<bool>>;
     type Dictionary = Never;
     type Array = Never;
     type ComponentClass = ();
@@ -647,11 +647,11 @@ pub type ComponentProcessorInputValue = Parameter<ComponentProcessorInput>;
 impl ParameterValueType for ComponentProcessorInput {
     type Image = Placeholder<TagImage>;
     type Audio = Placeholder<TagAudio>;
-    type Binary = TimeSplitValue<TimelineTime, Option<Either<AbstractFile, FrameVariableValue<AbstractFile>>>>;
-    type String = TimeSplitValue<TimelineTime, Option<Either<String, FrameVariableValue<String>>>>;
-    type Integer = TimeSplitValue<TimelineTime, Option<Either<i64, FrameVariableValue<i64>>>>;
+    type Binary = TimeSplitValue<TimelineTime, Option<Either<EasingValue<AbstractFile>, FrameVariableValue<AbstractFile>>>>;
+    type String = TimeSplitValue<TimelineTime, Option<Either<EasingValue<String>, FrameVariableValue<String>>>>;
+    type Integer = TimeSplitValue<TimelineTime, Option<Either<EasingValue<i64>, FrameVariableValue<i64>>>>;
     type RealNumber = TimeSplitValue<TimelineTime, Option<Either<EasingValue<f64>, FrameVariableValue<f64>>>>;
-    type Boolean = TimeSplitValue<TimelineTime, Option<Either<bool, FrameVariableValue<bool>>>>;
+    type Boolean = TimeSplitValue<TimelineTime, Option<Either<EasingValue<bool>, FrameVariableValue<bool>>>>;
     type Dictionary = Never;
     type Array = Never;
     type ComponentClass = ();
@@ -685,11 +685,11 @@ pub type ParameterNullableValue<K> = Parameter<NullableValue<K>>;
 impl<K: 'static> ParameterValueType for NullableValue<K> {
     type Image = Option<Placeholder<TagImage>>;
     type Audio = Option<Placeholder<TagAudio>>;
-    type Binary = TimeSplitValue<StaticPointer<TCell<K, MarkerPin>>, Option<AbstractFile>>;
-    type String = TimeSplitValue<StaticPointer<TCell<K, MarkerPin>>, Option<String>>;
-    type Integer = TimeSplitValue<StaticPointer<TCell<K, MarkerPin>>, Option<i64>>;
+    type Binary = TimeSplitValue<StaticPointer<TCell<K, MarkerPin>>, Option<EasingValue<AbstractFile>>>;
+    type String = TimeSplitValue<StaticPointer<TCell<K, MarkerPin>>, Option<EasingValue<String>>>;
+    type Integer = TimeSplitValue<StaticPointer<TCell<K, MarkerPin>>, Option<EasingValue<i64>>>;
     type RealNumber = TimeSplitValue<StaticPointer<TCell<K, MarkerPin>>, Option<EasingValue<f64>>>;
-    type Boolean = TimeSplitValue<StaticPointer<TCell<K, MarkerPin>>, Option<bool>>;
+    type Boolean = TimeSplitValue<StaticPointer<TCell<K, MarkerPin>>, Option<EasingValue<bool>>>;
     type Dictionary = Never;
     type Array = Never;
     type ComponentClass = Option<()>;
@@ -706,11 +706,11 @@ pub type ParameterTypedValue<K> = Parameter<TypedValue<K>>;
 impl<K: 'static> ParameterValueType for TypedValue<K> {
     type Image = Placeholder<TagImage>;
     type Audio = Placeholder<TagAudio>;
-    type Binary = (Option<Box<[String]>>, TimeSplitValue<StaticPointer<TCell<K, MarkerPin>>, AbstractFile>);
-    type String = (Option<Range<usize>>, TimeSplitValue<StaticPointer<TCell<K, MarkerPin>>, String>);
-    type Integer = (Option<Range<i64>>, TimeSplitValue<StaticPointer<TCell<K, MarkerPin>>, i64>);
+    type Binary = (Option<Box<[String]>>, TimeSplitValue<StaticPointer<TCell<K, MarkerPin>>, EasingValue<AbstractFile>>);
+    type String = (Option<Range<usize>>, TimeSplitValue<StaticPointer<TCell<K, MarkerPin>>, EasingValue<String>>);
+    type Integer = (Option<Range<i64>>, TimeSplitValue<StaticPointer<TCell<K, MarkerPin>>, EasingValue<i64>>);
     type RealNumber = (Option<Range<f64>>, TimeSplitValue<StaticPointer<TCell<K, MarkerPin>>, EasingValue<f64>>);
-    type Boolean = TimeSplitValue<StaticPointer<TCell<K, MarkerPin>>, bool>;
+    type Boolean = TimeSplitValue<StaticPointer<TCell<K, MarkerPin>>, EasingValue<bool>>;
     type Dictionary = (Vec<(String, Parameter<Type>)>, TimeSplitValue<StaticPointer<TCell<K, MarkerPin>>, HashMap<String, ParameterValue<K>>>);
     type Array = (Vec<Parameter<Type>>, TimeSplitValue<StaticPointer<TCell<K, MarkerPin>>, Vec<ParameterValue<K>>>);
     type ComponentClass = ();
@@ -723,11 +723,11 @@ pub type ParameterValueFixed = Parameter<ValueFixed>;
 impl ParameterValueType for ValueFixed {
     type Image = Placeholder<TagImage>;
     type Audio = Placeholder<TagAudio>;
-    type Binary = AbstractFile;
-    type String = String;
-    type Integer = i64;
-    type RealNumber = f64;
-    type Boolean = bool;
+    type Binary = DynEditableSingleValue<AbstractFile>;
+    type String = DynEditableSingleValue<String>;
+    type Integer = DynEditableSingleValue<i64>;
+    type RealNumber = DynEditableSingleValue<f64>;
+    type Boolean = DynEditableSingleValue<bool>;
     type Dictionary = HashMap<String, ParameterValueFixed>;
     type Array = Vec<ParameterValueFixed>;
     type ComponentClass = ();
@@ -740,11 +740,11 @@ pub type ParameterValueFixedExceptComponentClass = Parameter<ValueFixedExceptCom
 impl ParameterValueType for ValueFixedExceptComponentClass {
     type Image = Placeholder<TagImage>;
     type Audio = Placeholder<TagAudio>;
-    type Binary = AbstractFile;
-    type String = String;
-    type Integer = i64;
-    type RealNumber = f64;
-    type Boolean = bool;
+    type Binary = DynEditableSingleValue<AbstractFile>;
+    type String = DynEditableSingleValue<String>;
+    type Integer = DynEditableSingleValue<i64>;
+    type RealNumber = DynEditableSingleValue<f64>;
+    type Boolean = DynEditableSingleValue<bool>;
     type Dictionary = HashMap<String, ParameterValueFixedExceptComponentClass>;
     type Array = Vec<ParameterValueFixedExceptComponentClass>;
     type ComponentClass = Never;
@@ -921,9 +921,9 @@ pub struct ImageRequiredParams<K: 'static, T> {
 
 impl<K, T> ImageRequiredParams<K, T> {
     pub fn new_default(marker_left: &StaticPointer<TCell<K, MarkerPin>>, marker_right: &StaticPointer<TCell<K, MarkerPin>>) -> ImageRequiredParams<K, T> {
-        let one = TimeSplitValue::new(marker_left.clone(), EasingValue { from: 1., to: 1., easing: Arc::new(DefaultEasing) }, marker_right.clone());
+        let one = TimeSplitValue::new(marker_left.clone(), EasingValue::new(DynEditableSelfEasingValue(1., 1.), Arc::new(DefaultEasing)), marker_right.clone());
         let one_value = VariableParameterValue::Manually(one);
-        let zero = VariableParameterValue::Manually(TimeSplitValue::new(marker_left.clone(), EasingValue { from: 0., to: 0., easing: Arc::new(DefaultEasing) }, marker_right.clone()));
+        let zero = VariableParameterValue::Manually(TimeSplitValue::new(marker_left.clone(), EasingValue::new(DynEditableSelfEasingValue(0., 0.), Arc::new(DefaultEasing)), marker_right.clone()));
         ImageRequiredParams {
             aspect_ratio: (1, 1),
             transform: ImageRequiredParamsTransform::Params {
@@ -933,20 +933,12 @@ impl<K, T> ImageRequiredParams<K, T> {
                     z: one_value,
                 },
                 translate: Vector3 { x: zero.clone(), y: zero.clone(), z: zero.clone() },
-                rotate: TimeSplitValue::new(
-                    marker_left.clone(),
-                    EasingValue {
-                        from: Quaternion::one(),
-                        to: Quaternion::one(),
-                        easing: Arc::new(DefaultEasing),
-                    },
-                    marker_right.clone(),
-                ),
+                rotate: TimeSplitValue::new(marker_left.clone(), EasingValue::new(DynEditableSelfEasingValue(Quaternion::one(), Quaternion::one()), Arc::new(DefaultEasing)), marker_right.clone()),
                 scale_center: Vector3 { x: zero.clone(), y: zero.clone(), z: zero.clone() },
                 rotate_center: Vector3 { x: zero.clone(), y: zero.clone(), z: zero },
             },
             background_color: [0; 4],
-            opacity: TimeSplitValue::new(marker_left.clone(), EasingValue { from: 1., to: 1., easing: Arc::new(DefaultEasing) }, marker_right.clone()),
+            opacity: TimeSplitValue::new(marker_left.clone(), EasingValue::new(DynEditableSelfEasingValue(1., 1.), Arc::new(DefaultEasing)), marker_right.clone()),
             blend_mode: TimeSplitValue::new(marker_left.clone(), Default::default(), marker_right.clone()),
             composite_operation: TimeSplitValue::new(marker_left.clone(), Default::default(), marker_right.clone()),
         }

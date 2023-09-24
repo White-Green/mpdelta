@@ -66,13 +66,12 @@ impl<K, Id, ImageCombinerBuilder, AudioCombinerBuilder> MPDeltaRendererBuilder<K
 }
 
 #[async_trait]
-impl<
-        K,
-        T: ParameterValueType + 'static,
-        ImageCombinerBuilder: CombinerBuilder<T::Image, Request = ImageSizeRequest, Param = ImageRequiredParamsFixed> + 'static,
-        AudioCombinerBuilder: CombinerBuilder<T::Audio, Request = (), Param = AudioRequiredParamsFrameVariable> + 'static,
-        Id: IdGenerator + 'static,
-    > ComponentRendererBuilder<K, T> for MPDeltaRendererBuilder<K, Id, ImageCombinerBuilder, AudioCombinerBuilder>
+impl<K, T, ImageCombinerBuilder, AudioCombinerBuilder, Id> ComponentRendererBuilder<K, T> for MPDeltaRendererBuilder<K, Id, ImageCombinerBuilder, AudioCombinerBuilder>
+where
+    T: ParameterValueType + 'static,
+    ImageCombinerBuilder: CombinerBuilder<T::Image, Request = ImageSizeRequest, Param = ImageRequiredParamsFixed> + 'static,
+    AudioCombinerBuilder: CombinerBuilder<T::Audio, Request = (), Param = AudioRequiredParamsFrameVariable> + 'static,
+    Id: IdGenerator + 'static,
 {
     type Err = Infallible;
     type Renderer = MPDeltaRenderer<K, T, ImageCombinerBuilder, AudioCombinerBuilder, Id>;
@@ -144,13 +143,12 @@ async fn wait_for_drop_arc_inner<T>(arc: Arc<T>) {
     }
 }
 
-impl<
-        K,
-        T: ParameterValueType + 'static,
-        ImageCombinerBuilder: CombinerBuilder<T::Image, Request = ImageSizeRequest, Param = ImageRequiredParamsFixed> + 'static,
-        AudioCombinerBuilder: CombinerBuilder<T::Audio, Request = (), Param = AudioRequiredParamsFrameVariable> + 'static,
-        Id: IdGenerator + 'static,
-    > RealtimeComponentRenderer<T> for MPDeltaRenderer<K, T, ImageCombinerBuilder, AudioCombinerBuilder, Id>
+impl<K, T, ImageCombinerBuilder, AudioCombinerBuilder, Id> RealtimeComponentRenderer<T> for MPDeltaRenderer<K, T, ImageCombinerBuilder, AudioCombinerBuilder, Id>
+where
+    T: ParameterValueType + 'static,
+    ImageCombinerBuilder: CombinerBuilder<T::Image, Request = ImageSizeRequest, Param = ImageRequiredParamsFixed> + 'static,
+    AudioCombinerBuilder: CombinerBuilder<T::Audio, Request = (), Param = AudioRequiredParamsFrameVariable> + 'static,
+    Id: IdGenerator + 'static,
 {
     type Err = RenderError<K, T>;
 
@@ -195,11 +193,11 @@ struct ValueCacheType<Image, Audio>(PhantomData<(Image, Audio)>);
 impl<Image: Send + Sync + 'static, Audio: Send + Sync + Clone + 'static> ParameterValueType for ValueCacheType<Image, Audio> {
     type Image = Arc<RwLock<BTreeMap<TimelineTime, Option<(Image, ImageRequiredParamsFixed)>>>>;
     type Audio = OnceCell<Option<(Audio, AudioRequiredParamsFrameVariable)>>;
-    type Binary = OnceCell<Option<Arc<TimeSplitValue<TimelineTime, Option<Either<AbstractFile, FrameVariableValue<AbstractFile>>>>>>>;
-    type String = OnceCell<Option<Arc<TimeSplitValue<TimelineTime, Option<Either<String, FrameVariableValue<String>>>>>>>;
-    type Integer = OnceCell<Option<Arc<TimeSplitValue<TimelineTime, Option<Either<i64, FrameVariableValue<i64>>>>>>>;
+    type Binary = OnceCell<Option<Arc<TimeSplitValue<TimelineTime, Option<Either<EasingValue<AbstractFile>, FrameVariableValue<AbstractFile>>>>>>>;
+    type String = OnceCell<Option<Arc<TimeSplitValue<TimelineTime, Option<Either<EasingValue<String>, FrameVariableValue<String>>>>>>>;
+    type Integer = OnceCell<Option<Arc<TimeSplitValue<TimelineTime, Option<Either<EasingValue<i64>, FrameVariableValue<i64>>>>>>>;
     type RealNumber = OnceCell<Option<Arc<TimeSplitValue<TimelineTime, Option<Either<EasingValue<f64>, FrameVariableValue<f64>>>>>>>;
-    type Boolean = OnceCell<Option<Arc<TimeSplitValue<TimelineTime, Option<Either<bool, FrameVariableValue<bool>>>>>>>;
+    type Boolean = OnceCell<Option<Arc<TimeSplitValue<TimelineTime, Option<Either<EasingValue<bool>, FrameVariableValue<bool>>>>>>>;
     type Dictionary = ();
     type Array = ();
     type ComponentClass = ();
@@ -293,11 +291,11 @@ type ComponentProcessorInputValueBuffer<Image, Audio> = Parameter<ComponentProce
 impl<Image: Clone + Send + Sync + 'static, Audio: Clone + Send + Sync + 'static> ParameterValueType for ComponentProcessorInputBuffer<Image, Audio> {
     type Image = Image;
     type Audio = Audio;
-    type Binary = TimeSplitValue<TimelineTime, Option<Either<AbstractFile, FrameVariableValue<AbstractFile>>>>;
-    type String = TimeSplitValue<TimelineTime, Option<Either<String, FrameVariableValue<String>>>>;
-    type Integer = TimeSplitValue<TimelineTime, Option<Either<i64, FrameVariableValue<i64>>>>;
+    type Binary = TimeSplitValue<TimelineTime, Option<Either<EasingValue<AbstractFile>, FrameVariableValue<AbstractFile>>>>;
+    type String = TimeSplitValue<TimelineTime, Option<Either<EasingValue<String>, FrameVariableValue<String>>>>;
+    type Integer = TimeSplitValue<TimelineTime, Option<Either<EasingValue<i64>, FrameVariableValue<i64>>>>;
     type RealNumber = TimeSplitValue<TimelineTime, Option<Either<EasingValue<f64>, FrameVariableValue<f64>>>>;
-    type Boolean = TimeSplitValue<TimelineTime, Option<Either<bool, FrameVariableValue<bool>>>>;
+    type Boolean = TimeSplitValue<TimelineTime, Option<Either<EasingValue<bool>, FrameVariableValue<bool>>>>;
     type Dictionary = Never;
     type Array = Never;
     type ComponentClass = ();
@@ -310,11 +308,11 @@ type ComponentProcessorInputValueBufferRef<Image, Audio> = Parameter<ComponentPr
 impl<Image: Clone + Send + Sync + 'static, Audio: Clone + Send + Sync + 'static> ParameterValueType for ComponentProcessorInputBufferRef<Image, Audio> {
     type Image = Image;
     type Audio = Audio;
-    type Binary = Arc<TimeSplitValue<TimelineTime, Option<Either<AbstractFile, FrameVariableValue<AbstractFile>>>>>;
-    type String = Arc<TimeSplitValue<TimelineTime, Option<Either<String, FrameVariableValue<String>>>>>;
-    type Integer = Arc<TimeSplitValue<TimelineTime, Option<Either<i64, FrameVariableValue<i64>>>>>;
+    type Binary = Arc<TimeSplitValue<TimelineTime, Option<Either<EasingValue<AbstractFile>, FrameVariableValue<AbstractFile>>>>>;
+    type String = Arc<TimeSplitValue<TimelineTime, Option<Either<EasingValue<String>, FrameVariableValue<String>>>>>;
+    type Integer = Arc<TimeSplitValue<TimelineTime, Option<Either<EasingValue<i64>, FrameVariableValue<i64>>>>>;
     type RealNumber = Arc<TimeSplitValue<TimelineTime, Option<Either<EasingValue<f64>, FrameVariableValue<f64>>>>>;
-    type Boolean = Arc<TimeSplitValue<TimelineTime, Option<Either<bool, FrameVariableValue<bool>>>>>;
+    type Boolean = Arc<TimeSplitValue<TimelineTime, Option<Either<EasingValue<bool>, FrameVariableValue<bool>>>>>;
     type Dictionary = Never;
     type Array = Never;
     type ComponentClass = ();
@@ -331,11 +329,11 @@ fn nullable_into_processor_input_buffer_ref<K: 'static>(param: ParameterNullable
         ParameterNullableValue::None => Parameter::None,
         ParameterNullableValue::Image(_) => unreachable!(),
         ParameterNullableValue::Audio(_) => unreachable!(),
-        ParameterNullableValue::Binary(value) => Parameter::Binary(Arc::new(convert(value, key))),
-        ParameterNullableValue::String(value) => Parameter::String(Arc::new(convert(value, key))),
-        ParameterNullableValue::Integer(value) => Parameter::Integer(Arc::new(convert(value, key))),
+        ParameterNullableValue::Binary(value) => Parameter::Binary(Arc::new(convert_easing(value, key))),
+        ParameterNullableValue::String(value) => Parameter::String(Arc::new(convert_easing(value, key))),
+        ParameterNullableValue::Integer(value) => Parameter::Integer(Arc::new(convert_easing(value, key))),
         ParameterNullableValue::RealNumber(value) => Parameter::RealNumber(Arc::new(convert_easing(value, key))),
-        ParameterNullableValue::Boolean(value) => Parameter::Boolean(Arc::new(convert(value, key))),
+        ParameterNullableValue::Boolean(value) => Parameter::Boolean(Arc::new(convert_easing(value, key))),
         ParameterNullableValue::Dictionary(value) => {
             let _: Never = value;
             unreachable!()
@@ -359,11 +357,11 @@ fn nullable_into_processor_input_buffer<K: 'static, Image: Clone + Send + Sync +
         ParameterNullableValue::None => Parameter::None,
         ParameterNullableValue::Image(_) => unreachable!(),
         ParameterNullableValue::Audio(_) => unreachable!(),
-        ParameterNullableValue::Binary(value) => Parameter::Binary(convert(value, key)),
-        ParameterNullableValue::String(value) => Parameter::String(convert(value, key)),
-        ParameterNullableValue::Integer(value) => Parameter::Integer(convert(value, key)),
+        ParameterNullableValue::Binary(value) => Parameter::Binary(convert_easing(value, key)),
+        ParameterNullableValue::String(value) => Parameter::String(convert_easing(value, key)),
+        ParameterNullableValue::Integer(value) => Parameter::Integer(convert_easing(value, key)),
         ParameterNullableValue::RealNumber(value) => Parameter::RealNumber(convert_easing(value, key)),
-        ParameterNullableValue::Boolean(value) => Parameter::Boolean(convert(value, key)),
+        ParameterNullableValue::Boolean(value) => Parameter::Boolean(convert_easing(value, key)),
         ParameterNullableValue::Dictionary(value) => {
             let _: Never = value;
             unreachable!()
@@ -1042,7 +1040,11 @@ struct GetParam<'a, K: 'static, T: ParameterValueType, ImageCombinerBuilder> {
     audio_map: &'a HashMap<Placeholder<TagAudio>, T::Audio>,
 }
 
-impl<'a, K, T: ParameterValueType, ImageCombinerBuilder: CombinerBuilder<T::Image, Param = ImageRequiredParamsFixed, Request = ImageSizeRequest>> GetParam<'a, K, T, ImageCombinerBuilder> {
+impl<'a, K, T, ImageCombinerBuilder> GetParam<'a, K, T, ImageCombinerBuilder>
+where
+    T: ParameterValueType,
+    ImageCombinerBuilder: CombinerBuilder<T::Image, Param = ImageRequiredParamsFixed, Request = ImageSizeRequest>,
+{
     fn new(executable: &'a NativeProcessorExecutable<T>, image_map: &'a HashMap<Placeholder<TagImage>, ImageGenerator<K, T, ImageCombinerBuilder>>, audio_map: &'a HashMap<Placeholder<TagAudio>, T::Audio>) -> Self {
         GetParam {
             params: vec![Parameter::None; executable.parameter.len()],
@@ -1106,13 +1108,13 @@ struct EvaluateComponent<K: 'static, T: ParameterValueType, ImageCombinerBuilder
     default_range: OnceCell<Arc<TimelineRangeSet>>,
 }
 
-impl<
-        K: 'static,
-        T: ParameterValueType + 'static,
-        ImageCombinerBuilder: CombinerBuilder<T::Image, Request = ImageSizeRequest, Param = ImageRequiredParamsFixed> + 'static,
-        AudioCombinerBuilder: CombinerBuilder<T::Audio, Request = (), Param = AudioRequiredParamsFrameVariable> + 'static,
-        Id: IdGenerator + 'static,
-    > EvaluateComponent<K, T, ImageCombinerBuilder, AudioCombinerBuilder, Id>
+impl<K, T, ImageCombinerBuilder, AudioCombinerBuilder, Id> EvaluateComponent<K, T, ImageCombinerBuilder, AudioCombinerBuilder, Id>
+where
+    K: 'static,
+    T: ParameterValueType + 'static,
+    ImageCombinerBuilder: CombinerBuilder<T::Image, Request = ImageSizeRequest, Param = ImageRequiredParamsFixed> + 'static,
+    AudioCombinerBuilder: CombinerBuilder<T::Audio, Request = (), Param = AudioRequiredParamsFrameVariable> + 'static,
+    Id: IdGenerator + 'static,
 {
     fn new(
         component: StaticPointer<TCell<K, ComponentInstance<K, T>>>,
@@ -1899,7 +1901,7 @@ async fn param_as_frame_variable_value_easing<'a, K, T: ParameterValueType, V, c
     Ok(FrameValuesEasing::new(value).collect(frames, map, default))
 }
 
-fn as_frame_variable_value_easing<K, U: Copy, V>(value: &TimeSplitValue<StaticPointer<TCell<K, MarkerPin>>, EasingValue<U>>, frames: impl Iterator<Item = TimelineTime>, map: impl Fn(U) -> V, default: impl Fn(usize) -> U, key: &TCellOwner<K>) -> FrameVariableValue<V> {
+fn as_frame_variable_value_easing<K, U: Copy + 'static, V>(value: &TimeSplitValue<StaticPointer<TCell<K, MarkerPin>>, EasingValue<U>>, frames: impl Iterator<Item = TimelineTime>, map: impl Fn(U) -> V, default: impl Fn(usize) -> U, key: &TCellOwner<K>) -> FrameVariableValue<V> {
     let value = value.map_time_value_ref(
         |t| {
             let strong_ref = t.upgrade().unwrap();
@@ -2010,7 +2012,7 @@ struct FrameValuesEasing<T, const N: usize> {
     index_buffer: [Option<usize>; N],
 }
 
-impl<T: Clone, const N: usize> FrameValuesEasing<T, N> {
+impl<T: Clone + 'static, const N: usize> FrameValuesEasing<T, N> {
     fn new(value: [TimeSplitValue<TimelineTime, Option<Either<EasingValue<T>, FrameVariableValue<T>>>>; N]) -> FrameValuesEasing<T, N> {
         FrameValuesEasing { value, index_buffer: [None; N] }
     }
@@ -2039,7 +2041,7 @@ impl<T: Clone, const N: usize> FrameValuesEasing<T, N> {
                     Some(Either::Left(value)) => {
                         #[allow(clippy::float_equality_without_abs)] // left < rightなので
                         let p = if right.value() - left.value() < f64::EPSILON { 0. } else { (time.value() - left.value()) / (right.value() - left.value()) };
-                        Some(value.easing.easing(&value.from, &value.to, p))
+                        Some(value.get_value(p))
                     }
                     Some(Either::Right(value)) => Some(value.get(time).unwrap().clone()),
                 }
@@ -2090,11 +2092,11 @@ fn into_frame_variable_value<Image: Clone + Send + Sync + 'static, Audio: Clone 
             audio_map.insert(id, audio);
             Parameter::Audio(id)
         }
-        Parameter::Binary(value) => Parameter::Binary(FrameValues::new([value]).collect(frames, |[v]| v)),
-        Parameter::String(value) => Parameter::String(FrameValues::new([value]).collect(frames, |[v]| v)),
-        Parameter::Integer(value) => Parameter::Integer(FrameValues::new([value]).collect(frames, |[v]| v)),
+        Parameter::Binary(value) => Parameter::Binary(FrameValuesEasing::new([value]).collect(frames, |[v]| v, |_| AbstractFile::default())),
+        Parameter::String(value) => Parameter::String(FrameValuesEasing::new([value]).collect(frames, |[v]| v, |_| String::new())),
+        Parameter::Integer(value) => Parameter::Integer(FrameValuesEasing::new([value]).collect(frames, |[v]| v, |_| 0)),
         Parameter::RealNumber(value) => Parameter::RealNumber(FrameValuesEasing::new([value]).collect(frames, |[v]| v, |_| 0.)),
-        Parameter::Boolean(value) => Parameter::Boolean(FrameValues::new([value]).collect(frames, |[v]| v)),
+        Parameter::Boolean(value) => Parameter::Boolean(FrameValuesEasing::new([value]).collect(frames, |[v]| v, |_| false)),
         Parameter::Dictionary(_value) => todo!(),
         Parameter::Array(_value) => todo!(),
         Parameter::ComponentClass(()) => todo!(),
@@ -2208,7 +2210,7 @@ fn change_type_parameter<Image1: Clone + Send + Sync + 'static, Image2: Clone + 
 
 #[cfg(test)]
 mod tests {
-    use mpdelta_core::component::parameter::value::LinearEasing;
+    use mpdelta_core::component::parameter::value::{DynEditableEasingValueMarker, LinearEasing, NamedAny};
     use mpdelta_core::time_split_value;
 
     use super::*;
@@ -2397,7 +2399,7 @@ mod tests {
             override_time_split_value(
                 time_split_value![time!(0), Some('a'), time!(1), Some('b'), time!(2)],
                 &time_split_value![time!(0), None, time!(0.3), Some('c'), time!(0.7), None, time!(2)],
-                &[time![0, 1], time![1.5, 2]].into()
+                &[time![0, 1], time![1.5, 2]].into(),
             ),
             time_split_value![time!(0), Some('a'), time!(0.3), Some('c'), time!(0.7), Some('a'), time!(1), Some('b'), time!(2)]
         );
@@ -2472,6 +2474,22 @@ mod tests {
 
     #[test]
     fn test_frame_values() {
+        #[derive(Clone)]
+        struct FloatEasingValue(f64, f64);
+        impl DynEditableEasingValueMarker for FloatEasingValue {
+            type Out = f64;
+
+            fn get_raw_values_mut(&mut self) -> (&mut dyn NamedAny, &mut dyn NamedAny) {
+                let FloatEasingValue(from, to) = self;
+                (from, to)
+            }
+
+            fn get_value(&self, easing: f64) -> Self::Out {
+                let FloatEasingValue(from, to) = self;
+                from * (1. - easing) + to * easing
+            }
+        }
+
         assert_eq!(
             FrameValues::new([time_split_value![time!(0), Some(Either::Left(0)), time!(1), Some(Either::Left(1)), time!(2), Some(Either::Left(2)), time!(3)]]).collect([].into_iter(), |[v]| v),
             FrameVariableValue::from(BTreeMap::from([]))
@@ -2492,11 +2510,11 @@ mod tests {
         assert_eq!(
             FrameValuesEasing::new([time_split_value![
                 time!(0),
-                Some(Either::Left(EasingValue { from: 0., to: 1., easing: Arc::new(LinearEasing) })),
+                Some(Either::Left(EasingValue::new(FloatEasingValue(0., 1.), Arc::new(LinearEasing)))),
                 time!(1),
-                Some(Either::Left(EasingValue { from: 1., to: 2., easing: Arc::new(LinearEasing) })),
+                Some(Either::Left(EasingValue::new(FloatEasingValue(1., 2.), Arc::new(LinearEasing)))),
                 time!(2),
-                Some(Either::Left(EasingValue { from: 2., to: 3., easing: Arc::new(LinearEasing) })),
+                Some(Either::Left(EasingValue::new(FloatEasingValue(2., 3.), Arc::new(LinearEasing)))),
                 time!(3)
             ]])
             .collect([].into_iter(), |[v]| v, |_| 100.),
@@ -2505,11 +2523,11 @@ mod tests {
         assert_eq!(
             FrameValuesEasing::new([time_split_value![
                 time!(0),
-                Some(Either::Left(EasingValue { from: 0., to: 1., easing: Arc::new(LinearEasing) })),
+                Some(Either::Left(EasingValue::new(FloatEasingValue(0., 1.), Arc::new(LinearEasing)))),
                 time!(1),
-                Some(Either::Left(EasingValue { from: 1., to: 2., easing: Arc::new(LinearEasing) })),
+                Some(Either::Left(EasingValue::new(FloatEasingValue(1., 2.), Arc::new(LinearEasing)))),
                 time!(2),
-                Some(Either::Left(EasingValue { from: 2., to: 3., easing: Arc::new(LinearEasing) })),
+                Some(Either::Left(EasingValue::new(FloatEasingValue(2., 3.), Arc::new(LinearEasing)))),
                 time!(3)
             ]])
             .collect([time!(0.5), time!(1.5), time!(2.5)].into_iter(), |[v]| v, |_| 100.),
@@ -2518,11 +2536,11 @@ mod tests {
         assert_eq!(
             FrameValuesEasing::new([time_split_value![
                 time!(0),
-                Some(Either::Left(EasingValue { from: 0., to: 1., easing: Arc::new(LinearEasing) })),
+                Some(Either::Left(EasingValue::new(FloatEasingValue(0., 1.), Arc::new(LinearEasing)))),
                 time!(1),
-                Some(Either::Left(EasingValue { from: 1., to: 2., easing: Arc::new(LinearEasing) })),
+                Some(Either::Left(EasingValue::new(FloatEasingValue(1., 2.), Arc::new(LinearEasing)))),
                 time!(2),
-                Some(Either::Left(EasingValue { from: 2., to: 3., easing: Arc::new(LinearEasing) })),
+                Some(Either::Left(EasingValue::new(FloatEasingValue(2., 3.), Arc::new(LinearEasing)))),
                 time!(3)
             ]])
             .collect([time!(0.2), time!(0.7), time!(1.2), time!(1.7), time!(2.2), time!(2.7)].into_iter(), |[v]| v, |_| 100.),
@@ -2531,11 +2549,11 @@ mod tests {
         assert_eq!(
             FrameValuesEasing::new([time_split_value![
                 time!(0),
-                Some(Either::Left(EasingValue { from: 0., to: 1., easing: Arc::new(LinearEasing) })),
+                Some(Either::Left(EasingValue::new(FloatEasingValue(0., 1.), Arc::new(LinearEasing)))),
                 time!(1),
-                Some(Either::Left(EasingValue { from: 1., to: 2., easing: Arc::new(LinearEasing) })),
+                Some(Either::Left(EasingValue::new(FloatEasingValue(1., 2.), Arc::new(LinearEasing)))),
                 time!(2),
-                Some(Either::Left(EasingValue { from: 2., to: 3., easing: Arc::new(LinearEasing) })),
+                Some(Either::Left(EasingValue::new(FloatEasingValue(2., 3.), Arc::new(LinearEasing)))),
                 time!(3)
             ]])
             .collect([time!(0.5), time!(2.5)].into_iter(), |[v]| v, |_| 100.),

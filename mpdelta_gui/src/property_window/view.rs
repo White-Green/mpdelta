@@ -1,6 +1,7 @@
 use crate::property_window::viewmodel::PropertyWindowViewModel;
 use cgmath::Vector3;
 use egui::{Sense, Slider, Ui};
+use mpdelta_core::component::parameter::value::EasingValueEdit;
 use mpdelta_core::component::parameter::{ImageRequiredParamsTransform, ParameterValueType, VariableParameterValue};
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -39,50 +40,70 @@ impl<K: 'static, T: ParameterValueType, VM: PropertyWindowViewModel<K, T>> Prope
                     ui.label("position - X");
                     ui.add(Slider::from_get_set(-3.0..=3.0, |new_value| {
                         let current_value = translate_x.get_value_mut(0).unwrap().1;
-                        if let Some(value) = new_value {
-                            current_value.from = value;
-                            current_value.to = value;
-                            edited = true;
-                            value
-                        } else {
-                            current_value.from
-                        }
+                        current_value
+                            .value
+                            .edit_value(|from, to| {
+                                if let Some(value) = new_value {
+                                    *from = value;
+                                    *to = value;
+                                    edited = true;
+                                    value
+                                } else {
+                                    *from
+                                }
+                            })
+                            .unwrap()
                     }));
                     ui.label("position - Y");
                     ui.add(Slider::from_get_set(-3.0..=3.0, |new_value| {
                         let current_value = translate_y.get_value_mut(0).unwrap().1;
-                        if let Some(value) = new_value {
-                            current_value.from = value;
-                            current_value.to = value;
-                            edited = true;
-                            value
-                        } else {
-                            current_value.from
-                        }
+                        current_value
+                            .value
+                            .edit_value(|from, to| {
+                                if let Some(value) = new_value {
+                                    *from = value;
+                                    *to = value;
+                                    edited = true;
+                                    value
+                                } else {
+                                    *from
+                                }
+                            })
+                            .unwrap()
                     }));
                     ui.label("scale - X");
                     ui.add(Slider::from_get_set(0.0..=2.0, |new_value| {
                         let current_value = scale_x.get_value_mut(0).unwrap().1;
-                        if let Some(value) = new_value {
-                            current_value.from = value;
-                            current_value.to = value;
-                            edited = true;
-                            value
-                        } else {
-                            current_value.from
-                        }
+                        current_value
+                            .value
+                            .edit_value(|from, to| {
+                                if let Some(value) = new_value {
+                                    *from = value;
+                                    *to = value;
+                                    edited = true;
+                                    value
+                                } else {
+                                    *from
+                                }
+                            })
+                            .unwrap()
                     }));
                     ui.label("scale - Y");
                     ui.add(Slider::from_get_set(0.0..=2.0, |new_value| {
                         let current_value = scale_y.get_value_mut(0).unwrap().1;
-                        if let Some(value) = new_value {
-                            current_value.from = value;
-                            current_value.to = value;
-                            edited = true;
-                            value
-                        } else {
-                            current_value.from
-                        }
+                        current_value
+                            .value
+                            .edit_value(|from, to| {
+                                if let Some(value) = new_value {
+                                    *from = value;
+                                    *to = value;
+                                    edited = true;
+                                    value
+                                } else {
+                                    *from
+                                }
+                            })
+                            .unwrap()
                     }));
                 }
             }

@@ -3,7 +3,7 @@ use crate::component::class::ComponentClass;
 use crate::component::instance::ComponentInstance;
 use crate::component::link::MarkerLink;
 use crate::component::marker_pin::{MarkerPin, MarkerTime};
-use crate::component::parameter::value::{DefaultEasing, EasingValue};
+use crate::component::parameter::value::{DefaultEasing, DynEditableSelfEasingValue, EasingValue};
 use crate::component::parameter::{AudioRequiredParams, ComponentProcessorInputValue, ImageRequiredParams, ImageRequiredParamsTransform, ParameterType, ParameterValueFixed, VariableParameterValue};
 use crate::component::processor::{ComponentProcessor, ComponentProcessorBody, ProcessorComponentBuilder};
 use crate::ptr::{StaticPointer, StaticPointerCow, StaticPointerOwned};
@@ -125,9 +125,9 @@ impl<K, T: 'static> ComponentClass<K, T> for RootComponentClass<K, T> {
         let guard = self.item.0.read().await;
         let marker_left = StaticPointerOwned::reference(&guard.left).clone();
         let marker_right = StaticPointerOwned::reference(&guard.right).clone();
-        let one = TimeSplitValue::new(marker_left.clone(), EasingValue { from: 1., to: 1., easing: Arc::new(DefaultEasing) }, marker_right.clone());
+        let one = TimeSplitValue::new(marker_left.clone(), EasingValue::new(DynEditableSelfEasingValue(1., 1.), Arc::new(DefaultEasing)), marker_right.clone());
         let one_value = VariableParameterValue::Manually(one);
-        let zero = VariableParameterValue::Manually(TimeSplitValue::new(marker_left.clone(), EasingValue { from: 0., to: 0., easing: Arc::new(DefaultEasing) }, marker_right.clone()));
+        let zero = VariableParameterValue::Manually(TimeSplitValue::new(marker_left.clone(), EasingValue::new(DynEditableSelfEasingValue(0., 0.), Arc::new(DefaultEasing)), marker_right.clone()));
         let image_required_params = ImageRequiredParams {
             aspect_ratio: (16, 9),
             transform: ImageRequiredParamsTransform::Params {
@@ -137,20 +137,12 @@ impl<K, T: 'static> ComponentClass<K, T> for RootComponentClass<K, T> {
                     z: one_value.clone(),
                 },
                 translate: Vector3 { x: zero.clone(), y: zero.clone(), z: zero.clone() },
-                rotate: TimeSplitValue::new(
-                    marker_left.clone(),
-                    EasingValue {
-                        from: Quaternion::one(),
-                        to: Quaternion::one(),
-                        easing: Arc::new(DefaultEasing),
-                    },
-                    marker_right.clone(),
-                ),
+                rotate: TimeSplitValue::new(marker_left.clone(), EasingValue::new(DynEditableSelfEasingValue(Quaternion::one(), Quaternion::one()), Arc::new(DefaultEasing)), marker_right.clone()),
                 scale_center: Vector3 { x: zero.clone(), y: zero.clone(), z: zero.clone() },
                 rotate_center: Vector3 { x: zero.clone(), y: zero.clone(), z: zero },
             },
             background_color: [0; 4],
-            opacity: TimeSplitValue::new(marker_left.clone(), EasingValue { from: 1., to: 1., easing: Arc::new(DefaultEasing) }, marker_right.clone()),
+            opacity: TimeSplitValue::new(marker_left.clone(), EasingValue::new(DynEditableSelfEasingValue(1., 1.), Arc::new(DefaultEasing)), marker_right.clone()),
             blend_mode: TimeSplitValue::new(marker_left.clone(), Default::default(), marker_right.clone()),
             composite_operation: TimeSplitValue::new(marker_left.clone(), Default::default(), marker_right.clone()),
         };

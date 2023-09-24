@@ -1,9 +1,5 @@
 name: rustfmt on main branch
-on:
-  pull_request:
-    branches:
-      - main
-    types: [closed]
+on: push
 permissions:
   contents: write
 
@@ -11,7 +7,6 @@ jobs:
   rustfmt:
     name: rustfmt
     runs-on: ubuntu-latest
-    if: github.event.pull_request.merged == true
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable

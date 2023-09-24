@@ -89,7 +89,7 @@ impl ComponentClassLoader<ProjectKey, ValueType> for ComponentClassList {
 }
 
 fn main() {
-    let context = Arc::new(VulkanoContext::new(VulkanoConfig {
+    let context=Arc::new(VulkanoContext::new(VulkanoConfig {
         instance_create_info: InstanceCreateInfo {
             max_api_version: Some(Version::V1_2),
             ..InstanceCreateInfo::default()

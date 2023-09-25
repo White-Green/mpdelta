@@ -1,4 +1,6 @@
+use crate::ptr::{StaticPointer, StaticPointerCow, StaticPointerOwned};
 use crate::time::{AtomicTimelineTime, TimelineTime};
+use qcell::TCell;
 use std::cmp::Ordering;
 use std::hash::{Hash, Hasher};
 use std::sync::atomic;
@@ -13,6 +15,10 @@ pub struct MarkerPin {
     cached_timeline_time: AtomicTimelineTime,
     locked_component_time: Option<MarkerTime>,
 }
+
+pub type MarkerPinHandle<K> = StaticPointer<TCell<K, MarkerPin>>;
+pub type MarkerPinHandleOwned<K> = StaticPointerOwned<TCell<K, MarkerPin>>;
+pub type MarkerPinHandleCow<K> = StaticPointerCow<TCell<K, MarkerPin>>;
 
 impl MarkerTime {
     pub const ZERO: MarkerTime = MarkerTime(0.0);

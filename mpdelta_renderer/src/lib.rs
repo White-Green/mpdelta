@@ -9,9 +9,9 @@ use either::Either;
 use futures::stream::{self, StreamExt};
 use futures::{FutureExt, TryFutureExt, TryStreamExt};
 use mpdelta_core::common::time_split_value::TimeSplitValue;
-use mpdelta_core::component::instance::ComponentInstance;
+use mpdelta_core::component::instance::{ComponentInstance, ComponentInstanceHandle, ComponentInstanceHandleCow};
 use mpdelta_core::component::link::MarkerLink;
-use mpdelta_core::component::marker_pin::{MarkerPin, MarkerTime};
+use mpdelta_core::component::marker_pin::{MarkerPinHandle, MarkerTime};
 use mpdelta_core::component::parameter::placeholder::{Placeholder, TagAudio, TagImage};
 use mpdelta_core::component::parameter::value::{EasingValue, FrameVariableValue};
 use mpdelta_core::component::parameter::{
@@ -36,7 +36,6 @@ use std::future::Future;
 use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
 use std::ops::{Deref, Range};
-
 use std::sync::Arc;
 use std::{array, future, iter};
 use thiserror::Error;
@@ -76,7 +75,7 @@ where
     type Err = Infallible;
     type Renderer = MPDeltaRenderer<K, T, ImageCombinerBuilder, AudioCombinerBuilder, Id>;
 
-    async fn create_renderer(&self, component: &StaticPointer<TCell<K, ComponentInstance<K, T>>>) -> Result<Self::Renderer, Self::Err> {
+    async fn create_renderer(&self, component: &ComponentInstanceHandle<K, T>) -> Result<Self::Renderer, Self::Err> {
         let key = self.key.read().await;
         let component_ref = component.upgrade().unwrap();
         let component_ref = component_ref.ro(&key);
@@ -206,21 +205,21 @@ impl<Image: Send + Sync + 'static, Audio: Send + Sync + Clone + 'static> Paramet
 #[derive(Error)]
 pub enum EvaluateError<K: 'static, T> {
     #[error("invalid component: {0:?}")]
-    InvalidComponent(StaticPointer<TCell<K, ComponentInstance<K, T>>>),
+    InvalidComponent(ComponentInstanceHandle<K, T>),
     #[error("the output type by {component:?} is mismatch; expected: {expect:?}, but got {actual:?}")]
     OutputTypeMismatch {
-        component: StaticPointer<TCell<K, ComponentInstance<K, T>>>,
+        component: ComponentInstanceHandle<K, T>,
         expect: Parameter<ParameterSelect>,
         actual: Parameter<ParameterSelect>,
     },
     #[error("a dependency cycle detected")]
-    CycleDependency(Vec<StaticPointer<TCell<K, ComponentInstance<K, T>>>>),
+    CycleDependency(Vec<ComponentInstanceHandle<K, T>>),
     #[error("invalid link graph")]
     InvalidLinkGraph,
     #[error("invalid marker: {0:?}")]
-    InvalidMarker(StaticPointer<TCell<K, MarkerPin>>),
+    InvalidMarker(MarkerPinHandle<K>),
     #[error("{index}-th variable parameter of {component:?} is invalid")]
-    InvalidVariableParameter { component: StaticPointer<TCell<K, ComponentInstance<K, T>>>, index: usize },
+    InvalidVariableParameter { component: ComponentInstanceHandle<K, T>, index: usize },
 }
 
 impl<K, T> Debug for EvaluateError<K, T> {
@@ -254,7 +253,7 @@ impl<K, T> Clone for EvaluateError<K, T> {
 }
 
 fn value_into_processor_input_buffer<K: 'static>(param: ParameterValue<K>, key: &TCellOwner<K>) -> ComponentProcessorInputValueBuffer<(), ()> {
-    fn convert<K, T: Clone + Send, U: Send>(value: TimeSplitValue<StaticPointer<TCell<K, MarkerPin>>, T>, key: &TCellOwner<K>) -> TimeSplitValue<TimelineTime, Option<Either<T, U>>> {
+    fn convert<K, T: Clone + Send, U: Send>(value: TimeSplitValue<MarkerPinHandle<K>, T>, key: &TCellOwner<K>) -> TimeSplitValue<TimelineTime, Option<Either<T, U>>> {
         value.map_time_value(
             |time| {
                 let strong_ref = time.upgrade().unwrap();
@@ -319,10 +318,10 @@ impl<Image: Clone + Send + Sync + 'static, Audio: Clone + Send + Sync + 'static>
 }
 
 fn nullable_into_processor_input_buffer_ref<K: 'static>(param: ParameterNullableValue<K>, key: &TCellOwner<K>) -> ComponentProcessorInputValueBufferRef<(), ()> {
-    fn convert<K, T>(value: TimeSplitValue<StaticPointer<TCell<K, MarkerPin>>, Option<T>>, key: &TCellOwner<K>) -> TimeSplitValue<TimelineTime, Option<Either<T, FrameVariableValue<T>>>> {
+    fn convert<K, T>(value: TimeSplitValue<MarkerPinHandle<K>, Option<T>>, key: &TCellOwner<K>) -> TimeSplitValue<TimelineTime, Option<Either<T, FrameVariableValue<T>>>> {
         value.map_time_value(|t| t.upgrade().unwrap().ro(key).cached_timeline_time(), |v| v.map(Either::Left))
     }
-    fn convert_easing<K, T>(value: TimeSplitValue<StaticPointer<TCell<K, MarkerPin>>, Option<EasingValue<T>>>, key: &TCellOwner<K>) -> TimeSplitValue<TimelineTime, Option<Either<EasingValue<T>, FrameVariableValue<T>>>> {
+    fn convert_easing<K, T>(value: TimeSplitValue<MarkerPinHandle<K>, Option<EasingValue<T>>>, key: &TCellOwner<K>) -> TimeSplitValue<TimelineTime, Option<Either<EasingValue<T>, FrameVariableValue<T>>>> {
         value.map_time_value(|t| t.upgrade().unwrap().ro(key).cached_timeline_time(), |v| v.map(Either::Left))
     }
     match param {
@@ -347,10 +346,10 @@ fn nullable_into_processor_input_buffer_ref<K: 'static>(param: ParameterNullable
 }
 
 fn nullable_into_processor_input_buffer<K: 'static, Image: Clone + Send + Sync + 'static, Audio: Clone + Send + Sync + 'static>(param: ParameterNullableValue<K>, key: &TCellOwner<K>) -> ComponentProcessorInputValueBuffer<Image, Audio> {
-    fn convert<K, T>(value: TimeSplitValue<StaticPointer<TCell<K, MarkerPin>>, Option<T>>, key: &TCellOwner<K>) -> TimeSplitValue<TimelineTime, Option<Either<T, FrameVariableValue<T>>>> {
+    fn convert<K, T>(value: TimeSplitValue<MarkerPinHandle<K>, Option<T>>, key: &TCellOwner<K>) -> TimeSplitValue<TimelineTime, Option<Either<T, FrameVariableValue<T>>>> {
         value.map_time_value(|t| t.upgrade().unwrap().ro(key).cached_timeline_time(), |v| v.map(Either::Left))
     }
-    fn convert_easing<K, T>(value: TimeSplitValue<StaticPointer<TCell<K, MarkerPin>>, Option<EasingValue<T>>>, key: &TCellOwner<K>) -> TimeSplitValue<TimelineTime, Option<Either<EasingValue<T>, FrameVariableValue<T>>>> {
+    fn convert_easing<K, T>(value: TimeSplitValue<MarkerPinHandle<K>, Option<EasingValue<T>>>, key: &TCellOwner<K>) -> TimeSplitValue<TimelineTime, Option<Either<EasingValue<T>, FrameVariableValue<T>>>> {
         value.map_time_value(|t| t.upgrade().unwrap().ro(key).cached_timeline_time(), |v| v.map(Either::Left))
     }
     match param {
@@ -484,7 +483,7 @@ pub trait Combiner<Data>: Send + Sync {
     fn collect(self) -> Data;
 }
 
-fn collect_dependencies<K, T: ParameterValueType>(component: &ComponentInstance<K, T>, required_type: &mut HashMap<StaticPointer<TCell<K, ComponentInstance<K, T>>>, HashSet<Parameter<ParameterSelect>>>) -> HashSet<StaticPointer<TCell<K, ComponentInstance<K, T>>>> {
+fn collect_dependencies<K, T: ParameterValueType>(component: &ComponentInstance<K, T>, required_type: &mut HashMap<ComponentInstanceHandle<K, T>, HashSet<Parameter<ParameterSelect>>>) -> HashSet<ComponentInstanceHandle<K, T>> {
     let dependencies = component
         .variable_parameters()
         .iter()
@@ -663,10 +662,10 @@ struct EvaluateAllComponent<K: 'static, T: ParameterValueType, Id> {
 
 impl<K, T: ParameterValueType, Id: IdGenerator + 'static> EvaluateAllComponent<K, T, Id> {
     fn new<ImageCombinerBuilder: CombinerBuilder<T::Image, Request = ImageSizeRequest, Param = ImageRequiredParamsFixed> + 'static, AudioCombinerBuilder: CombinerBuilder<T::Audio, Request = (), Param = AudioRequiredParamsFrameVariable> + 'static>(
-        components: Vec<StaticPointer<TCell<K, ComponentInstance<K, T>>>>,
+        components: Vec<ComponentInstanceHandle<K, T>>,
         links: Vec<StaticPointer<TCell<K, MarkerLink<K>>>>,
-        begin: StaticPointer<TCell<K, MarkerPin>>,
-        end: StaticPointer<TCell<K, MarkerPin>>,
+        begin: MarkerPinHandle<K>,
+        end: MarkerPinHandle<K>,
         frames: CloneableIterator<TimelineTime>,
         id_generator: Arc<Id>,
         image_combiner_builder: Arc<ImageCombinerBuilder>,
@@ -748,7 +747,7 @@ impl<K, T: ParameterValueType, Id: IdGenerator + 'static> EvaluateAllComponent<K
             let result = component_reference_ranges.insert(component, reference_range);
             debug_assert!(result.is_none());
         }
-        let map: Arc<DashMap<StaticPointer<TCell<K, ComponentInstance<K, T>>>, FunctionByNeed<FunctionArg<K>, EvaluateComponentResult<K, T>>>> = Arc::new(DashMap::new());
+        let map: Arc<DashMap<ComponentInstanceHandle<K, T>, FunctionByNeed<FunctionArg<K>, EvaluateComponentResult<K, T>>>> = Arc::new(DashMap::new());
         for component in sorted {
             let component = component.clone();
             let map = Arc::clone(&map);
@@ -850,7 +849,7 @@ impl<K, T: ParameterValueType, Id: IdGenerator + 'static> EvaluateAllComponent<K
     }
 }
 
-fn collect_cached_time<K, T>(_components: &[StaticPointer<TCell<K, ComponentInstance<K, T>>>], links: &[StaticPointer<TCell<K, MarkerLink<K>>>], begin: StaticPointer<TCell<K, MarkerPin>>, end: StaticPointer<TCell<K, MarkerPin>>, key: &TCellOwner<K>) -> Result<(), EvaluateError<K, T>> {
+fn collect_cached_time<K, T>(_components: &[ComponentInstanceHandle<K, T>], links: &[StaticPointer<TCell<K, MarkerLink<K>>>], begin: MarkerPinHandle<K>, end: MarkerPinHandle<K>, key: &TCellOwner<K>) -> Result<(), EvaluateError<K, T>> {
     let links = links.iter().filter_map(StaticPointer::upgrade).collect::<Vec<_>>();
     let mut links = links.iter().map(|link| link.ro(key)).collect::<HashSet<&MarkerLink<K>>>();
     let mut locked = HashSet::from([&begin, &end]);
@@ -929,7 +928,7 @@ struct EvaluateComponentCache<K: 'static, T: ParameterValueType, Id> {
     map_time: OnceCell<Arc<MapTime>>,
     image_required_params: tokio::sync::OnceCell<Arc<Option<ImageRequiredParamsFrameVariable>>>,
     audio_required_params: tokio::sync::OnceCell<Arc<Option<AudioRequiredParamsFrameVariable>>>,
-    result_components_renderer: OnceCell<(EvaluateAllComponent<K, T, Id>, Vec<StaticPointerCow<TCell<K, ComponentInstance<K, T>>>>, Vec<StaticPointerCow<TCell<K, MarkerLink<K>>>>)>,
+    result_components_renderer: OnceCell<(EvaluateAllComponent<K, T, Id>, Vec<ComponentInstanceHandleCow<K, T>>, Vec<StaticPointerCow<TCell<K, MarkerLink<K>>>>)>,
     image_executable: OnceCell<NativeProcessorExecutable<T>>,
     placeholder_list: OnceCell<Vec<ArcSwapOption<PlaceholderListItem>>>,
 }
@@ -951,7 +950,7 @@ impl<K, T: ParameterValueType, Id> Default for EvaluateComponentCache<K, T, Id> 
 #[derive(Clone, Copy, Eq, PartialEq, Hash)]
 struct ParameterSelectValue(Parameter<ParameterSelect>);
 
-struct ReferenceFunctions<K: 'static, T: ParameterValueType>(Arc<DashMap<StaticPointer<TCell<K, ComponentInstance<K, T>>>, FunctionByNeed<FunctionArg<K>, EvaluateComponentResult<K, T>>>>);
+struct ReferenceFunctions<K: 'static, T: ParameterValueType>(Arc<DashMap<ComponentInstanceHandle<K, T>, FunctionByNeed<FunctionArg<K>, EvaluateComponentResult<K, T>>>>);
 
 impl<K, T: ParameterValueType> Clone for ReferenceFunctions<K, T> {
     fn clone(&self) -> Self {
@@ -961,9 +960,9 @@ impl<K, T: ParameterValueType> Clone for ReferenceFunctions<K, T> {
 
 struct ImageGenerator<K: 'static, T: ParameterValueType, ImageCombinerBuilder> {
     reference_functions: ReferenceFunctions<K, T>,
-    argument_reference_range: Arc<HashMap<StaticPointer<TCell<K, ComponentInstance<K, T>>>, TimelineRangeSet>>,
+    argument_reference_range: Arc<HashMap<ComponentInstanceHandle<K, T>, TimelineRangeSet>>,
     image_combiner_builder: Arc<ImageCombinerBuilder>,
-    components: Vec<StaticPointer<TCell<K, ComponentInstance<K, T>>>>,
+    components: Vec<ComponentInstanceHandle<K, T>>,
     image_size_request: ImageSizeRequest,
     default_range: Arc<TimelineRangeSet>,
 }
@@ -992,9 +991,9 @@ impl<K, T: ParameterValueType, ImageCombinerBuilder> Clone for ImageGenerator<K,
 impl<K, T: ParameterValueType, ImageCombinerBuilder: CombinerBuilder<T::Image, Param = ImageRequiredParamsFixed, Request = ImageSizeRequest>> ImageGenerator<K, T, ImageCombinerBuilder> {
     fn new(
         reference_functions: ReferenceFunctions<K, T>,
-        argument_reference_range: Arc<HashMap<StaticPointer<TCell<K, ComponentInstance<K, T>>>, TimelineRangeSet>>,
+        argument_reference_range: Arc<HashMap<ComponentInstanceHandle<K, T>, TimelineRangeSet>>,
         image_combiner_builder: Arc<ImageCombinerBuilder>,
-        components: Vec<StaticPointer<TCell<K, ComponentInstance<K, T>>>>,
+        components: Vec<ComponentInstanceHandle<K, T>>,
         image_size_request: ImageSizeRequest,
         default_range: Arc<TimelineRangeSet>,
     ) -> Self {
@@ -1098,10 +1097,10 @@ where
 
 struct EvaluateComponent<K: 'static, T: ParameterValueType, ImageCombinerBuilder, AudioCombinerBuilder, Id> {
     cache_context: Arc<EvaluateComponentCache<K, T, Id>>,
-    component: StaticPointer<TCell<K, ComponentInstance<K, T>>>,
+    component: ComponentInstanceHandle<K, T>,
     frames: CloneableIterator<TimelineTime>,
     reference_functions: ReferenceFunctions<K, T>,
-    argument_reference_range: Arc<HashMap<StaticPointer<TCell<K, ComponentInstance<K, T>>>, TimelineRangeSet>>,
+    argument_reference_range: Arc<HashMap<ComponentInstanceHandle<K, T>, TimelineRangeSet>>,
     id_generator: Arc<Id>,
     image_combiner_builder: Arc<ImageCombinerBuilder>,
     audio_combiner_builder: Arc<AudioCombinerBuilder>,
@@ -1117,10 +1116,10 @@ where
     Id: IdGenerator + 'static,
 {
     fn new(
-        component: StaticPointer<TCell<K, ComponentInstance<K, T>>>,
+        component: ComponentInstanceHandle<K, T>,
         frames: CloneableIterator<TimelineTime>,
         reference_functions: ReferenceFunctions<K, T>,
-        argument_reference_range: Arc<HashMap<StaticPointer<TCell<K, ComponentInstance<K, T>>>, TimelineRangeSet>>,
+        argument_reference_range: Arc<HashMap<ComponentInstanceHandle<K, T>, TimelineRangeSet>>,
         id_generator: Arc<Id>,
         image_combiner_builder: Arc<ImageCombinerBuilder>,
         audio_combiner_builder: Arc<AudioCombinerBuilder>,
@@ -1311,7 +1310,7 @@ fn process<
     id_generator: &'a Arc<Id>,
     image_combiner_builder: &'a Arc<ImageCombinerBuilder>,
     audio_combiner_builder: &'a Arc<AudioCombinerBuilder>,
-    component: &'a StaticPointer<TCell<K, ComponentInstance<K, T>>>,
+    component: &'a ComponentInstanceHandle<K, T>,
     component_ref: &'a ComponentInstance<K, T>,
     processor: &'a Arc<dyn ComponentProcessor<K, T>>,
     left: TimelineTime,
@@ -1510,7 +1509,7 @@ fn acquire_image_required_param<'a, K, T: ParameterValueType + 'static, Id: IdGe
     frames: &'a CloneableIterator<TimelineTime>,
     image_size_request: ImageSizeRequest,
     reference_functions: &'a ReferenceFunctions<K, T>,
-    argument_reference_range: &'a Arc<HashMap<StaticPointer<TCell<K, ComponentInstance<K, T>>>, TimelineRangeSet>>,
+    argument_reference_range: &'a Arc<HashMap<ComponentInstanceHandle<K, T>, TimelineRangeSet>>,
     component_ref: &'a ComponentInstance<K, T>,
     left: TimelineTime,
     right: TimelineTime,
@@ -1609,7 +1608,7 @@ fn acquire_audio_required_param<'a, K, T: ParameterValueType + 'static, Id: IdGe
     frames: &'a CloneableIterator<TimelineTime>,
     image_size_request: ImageSizeRequest,
     reference_functions: &'a ReferenceFunctions<K, T>,
-    argument_reference_range: &'a Arc<HashMap<StaticPointer<TCell<K, ComponentInstance<K, T>>>, TimelineRangeSet>>,
+    argument_reference_range: &'a Arc<HashMap<ComponentInstanceHandle<K, T>, TimelineRangeSet>>,
     component_ref: &'a ComponentInstance<K, T>,
     left: TimelineTime,
     right: TimelineTime,
@@ -1641,10 +1640,10 @@ fn evaluate_parameters<
     at: TimelineTime,
     image_size_request: ImageSizeRequest,
     reference_functions: &'a ReferenceFunctions<K, T>,
-    argument_reference_range: &'a Arc<HashMap<StaticPointer<TCell<K, ComponentInstance<K, T>>>, TimelineRangeSet>>,
+    argument_reference_range: &'a Arc<HashMap<ComponentInstanceHandle<K, T>, TimelineRangeSet>>,
     image_combiner_builder: &'a Arc<ImageCombinerBuilder>,
     audio_combiner_builder: &'a Arc<AudioCombinerBuilder>,
-    component: &'a StaticPointer<TCell<K, ComponentInstance<K, T>>>,
+    component: &'a ComponentInstanceHandle<K, T>,
     component_ref: &'a ComponentInstance<K, T>,
     left: TimelineTime,
     right: TimelineTime,
@@ -1815,9 +1814,9 @@ async fn check_in_cache<K, T: ParameterValueType + 'static, Id: IdGenerator + 's
 }
 
 async fn param_as_frame_variable_value_easing<'a, K, T: ParameterValueType, V, const N: usize>(
-    value: &'a [VariableParameterValue<K, T, TimeSplitValue<StaticPointer<TCell<K, MarkerPin>>, EasingValue<f64>>, TimeSplitValue<StaticPointer<TCell<K, MarkerPin>>, Option<EasingValue<f64>>>>; N],
+    value: &'a [VariableParameterValue<K, T, TimeSplitValue<MarkerPinHandle<K>, EasingValue<f64>>, TimeSplitValue<MarkerPinHandle<K>, Option<EasingValue<f64>>>>; N],
     reference_functions: &'a ReferenceFunctions<K, T>,
-    argument_reference_range: &'a HashMap<StaticPointer<TCell<K, ComponentInstance<K, T>>>, TimelineRangeSet>,
+    argument_reference_range: &'a HashMap<ComponentInstanceHandle<K, T>, TimelineRangeSet>,
     image_size_request: ImageSizeRequest,
     left: TimelineTime,
     right: TimelineTime,
@@ -1901,7 +1900,7 @@ async fn param_as_frame_variable_value_easing<'a, K, T: ParameterValueType, V, c
     Ok(FrameValuesEasing::new(value).collect(frames, map, default))
 }
 
-fn as_frame_variable_value_easing<K, U: Copy + 'static, V>(value: &TimeSplitValue<StaticPointer<TCell<K, MarkerPin>>, EasingValue<U>>, frames: impl Iterator<Item = TimelineTime>, map: impl Fn(U) -> V, default: impl Fn(usize) -> U, key: &TCellOwner<K>) -> FrameVariableValue<V> {
+fn as_frame_variable_value_easing<K, U: Copy + 'static, V>(value: &TimeSplitValue<MarkerPinHandle<K>, EasingValue<U>>, frames: impl Iterator<Item = TimelineTime>, map: impl Fn(U) -> V, default: impl Fn(usize) -> U, key: &TCellOwner<K>) -> FrameVariableValue<V> {
     let value = value.map_time_value_ref(
         |t| {
             let strong_ref = t.upgrade().unwrap();
@@ -1912,7 +1911,7 @@ fn as_frame_variable_value_easing<K, U: Copy + 'static, V>(value: &TimeSplitValu
     FrameValuesEasing::new([value]).collect(frames, |[v]| map(v), default)
 }
 
-fn as_frame_variable_value<K, U: Copy + Default>(value: &TimeSplitValue<StaticPointer<TCell<K, MarkerPin>>, U>, frames: impl Iterator<Item = TimelineTime>, key: &TCellOwner<K>) -> FrameVariableValue<U> {
+fn as_frame_variable_value<K, U: Copy + Default>(value: &TimeSplitValue<MarkerPinHandle<K>, U>, frames: impl Iterator<Item = TimelineTime>, key: &TCellOwner<K>) -> FrameVariableValue<U> {
     let value = value.map_time_value_ref(
         |t| {
             let strong_ref = t.upgrade().unwrap();

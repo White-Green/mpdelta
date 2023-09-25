@@ -1,5 +1,5 @@
 use crate::component::class::ComponentClass;
-use crate::component::marker_pin::MarkerPin;
+use crate::component::marker_pin::{MarkerPinHandleCow, MarkerPinHandleOwned};
 use crate::component::parameter::{AudioRequiredParams, ImageRequiredParams, Parameter, ParameterNullableValue, ParameterValue, ParameterValueFixed, Type, ValueFixed, VariableParameterValue};
 use crate::component::processor::ComponentProcessor;
 use crate::ptr::{StaticPointer, StaticPointerCow, StaticPointerOwned};
@@ -10,9 +10,9 @@ use tokio::sync::RwLock;
 
 pub struct ComponentInstance<K: 'static, T> {
     component_class: StaticPointer<RwLock<dyn ComponentClass<K, T>>>,
-    marker_left: StaticPointerCow<TCell<K, MarkerPin>>,
-    marker_right: StaticPointerCow<TCell<K, MarkerPin>>,
-    markers: Vec<StaticPointerOwned<TCell<K, MarkerPin>>>,
+    marker_left: MarkerPinHandleCow<K>,
+    marker_right: MarkerPinHandleCow<K>,
+    markers: Vec<MarkerPinHandleOwned<K>>,
     image_required_params: Option<ImageRequiredParams<K, T>>,
     audio_required_params: Option<AudioRequiredParams<K, T>>,
     fixed_parameters_type: Box<[(String, Parameter<Type>)]>,
@@ -21,6 +21,10 @@ pub struct ComponentInstance<K: 'static, T> {
     variable_parameters: Vec<VariableParameterValue<K, T, ParameterValue<K>, ParameterNullableValue<K>>>,
     processor: Arc<dyn ComponentProcessor<K, T>>,
 }
+
+pub type ComponentInstanceHandle<K, T> = StaticPointer<TCell<K, ComponentInstance<K, T>>>;
+pub type ComponentInstanceHandleOwned<K, T> = StaticPointerOwned<TCell<K, ComponentInstance<K, T>>>;
+pub type ComponentInstanceHandleCow<K, T> = StaticPointerCow<TCell<K, ComponentInstance<K, T>>>;
 
 impl<K, T> Debug for ComponentInstance<K, T>
 where
@@ -53,8 +57,8 @@ where
 impl<K, T> ComponentInstance<K, T> {
     pub fn new_no_param(
         component_class: StaticPointer<RwLock<dyn ComponentClass<K, T>>>,
-        marker_left: StaticPointerCow<TCell<K, MarkerPin>>,
-        marker_right: StaticPointerCow<TCell<K, MarkerPin>>,
+        marker_left: MarkerPinHandleCow<K>,
+        marker_right: MarkerPinHandleCow<K>,
         image_required_params: Option<ImageRequiredParams<K, T>>,
         audio_required_params: Option<AudioRequiredParams<K, T>>,
         processor: Arc<dyn ComponentProcessor<K, T>>,
@@ -76,13 +80,13 @@ impl<K, T> ComponentInstance<K, T> {
     pub fn component_class(&self) -> &StaticPointer<RwLock<dyn ComponentClass<K, T>>> {
         &self.component_class
     }
-    pub fn marker_left(&self) -> &StaticPointerCow<TCell<K, MarkerPin>> {
+    pub fn marker_left(&self) -> &MarkerPinHandleCow<K> {
         &self.marker_left
     }
-    pub fn marker_right(&self) -> &StaticPointerCow<TCell<K, MarkerPin>> {
+    pub fn marker_right(&self) -> &MarkerPinHandleCow<K> {
         &self.marker_right
     }
-    pub fn markers(&self) -> &[StaticPointerOwned<TCell<K, MarkerPin>>] {
+    pub fn markers(&self) -> &[MarkerPinHandleOwned<K>] {
         &self.markers
     }
     pub fn image_required_params(&self) -> Option<&ImageRequiredParams<K, T>> {

@@ -6,13 +6,13 @@ use crate::view_model_util::use_arc;
 use crate::viewmodel::ViewModelParams;
 use egui::epaint::ahash::{HashSet, HashSetExt};
 use mpdelta_async_runtime::{AsyncRuntime, JoinHandle};
-use mpdelta_core::component::instance::ComponentInstance;
+use mpdelta_core::component::instance::ComponentInstanceHandle;
 use mpdelta_core::component::link::MarkerLink;
-use mpdelta_core::component::marker_pin::MarkerPin;
+use mpdelta_core::component::marker_pin::MarkerPinHandle;
 use mpdelta_core::component::parameter::ParameterValueType;
 use mpdelta_core::core::EditEventListener;
 use mpdelta_core::edit::{InstanceEditEvent, RootComponentEditCommand, RootComponentEditEvent};
-use mpdelta_core::project::RootComponentClass;
+use mpdelta_core::project::RootComponentClassHandle;
 use mpdelta_core::ptr::{StaticPointer, StaticPointerOwned};
 use mpdelta_core::time::TimelineTime;
 use mpdelta_core::usecase::{GetAvailableComponentClassesUsecase, SubscribeEditEventUsecase};
@@ -32,8 +32,8 @@ pub struct ComponentInstanceData<Handle> {
     pub layer: f32,
 }
 
-impl<K: 'static, T> ComponentInstanceData<StaticPointer<TCell<K, ComponentInstance<K, T>>>> {
-    fn new(handle: StaticPointer<TCell<K, ComponentInstance<K, T>>>, key: &TCellOwner<K>, i: usize, pin_map: &mut HashMap<StaticPointer<TCell<K, MarkerPin>>, StaticPointer<TCell<K, ComponentInstance<K, T>>>>) -> Option<ComponentInstanceData<StaticPointer<TCell<K, ComponentInstance<K, T>>>>> {
+impl<K: 'static, T> ComponentInstanceData<ComponentInstanceHandle<K, T>> {
+    fn new(handle: ComponentInstanceHandle<K, T>, key: &TCellOwner<K>, i: usize, pin_map: &mut HashMap<MarkerPinHandle<K>, ComponentInstanceHandle<K, T>>) -> Option<ComponentInstanceData<ComponentInstanceHandle<K, T>>> {
         let component = handle.upgrade()?;
         let component = component.ro(key);
         let start_time = component.marker_left().upgrade()?.ro(key).cached_timeline_time();
@@ -65,13 +65,13 @@ pub struct ComponentLinkData<LinkHandle, ComponentHandle> {
     pub to_time: TimelineTime,
 }
 
-impl<K: 'static, T> ComponentLinkData<StaticPointer<TCell<K, MarkerLink<K>>>, StaticPointer<TCell<K, ComponentInstance<K, T>>>> {
+impl<K: 'static, T> ComponentLinkData<StaticPointer<TCell<K, MarkerLink<K>>>, ComponentInstanceHandle<K, T>> {
     fn new(
         handle: StaticPointer<TCell<K, MarkerLink<K>>>,
         key: &TCellOwner<K>,
-        marker_map: &HashMap<StaticPointer<TCell<K, MarkerPin>>, StaticPointer<TCell<K, ComponentInstance<K, T>>>>,
-        component_map: &HashMap<StaticPointer<TCell<K, ComponentInstance<K, T>>>, ComponentInstanceData<StaticPointer<TCell<K, ComponentInstance<K, T>>>>>,
-    ) -> Option<ComponentLinkData<StaticPointer<TCell<K, MarkerLink<K>>>, StaticPointer<TCell<K, ComponentInstance<K, T>>>>> {
+        marker_map: &HashMap<MarkerPinHandle<K>, ComponentInstanceHandle<K, T>>,
+        component_map: &HashMap<ComponentInstanceHandle<K, T>, ComponentInstanceData<ComponentInstanceHandle<K, T>>>,
+    ) -> Option<ComponentLinkData<StaticPointer<TCell<K, MarkerLink<K>>>, ComponentInstanceHandle<K, T>>> {
         let Some(link) = handle.upgrade() else {
             eprintln!("StaticPointer::<TCell<K, MarkerLink<K>>>::upgrade failed");
             return None;
@@ -136,10 +136,10 @@ pub trait TimelineViewModel<K: 'static, T: ParameterValueType> {
 pub struct TimelineViewModelImpl<K: 'static, T, GlobalUIState, MessageHandler, G, Runtime, JoinHandle> {
     key: Arc<RwLock<TCellOwner<K>>>,
     global_ui_state: Arc<GlobalUIState>,
-    component_instances: Arc<RwLock<ComponentInstanceDataList<StaticPointer<TCell<K, ComponentInstance<K, T>>>>>>,
-    component_links: Arc<RwLock<ComponentLinkDataList<StaticPointer<TCell<K, MarkerLink<K>>>, StaticPointer<TCell<K, ComponentInstance<K, T>>>>>>,
-    selected_components: Arc<RwLock<HashSet<StaticPointer<TCell<K, ComponentInstance<K, T>>>>>>,
-    selected_root_component_class: Arc<RwLock<Option<StaticPointer<RwLock<RootComponentClass<K, T>>>>>>,
+    component_instances: Arc<RwLock<ComponentInstanceDataList<ComponentInstanceHandle<K, T>>>>,
+    component_links: Arc<RwLock<ComponentLinkDataList<StaticPointer<TCell<K, MarkerLink<K>>>, ComponentInstanceHandle<K, T>>>>,
+    selected_components: Arc<RwLock<HashSet<ComponentInstanceHandle<K, T>>>>,
+    selected_root_component_class: Arc<RwLock<Option<RootComponentClassHandle<K, T>>>>,
     message_router: MessageRouter<MessageHandler, Runtime>,
     runtime: Runtime,
     load_timeline_task: Arc<Mutex<JoinHandle>>,
@@ -149,8 +149,8 @@ pub struct TimelineViewModelImpl<K: 'static, T, GlobalUIState, MessageHandler, G
 pub enum Message<K: 'static, T> {
     GlobalUIEvent(GlobalUIEvent<K, T>),
     AddComponentInstance,
-    ClickComponentInstance(StaticPointer<TCell<K, ComponentInstance<K, T>>>),
-    DragComponentInstance(StaticPointer<TCell<K, ComponentInstance<K, T>>>, f32, f32),
+    ClickComponentInstance(ComponentInstanceHandle<K, T>),
+    DragComponentInstance(ComponentInstanceHandle<K, T>, f32, f32),
     EditMarkerLinkLength(StaticPointer<TCell<K, MarkerLink<K>>>, TimelineTime),
 }
 
@@ -207,14 +207,14 @@ where
     G: Send + Sync + 'static,
     Runtime: AsyncRuntime<()> + Clone,
 {
-    fn on_edit(&self, _: &StaticPointer<RwLock<RootComponentClass<K, T>>>, _: RootComponentEditEvent<K, T>) {
+    fn on_edit(&self, _: &RootComponentClassHandle<K, T>, _: RootComponentEditEvent<K, T>) {
         use_arc!(key = self.key, component_instances = self.component_instances, component_links = self.component_links, selected_root_component_class = self.selected_root_component_class);
         let mut task = self.load_timeline_task.lock().unwrap();
         task.abort();
         *task = self.runtime.spawn(TimelineViewModelImpl::load_timeline_by_current_root_component_class(key, component_instances, component_links, selected_root_component_class));
     }
 
-    fn on_edit_instance(&self, _: &StaticPointer<RwLock<RootComponentClass<K, T>>>, _: &StaticPointer<TCell<K, ComponentInstance<K, T>>>, _: InstanceEditEvent<K, T>) {
+    fn on_edit_instance(&self, _: &RootComponentClassHandle<K, T>, _: &ComponentInstanceHandle<K, T>, _: InstanceEditEvent<K, T>) {
         use_arc!(key = self.key, component_instances = self.component_instances, component_links = self.component_links, selected_root_component_class = self.selected_root_component_class);
         let mut task = self.load_timeline_task.lock().unwrap();
         task.abort();
@@ -324,10 +324,10 @@ impl<K: Send + Sync + 'static, T: ParameterValueType> TimelineViewModelImpl<K, T
 
     async fn load_timeline_by_new_root_component_class(
         key: Arc<RwLock<TCellOwner<K>>>,
-        root_component_class: Option<StaticPointer<RwLock<RootComponentClass<K, T>>>>,
-        component_instances: Arc<RwLock<ComponentInstanceDataList<StaticPointer<TCell<K, ComponentInstance<K, T>>>>>>,
-        component_links: Arc<RwLock<ComponentLinkDataList<StaticPointer<TCell<K, MarkerLink<K>>>, StaticPointer<TCell<K, ComponentInstance<K, T>>>>>>,
-        selected_root_component_class: Arc<RwLock<Option<StaticPointer<RwLock<RootComponentClass<K, T>>>>>>,
+        root_component_class: Option<RootComponentClassHandle<K, T>>,
+        component_instances: Arc<RwLock<ComponentInstanceDataList<ComponentInstanceHandle<K, T>>>>,
+        component_links: Arc<RwLock<ComponentLinkDataList<StaticPointer<TCell<K, MarkerLink<K>>>, ComponentInstanceHandle<K, T>>>>,
+        selected_root_component_class: Arc<RwLock<Option<RootComponentClassHandle<K, T>>>>,
     ) {
         let (mut selected_root_component_class, mut component_instances, mut component_links) = tokio::join!(selected_root_component_class.write(), component_instances.write(), component_links.write());
         *selected_root_component_class = root_component_class.clone();
@@ -336,9 +336,9 @@ impl<K: Send + Sync + 'static, T: ParameterValueType> TimelineViewModelImpl<K, T
 
     async fn load_timeline_by_current_root_component_class(
         key: Arc<RwLock<TCellOwner<K>>>,
-        component_instances: Arc<RwLock<ComponentInstanceDataList<StaticPointer<TCell<K, ComponentInstance<K, T>>>>>>,
-        component_links: Arc<RwLock<ComponentLinkDataList<StaticPointer<TCell<K, MarkerLink<K>>>, StaticPointer<TCell<K, ComponentInstance<K, T>>>>>>,
-        selected_root_component_class: Arc<RwLock<Option<StaticPointer<RwLock<RootComponentClass<K, T>>>>>>,
+        component_instances: Arc<RwLock<ComponentInstanceDataList<ComponentInstanceHandle<K, T>>>>,
+        component_links: Arc<RwLock<ComponentLinkDataList<StaticPointer<TCell<K, MarkerLink<K>>>, ComponentInstanceHandle<K, T>>>>,
+        selected_root_component_class: Arc<RwLock<Option<RootComponentClassHandle<K, T>>>>,
     ) {
         let (selected_root_component_class, mut component_instances, mut component_links) = tokio::join!(selected_root_component_class.read(), component_instances.write(), component_links.write());
         Self::load_timeline_inner(key, selected_root_component_class.as_ref(), &mut component_instances, &mut component_links).await;
@@ -346,9 +346,9 @@ impl<K: Send + Sync + 'static, T: ParameterValueType> TimelineViewModelImpl<K, T
 
     async fn load_timeline_inner(
         key: Arc<RwLock<TCellOwner<K>>>,
-        root_component_class: Option<&StaticPointer<RwLock<RootComponentClass<K, T>>>>,
-        component_instances: &mut ComponentInstanceDataList<StaticPointer<TCell<K, ComponentInstance<K, T>>>>,
-        component_links: &mut ComponentLinkDataList<StaticPointer<TCell<K, MarkerLink<K>>>, StaticPointer<TCell<K, ComponentInstance<K, T>>>>,
+        root_component_class: Option<&RootComponentClassHandle<K, T>>,
+        component_instances: &mut ComponentInstanceDataList<ComponentInstanceHandle<K, T>>,
+        component_links: &mut ComponentLinkDataList<StaticPointer<TCell<K, MarkerLink<K>>>, ComponentInstanceHandle<K, T>>,
     ) {
         component_instances.list.clear();
         component_links.list.clear();
@@ -378,7 +378,7 @@ where
         self.global_ui_state.seek()
     }
 
-    type ComponentInstanceHandle = StaticPointer<TCell<K, ComponentInstance<K, T>>>;
+    type ComponentInstanceHandle = ComponentInstanceHandle<K, T>;
 
     fn component_instances<R>(&self, f: impl FnOnce(&ComponentInstanceDataList<Self::ComponentInstanceHandle>) -> R) -> R {
         f(&self.component_instances.blocking_read())

@@ -51,8 +51,10 @@ mod lib {
     pub fn subscribe() -> hot_lib_reloader::LibReloadObserver {}
 }
 
+type DynGui = dyn Gui<<ValueType as ParameterValueType>::Image> + Send + Sync;
+
 #[derive(Clone)]
-struct SharedDynGui(Arc<Mutex<Option<Box<dyn Gui<<ValueType as ParameterValueType>::Image> + Send + Sync>>>>);
+struct SharedDynGui(Arc<Mutex<Option<Box<DynGui>>>>);
 
 struct SharedDynGuiSlot<'a>(MutexGuard<'a, Option<Box<dyn Gui<<ValueType as ParameterValueType>::Image> + Send + Sync>>>);
 

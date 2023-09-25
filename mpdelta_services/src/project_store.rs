@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use mpdelta_core::core::{ProjectMemory, RootComponentClassMemory};
-use mpdelta_core::project::{Project, RootComponentClass};
+use mpdelta_core::project::{Project, ProjectHandle, ProjectHandleOwned, RootComponentClass, RootComponentClassHandle, RootComponentClassHandleOwned};
 use mpdelta_core::ptr::{StaticPointer, StaticPointerOwned};
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -98,26 +98,26 @@ impl<K, T> Default for InMemoryProjectStore<K, T> {
 
 #[async_trait]
 impl<K, T> ProjectMemory<K, T> for InMemoryProjectStore<K, T> {
-    async fn insert_new_project(&self, path: Option<&Path>, project: StaticPointerOwned<RwLock<Project<K, T>>>) {
+    async fn insert_new_project(&self, path: Option<&Path>, project: ProjectHandleOwned<K, T>) {
         self.0.write().await.insert_root(path.map(Path::to_path_buf), project);
     }
 
-    async fn get_loaded_project(&self, path: &Path) -> Option<StaticPointer<RwLock<Project<K, T>>>> {
+    async fn get_loaded_project(&self, path: &Path) -> Option<ProjectHandle<K, T>> {
         self.0.read().await.search_root_by_key(&path)
     }
 
-    async fn all_loaded_projects(&self) -> Cow<[StaticPointer<RwLock<Project<K, T>>>]> {
+    async fn all_loaded_projects(&self) -> Cow<[ProjectHandle<K, T>]> {
         Cow::Owned(self.0.read().await.all_root().collect())
     }
 }
 
 #[async_trait]
 impl<K, T> RootComponentClassMemory<K, T> for InMemoryProjectStore<K, T> {
-    async fn insert_new_root_component_class(&self, parent: Option<&StaticPointer<RwLock<Project<K, T>>>>, root_component_class: StaticPointerOwned<RwLock<RootComponentClass<K, T>>>) {
+    async fn insert_new_root_component_class(&self, parent: Option<&ProjectHandle<K, T>>, root_component_class: RootComponentClassHandleOwned<K, T>) {
         self.0.write().await.insert_child(parent, root_component_class);
     }
 
-    async fn set_parent(&self, root_component_class: &StaticPointer<RwLock<RootComponentClass<K, T>>>, parent: Option<&StaticPointer<RwLock<Project<K, T>>>>) {
+    async fn set_parent(&self, root_component_class: &RootComponentClassHandle<K, T>, parent: Option<&ProjectHandle<K, T>>) {
         if let Some(parent) = parent {
             self.0.write().await.set_root(root_component_class, parent);
         } else {
@@ -125,15 +125,15 @@ impl<K, T> RootComponentClassMemory<K, T> for InMemoryProjectStore<K, T> {
         }
     }
 
-    async fn search_by_parent(&self, parent: &StaticPointer<RwLock<Project<K, T>>>) -> Cow<[StaticPointer<RwLock<RootComponentClass<K, T>>>]> {
+    async fn search_by_parent(&self, parent: &ProjectHandle<K, T>) -> Cow<[RootComponentClassHandle<K, T>]> {
         Cow::Owned(self.0.read().await.children_by_root(parent).collect())
     }
 
-    async fn get_parent_project(&self, root_component_class: &StaticPointer<RwLock<RootComponentClass<K, T>>>) -> Option<StaticPointer<RwLock<Project<K, T>>>> {
+    async fn get_parent_project(&self, root_component_class: &RootComponentClassHandle<K, T>) -> Option<ProjectHandle<K, T>> {
         self.0.read().await.get_root(root_component_class).cloned()
     }
 
-    async fn all_loaded_root_component_classes(&self) -> Cow<[StaticPointer<RwLock<RootComponentClass<K, T>>>]> {
+    async fn all_loaded_root_component_classes(&self) -> Cow<[RootComponentClassHandle<K, T>]> {
         Cow::Owned(self.0.read().await.all_children().collect())
     }
 }

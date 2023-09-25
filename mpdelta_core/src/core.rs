@@ -1,12 +1,12 @@
 use crate::component::class::ComponentClass;
-use crate::component::instance::ComponentInstance;
+use crate::component::instance::ComponentInstanceHandle;
 use crate::component::parameter::ParameterValueType;
 use crate::edit::{InstanceEditCommand, InstanceEditEvent, RootComponentEditCommand, RootComponentEditEvent};
-use crate::project::{Project, RootComponentClass};
+use crate::project::{Project, ProjectHandle, ProjectHandleOwned, RootComponentClass, RootComponentClassHandle, RootComponentClassHandleOwned};
 use crate::ptr::{StaticPointer, StaticPointerOwned};
 use crate::usecase::*;
 use async_trait::async_trait;
-use qcell::{TCell, TCellOwner};
+use qcell::TCellOwner;
 use std::borrow::Cow;
 use std::error::Error;
 use std::fmt::{Debug, Formatter};
@@ -86,7 +86,7 @@ pub trait IdGenerator: Send + Sync {
 #[async_trait]
 pub trait ProjectLoader<K, T>: Send + Sync {
     type Err: Error + 'static;
-    async fn load_project(&self, path: &Path) -> Result<StaticPointerOwned<RwLock<Project<K, T>>>, Self::Err>;
+    async fn load_project(&self, path: &Path) -> Result<ProjectHandleOwned<K, T>, Self::Err>;
 }
 
 #[async_trait]
@@ -94,9 +94,9 @@ pub trait ProjectMemory<K: 'static, T>: Send + Sync {
     async fn contains(&self, path: &Path) -> bool {
         self.get_loaded_project(path).await.is_some()
     }
-    async fn insert_new_project(&self, path: Option<&Path>, project: StaticPointerOwned<RwLock<Project<K, T>>>);
-    async fn get_loaded_project(&self, path: &Path) -> Option<StaticPointer<RwLock<Project<K, T>>>>;
-    async fn all_loaded_projects(&self) -> Cow<[StaticPointer<RwLock<Project<K, T>>>]>;
+    async fn insert_new_project(&self, path: Option<&Path>, project: ProjectHandleOwned<K, T>);
+    async fn get_loaded_project(&self, path: &Path) -> Option<ProjectHandle<K, T>>;
+    async fn all_loaded_projects(&self) -> Cow<[ProjectHandle<K, T>]>;
 }
 
 #[derive(Debug, Error)]
@@ -113,7 +113,7 @@ where
 {
     type Err = LoadProjectError<PL::Err>;
 
-    async fn load_project(&self, path: impl AsRef<Path> + Send + Sync) -> Result<StaticPointer<RwLock<Project<K, T>>>, Self::Err> {
+    async fn load_project(&self, path: impl AsRef<Path> + Send + Sync) -> Result<ProjectHandle<K, T>, Self::Err> {
         let path = path.as_ref();
         match self.project_memory.get_loaded_project(path).await {
             Some(project) => Ok(project),
@@ -130,7 +130,7 @@ where
 #[async_trait]
 pub trait ProjectWriter<K, T>: Send + Sync {
     type Err: Error + 'static;
-    async fn write_project(&self, project: &StaticPointer<RwLock<Project<K, T>>>, path: &Path) -> Result<(), Self::Err>;
+    async fn write_project(&self, project: &ProjectHandle<K, T>, path: &Path) -> Result<(), Self::Err>;
 }
 
 #[derive(Debug, Error)]
@@ -146,7 +146,7 @@ where
 {
     type Err = WriteProjectError<PW::Err>;
 
-    async fn write_project(&self, project: &StaticPointer<RwLock<Project<K, T>>>, path: impl AsRef<Path> + Send + Sync) -> Result<(), Self::Err> {
+    async fn write_project(&self, project: &ProjectHandle<K, T>, path: impl AsRef<Path> + Send + Sync) -> Result<(), Self::Err> {
         self.project_writer.write_project(project, path.as_ref()).await.map_err(Into::into)
     }
 }
@@ -157,7 +157,7 @@ where
     ID: IdGenerator,
     PM: ProjectMemory<K, T>,
 {
-    async fn new_project(&self) -> StaticPointer<RwLock<Project<K, T>>> {
+    async fn new_project(&self) -> ProjectHandle<K, T> {
         let project = Project::new_empty(self.id_generator.generate_new());
         let pointer = StaticPointerOwned::reference(&project).clone();
         self.project_memory.insert_new_project(None, project).await;
@@ -167,11 +167,11 @@ where
 
 #[async_trait]
 pub trait RootComponentClassMemory<K, T>: Send + Sync {
-    async fn insert_new_root_component_class(&self, parent: Option<&StaticPointer<RwLock<Project<K, T>>>>, root_component_class: StaticPointerOwned<RwLock<RootComponentClass<K, T>>>);
-    async fn set_parent(&self, root_component_class: &StaticPointer<RwLock<RootComponentClass<K, T>>>, parent: Option<&StaticPointer<RwLock<Project<K, T>>>>);
-    async fn search_by_parent(&self, parent: &StaticPointer<RwLock<Project<K, T>>>) -> Cow<[StaticPointer<RwLock<RootComponentClass<K, T>>>]>;
-    async fn get_parent_project(&self, path: &StaticPointer<RwLock<RootComponentClass<K, T>>>) -> Option<StaticPointer<RwLock<Project<K, T>>>>;
-    async fn all_loaded_root_component_classes(&self) -> Cow<[StaticPointer<RwLock<RootComponentClass<K, T>>>]>;
+    async fn insert_new_root_component_class(&self, parent: Option<&ProjectHandle<K, T>>, root_component_class: RootComponentClassHandleOwned<K, T>);
+    async fn set_parent(&self, root_component_class: &RootComponentClassHandle<K, T>, parent: Option<&ProjectHandle<K, T>>);
+    async fn search_by_parent(&self, parent: &ProjectHandle<K, T>) -> Cow<[RootComponentClassHandle<K, T>]>;
+    async fn get_parent_project(&self, path: &RootComponentClassHandle<K, T>) -> Option<ProjectHandle<K, T>>;
+    async fn all_loaded_root_component_classes(&self) -> Cow<[RootComponentClassHandle<K, T>]>;
 }
 
 #[async_trait]
@@ -180,7 +180,7 @@ where
     ID: IdGenerator,
     RM: RootComponentClassMemory<K, T>,
 {
-    async fn new_root_component_class(&self) -> StaticPointer<RwLock<RootComponentClass<K, T>>> {
+    async fn new_root_component_class(&self) -> RootComponentClassHandle<K, T> {
         let root_component_class = RootComponentClass::new_empty(self.id_generator.generate_new());
         let pointer = StaticPointerOwned::reference(&root_component_class).clone();
         self.root_component_class_memory.insert_new_root_component_class(None, root_component_class).await;
@@ -193,7 +193,7 @@ impl<K, T, T0: Send + Sync, T1: Send + Sync, T2: Send + Sync, T3: Send + Sync, R
 where
     RM: RootComponentClassMemory<K, T>,
 {
-    async fn set_owner_for_root_component_class(&self, component: &StaticPointer<RwLock<RootComponentClass<K, T>>>, owner: &StaticPointer<RwLock<Project<K, T>>>) {
+    async fn set_owner_for_root_component_class(&self, component: &RootComponentClassHandle<K, T>, owner: &ProjectHandle<K, T>) {
         self.root_component_class_memory.set_parent(component, Some(owner)).await;
     }
 }
@@ -203,7 +203,7 @@ impl<K, T, T0: Send + Sync, T1: Send + Sync, T2: Send + Sync, PM: Send + Sync, T
 where
     PM: ProjectMemory<K, T>,
 {
-    async fn get_loaded_projects(&self) -> Cow<[StaticPointer<RwLock<Project<K, T>>>]> {
+    async fn get_loaded_projects(&self) -> Cow<[ProjectHandle<K, T>]> {
         self.project_memory.all_loaded_projects().await
     }
 }
@@ -213,7 +213,7 @@ impl<K, T, T0: Send + Sync, T1: Send + Sync, T2: Send + Sync, T3: Send + Sync, R
 where
     RM: RootComponentClassMemory<K, T>,
 {
-    async fn get_root_component_classes(&self, project: &StaticPointer<RwLock<Project<K, T>>>) -> Cow<[StaticPointer<RwLock<RootComponentClass<K, T>>>]> {
+    async fn get_root_component_classes(&self, project: &ProjectHandle<K, T>) -> Cow<[RootComponentClassHandle<K, T>]> {
         self.root_component_class_memory.search_by_parent(project).await
     }
 }
@@ -237,26 +237,26 @@ where
 pub trait ComponentRendererBuilder<K, T: ParameterValueType>: Send + Sync {
     type Err: Error + 'static;
     type Renderer: RealtimeComponentRenderer<T> + Send + Sync + 'static;
-    async fn create_renderer(&self, component: &StaticPointer<TCell<K, ComponentInstance<K, T>>>) -> Result<Self::Renderer, Self::Err>;
+    async fn create_renderer(&self, component: &ComponentInstanceHandle<K, T>) -> Result<Self::Renderer, Self::Err>;
 }
 
 #[async_trait]
 impl<K, T: ParameterValueType, T0: Send + Sync, T1: Send + Sync, T2: Send + Sync, T3: Send + Sync, T4: Send + Sync, T5: Send + Sync, CR: Send + Sync, T7: Send + Sync, T8: Send + Sync> RealtimeRenderComponentUsecase<K, T> for MPDeltaCore<K, T0, T1, T2, T3, T4, T5, CR, T7, T8>
 where
-    StaticPointer<TCell<K, ComponentInstance<K, T>>>: Sync,
+    ComponentInstanceHandle<K, T>: Sync,
     CR: ComponentRendererBuilder<K, T>,
 {
     type Err = CR::Err;
     type Renderer = CR::Renderer;
 
-    async fn render_component(&self, component: &StaticPointer<TCell<K, ComponentInstance<K, T>>>) -> Result<Self::Renderer, Self::Err> {
+    async fn render_component(&self, component: &ComponentInstanceHandle<K, T>) -> Result<Self::Renderer, Self::Err> {
         self.component_renderer_builder.create_renderer(component).await
     }
 }
 
 pub trait EditEventListener<K, T>: Send + Sync {
-    fn on_edit(&self, target: &StaticPointer<RwLock<RootComponentClass<K, T>>>, event: RootComponentEditEvent<K, T>);
-    fn on_edit_instance(&self, root: &StaticPointer<RwLock<RootComponentClass<K, T>>>, target: &StaticPointer<TCell<K, ComponentInstance<K, T>>>, command: InstanceEditEvent<K, T>);
+    fn on_edit(&self, target: &RootComponentClassHandle<K, T>, event: RootComponentEditEvent<K, T>);
+    fn on_edit_instance(&self, root: &RootComponentClassHandle<K, T>, target: &ComponentInstanceHandle<K, T>, command: InstanceEditEvent<K, T>);
 }
 
 impl<K, T, O> EditEventListener<K, T> for O
@@ -264,11 +264,11 @@ where
     O: Deref + Send + Sync,
     O::Target: EditEventListener<K, T>,
 {
-    fn on_edit(&self, target: &StaticPointer<RwLock<RootComponentClass<K, T>>>, event: RootComponentEditEvent<K, T>) {
+    fn on_edit(&self, target: &RootComponentClassHandle<K, T>, event: RootComponentEditEvent<K, T>) {
         self.deref().on_edit(target, event)
     }
 
-    fn on_edit_instance(&self, root: &StaticPointer<RwLock<RootComponentClass<K, T>>>, target: &StaticPointer<TCell<K, ComponentInstance<K, T>>>, command: InstanceEditEvent<K, T>) {
+    fn on_edit_instance(&self, root: &RootComponentClassHandle<K, T>, target: &ComponentInstanceHandle<K, T>, command: InstanceEditEvent<K, T>) {
         self.deref().on_edit_instance(root, target, command)
     }
 }
@@ -279,35 +279,35 @@ pub trait Editor<K, T>: Send + Sync {
     type Err: Error + 'static;
     type EditEventListenerGuard: Send + Sync + 'static;
     fn add_edit_event_listener(&self, listener: impl EditEventListener<K, T> + 'static) -> Self::EditEventListenerGuard;
-    async fn edit(&self, target: &StaticPointer<RwLock<RootComponentClass<K, T>>>, command: RootComponentEditCommand<K, T>) -> Result<Self::Log, Self::Err>;
-    async fn edit_instance(&self, root: &StaticPointer<RwLock<RootComponentClass<K, T>>>, target: &StaticPointer<TCell<K, ComponentInstance<K, T>>>, command: InstanceEditCommand<K, T>) -> Result<Self::Log, Self::Err>;
+    async fn edit(&self, target: &RootComponentClassHandle<K, T>, command: RootComponentEditCommand<K, T>) -> Result<Self::Log, Self::Err>;
+    async fn edit_instance(&self, root: &RootComponentClassHandle<K, T>, target: &ComponentInstanceHandle<K, T>, command: InstanceEditCommand<K, T>) -> Result<Self::Log, Self::Err>;
     async fn edit_reverse(&self, log: &Self::Log);
     async fn edit_by_log(&self, log: &Self::Log);
 }
 
 #[async_trait]
 pub trait EditHistory<K, T, Log>: Send + Sync {
-    async fn push_history(&self, root: &StaticPointer<RwLock<RootComponentClass<K, T>>>, target: Option<&StaticPointer<TCell<K, ComponentInstance<K, T>>>>, log: Log);
-    async fn undo(&self, root: &StaticPointer<RwLock<RootComponentClass<K, T>>>, target: Option<&StaticPointer<TCell<K, ComponentInstance<K, T>>>>) -> Option<Arc<Log>>;
-    async fn redo(&self, root: &StaticPointer<RwLock<RootComponentClass<K, T>>>, target: Option<&StaticPointer<TCell<K, ComponentInstance<K, T>>>>) -> Option<Arc<Log>>;
+    async fn push_history(&self, root: &RootComponentClassHandle<K, T>, target: Option<&ComponentInstanceHandle<K, T>>, log: Log);
+    async fn undo(&self, root: &RootComponentClassHandle<K, T>, target: Option<&ComponentInstanceHandle<K, T>>) -> Option<Arc<Log>>;
+    async fn redo(&self, root: &RootComponentClassHandle<K, T>, target: Option<&ComponentInstanceHandle<K, T>>) -> Option<Arc<Log>>;
 }
 
 #[async_trait]
 impl<K, T, T0: Send + Sync, T1: Send + Sync, T2: Send + Sync, T3: Send + Sync, T4: Send + Sync, T5: Send + Sync, T6: Send + Sync, ED: Send + Sync, HS: Send + Sync> EditUsecase<K, T> for MPDeltaCore<K, T0, T1, T2, T3, T4, T5, T6, ED, HS>
 where
-    StaticPointer<TCell<K, ComponentInstance<K, T>>>: Sync,
+    ComponentInstanceHandle<K, T>: Sync,
     ED: Editor<K, T>,
     HS: EditHistory<K, T, ED::Log>,
 {
     type Err = ED::Err;
 
-    async fn edit(&self, target: &StaticPointer<RwLock<RootComponentClass<K, T>>>, command: RootComponentEditCommand<K, T>) -> Result<(), Self::Err> {
+    async fn edit(&self, target: &RootComponentClassHandle<K, T>, command: RootComponentEditCommand<K, T>) -> Result<(), Self::Err> {
         let log = self.editor.edit(target, command).await?;
         self.edit_history.push_history(target, None, log).await;
         Ok(())
     }
 
-    async fn edit_instance(&self, root: &StaticPointer<RwLock<RootComponentClass<K, T>>>, target: &StaticPointer<TCell<K, ComponentInstance<K, T>>>, command: InstanceEditCommand<K, T>) -> Result<(), Self::Err> {
+    async fn edit_instance(&self, root: &RootComponentClassHandle<K, T>, target: &ComponentInstanceHandle<K, T>, command: InstanceEditCommand<K, T>) -> Result<(), Self::Err> {
         let log = self.editor.edit_instance(root, target, command).await?;
         self.edit_history.push_history(root, Some(target), log).await;
         Ok(())
@@ -317,7 +317,7 @@ where
 #[async_trait]
 impl<K, T, T0: Send + Sync, T1: Send + Sync, T2: Send + Sync, T3: Send + Sync, T4: Send + Sync, T5: Send + Sync, T6: Send + Sync, ED: Send + Sync, T8: Send + Sync> SubscribeEditEventUsecase<K, T> for MPDeltaCore<K, T0, T1, T2, T3, T4, T5, T6, ED, T8>
 where
-    StaticPointer<TCell<K, ComponentInstance<K, T>>>: Sync,
+    ComponentInstanceHandle<K, T>: Sync,
     ED: Editor<K, T>,
 {
     type EditEventListenerGuard = ED::EditEventListenerGuard;
@@ -330,11 +330,11 @@ where
 #[async_trait]
 impl<K, T, T0: Send + Sync, T1: Send + Sync, T2: Send + Sync, T3: Send + Sync, T4: Send + Sync, T5: Send + Sync, T6: Send + Sync, ED: Send + Sync, HS: Send + Sync> UndoUsecase<K, T> for MPDeltaCore<K, T0, T1, T2, T3, T4, T5, T6, ED, HS>
 where
-    StaticPointer<TCell<K, ComponentInstance<K, T>>>: Sync,
+    ComponentInstanceHandle<K, T>: Sync,
     ED: Editor<K, T>,
     HS: EditHistory<K, T, ED::Log>,
 {
-    async fn undo(&self, component: &StaticPointer<RwLock<RootComponentClass<K, T>>>) -> bool {
+    async fn undo(&self, component: &RootComponentClassHandle<K, T>) -> bool {
         if let Some(log) = self.edit_history.undo(component, None).await {
             self.editor.edit_reverse(&log).await;
             true
@@ -343,7 +343,7 @@ where
         }
     }
 
-    async fn undo_instance(&self, root: &StaticPointer<RwLock<RootComponentClass<K, T>>>, target: &StaticPointer<TCell<K, ComponentInstance<K, T>>>) -> bool {
+    async fn undo_instance(&self, root: &RootComponentClassHandle<K, T>, target: &ComponentInstanceHandle<K, T>) -> bool {
         if let Some(log) = self.edit_history.undo(root, Some(target)).await {
             self.editor.edit_reverse(&log).await;
             true
@@ -356,11 +356,11 @@ where
 #[async_trait]
 impl<K, T, T0: Send + Sync, T1: Send + Sync, T2: Send + Sync, T3: Send + Sync, T4: Send + Sync, T5: Send + Sync, T6: Send + Sync, ED: Send + Sync, HS: Send + Sync> RedoUsecase<K, T> for MPDeltaCore<K, T0, T1, T2, T3, T4, T5, T6, ED, HS>
 where
-    StaticPointer<TCell<K, ComponentInstance<K, T>>>: Sync,
+    ComponentInstanceHandle<K, T>: Sync,
     ED: Editor<K, T>,
     HS: EditHistory<K, T, ED::Log>,
 {
-    async fn redo(&self, component: &StaticPointer<RwLock<RootComponentClass<K, T>>>) -> bool {
+    async fn redo(&self, component: &RootComponentClassHandle<K, T>) -> bool {
         if let Some(log) = self.edit_history.redo(component, None).await {
             self.editor.edit_by_log(&log).await;
             true
@@ -369,7 +369,7 @@ where
         }
     }
 
-    async fn redo_instance(&self, root: &StaticPointer<RwLock<RootComponentClass<K, T>>>, target: &StaticPointer<TCell<K, ComponentInstance<K, T>>>) -> bool {
+    async fn redo_instance(&self, root: &RootComponentClassHandle<K, T>, target: &ComponentInstanceHandle<K, T>) -> bool {
         if let Some(log) = self.edit_history.redo(root, Some(target)).await {
             self.editor.edit_by_log(&log).await;
             true
@@ -894,7 +894,7 @@ mod tests {
             type Err = std::convert::Infallible;
             type Renderer = RD;
 
-            async fn create_renderer(&self, _: &StaticPointer<TCell<K, ComponentInstance<K, Temporary>>>) -> Result<Self::Renderer, Self::Err> {
+            async fn create_renderer(&self, _: &ComponentInstanceHandle<K, Temporary>) -> Result<Self::Renderer, Self::Err> {
                 Ok(RD)
             }
         }

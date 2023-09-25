@@ -4,24 +4,22 @@ use crate::message_router::{MessageHandler, MessageRouter};
 use crate::view_model_util::use_arc;
 use crate::viewmodel::ViewModelParams;
 use mpdelta_async_runtime::AsyncRuntime;
-use mpdelta_core::component::instance::ComponentInstance;
+use mpdelta_core::component::instance::ComponentInstanceHandle;
 use mpdelta_core::component::parameter::ParameterValueType;
-use mpdelta_core::project::RootComponentClass;
+use mpdelta_core::project::{RootComponentClass, RootComponentClassHandle};
 use mpdelta_core::ptr::StaticPointer;
-use qcell::TCell;
 use std::mem;
 use std::sync::atomic;
 use std::sync::atomic::{AtomicBool, AtomicUsize};
 use std::sync::{Arc, Mutex, RwLock as StdRwLock};
 use std::time::Instant;
-use tokio::sync::RwLock;
 
 #[derive(Debug)]
 pub enum GlobalUIEvent<K: 'static, T> {
     BeginRenderFrame,
     EndRenderFrame,
-    SelectRootComponentClass(Option<StaticPointer<RwLock<RootComponentClass<K, T>>>>),
-    SelectComponentInstance(Option<StaticPointer<TCell<K, ComponentInstance<K, T>>>>),
+    SelectRootComponentClass(Option<RootComponentClassHandle<K, T>>),
+    SelectComponentInstance(Option<ComponentInstanceHandle<K, T>>),
 }
 
 impl<K: 'static, T> Clone for GlobalUIEvent<K, T> {
@@ -71,9 +69,9 @@ pub trait GlobalUIState<K: 'static, T>: Send + Sync + 'static {
     fn pause(&self);
     fn seek(&self) -> usize;
     fn set_seek(&self, _seek: usize);
-    fn select_root_component_class(&self, target: &StaticPointer<RwLock<RootComponentClass<K, T>>>);
+    fn select_root_component_class(&self, target: &RootComponentClassHandle<K, T>);
     fn unselect_root_component_class(&self);
-    fn select_component_instance(&self, target: &StaticPointer<TCell<K, ComponentInstance<K, T>>>);
+    fn select_component_instance(&self, target: &ComponentInstanceHandle<K, T>);
 }
 
 pub struct GlobalUIStateImpl<K: 'static, T, H, Runtime> {
@@ -181,7 +179,7 @@ where
         self.handle(GlobalUIEvent::SelectComponentInstance(None));
     }
 
-    fn select_component_instance(&self, target: &StaticPointer<TCell<K, ComponentInstance<K, T>>>) {
+    fn select_component_instance(&self, target: &ComponentInstanceHandle<K, T>) {
         self.handle(GlobalUIEvent::SelectComponentInstance(Some(target.clone())));
     }
 }

@@ -1,4 +1,4 @@
-use crate::component::instance::ComponentInstance;
+use crate::component::instance::ComponentInstanceHandleCow;
 use crate::component::link::MarkerLink;
 use crate::component::marker_pin::MarkerTime;
 use crate::component::parameter::placeholder::{Placeholder, TagAudio, TagImage};
@@ -8,10 +8,8 @@ use crate::native::processor::NativeProcessor;
 use crate::ptr::StaticPointerCow;
 use crate::time::TimelineTime;
 use async_trait::async_trait;
-
 use qcell::TCell;
 use std::borrow::Cow;
-
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -42,7 +40,7 @@ pub trait ProcessorComponentBuilder<K, T> {
         variable_parameter_type: &[(String, ParameterType)],
         frames: &mut dyn Iterator<Item = TimelineTime>,
         map_time: &dyn Fn(TimelineTime) -> MarkerTime,
-    ) -> (Vec<StaticPointerCow<TCell<K, ComponentInstance<K, T>>>>, Vec<StaticPointerCow<TCell<K, MarkerLink<K>>>>);
+    ) -> (Vec<ComponentInstanceHandleCow<K, T>>, Vec<StaticPointerCow<TCell<K, MarkerLink<K>>>>);
 }
 
 pub enum ComponentProcessorBody<'a, K, T> {

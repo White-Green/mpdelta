@@ -1,6 +1,5 @@
 use crate::component::parameter::{AbstractFile, Never, Parameter, ParameterTypeExceptComponentClass, ParameterValueType};
 use crate::time::TimelineTime;
-
 use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::path::PathBuf;

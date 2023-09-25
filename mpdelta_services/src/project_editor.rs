@@ -1,11 +1,11 @@
 use async_trait::async_trait;
 use dashmap::DashMap;
-use mpdelta_core::component::instance::ComponentInstance;
+use mpdelta_core::component::instance::ComponentInstanceHandle;
 use mpdelta_core::component::link::MarkerLink;
 use mpdelta_core::core::{EditEventListener, Editor};
 use mpdelta_core::edit::{InstanceEditCommand, InstanceEditEvent, RootComponentEditCommand, RootComponentEditEvent};
-use mpdelta_core::project::RootComponentClass;
-use mpdelta_core::ptr::{StaticPointer, StaticPointerOwned};
+use mpdelta_core::project::RootComponentClassHandle;
+use mpdelta_core::ptr::StaticPointerOwned;
 use mpdelta_core::time::TimelineTime;
 use qcell::{TCell, TCellOwner};
 use std::sync::atomic::AtomicUsize;
@@ -66,7 +66,7 @@ impl<K, T: 'static> Editor<K, T> for ProjectEditor<K, T> {
         }
     }
 
-    async fn edit(&self, target_ref: &StaticPointer<RwLock<RootComponentClass<K, T>>>, command: RootComponentEditCommand<K, T>) -> Result<Self::Log, Self::Err> {
+    async fn edit(&self, target_ref: &RootComponentClassHandle<K, T>, command: RootComponentEditCommand<K, T>) -> Result<Self::Log, Self::Err> {
         let target = target_ref.upgrade().ok_or(ProjectEditError::InvalidTarget)?;
         let target = target.read().await;
         match command {
@@ -115,7 +115,7 @@ impl<K, T: 'static> Editor<K, T> for ProjectEditor<K, T> {
         }
     }
 
-    async fn edit_instance(&self, root_ref: &StaticPointer<RwLock<RootComponentClass<K, T>>>, target_ref: &StaticPointer<TCell<K, ComponentInstance<K, T>>>, command: InstanceEditCommand<K, T>) -> Result<Self::Log, Self::Err> {
+    async fn edit_instance(&self, root_ref: &RootComponentClassHandle<K, T>, target_ref: &ComponentInstanceHandle<K, T>, command: InstanceEditCommand<K, T>) -> Result<Self::Log, Self::Err> {
         let target = target_ref.upgrade().ok_or(ProjectEditError::InvalidTarget)?;
         match command {
             InstanceEditCommand::UpdateImageRequiredParams(params) => {

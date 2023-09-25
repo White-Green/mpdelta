@@ -3,12 +3,12 @@ use crate::global_ui_state::{GlobalUIEvent, GlobalUIEventHandler, GlobalUIState}
 use crate::view_model_util::use_arc;
 use crate::viewmodel::ViewModelParams;
 use mpdelta_async_runtime::{AsyncRuntime, JoinHandle};
-use mpdelta_core::component::instance::ComponentInstance;
+use mpdelta_core::component::instance::ComponentInstanceHandle;
 use mpdelta_core::component::parameter::{ImageRequiredParams, ParameterValueType};
 use mpdelta_core::edit::InstanceEditCommand;
-use mpdelta_core::project::RootComponentClass;
+use mpdelta_core::project::RootComponentClassHandle;
 use mpdelta_core::ptr::StaticPointer;
-use qcell::{TCell, TCellOwner};
+use qcell::TCellOwner;
 use std::future;
 use std::ops::DerefMut;
 use std::sync::{Arc, Mutex, MutexGuard, RwLock as StdRwLock};
@@ -25,7 +25,7 @@ pub trait PropertyWindowViewModel<K: 'static, T: ParameterValueType> {
 pub struct PropertyWindowViewModelImpl<K: 'static, T, GlobalUIState, Edit, Runtime, JoinHandle> {
     global_ui_state: Arc<GlobalUIState>,
     edit: Arc<Edit>,
-    selected: Arc<StdRwLock<(Option<StaticPointer<RwLock<RootComponentClass<K, T>>>>, Option<StaticPointer<TCell<K, ComponentInstance<K, T>>>>)>>,
+    selected: Arc<StdRwLock<(Option<RootComponentClassHandle<K, T>>, Option<ComponentInstanceHandle<K, T>>)>>,
     image_required_params: Arc<Mutex<Option<ImageRequiredParams<K, T>>>>,
     image_required_params_update_task: Mutex<JoinHandle>,
     runtime: Runtime,

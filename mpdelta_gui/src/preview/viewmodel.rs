@@ -3,17 +3,16 @@ use crate::viewmodel::ViewModelParams;
 use arc_swap::ArcSwapOption;
 use mpdelta_async_runtime::{AsyncRuntime, JoinHandle};
 use mpdelta_core::component::class::ComponentClass;
-use mpdelta_core::component::instance::ComponentInstance;
+use mpdelta_core::component::instance::{ComponentInstanceHandle, ComponentInstanceHandleOwned};
 use mpdelta_core::component::parameter::ParameterValueType;
 use mpdelta_core::core::EditEventListener;
 use mpdelta_core::edit::{InstanceEditEvent, RootComponentEditEvent};
-use mpdelta_core::project::RootComponentClass;
-use mpdelta_core::ptr::{StaticPointer, StaticPointerOwned};
+use mpdelta_core::project::RootComponentClassHandle;
+use mpdelta_core::ptr::StaticPointerOwned;
 use mpdelta_core::usecase::{RealtimeComponentRenderer, RealtimeRenderComponentUsecase, SubscribeEditEventUsecase};
 use qcell::TCell;
 use std::future;
 use std::sync::{Arc, Mutex, OnceLock};
-use tokio::sync::RwLock;
 
 pub trait PreviewViewModel<K: 'static, T: ParameterValueType> {
     fn get_preview_image(&self) -> Option<T::Image>;
@@ -26,7 +25,7 @@ pub trait PreviewViewModel<K: 'static, T: ParameterValueType> {
 
 pub struct PreviewViewModelImpl<K: 'static, T, GlobalUIState, RealtimeRenderComponent, R, G, Runtime, JoinHandle> {
     renderer: Arc<RealtimeRenderComponent>,
-    real_time_renderer: Arc<ArcSwapOption<(R, StaticPointerOwned<TCell<K, ComponentInstance<K, T>>>, StaticPointer<RwLock<RootComponentClass<K, T>>>)>>,
+    real_time_renderer: Arc<ArcSwapOption<(R, ComponentInstanceHandleOwned<K, T>, RootComponentClassHandle<K, T>)>>,
     global_ui_state: Arc<GlobalUIState>,
     create_renderer: Mutex<JoinHandle>,
     handle: Runtime,
@@ -64,7 +63,7 @@ where
     G: Send + Sync + 'static,
     Runtime: AsyncRuntime<()> + Clone + 'static,
 {
-    fn on_edit(&self, _: &StaticPointer<RwLock<RootComponentClass<K, T>>>, _: RootComponentEditEvent<K, T>) {
+    fn on_edit(&self, _: &RootComponentClassHandle<K, T>, _: RootComponentEditEvent<K, T>) {
         let real_time_renderer = self.real_time_renderer.load();
         let Some((_, _, component)) = real_time_renderer.as_deref() else {
             return;
@@ -73,7 +72,7 @@ where
         self.create_real_time_renderer(component.clone());
     }
 
-    fn on_edit_instance(&self, _: &StaticPointer<RwLock<RootComponentClass<K, T>>>, _: &StaticPointer<TCell<K, ComponentInstance<K, T>>>, _: InstanceEditEvent<K, T>) {
+    fn on_edit_instance(&self, _: &RootComponentClassHandle<K, T>, _: &ComponentInstanceHandle<K, T>, _: InstanceEditEvent<K, T>) {
         let real_time_renderer = self.real_time_renderer.load();
         let Some((_, _, component)) = real_time_renderer.as_deref() else {
             return;
@@ -116,13 +115,13 @@ where
     G: Send + Sync + 'static,
     Runtime: AsyncRuntime<()> + Clone + 'static,
 {
-    fn create_real_time_renderer(&self, root_component_class: StaticPointer<RwLock<RootComponentClass<K, T>>>) {
+    fn create_real_time_renderer(&self, root_component_class: RootComponentClassHandle<K, T>) {
         let mut create_renderer = self.create_renderer.lock().unwrap();
         create_renderer.abort();
         *create_renderer = self.handle.spawn(Self::create_real_time_renderer_inner(root_component_class, Arc::clone(&self.renderer), Arc::clone(&self.real_time_renderer)));
     }
 
-    async fn create_real_time_renderer_inner(root_component_class: StaticPointer<RwLock<RootComponentClass<K, T>>>, renderer: Arc<R>, real_time_renderer: Arc<ArcSwapOption<(R::Renderer, StaticPointerOwned<TCell<K, ComponentInstance<K, T>>>, StaticPointer<RwLock<RootComponentClass<K, T>>>)>>) {
+    async fn create_real_time_renderer_inner(root_component_class: RootComponentClassHandle<K, T>, renderer: Arc<R>, real_time_renderer: Arc<ArcSwapOption<(R::Renderer, ComponentInstanceHandleOwned<K, T>, RootComponentClassHandle<K, T>)>>) {
         let new_renderer = 'renderer: {
             let Some(class) = root_component_class.upgrade() else {
                 break 'renderer None;

@@ -1,15 +1,13 @@
-use crate::component::marker_pin::MarkerPin;
-use crate::ptr::StaticPointer;
+use crate::component::marker_pin::MarkerPinHandle;
 use crate::time::TimelineTime;
-use qcell::TCell;
 use std::fmt::Debug;
 use std::hash::{Hash, Hasher};
 use std::mem;
 
 #[derive(Debug)]
 pub struct MarkerLink<K> {
-    pub from: StaticPointer<TCell<K, MarkerPin>>,
-    pub to: StaticPointer<TCell<K, MarkerPin>>,
+    pub from: MarkerPinHandle<K>,
+    pub to: MarkerPinHandle<K>,
     pub len: TimelineTime,
 }
 

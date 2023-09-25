@@ -4,8 +4,7 @@ use crate::message_router::{handler, MessageHandler, MessageRouter};
 use crate::view_model_util::use_arc;
 use mpdelta_async_runtime::AsyncRuntime;
 use mpdelta_core::component::parameter::ParameterValueType;
-use mpdelta_core::project::{Project, RootComponentClass};
-use mpdelta_core::ptr::StaticPointer;
+use mpdelta_core::project::{ProjectHandle, RootComponentClassHandle};
 use mpdelta_core::usecase::{
     EditUsecase, GetAvailableComponentClassesUsecase, GetLoadedProjectsUsecase, GetRootComponentClassesUsecase, LoadProjectUsecase, NewProjectUsecase, NewRootComponentClassUsecase, RealtimeRenderComponentUsecase, RedoUsecase, SetOwnerForRootComponentClassUsecase, SubscribeEditEventUsecase,
     UndoUsecase, WriteProjectUsecase,
@@ -235,8 +234,8 @@ pub struct ProjectData<Handle> {
     pub name: String,
 }
 
-impl<K, T> ProjectData<StaticPointer<RwLock<Project<K, T>>>> {
-    fn new(handle: StaticPointer<RwLock<Project<K, T>>>) -> ProjectData<StaticPointer<RwLock<Project<K, T>>>> {
+impl<K, T> ProjectData<ProjectHandle<K, T>> {
+    fn new(handle: ProjectHandle<K, T>) -> ProjectData<ProjectHandle<K, T>> {
         ProjectData { handle, name: "Project".to_string() }
     }
 }
@@ -251,8 +250,8 @@ pub struct RootComponentClassData<Handle> {
     pub name: String,
 }
 
-impl<K, T> RootComponentClassData<StaticPointer<RwLock<RootComponentClass<K, T>>>> {
-    fn new(handle: StaticPointer<RwLock<RootComponentClass<K, T>>>) -> RootComponentClassData<StaticPointer<RwLock<RootComponentClass<K, T>>>> {
+impl<K, T> RootComponentClassData<RootComponentClassHandle<K, T>> {
+    fn new(handle: RootComponentClassHandle<K, T>) -> RootComponentClassData<RootComponentClassHandle<K, T>> {
         RootComponentClassData { handle, name: "RootComponentClass".to_string() }
     }
 }
@@ -275,8 +274,8 @@ pub trait MainWindowViewModel<K: 'static, T> {
 }
 
 pub struct MainWindowViewModelImpl<K: 'static, T, GlobalUIState, MessageHandler, Runtime> {
-    projects: Arc<RwLock<ProjectDataList<StaticPointer<RwLock<Project<K, T>>>>>>,
-    root_component_classes: Arc<RwLock<RootComponentClassDataList<StaticPointer<RwLock<RootComponentClass<K, T>>>>>>,
+    projects: Arc<RwLock<ProjectDataList<ProjectHandle<K, T>>>>,
+    root_component_classes: Arc<RwLock<RootComponentClassDataList<RootComponentClassHandle<K, T>>>>,
     global_ui_state: Arc<GlobalUIState>,
     message_router: MessageRouter<MessageHandler, Runtime>,
 }
@@ -284,9 +283,9 @@ pub struct MainWindowViewModelImpl<K: 'static, T, GlobalUIState, MessageHandler,
 #[derive(Debug)]
 pub enum Message<K: 'static, T> {
     NewProject,
-    SelectProject(StaticPointer<RwLock<Project<K, T>>>),
+    SelectProject(ProjectHandle<K, T>),
     NewRootComponentClass,
-    SelectRootComponentClass(StaticPointer<RwLock<RootComponentClass<K, T>>>),
+    SelectRootComponentClass(RootComponentClassHandle<K, T>),
 }
 
 impl<K: 'static, T> Clone for Message<K, T> {
@@ -468,7 +467,7 @@ where
         self.message_router.handle(Message::NewProject);
     }
 
-    type ProjectHandle = StaticPointer<RwLock<Project<K, T>>>;
+    type ProjectHandle = ProjectHandle<K, T>;
 
     fn projects<R>(&self, f: impl FnOnce(&ProjectDataList<Self::ProjectHandle>) -> R) -> R {
         f(&self.projects.blocking_read())
@@ -482,7 +481,7 @@ where
         self.message_router.handle(Message::NewRootComponentClass);
     }
 
-    type RootComponentClassHandle = StaticPointer<RwLock<RootComponentClass<K, T>>>;
+    type RootComponentClassHandle = RootComponentClassHandle<K, T>;
 
     fn root_component_classes<R>(&self, f: impl FnOnce(&RootComponentClassDataList<Self::RootComponentClassHandle>) -> R) -> R {
         f(&self.root_component_classes.blocking_read())

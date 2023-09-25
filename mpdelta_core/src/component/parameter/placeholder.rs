@@ -46,7 +46,7 @@ impl<Tag> Placeholder<Tag> {
 
 impl<Tag> Clone for Placeholder<Tag> {
     fn clone(&self) -> Self {
-        Placeholder { id: self.id, phantom: self.phantom }
+        *self
     }
 }
 

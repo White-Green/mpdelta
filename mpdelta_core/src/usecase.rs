@@ -1,12 +1,11 @@
 use crate::component::class::ComponentClass;
-use crate::component::instance::ComponentInstance;
+use crate::component::instance::ComponentInstanceHandle;
 use crate::component::parameter::{Parameter, ParameterSelect, ParameterValueType};
 use crate::core::EditEventListener;
 use crate::edit::{InstanceEditCommand, RootComponentEditCommand};
-use crate::project::{Project, RootComponentClass};
+use crate::project::{ProjectHandle, RootComponentClassHandle};
 use crate::ptr::StaticPointer;
 use async_trait::async_trait;
-use qcell::TCell;
 use std::borrow::Cow;
 use std::error::Error;
 use std::ops::Deref;
@@ -16,7 +15,7 @@ use tokio::sync::RwLock;
 #[async_trait]
 pub trait LoadProjectUsecase<K, T>: Send + Sync {
     type Err: Error + 'static;
-    async fn load_project(&self, path: impl AsRef<Path> + Send + Sync) -> Result<StaticPointer<RwLock<Project<K, T>>>, Self::Err>;
+    async fn load_project(&self, path: impl AsRef<Path> + Send + Sync) -> Result<ProjectHandle<K, T>, Self::Err>;
 }
 
 #[async_trait]
@@ -27,7 +26,7 @@ where
 {
     type Err = <O::Target as LoadProjectUsecase<K, T>>::Err;
 
-    async fn load_project(&self, path: impl AsRef<Path> + Send + Sync) -> Result<StaticPointer<RwLock<Project<K, T>>>, Self::Err> {
+    async fn load_project(&self, path: impl AsRef<Path> + Send + Sync) -> Result<ProjectHandle<K, T>, Self::Err> {
         self.deref().load_project(path).await
     }
 }
@@ -35,7 +34,7 @@ where
 #[async_trait]
 pub trait WriteProjectUsecase<K, T>: Send + Sync {
     type Err: Error + 'static;
-    async fn write_project(&self, project: &StaticPointer<RwLock<Project<K, T>>>, path: impl AsRef<Path> + Send + Sync) -> Result<(), Self::Err>;
+    async fn write_project(&self, project: &ProjectHandle<K, T>, path: impl AsRef<Path> + Send + Sync) -> Result<(), Self::Err>;
 }
 
 #[async_trait]
@@ -46,14 +45,14 @@ where
 {
     type Err = <O::Target as WriteProjectUsecase<K, T>>::Err;
 
-    async fn write_project(&self, project: &StaticPointer<RwLock<Project<K, T>>>, path: impl AsRef<Path> + Send + Sync) -> Result<(), Self::Err> {
+    async fn write_project(&self, project: &ProjectHandle<K, T>, path: impl AsRef<Path> + Send + Sync) -> Result<(), Self::Err> {
         self.deref().write_project(project, path).await
     }
 }
 
 #[async_trait]
 pub trait NewProjectUsecase<K, T>: Send + Sync {
-    async fn new_project(&self) -> StaticPointer<RwLock<Project<K, T>>>;
+    async fn new_project(&self) -> ProjectHandle<K, T>;
 }
 
 #[async_trait]
@@ -62,14 +61,14 @@ where
     O: Deref + Send + Sync,
     O::Target: NewProjectUsecase<K, T>,
 {
-    async fn new_project(&self) -> StaticPointer<RwLock<Project<K, T>>> {
+    async fn new_project(&self) -> ProjectHandle<K, T> {
         self.deref().new_project().await
     }
 }
 
 #[async_trait]
 pub trait NewRootComponentClassUsecase<K, T>: Send + Sync {
-    async fn new_root_component_class(&self) -> StaticPointer<RwLock<RootComponentClass<K, T>>>;
+    async fn new_root_component_class(&self) -> RootComponentClassHandle<K, T>;
 }
 
 #[async_trait]
@@ -78,14 +77,14 @@ where
     O: Deref + Send + Sync,
     O::Target: NewRootComponentClassUsecase<K, T>,
 {
-    async fn new_root_component_class(&self) -> StaticPointer<RwLock<RootComponentClass<K, T>>> {
+    async fn new_root_component_class(&self) -> RootComponentClassHandle<K, T> {
         self.deref().new_root_component_class().await
     }
 }
 
 #[async_trait]
 pub trait SetOwnerForRootComponentClassUsecase<K, T>: Send + Sync {
-    async fn set_owner_for_root_component_class(&self, component: &StaticPointer<RwLock<RootComponentClass<K, T>>>, owner: &StaticPointer<RwLock<Project<K, T>>>);
+    async fn set_owner_for_root_component_class(&self, component: &RootComponentClassHandle<K, T>, owner: &ProjectHandle<K, T>);
 }
 
 #[async_trait]
@@ -94,14 +93,14 @@ where
     O: Deref + Send + Sync,
     O::Target: SetOwnerForRootComponentClassUsecase<K, T>,
 {
-    async fn set_owner_for_root_component_class(&self, component: &StaticPointer<RwLock<RootComponentClass<K, T>>>, owner: &StaticPointer<RwLock<Project<K, T>>>) {
+    async fn set_owner_for_root_component_class(&self, component: &RootComponentClassHandle<K, T>, owner: &ProjectHandle<K, T>) {
         self.deref().set_owner_for_root_component_class(component, owner).await
     }
 }
 
 #[async_trait]
 pub trait GetLoadedProjectsUsecase<K, T>: Send + Sync {
-    async fn get_loaded_projects(&self) -> Cow<[StaticPointer<RwLock<Project<K, T>>>]>;
+    async fn get_loaded_projects(&self) -> Cow<[ProjectHandle<K, T>]>;
 }
 
 #[async_trait]
@@ -110,14 +109,14 @@ where
     O: Deref + Send + Sync,
     O::Target: GetLoadedProjectsUsecase<K, T>,
 {
-    async fn get_loaded_projects(&self) -> Cow<[StaticPointer<RwLock<Project<K, T>>>]> {
+    async fn get_loaded_projects(&self) -> Cow<[ProjectHandle<K, T>]> {
         self.deref().get_loaded_projects().await
     }
 }
 
 #[async_trait]
 pub trait GetRootComponentClassesUsecase<K, T>: Send + Sync {
-    async fn get_root_component_classes(&self, project: &StaticPointer<RwLock<Project<K, T>>>) -> Cow<[StaticPointer<RwLock<RootComponentClass<K, T>>>]>;
+    async fn get_root_component_classes(&self, project: &ProjectHandle<K, T>) -> Cow<[RootComponentClassHandle<K, T>]>;
 }
 
 #[async_trait]
@@ -126,7 +125,7 @@ where
     O: Deref + Send + Sync,
     O::Target: GetRootComponentClassesUsecase<K, T>,
 {
-    async fn get_root_component_classes(&self, project: &StaticPointer<RwLock<Project<K, T>>>) -> Cow<[StaticPointer<RwLock<RootComponentClass<K, T>>>]> {
+    async fn get_root_component_classes(&self, project: &ProjectHandle<K, T>) -> Cow<[RootComponentClassHandle<K, T>]> {
         self.deref().get_root_component_classes(project).await
     }
 }
@@ -190,7 +189,7 @@ where
 pub trait RealtimeRenderComponentUsecase<K, T: ParameterValueType>: Send + Sync {
     type Err: Error + 'static;
     type Renderer: RealtimeComponentRenderer<T> + 'static;
-    async fn render_component(&self, component: &StaticPointer<TCell<K, ComponentInstance<K, T>>>) -> Result<Self::Renderer, Self::Err>;
+    async fn render_component(&self, component: &ComponentInstanceHandle<K, T>) -> Result<Self::Renderer, Self::Err>;
 }
 
 #[async_trait]
@@ -203,7 +202,7 @@ where
     type Err = <O::Target as RealtimeRenderComponentUsecase<K, T>>::Err;
     type Renderer = <O::Target as RealtimeRenderComponentUsecase<K, T>>::Renderer;
 
-    async fn render_component(&self, component: &StaticPointer<TCell<K, ComponentInstance<K, T>>>) -> Result<Self::Renderer, Self::Err> {
+    async fn render_component(&self, component: &ComponentInstanceHandle<K, T>) -> Result<Self::Renderer, Self::Err> {
         self.deref().render_component(component).await
     }
 }
@@ -211,8 +210,8 @@ where
 #[async_trait]
 pub trait EditUsecase<K, T>: Send + Sync {
     type Err: Error + 'static;
-    async fn edit(&self, target: &StaticPointer<RwLock<RootComponentClass<K, T>>>, command: RootComponentEditCommand<K, T>) -> Result<(), Self::Err>;
-    async fn edit_instance(&self, root: &StaticPointer<RwLock<RootComponentClass<K, T>>>, target: &StaticPointer<TCell<K, ComponentInstance<K, T>>>, command: InstanceEditCommand<K, T>) -> Result<(), Self::Err>;
+    async fn edit(&self, target: &RootComponentClassHandle<K, T>, command: RootComponentEditCommand<K, T>) -> Result<(), Self::Err>;
+    async fn edit_instance(&self, root: &RootComponentClassHandle<K, T>, target: &ComponentInstanceHandle<K, T>, command: InstanceEditCommand<K, T>) -> Result<(), Self::Err>;
 }
 
 #[async_trait]
@@ -223,11 +222,11 @@ where
 {
     type Err = <O::Target as EditUsecase<K, T>>::Err;
 
-    async fn edit(&self, target: &StaticPointer<RwLock<RootComponentClass<K, T>>>, command: RootComponentEditCommand<K, T>) -> Result<(), Self::Err> {
+    async fn edit(&self, target: &RootComponentClassHandle<K, T>, command: RootComponentEditCommand<K, T>) -> Result<(), Self::Err> {
         self.deref().edit(target, command).await
     }
 
-    async fn edit_instance(&self, root: &StaticPointer<RwLock<RootComponentClass<K, T>>>, target: &StaticPointer<TCell<K, ComponentInstance<K, T>>>, command: InstanceEditCommand<K, T>) -> Result<(), Self::Err> {
+    async fn edit_instance(&self, root: &RootComponentClassHandle<K, T>, target: &ComponentInstanceHandle<K, T>, command: InstanceEditCommand<K, T>) -> Result<(), Self::Err> {
         self.deref().edit_instance(root, target, command).await
     }
 }
@@ -252,8 +251,8 @@ where
 
 #[async_trait]
 pub trait UndoUsecase<K, T>: Send + Sync {
-    async fn undo(&self, component: &StaticPointer<RwLock<RootComponentClass<K, T>>>) -> bool;
-    async fn undo_instance(&self, root: &StaticPointer<RwLock<RootComponentClass<K, T>>>, target: &StaticPointer<TCell<K, ComponentInstance<K, T>>>) -> bool;
+    async fn undo(&self, component: &RootComponentClassHandle<K, T>) -> bool;
+    async fn undo_instance(&self, root: &RootComponentClassHandle<K, T>, target: &ComponentInstanceHandle<K, T>) -> bool;
 }
 
 #[async_trait]
@@ -262,19 +261,19 @@ where
     O: Deref + Send + Sync,
     O::Target: UndoUsecase<K, T>,
 {
-    async fn undo(&self, component: &StaticPointer<RwLock<RootComponentClass<K, T>>>) -> bool {
+    async fn undo(&self, component: &RootComponentClassHandle<K, T>) -> bool {
         self.deref().undo(component).await
     }
 
-    async fn undo_instance(&self, root: &StaticPointer<RwLock<RootComponentClass<K, T>>>, target: &StaticPointer<TCell<K, ComponentInstance<K, T>>>) -> bool {
+    async fn undo_instance(&self, root: &RootComponentClassHandle<K, T>, target: &ComponentInstanceHandle<K, T>) -> bool {
         self.deref().undo_instance(root, target).await
     }
 }
 
 #[async_trait]
 pub trait RedoUsecase<K, T>: Send + Sync {
-    async fn redo(&self, component: &StaticPointer<RwLock<RootComponentClass<K, T>>>) -> bool;
-    async fn redo_instance(&self, root: &StaticPointer<RwLock<RootComponentClass<K, T>>>, target: &StaticPointer<TCell<K, ComponentInstance<K, T>>>) -> bool;
+    async fn redo(&self, component: &RootComponentClassHandle<K, T>) -> bool;
+    async fn redo_instance(&self, root: &RootComponentClassHandle<K, T>, target: &ComponentInstanceHandle<K, T>) -> bool;
 }
 
 #[async_trait]
@@ -283,11 +282,11 @@ where
     O: Deref + Send + Sync,
     O::Target: RedoUsecase<K, T>,
 {
-    async fn redo(&self, component: &StaticPointer<RwLock<RootComponentClass<K, T>>>) -> bool {
+    async fn redo(&self, component: &RootComponentClassHandle<K, T>) -> bool {
         self.deref().redo(component).await
     }
 
-    async fn redo_instance(&self, root: &StaticPointer<RwLock<RootComponentClass<K, T>>>, target: &StaticPointer<TCell<K, ComponentInstance<K, T>>>) -> bool {
+    async fn redo_instance(&self, root: &RootComponentClassHandle<K, T>, target: &ComponentInstanceHandle<K, T>) -> bool {
         self.deref().redo_instance(root, target).await
     }
 }

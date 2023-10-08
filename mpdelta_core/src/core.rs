@@ -84,13 +84,13 @@ pub trait IdGenerator: Send + Sync {
 }
 
 #[async_trait]
-pub trait ProjectLoader<K, T>: Send + Sync {
+pub trait ProjectLoader<K, T: ParameterValueType>: Send + Sync {
     type Err: Error + 'static;
     async fn load_project(&self, path: &Path) -> Result<ProjectHandleOwned<K, T>, Self::Err>;
 }
 
 #[async_trait]
-pub trait ProjectMemory<K: 'static, T>: Send + Sync {
+pub trait ProjectMemory<K: 'static, T: ParameterValueType>: Send + Sync {
     async fn contains(&self, path: &Path) -> bool {
         self.get_loaded_project(path).await.is_some()
     }
@@ -106,7 +106,7 @@ pub enum LoadProjectError<PLErr> {
 }
 
 #[async_trait]
-impl<K, T, T0: Send + Sync, PL: Send + Sync, T2: Send + Sync, PM: Send + Sync, T4: Send + Sync, T5: Send + Sync, T6: Send + Sync, T7: Send + Sync, T8: Send + Sync> LoadProjectUsecase<K, T> for MPDeltaCore<K, T0, PL, T2, PM, T4, T5, T6, T7, T8>
+impl<K, T: ParameterValueType, T0: Send + Sync, PL: Send + Sync, T2: Send + Sync, PM: Send + Sync, T4: Send + Sync, T5: Send + Sync, T6: Send + Sync, T7: Send + Sync, T8: Send + Sync> LoadProjectUsecase<K, T> for MPDeltaCore<K, T0, PL, T2, PM, T4, T5, T6, T7, T8>
 where
     PL: ProjectLoader<K, T>,
     PM: ProjectMemory<K, T>,
@@ -128,7 +128,7 @@ where
 }
 
 #[async_trait]
-pub trait ProjectWriter<K, T>: Send + Sync {
+pub trait ProjectWriter<K, T: ParameterValueType>: Send + Sync {
     type Err: Error + 'static;
     async fn write_project(&self, project: &ProjectHandle<K, T>, path: &Path) -> Result<(), Self::Err>;
 }
@@ -140,7 +140,7 @@ pub enum WriteProjectError<PWErr> {
 }
 
 #[async_trait]
-impl<K, T, T0: Send + Sync, T1: Send + Sync, PW: Send + Sync, T3: Send + Sync, T4: Send + Sync, T5: Send + Sync, T6: Send + Sync, T7: Send + Sync, T8: Send + Sync> WriteProjectUsecase<K, T> for MPDeltaCore<K, T0, T1, PW, T3, T4, T5, T6, T7, T8>
+impl<K, T: ParameterValueType, T0: Send + Sync, T1: Send + Sync, PW: Send + Sync, T3: Send + Sync, T4: Send + Sync, T5: Send + Sync, T6: Send + Sync, T7: Send + Sync, T8: Send + Sync> WriteProjectUsecase<K, T> for MPDeltaCore<K, T0, T1, PW, T3, T4, T5, T6, T7, T8>
 where
     PW: ProjectWriter<K, T>,
 {
@@ -152,7 +152,7 @@ where
 }
 
 #[async_trait]
-impl<K, T, ID: Send + Sync, T1: Send + Sync, T2: Send + Sync, PM: Send + Sync, T4: Send + Sync, T5: Send + Sync, T6: Send + Sync, T7: Send + Sync, T8: Send + Sync> NewProjectUsecase<K, T> for MPDeltaCore<K, ID, T1, T2, PM, T4, T5, T6, T7, T8>
+impl<K, T: ParameterValueType, ID: Send + Sync, T1: Send + Sync, T2: Send + Sync, PM: Send + Sync, T4: Send + Sync, T5: Send + Sync, T6: Send + Sync, T7: Send + Sync, T8: Send + Sync> NewProjectUsecase<K, T> for MPDeltaCore<K, ID, T1, T2, PM, T4, T5, T6, T7, T8>
 where
     ID: IdGenerator,
     PM: ProjectMemory<K, T>,
@@ -166,7 +166,7 @@ where
 }
 
 #[async_trait]
-pub trait RootComponentClassMemory<K, T>: Send + Sync {
+pub trait RootComponentClassMemory<K, T: ParameterValueType>: Send + Sync {
     async fn insert_new_root_component_class(&self, parent: Option<&ProjectHandle<K, T>>, root_component_class: RootComponentClassHandleOwned<K, T>);
     async fn set_parent(&self, root_component_class: &RootComponentClassHandle<K, T>, parent: Option<&ProjectHandle<K, T>>);
     async fn search_by_parent(&self, parent: &ProjectHandle<K, T>) -> Cow<[RootComponentClassHandle<K, T>]>;
@@ -175,7 +175,7 @@ pub trait RootComponentClassMemory<K, T>: Send + Sync {
 }
 
 #[async_trait]
-impl<K, T, ID: Send + Sync, T1: Send + Sync, T2: Send + Sync, T3: Send + Sync, RM: Send + Sync, T5: Send + Sync, T6: Send + Sync, T7: Send + Sync, T8: Send + Sync> NewRootComponentClassUsecase<K, T> for MPDeltaCore<K, ID, T1, T2, T3, RM, T5, T6, T7, T8>
+impl<K, T: ParameterValueType, ID: Send + Sync, T1: Send + Sync, T2: Send + Sync, T3: Send + Sync, RM: Send + Sync, T5: Send + Sync, T6: Send + Sync, T7: Send + Sync, T8: Send + Sync> NewRootComponentClassUsecase<K, T> for MPDeltaCore<K, ID, T1, T2, T3, RM, T5, T6, T7, T8>
 where
     ID: IdGenerator,
     RM: RootComponentClassMemory<K, T>,
@@ -189,7 +189,7 @@ where
 }
 
 #[async_trait]
-impl<K, T, T0: Send + Sync, T1: Send + Sync, T2: Send + Sync, T3: Send + Sync, RM: Send + Sync, T5: Send + Sync, T6: Send + Sync, T7: Send + Sync, T8: Send + Sync> SetOwnerForRootComponentClassUsecase<K, T> for MPDeltaCore<K, T0, T1, T2, T3, RM, T5, T6, T7, T8>
+impl<K, T: ParameterValueType, T0: Send + Sync, T1: Send + Sync, T2: Send + Sync, T3: Send + Sync, RM: Send + Sync, T5: Send + Sync, T6: Send + Sync, T7: Send + Sync, T8: Send + Sync> SetOwnerForRootComponentClassUsecase<K, T> for MPDeltaCore<K, T0, T1, T2, T3, RM, T5, T6, T7, T8>
 where
     RM: RootComponentClassMemory<K, T>,
 {
@@ -199,7 +199,7 @@ where
 }
 
 #[async_trait]
-impl<K, T, T0: Send + Sync, T1: Send + Sync, T2: Send + Sync, PM: Send + Sync, T4: Send + Sync, T5: Send + Sync, T6: Send + Sync, T7: Send + Sync, T8: Send + Sync> GetLoadedProjectsUsecase<K, T> for MPDeltaCore<K, T0, T1, T2, PM, T4, T5, T6, T7, T8>
+impl<K, T: ParameterValueType, T0: Send + Sync, T1: Send + Sync, T2: Send + Sync, PM: Send + Sync, T4: Send + Sync, T5: Send + Sync, T6: Send + Sync, T7: Send + Sync, T8: Send + Sync> GetLoadedProjectsUsecase<K, T> for MPDeltaCore<K, T0, T1, T2, PM, T4, T5, T6, T7, T8>
 where
     PM: ProjectMemory<K, T>,
 {
@@ -209,7 +209,7 @@ where
 }
 
 #[async_trait]
-impl<K, T, T0: Send + Sync, T1: Send + Sync, T2: Send + Sync, T3: Send + Sync, RM: Send + Sync, T5: Send + Sync, T6: Send + Sync, T7: Send + Sync, T8: Send + Sync> GetRootComponentClassesUsecase<K, T> for MPDeltaCore<K, T0, T1, T2, T3, RM, T5, T6, T7, T8>
+impl<K, T: ParameterValueType, T0: Send + Sync, T1: Send + Sync, T2: Send + Sync, T3: Send + Sync, RM: Send + Sync, T5: Send + Sync, T6: Send + Sync, T7: Send + Sync, T8: Send + Sync> GetRootComponentClassesUsecase<K, T> for MPDeltaCore<K, T0, T1, T2, T3, RM, T5, T6, T7, T8>
 where
     RM: RootComponentClassMemory<K, T>,
 {
@@ -219,12 +219,12 @@ where
 }
 
 #[async_trait]
-pub trait ComponentClassLoader<K, T>: Send + Sync {
+pub trait ComponentClassLoader<K, T: ParameterValueType>: Send + Sync {
     async fn get_available_component_classes(&self) -> Cow<[StaticPointer<RwLock<dyn ComponentClass<K, T>>>]>;
 }
 
 #[async_trait]
-impl<K, T, T0: Send + Sync, T1: Send + Sync, T2: Send + Sync, T3: Send + Sync, T4: Send + Sync, CL: Send + Sync, T6: Send + Sync, T7: Send + Sync, T8: Send + Sync> GetAvailableComponentClassesUsecase<K, T> for MPDeltaCore<K, T0, T1, T2, T3, T4, CL, T6, T7, T8>
+impl<K, T: ParameterValueType, T0: Send + Sync, T1: Send + Sync, T2: Send + Sync, T3: Send + Sync, T4: Send + Sync, CL: Send + Sync, T6: Send + Sync, T7: Send + Sync, T8: Send + Sync> GetAvailableComponentClassesUsecase<K, T> for MPDeltaCore<K, T0, T1, T2, T3, T4, CL, T6, T7, T8>
 where
     CL: ComponentClassLoader<K, T>,
 {
@@ -254,12 +254,12 @@ where
     }
 }
 
-pub trait EditEventListener<K, T>: Send + Sync {
+pub trait EditEventListener<K, T: ParameterValueType>: Send + Sync {
     fn on_edit(&self, target: &RootComponentClassHandle<K, T>, event: RootComponentEditEvent<K, T>);
     fn on_edit_instance(&self, root: &RootComponentClassHandle<K, T>, target: &ComponentInstanceHandle<K, T>, command: InstanceEditEvent<K, T>);
 }
 
-impl<K, T, O> EditEventListener<K, T> for O
+impl<K, T: ParameterValueType, O> EditEventListener<K, T> for O
 where
     O: Deref + Send + Sync,
     O::Target: EditEventListener<K, T>,
@@ -274,7 +274,7 @@ where
 }
 
 #[async_trait]
-pub trait Editor<K, T>: Send + Sync {
+pub trait Editor<K, T: ParameterValueType>: Send + Sync {
     type Log: Send + Sync;
     type Err: Error + 'static;
     type EditEventListenerGuard: Send + Sync + 'static;
@@ -286,14 +286,14 @@ pub trait Editor<K, T>: Send + Sync {
 }
 
 #[async_trait]
-pub trait EditHistory<K, T, Log>: Send + Sync {
+pub trait EditHistory<K, T: ParameterValueType, Log>: Send + Sync {
     async fn push_history(&self, root: &RootComponentClassHandle<K, T>, target: Option<&ComponentInstanceHandle<K, T>>, log: Log);
     async fn undo(&self, root: &RootComponentClassHandle<K, T>, target: Option<&ComponentInstanceHandle<K, T>>) -> Option<Arc<Log>>;
     async fn redo(&self, root: &RootComponentClassHandle<K, T>, target: Option<&ComponentInstanceHandle<K, T>>) -> Option<Arc<Log>>;
 }
 
 #[async_trait]
-impl<K, T, T0: Send + Sync, T1: Send + Sync, T2: Send + Sync, T3: Send + Sync, T4: Send + Sync, T5: Send + Sync, T6: Send + Sync, ED: Send + Sync, HS: Send + Sync> EditUsecase<K, T> for MPDeltaCore<K, T0, T1, T2, T3, T4, T5, T6, ED, HS>
+impl<K, T: ParameterValueType, T0: Send + Sync, T1: Send + Sync, T2: Send + Sync, T3: Send + Sync, T4: Send + Sync, T5: Send + Sync, T6: Send + Sync, ED: Send + Sync, HS: Send + Sync> EditUsecase<K, T> for MPDeltaCore<K, T0, T1, T2, T3, T4, T5, T6, ED, HS>
 where
     ComponentInstanceHandle<K, T>: Sync,
     ED: Editor<K, T>,
@@ -315,7 +315,7 @@ where
 }
 
 #[async_trait]
-impl<K, T, T0: Send + Sync, T1: Send + Sync, T2: Send + Sync, T3: Send + Sync, T4: Send + Sync, T5: Send + Sync, T6: Send + Sync, ED: Send + Sync, T8: Send + Sync> SubscribeEditEventUsecase<K, T> for MPDeltaCore<K, T0, T1, T2, T3, T4, T5, T6, ED, T8>
+impl<K, T: ParameterValueType, T0: Send + Sync, T1: Send + Sync, T2: Send + Sync, T3: Send + Sync, T4: Send + Sync, T5: Send + Sync, T6: Send + Sync, ED: Send + Sync, T8: Send + Sync> SubscribeEditEventUsecase<K, T> for MPDeltaCore<K, T0, T1, T2, T3, T4, T5, T6, ED, T8>
 where
     ComponentInstanceHandle<K, T>: Sync,
     ED: Editor<K, T>,
@@ -328,7 +328,7 @@ where
 }
 
 #[async_trait]
-impl<K, T, T0: Send + Sync, T1: Send + Sync, T2: Send + Sync, T3: Send + Sync, T4: Send + Sync, T5: Send + Sync, T6: Send + Sync, ED: Send + Sync, HS: Send + Sync> UndoUsecase<K, T> for MPDeltaCore<K, T0, T1, T2, T3, T4, T5, T6, ED, HS>
+impl<K, T: ParameterValueType, T0: Send + Sync, T1: Send + Sync, T2: Send + Sync, T3: Send + Sync, T4: Send + Sync, T5: Send + Sync, T6: Send + Sync, ED: Send + Sync, HS: Send + Sync> UndoUsecase<K, T> for MPDeltaCore<K, T0, T1, T2, T3, T4, T5, T6, ED, HS>
 where
     ComponentInstanceHandle<K, T>: Sync,
     ED: Editor<K, T>,
@@ -354,7 +354,7 @@ where
 }
 
 #[async_trait]
-impl<K, T, T0: Send + Sync, T1: Send + Sync, T2: Send + Sync, T3: Send + Sync, T4: Send + Sync, T5: Send + Sync, T6: Send + Sync, ED: Send + Sync, HS: Send + Sync> RedoUsecase<K, T> for MPDeltaCore<K, T0, T1, T2, T3, T4, T5, T6, ED, HS>
+impl<K, T: ParameterValueType, T0: Send + Sync, T1: Send + Sync, T2: Send + Sync, T3: Send + Sync, T4: Send + Sync, T5: Send + Sync, T6: Send + Sync, ED: Send + Sync, HS: Send + Sync> RedoUsecase<K, T> for MPDeltaCore<K, T0, T1, T2, T3, T4, T5, T6, ED, HS>
 where
     ComponentInstanceHandle<K, T>: Sync,
     ED: Editor<K, T>,
@@ -400,6 +400,22 @@ mod tests {
         }
     }
 
+    #[derive(Debug)]
+    struct EmptyParameterValueType;
+
+    impl ParameterValueType for EmptyParameterValueType {
+        type Image = ();
+        type Audio = ();
+        type Binary = ();
+        type String = ();
+        type Integer = ();
+        type RealNumber = ();
+        type Boolean = ();
+        type Dictionary = ();
+        type Array = ();
+        type ComponentClass = ();
+    }
+
     #[tokio::test]
     async fn load_project() {
         #[derive(Debug)]
@@ -408,10 +424,10 @@ mod tests {
         #[derive(Default)]
         struct PL1(RwLock<u128>);
         #[async_trait]
-        impl ProjectLoader<K, ()> for PL1 {
+        impl ProjectLoader<K, EmptyParameterValueType> for PL1 {
             type Err = EmptyError;
 
-            async fn load_project(&self, _: &Path) -> Result<StaticPointerOwned<RwLock<Project<K, ()>>>, Self::Err> {
+            async fn load_project(&self, _: &Path) -> Result<StaticPointerOwned<RwLock<Project<K, EmptyParameterValueType>>>, Self::Err> {
                 let mut guard = self.0.write().await;
                 let id = *guard;
                 *guard += 1;
@@ -420,19 +436,19 @@ mod tests {
         }
         #[derive(Default)]
         struct PM {
-            memory: RwLock<Vec<(Option<PathBuf>, StaticPointerOwned<RwLock<Project<K, ()>>>)>>,
+            memory: RwLock<Vec<(Option<PathBuf>, StaticPointerOwned<RwLock<Project<K, EmptyParameterValueType>>>)>>,
         }
         #[async_trait]
-        impl ProjectMemory<K, ()> for PM {
-            async fn insert_new_project(&self, path: Option<&Path>, project: StaticPointerOwned<RwLock<Project<K, ()>>>) {
+        impl ProjectMemory<K, EmptyParameterValueType> for PM {
+            async fn insert_new_project(&self, path: Option<&Path>, project: StaticPointerOwned<RwLock<Project<K, EmptyParameterValueType>>>) {
                 self.memory.write().await.push((path.map(Path::to_path_buf), project));
             }
 
-            async fn get_loaded_project(&self, path: &Path) -> Option<StaticPointer<RwLock<Project<K, ()>>>> {
+            async fn get_loaded_project(&self, path: &Path) -> Option<StaticPointer<RwLock<Project<K, EmptyParameterValueType>>>> {
                 self.memory.read().await.iter().find(|(p, _)| p.as_deref() == Some(path)).map(|(_, p)| StaticPointerOwned::reference(p).clone())
             }
 
-            async fn all_loaded_projects(&self) -> Cow<[StaticPointer<RwLock<Project<K, ()>>>]> {
+            async fn all_loaded_projects(&self) -> Cow<[StaticPointer<RwLock<Project<K, EmptyParameterValueType>>>]> {
                 unreachable!()
             }
         }
@@ -463,10 +479,10 @@ mod tests {
         #[derive(Default)]
         struct PL2;
         #[async_trait]
-        impl ProjectLoader<K, ()> for PL2 {
+        impl ProjectLoader<K, EmptyParameterValueType> for PL2 {
             type Err = EmptyError;
 
-            async fn load_project(&self, _: &Path) -> Result<StaticPointerOwned<RwLock<Project<K, ()>>>, Self::Err> {
+            async fn load_project(&self, _: &Path) -> Result<StaticPointerOwned<RwLock<Project<K, EmptyParameterValueType>>>, Self::Err> {
                 Err(EmptyError)
             }
         }
@@ -493,10 +509,10 @@ mod tests {
         #[derive(Default)]
         struct PW1(AtomicUsize);
         #[async_trait]
-        impl ProjectWriter<K, ()> for PW1 {
+        impl ProjectWriter<K, EmptyParameterValueType> for PW1 {
             type Err = EmptyError;
 
-            async fn write_project(&self, _: &StaticPointer<RwLock<Project<K, ()>>>, _: &Path) -> Result<(), Self::Err> {
+            async fn write_project(&self, _: &StaticPointer<RwLock<Project<K, EmptyParameterValueType>>>, _: &Path) -> Result<(), Self::Err> {
                 self.0.fetch_add(1, atomic::Ordering::SeqCst);
                 Ok(())
             }
@@ -524,10 +540,10 @@ mod tests {
         #[derive(Default)]
         struct PW2(AtomicUsize);
         #[async_trait]
-        impl ProjectWriter<K, ()> for PW2 {
+        impl ProjectWriter<K, EmptyParameterValueType> for PW2 {
             type Err = EmptyError;
 
-            async fn write_project(&self, _: &StaticPointer<RwLock<Project<K, ()>>>, _: &Path) -> Result<(), Self::Err> {
+            async fn write_project(&self, _: &StaticPointer<RwLock<Project<K, EmptyParameterValueType>>>, _: &Path) -> Result<(), Self::Err> {
                 self.0.fetch_add(1, atomic::Ordering::SeqCst);
                 Err(EmptyError)
             }
@@ -558,18 +574,18 @@ mod tests {
         struct K;
         let key = Arc::new(RwLock::new(TCellOwner::<K>::new()));
         #[derive(Default)]
-        struct PM(RwLock<Vec<(Option<PathBuf>, StaticPointerOwned<RwLock<Project<K, ()>>>)>>);
+        struct PM(RwLock<Vec<(Option<PathBuf>, StaticPointerOwned<RwLock<Project<K, EmptyParameterValueType>>>)>>);
         #[async_trait]
-        impl ProjectMemory<K, ()> for PM {
-            async fn insert_new_project(&self, path: Option<&Path>, project: StaticPointerOwned<RwLock<Project<K, ()>>>) {
+        impl ProjectMemory<K, EmptyParameterValueType> for PM {
+            async fn insert_new_project(&self, path: Option<&Path>, project: StaticPointerOwned<RwLock<Project<K, EmptyParameterValueType>>>) {
                 self.0.write().await.push((path.map(Path::to_path_buf), project));
             }
 
-            async fn get_loaded_project(&self, _: &Path) -> Option<StaticPointer<RwLock<Project<K, ()>>>> {
+            async fn get_loaded_project(&self, _: &Path) -> Option<StaticPointer<RwLock<Project<K, EmptyParameterValueType>>>> {
                 unreachable!()
             }
 
-            async fn all_loaded_projects(&self) -> Cow<[StaticPointer<RwLock<Project<K, ()>>>]> {
+            async fn all_loaded_projects(&self) -> Cow<[StaticPointer<RwLock<Project<K, EmptyParameterValueType>>>]> {
                 unreachable!()
             }
         }
@@ -605,26 +621,26 @@ mod tests {
         struct K;
         let key = Arc::new(RwLock::new(TCellOwner::<K>::new()));
         #[derive(Default)]
-        struct RM(RwLock<Vec<(Option<StaticPointer<RwLock<Project<K, ()>>>>, StaticPointerOwned<RwLock<RootComponentClass<K, ()>>>)>>);
+        struct RM(RwLock<Vec<(Option<StaticPointer<RwLock<Project<K, EmptyParameterValueType>>>>, StaticPointerOwned<RwLock<RootComponentClass<K, EmptyParameterValueType>>>)>>);
         #[async_trait]
-        impl RootComponentClassMemory<K, ()> for RM {
-            async fn insert_new_root_component_class(&self, parent: Option<&StaticPointer<RwLock<Project<K, ()>>>>, root_component_class: StaticPointerOwned<RwLock<RootComponentClass<K, ()>>>) {
+        impl RootComponentClassMemory<K, EmptyParameterValueType> for RM {
+            async fn insert_new_root_component_class(&self, parent: Option<&StaticPointer<RwLock<Project<K, EmptyParameterValueType>>>>, root_component_class: StaticPointerOwned<RwLock<RootComponentClass<K, EmptyParameterValueType>>>) {
                 self.0.write().await.push((parent.cloned(), root_component_class));
             }
 
-            async fn set_parent(&self, _: &StaticPointer<RwLock<RootComponentClass<K, ()>>>, _: Option<&StaticPointer<RwLock<Project<K, ()>>>>) {
+            async fn set_parent(&self, _: &StaticPointer<RwLock<RootComponentClass<K, EmptyParameterValueType>>>, _: Option<&StaticPointer<RwLock<Project<K, EmptyParameterValueType>>>>) {
                 unreachable!()
             }
 
-            async fn search_by_parent(&self, _: &StaticPointer<RwLock<Project<K, ()>>>) -> Cow<[StaticPointer<RwLock<RootComponentClass<K, ()>>>]> {
+            async fn search_by_parent(&self, _: &StaticPointer<RwLock<Project<K, EmptyParameterValueType>>>) -> Cow<[StaticPointer<RwLock<RootComponentClass<K, EmptyParameterValueType>>>]> {
                 unreachable!()
             }
 
-            async fn get_parent_project(&self, _: &StaticPointer<RwLock<RootComponentClass<K, ()>>>) -> Option<StaticPointer<RwLock<Project<K, ()>>>> {
+            async fn get_parent_project(&self, _: &StaticPointer<RwLock<RootComponentClass<K, EmptyParameterValueType>>>) -> Option<StaticPointer<RwLock<Project<K, EmptyParameterValueType>>>> {
                 unreachable!()
             }
 
-            async fn all_loaded_root_component_classes(&self) -> Cow<[StaticPointer<RwLock<RootComponentClass<K, ()>>>]> {
+            async fn all_loaded_root_component_classes(&self) -> Cow<[StaticPointer<RwLock<RootComponentClass<K, EmptyParameterValueType>>>]> {
                 unreachable!()
             }
         }
@@ -660,28 +676,28 @@ mod tests {
         struct K;
         let key = Arc::new(RwLock::new(TCellOwner::<K>::new()));
         #[derive(Default)]
-        struct RM(RwLock<Vec<(Option<StaticPointer<RwLock<Project<K, ()>>>>, StaticPointerOwned<RwLock<RootComponentClass<K, ()>>>)>>);
+        struct RM(RwLock<Vec<(Option<StaticPointer<RwLock<Project<K, EmptyParameterValueType>>>>, StaticPointerOwned<RwLock<RootComponentClass<K, EmptyParameterValueType>>>)>>);
         #[async_trait]
-        impl RootComponentClassMemory<K, ()> for RM {
-            async fn insert_new_root_component_class(&self, _: Option<&StaticPointer<RwLock<Project<K, ()>>>>, _: StaticPointerOwned<RwLock<RootComponentClass<K, ()>>>) {
+        impl RootComponentClassMemory<K, EmptyParameterValueType> for RM {
+            async fn insert_new_root_component_class(&self, _: Option<&StaticPointer<RwLock<Project<K, EmptyParameterValueType>>>>, _: StaticPointerOwned<RwLock<RootComponentClass<K, EmptyParameterValueType>>>) {
                 unreachable!()
             }
 
-            async fn set_parent(&self, root_component_class: &StaticPointer<RwLock<RootComponentClass<K, ()>>>, parent: Option<&StaticPointer<RwLock<Project<K, ()>>>>) {
+            async fn set_parent(&self, root_component_class: &StaticPointer<RwLock<RootComponentClass<K, EmptyParameterValueType>>>, parent: Option<&StaticPointer<RwLock<Project<K, EmptyParameterValueType>>>>) {
                 if let Some((p, _)) = self.0.write().await.iter_mut().find(|(_, c)| c == root_component_class) {
                     *p = parent.cloned();
                 }
             }
 
-            async fn search_by_parent(&self, _: &StaticPointer<RwLock<Project<K, ()>>>) -> Cow<[StaticPointer<RwLock<RootComponentClass<K, ()>>>]> {
+            async fn search_by_parent(&self, _: &StaticPointer<RwLock<Project<K, EmptyParameterValueType>>>) -> Cow<[StaticPointer<RwLock<RootComponentClass<K, EmptyParameterValueType>>>]> {
                 unreachable!()
             }
 
-            async fn get_parent_project(&self, _: &StaticPointer<RwLock<RootComponentClass<K, ()>>>) -> Option<StaticPointer<RwLock<Project<K, ()>>>> {
+            async fn get_parent_project(&self, _: &StaticPointer<RwLock<RootComponentClass<K, EmptyParameterValueType>>>) -> Option<StaticPointer<RwLock<Project<K, EmptyParameterValueType>>>> {
                 unreachable!()
             }
 
-            async fn all_loaded_root_component_classes(&self) -> Cow<[StaticPointer<RwLock<RootComponentClass<K, ()>>>]> {
+            async fn all_loaded_root_component_classes(&self) -> Cow<[StaticPointer<RwLock<RootComponentClass<K, EmptyParameterValueType>>>]> {
                 unreachable!()
             }
         }
@@ -725,18 +741,18 @@ mod tests {
         #[derive(Debug)]
         struct K;
         let key = Arc::new(RwLock::new(TCellOwner::<K>::new()));
-        struct PM(RwLock<Vec<StaticPointerOwned<RwLock<Project<K, ()>>>>>);
+        struct PM(RwLock<Vec<StaticPointerOwned<RwLock<Project<K, EmptyParameterValueType>>>>>);
         #[async_trait]
-        impl ProjectMemory<K, ()> for PM {
-            async fn insert_new_project(&self, _: Option<&Path>, _: StaticPointerOwned<RwLock<Project<K, ()>>>) {
+        impl ProjectMemory<K, EmptyParameterValueType> for PM {
+            async fn insert_new_project(&self, _: Option<&Path>, _: StaticPointerOwned<RwLock<Project<K, EmptyParameterValueType>>>) {
                 unreachable!()
             }
 
-            async fn get_loaded_project(&self, _: &Path) -> Option<StaticPointer<RwLock<Project<K, ()>>>> {
+            async fn get_loaded_project(&self, _: &Path) -> Option<StaticPointer<RwLock<Project<K, EmptyParameterValueType>>>> {
                 unreachable!()
             }
 
-            async fn all_loaded_projects(&self) -> Cow<[StaticPointer<RwLock<Project<K, ()>>>]> {
+            async fn all_loaded_projects(&self) -> Cow<[StaticPointer<RwLock<Project<K, EmptyParameterValueType>>>]> {
                 Cow::Owned(self.0.read().await.iter().map(StaticPointerOwned::reference).cloned().collect())
             }
         }
@@ -764,26 +780,26 @@ mod tests {
         #[derive(Debug)]
         struct K;
         let key = Arc::new(RwLock::new(TCellOwner::<K>::new()));
-        struct RM(RwLock<Vec<(Option<StaticPointer<RwLock<Project<K, ()>>>>, StaticPointerOwned<RwLock<RootComponentClass<K, ()>>>)>>);
+        struct RM(RwLock<Vec<(Option<StaticPointer<RwLock<Project<K, EmptyParameterValueType>>>>, StaticPointerOwned<RwLock<RootComponentClass<K, EmptyParameterValueType>>>)>>);
         #[async_trait]
-        impl RootComponentClassMemory<K, ()> for RM {
-            async fn insert_new_root_component_class(&self, _: Option<&StaticPointer<RwLock<Project<K, ()>>>>, _: StaticPointerOwned<RwLock<RootComponentClass<K, ()>>>) {
+        impl RootComponentClassMemory<K, EmptyParameterValueType> for RM {
+            async fn insert_new_root_component_class(&self, _: Option<&StaticPointer<RwLock<Project<K, EmptyParameterValueType>>>>, _: StaticPointerOwned<RwLock<RootComponentClass<K, EmptyParameterValueType>>>) {
                 unreachable!()
             }
 
-            async fn set_parent(&self, _: &StaticPointer<RwLock<RootComponentClass<K, ()>>>, _: Option<&StaticPointer<RwLock<Project<K, ()>>>>) {
+            async fn set_parent(&self, _: &StaticPointer<RwLock<RootComponentClass<K, EmptyParameterValueType>>>, _: Option<&StaticPointer<RwLock<Project<K, EmptyParameterValueType>>>>) {
                 unreachable!()
             }
 
-            async fn search_by_parent(&self, parent: &StaticPointer<RwLock<Project<K, ()>>>) -> Cow<[StaticPointer<RwLock<RootComponentClass<K, ()>>>]> {
+            async fn search_by_parent(&self, parent: &StaticPointer<RwLock<Project<K, EmptyParameterValueType>>>) -> Cow<[StaticPointer<RwLock<RootComponentClass<K, EmptyParameterValueType>>>]> {
                 Cow::Owned(self.0.read().await.iter().filter(|(p, _)| p.as_ref() == Some(parent)).map(|(_, c)| StaticPointerOwned::reference(c).clone()).collect())
             }
 
-            async fn get_parent_project(&self, _: &StaticPointer<RwLock<RootComponentClass<K, ()>>>) -> Option<StaticPointer<RwLock<Project<K, ()>>>> {
+            async fn get_parent_project(&self, _: &StaticPointer<RwLock<RootComponentClass<K, EmptyParameterValueType>>>) -> Option<StaticPointer<RwLock<Project<K, EmptyParameterValueType>>>> {
                 unreachable!()
             }
 
-            async fn all_loaded_root_component_classes(&self) -> Cow<[StaticPointer<RwLock<RootComponentClass<K, ()>>>]> {
+            async fn all_loaded_root_component_classes(&self) -> Cow<[StaticPointer<RwLock<RootComponentClass<K, EmptyParameterValueType>>>]> {
                 unreachable!()
             }
         }
@@ -825,8 +841,8 @@ mod tests {
         let key = Arc::new(RwLock::new(TCellOwner::<K>::new()));
         struct CL;
         #[async_trait]
-        impl ComponentClassLoader<K, ()> for CL {
-            async fn get_available_component_classes(&self) -> Cow<[StaticPointer<RwLock<dyn ComponentClass<K, ()>>>]> {
+        impl ComponentClassLoader<K, EmptyParameterValueType> for CL {
+            async fn get_available_component_classes(&self) -> Cow<[StaticPointer<RwLock<dyn ComponentClass<K, EmptyParameterValueType>>>]> {
                 Cow::Owned(vec![])
             }
         }
@@ -850,23 +866,10 @@ mod tests {
         #[derive(Debug)]
         struct K;
         let key = Arc::new(RwLock::new(TCellOwner::<K>::new()));
-        struct Temporary;
-        impl ParameterValueType for Temporary {
-            type Image = ();
-            type Audio = ();
-            type Binary = ();
-            type String = ();
-            type Integer = ();
-            type RealNumber = ();
-            type Boolean = ();
-            type Dictionary = ();
-            type Array = ();
-            type ComponentClass = ();
-        }
 
         struct RD;
         #[async_trait]
-        impl RealtimeComponentRenderer<Temporary> for RD {
+        impl RealtimeComponentRenderer<EmptyParameterValueType> for RD {
             type Err = std::convert::Infallible;
             fn get_frame_count(&self) -> usize {
                 unreachable!()
@@ -884,17 +887,17 @@ mod tests {
                 unreachable!()
             }
 
-            fn render_param(&self, _param: Parameter<ParameterSelect>) -> Result<Parameter<Temporary>, Self::Err> {
+            fn render_param(&self, _param: Parameter<ParameterSelect>) -> Result<Parameter<EmptyParameterValueType>, Self::Err> {
                 unreachable!()
             }
         }
         struct CR;
         #[async_trait]
-        impl ComponentRendererBuilder<K, Temporary> for CR {
+        impl ComponentRendererBuilder<K, EmptyParameterValueType> for CR {
             type Err = std::convert::Infallible;
             type Renderer = RD;
 
-            async fn create_renderer(&self, _: &ComponentInstanceHandle<K, Temporary>) -> Result<Self::Renderer, Self::Err> {
+            async fn create_renderer(&self, _: &ComponentInstanceHandle<K, EmptyParameterValueType>) -> Result<Self::Renderer, Self::Err> {
                 Ok(RD)
             }
         }

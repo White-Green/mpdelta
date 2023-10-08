@@ -1,14 +1,14 @@
 use crate::component::class::ComponentClass;
 use crate::component::marker_pin::{MarkerPinHandleCow, MarkerPinHandleOwned};
-use crate::component::parameter::{AudioRequiredParams, ImageRequiredParams, Parameter, ParameterNullableValue, ParameterValue, ParameterValueFixed, Type, ValueFixed, VariableParameterValue};
-use crate::component::processor::ComponentProcessor;
+use crate::component::parameter::{AudioRequiredParams, ImageRequiredParams, Parameter, ParameterNullableValue, ParameterValue, ParameterValueFixed, ParameterValueType, Type, ValueFixed, VariableParameterValue};
+use crate::component::processor::{ComponentProcessor, ComponentProcessorWrapper};
 use crate::ptr::{StaticPointer, StaticPointerCow, StaticPointerOwned};
 use qcell::TCell;
 use std::fmt::{Debug, Formatter};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-pub struct ComponentInstance<K: 'static, T> {
+pub struct ComponentInstance<K: 'static, T: ParameterValueType> {
     component_class: StaticPointer<RwLock<dyn ComponentClass<K, T>>>,
     marker_left: MarkerPinHandleCow<K>,
     marker_right: MarkerPinHandleCow<K>,
@@ -16,17 +16,17 @@ pub struct ComponentInstance<K: 'static, T> {
     image_required_params: Option<ImageRequiredParams<K, T>>,
     audio_required_params: Option<AudioRequiredParams<K, T>>,
     fixed_parameters_type: Box<[(String, Parameter<Type>)]>,
-    fixed_parameters: Box<[ParameterValueFixed]>,
+    fixed_parameters: Box<[ParameterValueFixed<T::Image, T::Audio>]>,
     variable_parameters_type: Vec<(String, Parameter<Type>)>,
     variable_parameters: Vec<VariableParameterValue<K, T, ParameterValue<K>, ParameterNullableValue<K>>>,
-    processor: Arc<dyn ComponentProcessor<K, T>>,
+    processor: ComponentProcessorWrapper<K, T>,
 }
 
 pub type ComponentInstanceHandle<K, T> = StaticPointer<TCell<K, ComponentInstance<K, T>>>;
 pub type ComponentInstanceHandleOwned<K, T> = StaticPointerOwned<TCell<K, ComponentInstance<K, T>>>;
 pub type ComponentInstanceHandleCow<K, T> = StaticPointerCow<TCell<K, ComponentInstance<K, T>>>;
 
-impl<K, T> Debug for ComponentInstance<K, T>
+impl<K, T: ParameterValueType> Debug for ComponentInstance<K, T>
 where
     ImageRequiredParams<K, T>: Debug,
     AudioRequiredParams<K, T>: Debug,
@@ -54,14 +54,14 @@ where
     }
 }
 
-impl<K, T> ComponentInstance<K, T> {
+impl<K, T: ParameterValueType> ComponentInstance<K, T> {
     pub fn new_no_param(
         component_class: StaticPointer<RwLock<dyn ComponentClass<K, T>>>,
         marker_left: MarkerPinHandleCow<K>,
         marker_right: MarkerPinHandleCow<K>,
         image_required_params: Option<ImageRequiredParams<K, T>>,
         audio_required_params: Option<AudioRequiredParams<K, T>>,
-        processor: Arc<dyn ComponentProcessor<K, T>>,
+        processor: impl Into<ComponentProcessorWrapper<K, T>>,
     ) -> ComponentInstance<K, T> {
         ComponentInstance {
             component_class,
@@ -74,7 +74,7 @@ impl<K, T> ComponentInstance<K, T> {
             fixed_parameters: Vec::new().into_boxed_slice(),
             variable_parameters_type: Vec::new(),
             variable_parameters: Vec::new(),
-            processor,
+            processor: processor.into(),
         }
     }
     pub fn component_class(&self) -> &StaticPointer<RwLock<dyn ComponentClass<K, T>>> {
@@ -103,7 +103,7 @@ impl<K, T> ComponentInstance<K, T> {
     pub fn fixed_parameters_type(&self) -> &[(String, Parameter<Type>)] {
         &self.fixed_parameters_type
     }
-    pub fn fixed_parameters(&self) -> &[Parameter<ValueFixed>] {
+    pub fn fixed_parameters(&self) -> &[ParameterValueFixed<T::Image, T::Audio>] {
         &self.fixed_parameters
     }
     pub fn variable_parameters_type(&self) -> &[(String, Parameter<Type>)] {
@@ -112,7 +112,7 @@ impl<K, T> ComponentInstance<K, T> {
     pub fn variable_parameters(&self) -> &[VariableParameterValue<K, T, ParameterValue<K>, ParameterNullableValue<K>>] {
         &self.variable_parameters
     }
-    pub fn processor(&self) -> &Arc<dyn ComponentProcessor<K, T>> {
+    pub fn processor(&self) -> &ComponentProcessorWrapper<K, T> {
         &self.processor
     }
 }

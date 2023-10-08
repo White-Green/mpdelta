@@ -13,7 +13,7 @@ use std::path::Path;
 use tokio::sync::RwLock;
 
 #[async_trait]
-pub trait LoadProjectUsecase<K, T>: Send + Sync {
+pub trait LoadProjectUsecase<K, T: ParameterValueType>: Send + Sync {
     type Err: Error + 'static;
     async fn load_project(&self, path: impl AsRef<Path> + Send + Sync) -> Result<ProjectHandle<K, T>, Self::Err>;
 }
@@ -21,6 +21,7 @@ pub trait LoadProjectUsecase<K, T>: Send + Sync {
 #[async_trait]
 impl<K, T, O> LoadProjectUsecase<K, T> for O
 where
+    T: ParameterValueType,
     O: Deref + Send + Sync,
     O::Target: LoadProjectUsecase<K, T>,
 {
@@ -32,7 +33,7 @@ where
 }
 
 #[async_trait]
-pub trait WriteProjectUsecase<K, T>: Send + Sync {
+pub trait WriteProjectUsecase<K, T: ParameterValueType>: Send + Sync {
     type Err: Error + 'static;
     async fn write_project(&self, project: &ProjectHandle<K, T>, path: impl AsRef<Path> + Send + Sync) -> Result<(), Self::Err>;
 }
@@ -40,6 +41,7 @@ pub trait WriteProjectUsecase<K, T>: Send + Sync {
 #[async_trait]
 impl<K, T, O> WriteProjectUsecase<K, T> for O
 where
+    T: ParameterValueType,
     O: Deref + Send + Sync,
     O::Target: WriteProjectUsecase<K, T>,
 {
@@ -51,13 +53,14 @@ where
 }
 
 #[async_trait]
-pub trait NewProjectUsecase<K, T>: Send + Sync {
+pub trait NewProjectUsecase<K, T: ParameterValueType>: Send + Sync {
     async fn new_project(&self) -> ProjectHandle<K, T>;
 }
 
 #[async_trait]
 impl<K, T, O> NewProjectUsecase<K, T> for O
 where
+    T: ParameterValueType,
     O: Deref + Send + Sync,
     O::Target: NewProjectUsecase<K, T>,
 {
@@ -67,13 +70,14 @@ where
 }
 
 #[async_trait]
-pub trait NewRootComponentClassUsecase<K, T>: Send + Sync {
+pub trait NewRootComponentClassUsecase<K, T: ParameterValueType>: Send + Sync {
     async fn new_root_component_class(&self) -> RootComponentClassHandle<K, T>;
 }
 
 #[async_trait]
 impl<K, T, O> NewRootComponentClassUsecase<K, T> for O
 where
+    T: ParameterValueType,
     O: Deref + Send + Sync,
     O::Target: NewRootComponentClassUsecase<K, T>,
 {
@@ -83,13 +87,14 @@ where
 }
 
 #[async_trait]
-pub trait SetOwnerForRootComponentClassUsecase<K, T>: Send + Sync {
+pub trait SetOwnerForRootComponentClassUsecase<K, T: ParameterValueType>: Send + Sync {
     async fn set_owner_for_root_component_class(&self, component: &RootComponentClassHandle<K, T>, owner: &ProjectHandle<K, T>);
 }
 
 #[async_trait]
 impl<K, T, O> SetOwnerForRootComponentClassUsecase<K, T> for O
 where
+    T: ParameterValueType,
     O: Deref + Send + Sync,
     O::Target: SetOwnerForRootComponentClassUsecase<K, T>,
 {
@@ -99,13 +104,14 @@ where
 }
 
 #[async_trait]
-pub trait GetLoadedProjectsUsecase<K, T>: Send + Sync {
+pub trait GetLoadedProjectsUsecase<K, T: ParameterValueType>: Send + Sync {
     async fn get_loaded_projects(&self) -> Cow<[ProjectHandle<K, T>]>;
 }
 
 #[async_trait]
 impl<K, T, O> GetLoadedProjectsUsecase<K, T> for O
 where
+    T: ParameterValueType,
     O: Deref + Send + Sync,
     O::Target: GetLoadedProjectsUsecase<K, T>,
 {
@@ -115,13 +121,14 @@ where
 }
 
 #[async_trait]
-pub trait GetRootComponentClassesUsecase<K, T>: Send + Sync {
+pub trait GetRootComponentClassesUsecase<K, T: ParameterValueType>: Send + Sync {
     async fn get_root_component_classes(&self, project: &ProjectHandle<K, T>) -> Cow<[RootComponentClassHandle<K, T>]>;
 }
 
 #[async_trait]
 impl<K, T, O> GetRootComponentClassesUsecase<K, T> for O
 where
+    T: ParameterValueType,
     O: Deref + Send + Sync,
     O::Target: GetRootComponentClassesUsecase<K, T>,
 {
@@ -131,13 +138,14 @@ where
 }
 
 #[async_trait]
-pub trait GetAvailableComponentClassesUsecase<K, T>: Send + Sync {
+pub trait GetAvailableComponentClassesUsecase<K, T: ParameterValueType>: Send + Sync {
     async fn get_available_component_classes(&self) -> Cow<[StaticPointer<RwLock<dyn ComponentClass<K, T>>>]>;
 }
 
 #[async_trait]
 impl<K, T, O> GetAvailableComponentClassesUsecase<K, T> for O
 where
+    T: ParameterValueType,
     O: Deref + Send + Sync,
     O::Target: GetAvailableComponentClassesUsecase<K, T>,
 {
@@ -208,7 +216,7 @@ where
 }
 
 #[async_trait]
-pub trait EditUsecase<K, T>: Send + Sync {
+pub trait EditUsecase<K, T: ParameterValueType>: Send + Sync {
     type Err: Error + 'static;
     async fn edit(&self, target: &RootComponentClassHandle<K, T>, command: RootComponentEditCommand<K, T>) -> Result<(), Self::Err>;
     async fn edit_instance(&self, root: &RootComponentClassHandle<K, T>, target: &ComponentInstanceHandle<K, T>, command: InstanceEditCommand<K, T>) -> Result<(), Self::Err>;
@@ -217,6 +225,7 @@ pub trait EditUsecase<K, T>: Send + Sync {
 #[async_trait]
 impl<K, T, O> EditUsecase<K, T> for O
 where
+    T: ParameterValueType,
     O: Deref + Send + Sync,
     O::Target: EditUsecase<K, T>,
 {
@@ -231,7 +240,7 @@ where
     }
 }
 
-pub trait SubscribeEditEventUsecase<K, T>: Send + Sync {
+pub trait SubscribeEditEventUsecase<K, T: ParameterValueType>: Send + Sync {
     type EditEventListenerGuard: Send + Sync + 'static;
     fn add_edit_event_listener(&self, listener: impl EditEventListener<K, T> + 'static) -> Self::EditEventListenerGuard;
 }
@@ -239,6 +248,7 @@ pub trait SubscribeEditEventUsecase<K, T>: Send + Sync {
 #[async_trait]
 impl<K, T, O> SubscribeEditEventUsecase<K, T> for O
 where
+    T: ParameterValueType,
     O: Deref + Send + Sync,
     O::Target: SubscribeEditEventUsecase<K, T>,
 {
@@ -250,7 +260,7 @@ where
 }
 
 #[async_trait]
-pub trait UndoUsecase<K, T>: Send + Sync {
+pub trait UndoUsecase<K, T: ParameterValueType>: Send + Sync {
     async fn undo(&self, component: &RootComponentClassHandle<K, T>) -> bool;
     async fn undo_instance(&self, root: &RootComponentClassHandle<K, T>, target: &ComponentInstanceHandle<K, T>) -> bool;
 }
@@ -258,6 +268,7 @@ pub trait UndoUsecase<K, T>: Send + Sync {
 #[async_trait]
 impl<K, T, O> UndoUsecase<K, T> for O
 where
+    T: ParameterValueType,
     O: Deref + Send + Sync,
     O::Target: UndoUsecase<K, T>,
 {
@@ -271,7 +282,7 @@ where
 }
 
 #[async_trait]
-pub trait RedoUsecase<K, T>: Send + Sync {
+pub trait RedoUsecase<K, T: ParameterValueType>: Send + Sync {
     async fn redo(&self, component: &RootComponentClassHandle<K, T>) -> bool;
     async fn redo_instance(&self, root: &RootComponentClassHandle<K, T>, target: &ComponentInstanceHandle<K, T>) -> bool;
 }
@@ -279,6 +290,7 @@ pub trait RedoUsecase<K, T>: Send + Sync {
 #[async_trait]
 impl<K, T, O> RedoUsecase<K, T> for O
 where
+    T: ParameterValueType,
     O: Deref + Send + Sync,
     O::Target: RedoUsecase<K, T>,
 {

@@ -714,20 +714,24 @@ impl<K: 'static> ParameterValueType for TypedValue<K> {
     type ComponentClass = ();
 }
 
-pub struct ValueFixed;
+pub struct ValueFixed<Image, Audio>(PhantomData<(Image, Audio)>);
 
-pub type ParameterValueFixed = Parameter<ValueFixed>;
+unsafe impl<Image, Audio> Send for ValueFixed<Image, Audio> {}
 
-impl ParameterValueType for ValueFixed {
-    type Image = Placeholder<TagImage>;
-    type Audio = Placeholder<TagAudio>;
-    type Binary = DynEditableSingleValue<AbstractFile>;
-    type String = DynEditableSingleValue<String>;
-    type Integer = DynEditableSingleValue<i64>;
-    type RealNumber = DynEditableSingleValue<f64>;
-    type Boolean = DynEditableSingleValue<bool>;
-    type Dictionary = HashMap<String, ParameterValueFixed>;
-    type Array = Vec<ParameterValueFixed>;
+unsafe impl<Image, Audio> Sync for ValueFixed<Image, Audio> {}
+
+pub type ParameterValueFixed<Image, Audio> = Parameter<ValueFixed<Image, Audio>>;
+
+impl<Image: Send + Sync + Clone + 'static, Audio: Send + Sync + Clone + 'static> ParameterValueType for ValueFixed<Image, Audio> {
+    type Image = Image;
+    type Audio = Audio;
+    type Binary = AbstractFile;
+    type String = String;
+    type Integer = i64;
+    type RealNumber = f64;
+    type Boolean = bool;
+    type Dictionary = HashMap<String, ParameterValueFixed<Image, Audio>>;
+    type Array = Vec<ParameterValueFixed<Image, Audio>>;
     type ComponentClass = ();
 }
 
@@ -876,12 +880,12 @@ pub enum VariableParameterPriority {
 
 type PinSplitValue<K, T> = TimeSplitValue<MarkerPinHandle<K>, T>;
 
-pub enum VariableParameterValue<K: 'static, T, Manually, Nullable> {
+pub enum VariableParameterValue<K: 'static, T: ParameterValueType, Manually, Nullable> {
     Manually(Manually),
     MayComponent { params: Nullable, components: Vec<ComponentInstanceHandle<K, T>>, priority: VariableParameterPriority },
 }
 
-impl<K, T, Manually: Debug, Nullable: Debug> Debug for VariableParameterValue<K, T, Manually, Nullable> {
+impl<K, T: ParameterValueType, Manually: Debug, Nullable: Debug> Debug for VariableParameterValue<K, T, Manually, Nullable> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             VariableParameterValue::Manually(manually) => f.debug_tuple("Manually").field(manually).finish(),
@@ -890,7 +894,7 @@ impl<K, T, Manually: Debug, Nullable: Debug> Debug for VariableParameterValue<K,
     }
 }
 
-impl<K, T, Manually: Clone, Nullable: Clone> Clone for VariableParameterValue<K, T, Manually, Nullable> {
+impl<K, T: ParameterValueType, Manually: Clone, Nullable: Clone> Clone for VariableParameterValue<K, T, Manually, Nullable> {
     fn clone(&self) -> Self {
         match self {
             VariableParameterValue::Manually(value) => VariableParameterValue::Manually(value.clone()),
@@ -904,7 +908,7 @@ impl<K, T, Manually: Clone, Nullable: Clone> Clone for VariableParameterValue<K,
 }
 
 #[derive(Debug)]
-pub struct ImageRequiredParams<K: 'static, T> {
+pub struct ImageRequiredParams<K: 'static, T: ParameterValueType> {
     pub aspect_ratio: (u32, u32),
     pub transform: ImageRequiredParamsTransform<K, T>,
     pub background_color: [u8; 4],
@@ -913,7 +917,7 @@ pub struct ImageRequiredParams<K: 'static, T> {
     pub composite_operation: PinSplitValue<K, CompositeOperation>,
 }
 
-impl<K, T> ImageRequiredParams<K, T> {
+impl<K, T: ParameterValueType> ImageRequiredParams<K, T> {
     pub fn new_default(marker_left: &MarkerPinHandle<K>, marker_right: &MarkerPinHandle<K>) -> ImageRequiredParams<K, T> {
         let one = TimeSplitValue::new(marker_left.clone(), EasingValue::new(DynEditableSelfEasingValue(1., 1.), Arc::new(DefaultEasing)), marker_right.clone());
         let one_value = VariableParameterValue::Manually(one);
@@ -939,7 +943,7 @@ impl<K, T> ImageRequiredParams<K, T> {
     }
 }
 
-impl<K, T> Clone for ImageRequiredParams<K, T> {
+impl<K, T: ParameterValueType> Clone for ImageRequiredParams<K, T> {
     fn clone(&self) -> Self {
         let ImageRequiredParams {
             aspect_ratio,
@@ -963,7 +967,7 @@ impl<K, T> Clone for ImageRequiredParams<K, T> {
 pub type Vector3Params<K, T> = Vector3<VariableParameterValue<K, T, PinSplitValue<K, EasingValue<f64>>, PinSplitValue<K, Option<EasingValue<f64>>>>>;
 
 #[derive(Debug)]
-pub enum ImageRequiredParamsTransform<K: 'static, T> {
+pub enum ImageRequiredParamsTransform<K: 'static, T: ParameterValueType> {
     Params {
         scale: Vector3Params<K, T>,
         translate: Vector3Params<K, T>,
@@ -979,7 +983,7 @@ pub enum ImageRequiredParamsTransform<K: 'static, T> {
     },
 }
 
-impl<K, T> Clone for ImageRequiredParamsTransform<K, T> {
+impl<K, T: ParameterValueType> Clone for ImageRequiredParamsTransform<K, T> {
     fn clone(&self) -> Self {
         match self {
             ImageRequiredParamsTransform::Params { scale, translate, rotate, scale_center, rotate_center } => ImageRequiredParamsTransform::Params {
@@ -1095,11 +1099,11 @@ pub enum ImageRequiredParamsTransformFixed {
 }
 
 #[derive(Debug)]
-pub struct AudioRequiredParams<K: 'static, T> {
+pub struct AudioRequiredParams<K: 'static, T: ParameterValueType> {
     pub volume: Vec<VariableParameterValue<K, T, PinSplitValue<K, EasingValue<f64>>, PinSplitValue<K, Option<EasingValue<f64>>>>>,
 }
 
-impl<K, T> Clone for AudioRequiredParams<K, T> {
+impl<K, T: ParameterValueType> Clone for AudioRequiredParams<K, T> {
     fn clone(&self) -> Self {
         let AudioRequiredParams { volume } = self;
         AudioRequiredParams { volume: volume.clone() }

@@ -22,7 +22,7 @@ pub trait PropertyWindowViewModel<K: 'static, T: ParameterValueType> {
     fn updated_image_required_params(&self, image_required_params: &ImageRequiredParams<K, T>);
 }
 
-pub struct PropertyWindowViewModelImpl<K: 'static, T, GlobalUIState, Edit, Runtime, JoinHandle> {
+pub struct PropertyWindowViewModelImpl<K: 'static, T: ParameterValueType, GlobalUIState, Edit, Runtime, JoinHandle> {
     global_ui_state: Arc<GlobalUIState>,
     edit: Arc<Edit>,
     selected: Arc<StdRwLock<(Option<RootComponentClassHandle<K, T>>, Option<ComponentInstanceHandle<K, T>>)>>,

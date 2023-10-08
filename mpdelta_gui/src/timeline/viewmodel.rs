@@ -32,7 +32,11 @@ pub struct ComponentInstanceData<Handle> {
     pub layer: f32,
 }
 
-impl<K: 'static, T> ComponentInstanceData<ComponentInstanceHandle<K, T>> {
+impl<K, T> ComponentInstanceData<ComponentInstanceHandle<K, T>>
+where
+    K: 'static,
+    T: ParameterValueType,
+{
     fn new(handle: ComponentInstanceHandle<K, T>, key: &TCellOwner<K>, i: usize, pin_map: &mut HashMap<MarkerPinHandle<K>, ComponentInstanceHandle<K, T>>) -> Option<ComponentInstanceData<ComponentInstanceHandle<K, T>>> {
         let component = handle.upgrade()?;
         let component = component.ro(key);
@@ -65,7 +69,11 @@ pub struct ComponentLinkData<LinkHandle, ComponentHandle> {
     pub to_time: TimelineTime,
 }
 
-impl<K: 'static, T> ComponentLinkData<StaticPointer<TCell<K, MarkerLink<K>>>, ComponentInstanceHandle<K, T>> {
+impl<K, T> ComponentLinkData<StaticPointer<TCell<K, MarkerLink<K>>>, ComponentInstanceHandle<K, T>>
+where
+    K: 'static,
+    T: ParameterValueType,
+{
     fn new(
         handle: StaticPointer<TCell<K, MarkerLink<K>>>,
         key: &TCellOwner<K>,
@@ -133,7 +141,7 @@ pub trait TimelineViewModel<K: 'static, T: ParameterValueType> {
     fn add_component_instance(&self);
 }
 
-pub struct TimelineViewModelImpl<K: 'static, T, GlobalUIState, MessageHandler, G, Runtime, JoinHandle> {
+pub struct TimelineViewModelImpl<K: 'static, T: ParameterValueType, GlobalUIState, MessageHandler, G, Runtime, JoinHandle> {
     key: Arc<RwLock<TCellOwner<K>>>,
     global_ui_state: Arc<GlobalUIState>,
     component_instances: Arc<RwLock<ComponentInstanceDataList<ComponentInstanceHandle<K, T>>>>,
@@ -146,7 +154,7 @@ pub struct TimelineViewModelImpl<K: 'static, T, GlobalUIState, MessageHandler, G
     guard: OnceLock<G>,
 }
 
-pub enum Message<K: 'static, T> {
+pub enum Message<K: 'static, T: ParameterValueType> {
     GlobalUIEvent(GlobalUIEvent<K, T>),
     AddComponentInstance,
     ClickComponentInstance(ComponentInstanceHandle<K, T>),
@@ -154,7 +162,11 @@ pub enum Message<K: 'static, T> {
     EditMarkerLinkLength(StaticPointer<TCell<K, MarkerLink<K>>>, TimelineTime),
 }
 
-impl<K: 'static, T> Clone for Message<K, T> {
+impl<K, T> Clone for Message<K, T>
+where
+    K: 'static,
+    T: ParameterValueType,
+{
     fn clone(&self) -> Self {
         match self {
             Message::GlobalUIEvent(value) => Message::GlobalUIEvent(value.clone()),
@@ -166,7 +178,11 @@ impl<K: 'static, T> Clone for Message<K, T> {
     }
 }
 
-impl<K: 'static, T> PartialEq for Message<K, T> {
+impl<K, T> PartialEq for Message<K, T>
+where
+    K: 'static,
+    T: ParameterValueType,
+{
     fn eq(&self, other: &Self) -> bool {
         if mem::discriminant(self) != mem::discriminant(other) {
             return false;
@@ -182,7 +198,12 @@ impl<K: 'static, T> PartialEq for Message<K, T> {
     }
 }
 
-impl<K: 'static, T> Eq for Message<K, T> {}
+impl<K, T> Eq for Message<K, T>
+where
+    K: 'static,
+    T: ParameterValueType,
+{
+}
 
 impl<K, T, S, M, G, Runtime> GlobalUIEventHandler<K, T> for TimelineViewModelImpl<K, T, S, M, G, Runtime, Runtime::JoinHandle>
 where

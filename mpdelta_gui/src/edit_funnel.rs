@@ -12,17 +12,33 @@ pub struct EditFunnelImpl<Edit, Runtime> {
 }
 
 impl EditFunnelImpl<(), ()> {
-    pub fn new<K: 'static, T, Edit: EditUsecase<K, T> + 'static, Runtime: AsyncRuntime<()>>(handle: Runtime, edit: Arc<Edit>) -> Arc<EditFunnelImpl<Edit, Runtime>> {
+    pub fn new<K, T, Edit, Runtime>(handle: Runtime, edit: Arc<Edit>) -> Arc<EditFunnelImpl<Edit, Runtime>>
+    where
+        K: 'static,
+        T: ParameterValueType,
+        Edit: EditUsecase<K, T> + 'static,
+        Runtime: AsyncRuntime<()>,
+    {
         Arc::new(EditFunnelImpl { edit, handle })
     }
 }
 
-pub trait EditFunnel<K: 'static, T>: Send + Sync {
+pub trait EditFunnel<K, T>: Send + Sync
+where
+    K: 'static,
+    T: ParameterValueType,
+{
     fn edit(&self, target: &RootComponentClassHandle<K, T>, command: RootComponentEditCommand<K, T>);
     fn edit_instance(&self, root: &RootComponentClassHandle<K, T>, target: &ComponentInstanceHandle<K, T>, command: InstanceEditCommand<K, T>);
 }
 
-impl<K: 'static, T: ParameterValueType, Edit: EditUsecase<K, T> + 'static, Runtime: AsyncRuntime<()>> EditFunnel<K, T> for EditFunnelImpl<Edit, Runtime> {
+impl<K, T, Edit, Runtime> EditFunnel<K, T> for EditFunnelImpl<Edit, Runtime>
+where
+    K: 'static,
+    T: ParameterValueType,
+    Edit: EditUsecase<K, T> + 'static,
+    Runtime: AsyncRuntime<()>,
+{
     fn edit(&self, target: &RootComponentClassHandle<K, T>, command: RootComponentEditCommand<K, T>) {
         let edit = Arc::clone(&self.edit);
         let target = target.clone();

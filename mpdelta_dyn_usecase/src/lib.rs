@@ -42,7 +42,7 @@ impl Error for DynError {
 
 pub type DynFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
-pub trait LoadProjectUsecaseDyn<K, T>: Send + Sync {
+pub trait LoadProjectUsecaseDyn<K, T: ParameterValueType>: Send + Sync {
     fn load_project_dyn<'life0, 'life1, 'async_trait>(&'life0 self, path: &'life1 Path) -> DynFuture<'async_trait, Result<ProjectHandle<K, T>, Box<dyn Error + 'static>>>
     where
         Self: 'async_trait,
@@ -52,6 +52,8 @@ pub trait LoadProjectUsecaseDyn<K, T>: Send + Sync {
 
 impl<K, T, O> LoadProjectUsecaseDyn<K, T> for O
 where
+    K: 'static,
+    T: ParameterValueType,
     O: LoadProjectUsecase<K, T>,
 {
     fn load_project_dyn<'life0, 'life1, 'async_trait>(&'life0 self, path: &'life1 Path) -> DynFuture<'async_trait, Result<ProjectHandle<K, T>, Box<dyn Error + 'static>>>
@@ -65,7 +67,11 @@ where
 }
 
 #[async_trait]
-impl<K, T> LoadProjectUsecase<K, T> for dyn LoadProjectUsecaseDyn<K, T> + Send + Sync {
+impl<K, T> LoadProjectUsecase<K, T> for dyn LoadProjectUsecaseDyn<K, T> + Send + Sync
+where
+    K: 'static,
+    T: ParameterValueType,
+{
     type Err = DynError;
 
     async fn load_project(&self, path: impl AsRef<Path> + Send + Sync) -> Result<ProjectHandle<K, T>, Self::Err> {
@@ -73,7 +79,7 @@ impl<K, T> LoadProjectUsecase<K, T> for dyn LoadProjectUsecaseDyn<K, T> + Send +
     }
 }
 
-pub trait WriteProjectUsecaseDyn<K, T>: Send + Sync {
+pub trait WriteProjectUsecaseDyn<K, T: ParameterValueType>: Send + Sync {
     fn write_project_dyn<'life0, 'life1, 'life2, 'async_trait>(&'life0 self, project: &'life1 ProjectHandle<K, T>, path: &'life2 Path) -> DynFuture<'async_trait, Result<(), Box<dyn Error + 'static>>>
     where
         Self: 'async_trait,
@@ -84,6 +90,8 @@ pub trait WriteProjectUsecaseDyn<K, T>: Send + Sync {
 
 impl<K, T, O> WriteProjectUsecaseDyn<K, T> for O
 where
+    K: 'static,
+    T: ParameterValueType,
     O: WriteProjectUsecase<K, T>,
 {
     fn write_project_dyn<'life0, 'life1, 'life2, 'async_trait>(&'life0 self, project: &'life1 ProjectHandle<K, T>, path: &'life2 Path) -> DynFuture<'async_trait, Result<(), Box<dyn Error + 'static>>>
@@ -98,7 +106,11 @@ where
 }
 
 #[async_trait]
-impl<K, T> WriteProjectUsecase<K, T> for dyn WriteProjectUsecaseDyn<K, T> + Send + Sync {
+impl<K, T> WriteProjectUsecase<K, T> for dyn WriteProjectUsecaseDyn<K, T> + Send + Sync
+where
+    K: 'static,
+    T: ParameterValueType,
+{
     type Err = DynError;
 
     async fn write_project(&self, project: &ProjectHandle<K, T>, path: impl AsRef<Path> + Send + Sync) -> Result<(), Self::Err> {
@@ -106,7 +118,7 @@ impl<K, T> WriteProjectUsecase<K, T> for dyn WriteProjectUsecaseDyn<K, T> + Send
     }
 }
 
-pub trait NewProjectUsecaseDyn<K, T>: Send + Sync {
+pub trait NewProjectUsecaseDyn<K, T: ParameterValueType>: Send + Sync {
     fn new_project_dyn<'life0, 'async_trait>(&'life0 self) -> DynFuture<'async_trait, ProjectHandle<K, T>>
     where
         Self: 'async_trait,
@@ -115,6 +127,8 @@ pub trait NewProjectUsecaseDyn<K, T>: Send + Sync {
 
 impl<K, T, O> NewProjectUsecaseDyn<K, T> for O
 where
+    K: 'static,
+    T: ParameterValueType,
     O: NewProjectUsecase<K, T>,
 {
     fn new_project_dyn<'life0, 'async_trait>(&'life0 self) -> DynFuture<'async_trait, ProjectHandle<K, T>>
@@ -127,13 +141,17 @@ where
 }
 
 #[async_trait]
-impl<K, T> NewProjectUsecase<K, T> for dyn NewProjectUsecaseDyn<K, T> + Send + Sync {
+impl<K, T> NewProjectUsecase<K, T> for dyn NewProjectUsecaseDyn<K, T> + Send + Sync
+where
+    K: 'static,
+    T: ParameterValueType,
+{
     async fn new_project(&self) -> ProjectHandle<K, T> {
         self.new_project_dyn().await
     }
 }
 
-pub trait NewRootComponentClassUsecaseDyn<K, T>: Send + Sync {
+pub trait NewRootComponentClassUsecaseDyn<K, T: ParameterValueType>: Send + Sync {
     fn new_root_component_class_dyn<'life0, 'async_trait>(&'life0 self) -> DynFuture<'async_trait, RootComponentClassHandle<K, T>>
     where
         Self: 'async_trait,
@@ -142,6 +160,8 @@ pub trait NewRootComponentClassUsecaseDyn<K, T>: Send + Sync {
 
 impl<K, T, O> NewRootComponentClassUsecaseDyn<K, T> for O
 where
+    K: 'static,
+    T: ParameterValueType,
     O: NewRootComponentClassUsecase<K, T>,
 {
     fn new_root_component_class_dyn<'life0, 'async_trait>(&'life0 self) -> DynFuture<'async_trait, RootComponentClassHandle<K, T>>
@@ -154,13 +174,17 @@ where
 }
 
 #[async_trait]
-impl<K, T> NewRootComponentClassUsecase<K, T> for dyn NewRootComponentClassUsecaseDyn<K, T> + Send + Sync {
+impl<K, T> NewRootComponentClassUsecase<K, T> for dyn NewRootComponentClassUsecaseDyn<K, T> + Send + Sync
+where
+    K: 'static,
+    T: ParameterValueType,
+{
     async fn new_root_component_class(&self) -> RootComponentClassHandle<K, T> {
         self.new_root_component_class_dyn().await
     }
 }
 
-pub trait SetOwnerForRootComponentClassUsecaseDyn<K, T>: Send + Sync {
+pub trait SetOwnerForRootComponentClassUsecaseDyn<K, T: ParameterValueType>: Send + Sync {
     fn set_owner_for_root_component_class_dyn<'life0, 'life1, 'life2, 'async_trait>(&'life0 self, component: &'life1 RootComponentClassHandle<K, T>, owner: &'life2 ProjectHandle<K, T>) -> DynFuture<'async_trait, ()>
     where
         Self: 'async_trait,
@@ -171,6 +195,8 @@ pub trait SetOwnerForRootComponentClassUsecaseDyn<K, T>: Send + Sync {
 
 impl<K, T, O> SetOwnerForRootComponentClassUsecaseDyn<K, T> for O
 where
+    K: 'static,
+    T: ParameterValueType,
     O: SetOwnerForRootComponentClassUsecase<K, T>,
 {
     fn set_owner_for_root_component_class_dyn<'life0, 'life1, 'life2, 'async_trait>(&'life0 self, component: &'life1 RootComponentClassHandle<K, T>, owner: &'life2 ProjectHandle<K, T>) -> DynFuture<'async_trait, ()>
@@ -185,13 +211,17 @@ where
 }
 
 #[async_trait]
-impl<K, T> SetOwnerForRootComponentClassUsecase<K, T> for dyn SetOwnerForRootComponentClassUsecaseDyn<K, T> + Send + Sync {
+impl<K, T> SetOwnerForRootComponentClassUsecase<K, T> for dyn SetOwnerForRootComponentClassUsecaseDyn<K, T> + Send + Sync
+where
+    K: 'static,
+    T: ParameterValueType,
+{
     async fn set_owner_for_root_component_class(&self, component: &RootComponentClassHandle<K, T>, owner: &ProjectHandle<K, T>) {
         self.set_owner_for_root_component_class_dyn(component, owner).await
     }
 }
 
-pub trait GetLoadedProjectsUsecaseDyn<K, T>: Send + Sync {
+pub trait GetLoadedProjectsUsecaseDyn<K, T: ParameterValueType>: Send + Sync {
     fn get_loaded_projects_dyn<'life0, 'async_trait>(&'life0 self) -> DynFuture<'async_trait, Cow<'_, [ProjectHandle<K, T>]>>
     where
         Self: 'async_trait,
@@ -200,6 +230,8 @@ pub trait GetLoadedProjectsUsecaseDyn<K, T>: Send + Sync {
 
 impl<K, T, O> GetLoadedProjectsUsecaseDyn<K, T> for O
 where
+    K: 'static,
+    T: ParameterValueType,
     O: GetLoadedProjectsUsecase<K, T>,
 {
     fn get_loaded_projects_dyn<'life0, 'async_trait>(&'life0 self) -> DynFuture<'async_trait, Cow<'_, [ProjectHandle<K, T>]>>
@@ -212,13 +244,17 @@ where
 }
 
 #[async_trait]
-impl<K, T> GetLoadedProjectsUsecase<K, T> for dyn GetLoadedProjectsUsecaseDyn<K, T> + Send + Sync {
+impl<K, T> GetLoadedProjectsUsecase<K, T> for dyn GetLoadedProjectsUsecaseDyn<K, T> + Send + Sync
+where
+    K: 'static,
+    T: ParameterValueType,
+{
     async fn get_loaded_projects(&self) -> Cow<[ProjectHandle<K, T>]> {
         self.get_loaded_projects_dyn().await
     }
 }
 
-pub trait GetRootComponentClassesUsecaseDyn<K, T>: Send + Sync {
+pub trait GetRootComponentClassesUsecaseDyn<K, T: ParameterValueType>: Send + Sync {
     fn get_root_component_classes_dyn<'life0, 'life1, 'async_trait>(&'life0 self, project: &'life1 ProjectHandle<K, T>) -> DynFuture<'async_trait, Cow<'_, [RootComponentClassHandle<K, T>]>>
     where
         Self: 'async_trait,
@@ -228,6 +264,8 @@ pub trait GetRootComponentClassesUsecaseDyn<K, T>: Send + Sync {
 
 impl<K, T, O> GetRootComponentClassesUsecaseDyn<K, T> for O
 where
+    K: 'static,
+    T: ParameterValueType,
     O: GetRootComponentClassesUsecase<K, T>,
 {
     fn get_root_component_classes_dyn<'life0, 'life1, 'async_trait>(&'life0 self, project: &'life1 ProjectHandle<K, T>) -> DynFuture<'async_trait, Cow<'_, [RootComponentClassHandle<K, T>]>>
@@ -241,7 +279,11 @@ where
 }
 
 #[async_trait]
-impl<K, T> GetRootComponentClassesUsecase<K, T> for dyn GetRootComponentClassesUsecaseDyn<K, T> + Send + Sync {
+impl<K, T> GetRootComponentClassesUsecase<K, T> for dyn GetRootComponentClassesUsecaseDyn<K, T> + Send + Sync
+where
+    K: 'static,
+    T: ParameterValueType,
+{
     async fn get_root_component_classes(&self, project: &ProjectHandle<K, T>) -> Cow<[RootComponentClassHandle<K, T>]> {
         self.get_root_component_classes_dyn(project).await
     }
@@ -256,6 +298,8 @@ pub trait GetAvailableComponentClassesUsecaseDyn<K, T>: Send + Sync {
 
 impl<K, T, O> GetAvailableComponentClassesUsecaseDyn<K, T> for O
 where
+    K: 'static,
+    T: ParameterValueType,
     O: GetAvailableComponentClassesUsecase<K, T>,
 {
     fn get_available_component_classes_dyn<'life0, 'async_trait>(&'life0 self) -> DynFuture<'async_trait, Cow<'_, [StaticPointer<RwLock<dyn ComponentClass<K, T>>>]>>
@@ -268,7 +312,11 @@ where
 }
 
 #[async_trait]
-impl<K, T> GetAvailableComponentClassesUsecase<K, T> for dyn GetAvailableComponentClassesUsecaseDyn<K, T> + Send + Sync {
+impl<K, T> GetAvailableComponentClassesUsecase<K, T> for dyn GetAvailableComponentClassesUsecaseDyn<K, T> + Send + Sync
+where
+    K: 'static,
+    T: ParameterValueType,
+{
     async fn get_available_component_classes(&self) -> Cow<[StaticPointer<RwLock<dyn ComponentClass<K, T>>>]> {
         self.get_available_component_classes_dyn().await
     }
@@ -282,8 +330,9 @@ pub trait RealtimeComponentRendererDyn<T: ParameterValueType>: Send + Sync {
     fn render_param_dyn(&self, param: Parameter<ParameterSelect>) -> Result<Parameter<T>, Box<dyn Error + 'static>>;
 }
 
-impl<T: ParameterValueType, O> RealtimeComponentRendererDyn<T> for O
+impl<T, O> RealtimeComponentRendererDyn<T> for O
 where
+    T: ParameterValueType,
     O: RealtimeComponentRenderer<T>,
 {
     fn get_frame_count_dyn(&self) -> usize {
@@ -362,7 +411,11 @@ where
 }
 
 #[async_trait]
-impl<K, T: ParameterValueType> RealtimeRenderComponentUsecase<K, T> for dyn RealtimeRenderComponentUsecaseDyn<K, T> + Send + Sync {
+impl<K, T> RealtimeRenderComponentUsecase<K, T> for dyn RealtimeRenderComponentUsecaseDyn<K, T> + Send + Sync
+where
+    K: 'static,
+    T: ParameterValueType,
+{
     type Err = DynError;
     type Renderer = Box<dyn RealtimeComponentRendererDyn<T> + Send + Sync + 'static>;
 
@@ -371,7 +424,7 @@ impl<K, T: ParameterValueType> RealtimeRenderComponentUsecase<K, T> for dyn Real
     }
 }
 
-pub trait EditUsecaseDyn<K, T>: Send + Sync {
+pub trait EditUsecaseDyn<K, T: ParameterValueType>: Send + Sync {
     fn edit_dyn<'life0, 'life1, 'async_trait>(&'life0 self, target: &'life1 RootComponentClassHandle<K, T>, command: RootComponentEditCommand<K, T>) -> DynFuture<'async_trait, Result<(), Box<dyn Error + 'static>>>
     where
         Self: 'async_trait,
@@ -387,6 +440,8 @@ pub trait EditUsecaseDyn<K, T>: Send + Sync {
 
 impl<K, T, O> EditUsecaseDyn<K, T> for O
 where
+    K: 'static,
+    T: ParameterValueType,
     O: EditUsecase<K, T>,
 {
     fn edit_dyn<'life0, 'life1, 'async_trait>(&'life0 self, target: &'life1 RootComponentClassHandle<K, T>, command: RootComponentEditCommand<K, T>) -> DynFuture<'async_trait, Result<(), Box<dyn Error + 'static>>>
@@ -410,7 +465,11 @@ where
 }
 
 #[async_trait]
-impl<K, T> EditUsecase<K, T> for dyn EditUsecaseDyn<K, T> + Send + Sync {
+impl<K, T> EditUsecase<K, T> for dyn EditUsecaseDyn<K, T> + Send + Sync
+where
+    K: 'static,
+    T: ParameterValueType,
+{
     type Err = DynError;
 
     async fn edit(&self, target: &RootComponentClassHandle<K, T>, command: RootComponentEditCommand<K, T>) -> Result<(), Self::Err> {
@@ -426,8 +485,10 @@ pub trait SubscribeEditEventUsecaseDyn<K, T>: Send + Sync {
     fn add_edit_event_listener_dyn(&self, listener: Box<dyn EditEventListener<K, T> + 'static>) -> Box<dyn Send + Sync>;
 }
 
-impl<K: 'static, T: 'static, O> SubscribeEditEventUsecaseDyn<K, T> for O
+impl<K, T, O> SubscribeEditEventUsecaseDyn<K, T> for O
 where
+    K: 'static,
+    T: ParameterValueType,
     O: SubscribeEditEventUsecase<K, T>,
 {
     fn add_edit_event_listener_dyn(&self, listener: Box<dyn EditEventListener<K, T> + 'static>) -> Box<dyn Send + Sync> {
@@ -435,7 +496,11 @@ where
     }
 }
 
-impl<K, T> SubscribeEditEventUsecase<K, T> for dyn SubscribeEditEventUsecaseDyn<K, T> + Send + Sync {
+impl<K, T> SubscribeEditEventUsecase<K, T> for dyn SubscribeEditEventUsecaseDyn<K, T> + Send + Sync
+where
+    K: 'static,
+    T: ParameterValueType,
+{
     type EditEventListenerGuard = Box<dyn Send + Sync>;
 
     fn add_edit_event_listener(&self, listener: impl EditEventListener<K, T> + 'static) -> Self::EditEventListenerGuard {
@@ -443,7 +508,7 @@ impl<K, T> SubscribeEditEventUsecase<K, T> for dyn SubscribeEditEventUsecaseDyn<
     }
 }
 
-pub trait UndoUsecaseDyn<K, T>: Send + Sync {
+pub trait UndoUsecaseDyn<K, T: ParameterValueType>: Send + Sync {
     fn undo_dyn<'life0, 'life1, 'async_trait>(&'life0 self, component: &'life1 RootComponentClassHandle<K, T>) -> DynFuture<'async_trait, bool>
     where
         Self: 'async_trait,
@@ -459,6 +524,8 @@ pub trait UndoUsecaseDyn<K, T>: Send + Sync {
 
 impl<K, T, O> UndoUsecaseDyn<K, T> for O
 where
+    K: 'static,
+    T: ParameterValueType,
     O: UndoUsecase<K, T>,
 {
     fn undo_dyn<'life0, 'life1, 'async_trait>(&'life0 self, component: &'life1 RootComponentClassHandle<K, T>) -> DynFuture<'async_trait, bool>
@@ -482,7 +549,11 @@ where
 }
 
 #[async_trait]
-impl<K, T> UndoUsecase<K, T> for dyn UndoUsecaseDyn<K, T> + Send + Sync {
+impl<K, T> UndoUsecase<K, T> for dyn UndoUsecaseDyn<K, T> + Send + Sync
+where
+    K: 'static,
+    T: ParameterValueType,
+{
     async fn undo(&self, component: &RootComponentClassHandle<K, T>) -> bool {
         self.undo_dyn(component).await
     }
@@ -492,7 +563,7 @@ impl<K, T> UndoUsecase<K, T> for dyn UndoUsecaseDyn<K, T> + Send + Sync {
     }
 }
 
-pub trait RedoUsecaseDyn<K, T>: Send + Sync {
+pub trait RedoUsecaseDyn<K, T: ParameterValueType>: Send + Sync {
     fn redo_dyn<'life0, 'life1, 'async_trait>(&'life0 self, component: &'life1 RootComponentClassHandle<K, T>) -> DynFuture<'async_trait, bool>
     where
         Self: 'async_trait,
@@ -508,6 +579,8 @@ pub trait RedoUsecaseDyn<K, T>: Send + Sync {
 
 impl<K, T, O> RedoUsecaseDyn<K, T> for O
 where
+    K: 'static,
+    T: ParameterValueType,
     O: RedoUsecase<K, T>,
 {
     fn redo_dyn<'life0, 'life1, 'async_trait>(&'life0 self, component: &'life1 RootComponentClassHandle<K, T>) -> DynFuture<'async_trait, bool>
@@ -531,7 +604,11 @@ where
 }
 
 #[async_trait]
-impl<K, T> RedoUsecase<K, T> for dyn RedoUsecaseDyn<K, T> + Send + Sync {
+impl<K, T> RedoUsecase<K, T> for dyn RedoUsecaseDyn<K, T> + Send + Sync
+where
+    K: 'static,
+    T: ParameterValueType,
+{
     async fn redo(&self, component: &RootComponentClassHandle<K, T>) -> bool {
         self.redo_dyn(component).await
     }

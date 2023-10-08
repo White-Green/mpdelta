@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use mpdelta_core::component::parameter::ParameterValueType;
 use mpdelta_core::core::{ProjectLoader, ProjectWriter};
 use mpdelta_core::project::{ProjectHandle, ProjectHandleOwned};
 use std::path::Path;
@@ -10,7 +11,11 @@ pub struct TemporaryProjectLoader;
 pub enum Infallible {}
 
 #[async_trait]
-impl<K, T> ProjectLoader<K, T> for TemporaryProjectLoader {
+impl<K, T> ProjectLoader<K, T> for TemporaryProjectLoader
+where
+    K: 'static,
+    T: ParameterValueType,
+{
     type Err = Infallible;
 
     async fn load_project(&self, _: &Path) -> Result<ProjectHandleOwned<K, T>, Self::Err> {
@@ -21,7 +26,11 @@ impl<K, T> ProjectLoader<K, T> for TemporaryProjectLoader {
 pub struct TemporaryProjectWriter;
 
 #[async_trait]
-impl<K, T> ProjectWriter<K, T> for TemporaryProjectWriter {
+impl<K, T> ProjectWriter<K, T> for TemporaryProjectWriter
+where
+    K: 'static,
+    T: ParameterValueType,
+{
     type Err = Infallible;
 
     async fn write_project(&self, _: &ProjectHandle<K, T>, _: &Path) -> Result<(), Self::Err> {

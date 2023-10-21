@@ -2,7 +2,7 @@ use crate::component::marker_pin::MarkerTime;
 use std::cmp::Ordering;
 use std::fmt::{Debug, Formatter};
 use std::hash::{Hash, Hasher};
-use std::ops::Neg;
+use std::ops::{Add, Div, Neg, Sub};
 use std::sync::atomic;
 use std::sync::atomic::AtomicU64;
 
@@ -45,7 +45,7 @@ impl Eq for TimelineTime {}
 
 impl PartialOrd for TimelineTime {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        self.0.partial_cmp(&other.0)
+        Some(self.cmp(other))
     }
 }
 
@@ -67,6 +67,30 @@ impl Neg for TimelineTime {
     fn neg(self) -> Self::Output {
         // 表現可能な数の範囲が正負で同一なのでsafe
         TimelineTime(-self.0)
+    }
+}
+
+impl Add for TimelineTime {
+    type Output = TimelineTime;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        TimelineTime((self.0 + rhs.0).clamp(f64::MIN, f64::MAX))
+    }
+}
+
+impl Sub for TimelineTime {
+    type Output = TimelineTime;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        TimelineTime((self.0 - rhs.0).clamp(f64::MIN, f64::MAX))
+    }
+}
+
+impl Div for TimelineTime {
+    type Output = f64;
+
+    fn div(self, rhs: Self) -> Self::Output {
+        self.0 / rhs.0
     }
 }
 

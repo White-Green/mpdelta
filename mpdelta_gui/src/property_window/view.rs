@@ -25,13 +25,13 @@ impl<K: 'static, T: ParameterValueType, VM: PropertyWindowViewModel<K, T>> Prope
             if let Some(image_required_params) = image_required_params {
                 if let ImageRequiredParamsTransform::Params {
                     scale: Vector3 {
-                        x: VariableParameterValue::Manually(scale_x),
-                        y: VariableParameterValue::Manually(scale_y),
+                        x: VariableParameterValue { params: scale_x, .. },
+                        y: VariableParameterValue { params: scale_y, .. },
                         ..
                     },
                     translate: Vector3 {
-                        x: VariableParameterValue::Manually(translate_x),
-                        y: VariableParameterValue::Manually(translate_y),
+                        x: VariableParameterValue { params: translate_x, .. },
+                        y: VariableParameterValue { params: translate_y, .. },
                         ..
                     },
                     ..
@@ -39,7 +39,9 @@ impl<K: 'static, T: ParameterValueType, VM: PropertyWindowViewModel<K, T>> Prope
                 {
                     ui.label("position - X");
                     ui.add(Slider::from_get_set(-3.0..=3.0, |new_value| {
-                        let current_value = translate_x.get_value_mut(0).unwrap().1;
+                        let Some(current_value) = translate_x.get_value_mut(0).unwrap().1 else {
+                            return 0.;
+                        };
                         current_value
                             .value
                             .edit_value(|from, to| {
@@ -56,7 +58,9 @@ impl<K: 'static, T: ParameterValueType, VM: PropertyWindowViewModel<K, T>> Prope
                     }));
                     ui.label("position - Y");
                     ui.add(Slider::from_get_set(-3.0..=3.0, |new_value| {
-                        let current_value = translate_y.get_value_mut(0).unwrap().1;
+                        let Some(current_value) = translate_y.get_value_mut(0).unwrap().1 else {
+                            return 0.;
+                        };
                         current_value
                             .value
                             .edit_value(|from, to| {
@@ -73,7 +77,9 @@ impl<K: 'static, T: ParameterValueType, VM: PropertyWindowViewModel<K, T>> Prope
                     }));
                     ui.label("scale - X");
                     ui.add(Slider::from_get_set(0.0..=2.0, |new_value| {
-                        let current_value = scale_x.get_value_mut(0).unwrap().1;
+                        let Some(current_value) = scale_x.get_value_mut(0).unwrap().1 else {
+                            return 0.;
+                        };
                         current_value
                             .value
                             .edit_value(|from, to| {
@@ -90,7 +96,9 @@ impl<K: 'static, T: ParameterValueType, VM: PropertyWindowViewModel<K, T>> Prope
                     }));
                     ui.label("scale - Y");
                     ui.add(Slider::from_get_set(0.0..=2.0, |new_value| {
-                        let current_value = scale_y.get_value_mut(0).unwrap().1;
+                        let Some(current_value) = scale_y.get_value_mut(0).unwrap().1 else {
+                            return 0.;
+                        };
                         current_value
                             .value
                             .edit_value(|from, to| {

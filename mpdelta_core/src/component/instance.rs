@@ -1,11 +1,10 @@
 use crate::component::class::ComponentClass;
-use crate::component::marker_pin::{MarkerPinHandleCow, MarkerPinHandleOwned};
-use crate::component::parameter::{AudioRequiredParams, ImageRequiredParams, Parameter, ParameterNullableValue, ParameterValue, ParameterValueFixed, ParameterValueType, Type, ValueFixed, VariableParameterValue};
-use crate::component::processor::{ComponentProcessor, ComponentProcessorWrapper};
+use crate::component::marker_pin::{MarkerPinHandle, MarkerPinHandleCow, MarkerPinHandleOwned};
+use crate::component::parameter::{AudioRequiredParams, ImageRequiredParams, Parameter, ParameterNullableValue, ParameterValueFixed, ParameterValueType, Type, VariableParameterValue};
+use crate::component::processor::ComponentProcessorWrapper;
 use crate::ptr::{StaticPointer, StaticPointerCow, StaticPointerOwned};
 use qcell::TCell;
 use std::fmt::{Debug, Formatter};
-use std::sync::Arc;
 use tokio::sync::RwLock;
 
 pub struct ComponentInstance<K: 'static, T: ParameterValueType> {
@@ -18,7 +17,7 @@ pub struct ComponentInstance<K: 'static, T: ParameterValueType> {
     fixed_parameters_type: Box<[(String, Parameter<Type>)]>,
     fixed_parameters: Box<[ParameterValueFixed<T::Image, T::Audio>]>,
     variable_parameters_type: Vec<(String, Parameter<Type>)>,
-    variable_parameters: Vec<VariableParameterValue<K, T, ParameterValue<K>, ParameterNullableValue<K>>>,
+    variable_parameters: Vec<VariableParameterValue<K, T, ParameterNullableValue<K, T>>>,
     processor: ComponentProcessorWrapper<K, T>,
 }
 
@@ -30,7 +29,7 @@ impl<K, T: ParameterValueType> Debug for ComponentInstance<K, T>
 where
     ImageRequiredParams<K, T>: Debug,
     AudioRequiredParams<K, T>: Debug,
-    VariableParameterValue<K, T, ParameterValue<K>, ParameterNullableValue<K>>: Debug,
+    VariableParameterValue<K, T, ParameterNullableValue<K, T>>: Debug,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         struct DebugFn<F>(F);
@@ -80,11 +79,11 @@ impl<K, T: ParameterValueType> ComponentInstance<K, T> {
     pub fn component_class(&self) -> &StaticPointer<RwLock<dyn ComponentClass<K, T>>> {
         &self.component_class
     }
-    pub fn marker_left(&self) -> &MarkerPinHandleCow<K> {
-        &self.marker_left
+    pub fn marker_left(&self) -> &MarkerPinHandle<K> {
+        self.marker_left.ptr()
     }
-    pub fn marker_right(&self) -> &MarkerPinHandleCow<K> {
-        &self.marker_right
+    pub fn marker_right(&self) -> &MarkerPinHandle<K> {
+        self.marker_right.ptr()
     }
     pub fn markers(&self) -> &[MarkerPinHandleOwned<K>] {
         &self.markers
@@ -109,7 +108,7 @@ impl<K, T: ParameterValueType> ComponentInstance<K, T> {
     pub fn variable_parameters_type(&self) -> &[(String, Parameter<Type>)] {
         &self.variable_parameters_type
     }
-    pub fn variable_parameters(&self) -> &[VariableParameterValue<K, T, ParameterValue<K>, ParameterNullableValue<K>>] {
+    pub fn variable_parameters(&self) -> &[VariableParameterValue<K, T, ParameterNullableValue<K, T>>] {
         &self.variable_parameters
     }
     pub fn processor(&self) -> &ComponentProcessorWrapper<K, T> {

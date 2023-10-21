@@ -42,7 +42,7 @@ where
         let component = component.ro(key);
         let start_time = component.marker_left().upgrade()?.ro(key).cached_timeline_time();
         let end_time = component.marker_right().upgrade()?.ro(key).cached_timeline_time();
-        pin_map.extend(component.markers().iter().map(StaticPointerOwned::reference).chain([component.marker_left().ptr(), component.marker_right().ptr()]).cloned().map(|marker| (marker, handle.clone())));
+        pin_map.extend(component.markers().iter().map(StaticPointerOwned::reference).chain([component.marker_left(), component.marker_right()]).cloned().map(|marker| (marker, handle.clone())));
         Some(ComponentInstanceData {
             handle,
             selected: false,

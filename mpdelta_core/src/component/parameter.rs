@@ -10,11 +10,11 @@ use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt::{Debug, Formatter};
 use std::hash::{Hash, Hasher};
+use std::io;
 use std::io::{IoSliceMut, Read, Seek, SeekFrom};
 use std::marker::PhantomData;
 use std::ops::Range;
 use std::sync::Arc;
-use std::{io, mem};
 
 pub mod placeholder;
 pub mod value;
@@ -273,86 +273,73 @@ where
 {
 }
 
-impl<Type: ParameterValueType> PartialEq for Parameter<Type>
-where
-    Type::Image: PartialEq,
-    Type::Audio: PartialEq,
-    Type::Binary: PartialEq,
-    Type::String: PartialEq,
-    Type::Integer: PartialEq,
-    Type::RealNumber: PartialEq,
-    Type::Boolean: PartialEq,
-    Type::Dictionary: PartialEq,
-    Type::Array: PartialEq,
-    Type::ComponentClass: PartialEq,
-{
-    fn eq(&self, rhs: &Self) -> bool {
-        if mem::discriminant(self) != mem::discriminant(rhs) {
-            return false;
+#[macro_export]
+macro_rules! impl_for_parameter {
+    (impl PartialEq for Parameter<$t:ty> $(where $($bound:tt),+)?) => {
+        impl_for_parameter!{
+            impl<> PartialEq for Parameter<$t> $(where $($bound),+)?
         }
-        match (self, rhs) {
-            (Self::None, Self::None) => true,
-            (Self::Image(value0), Self::Image(value1)) => value0 == value1,
-            (Self::Audio(value0), Self::Audio(value1)) => value0 == value1,
-            (Self::Binary(value0), Self::Binary(value1)) => value0 == value1,
-            (Self::String(value0), Self::String(value1)) => value0 == value1,
-            (Self::Integer(value0), Self::Integer(value1)) => value0 == value1,
-            (Self::RealNumber(value0), Self::RealNumber(value1)) => value0 == value1,
-            (Self::Boolean(value0), Self::Boolean(value1)) => value0 == value1,
-            (Self::Dictionary(value0), Self::Dictionary(value1)) => value0 == value1,
-            (Self::Array(value0), Self::Array(value1)) => value0 == value1,
-            (Self::ComponentClass(value0), Self::ComponentClass(value1)) => value0 == value1,
-            _ => unreachable!(),
+    };
+    (impl<$($p:ty),*> PartialEq for Parameter<$t:ty> $(where $($bound:tt),+)?) => {
+        impl<$($p),*> ::core::cmp::PartialEq for Parameter<$t> $(where $($bound),+)? {
+            fn eq(&self, rhs: &Self) -> bool {
+                if ::core::mem::discriminant(self) != ::core::mem::discriminant(rhs) {
+                    return false;
+                }
+                match (self, rhs) {
+                    (Self::None, Self::None) => true,
+                    (Self::Image(value0), Self::Image(value1)) => value0 == value1,
+                    (Self::Audio(value0), Self::Audio(value1)) => value0 == value1,
+                    (Self::Binary(value0), Self::Binary(value1)) => value0 == value1,
+                    (Self::String(value0), Self::String(value1)) => value0 == value1,
+                    (Self::Integer(value0), Self::Integer(value1)) => value0 == value1,
+                    (Self::RealNumber(value0), Self::RealNumber(value1)) => value0 == value1,
+                    (Self::Boolean(value0), Self::Boolean(value1)) => value0 == value1,
+                    (Self::Dictionary(value0), Self::Dictionary(value1)) => value0 == value1,
+                    (Self::Array(value0), Self::Array(value1)) => value0 == value1,
+                    (Self::ComponentClass(value0), Self::ComponentClass(value1)) => value0 == value1,
+                    _ => unreachable!(),
+                }
+            }
         }
-    }
+    };
+    (impl Eq for Parameter<$t:ty> $(where $($bound:tt),+)?) => {
+        impl_for_parameter!{
+            impl<> Eq for Parameter<$t> $(where $($bound),+)?
+        }
+    };
+    (impl<$($p:ty),*> Eq for Parameter<$t:ty> $(where $($bound:tt),+)?) => {
+        impl<$($p),*> ::core::cmp::Eq for Parameter<$t> $(where $($bound),+)? {}
+    };
+    (impl Hash for Parameter<$t:ty> $(where $($bound:tt),+)?) => {
+        impl_for_parameter!{
+            impl<> Hash for Parameter<$t> $(where $($bound),+)?
+        }
+    };
+    (impl<$($p:ty),*> Hash for Parameter<$t:ty> $(where $($bound:tt),+)?) => {
+        impl<$($p),*> ::core::hash::Hash for Parameter<$t> $(where $($bound),+)? {
+            fn hash<H: ::core::hash::Hasher>(&self, state: &mut H) {
+                let tag = ::core::mem::discriminant(self);
+                tag.hash(state);
+                match self {
+                    Self::None => {}
+                    Self::Image(value) => value.hash(state),
+                    Self::Audio(value) => value.hash(state),
+                    Self::Binary(value) => value.hash(state),
+                    Self::String(value) => value.hash(state),
+                    Self::Integer(value) => value.hash(state),
+                    Self::RealNumber(value) => value.hash(state),
+                    Self::Boolean(value) => value.hash(state),
+                    Self::Dictionary(value) => value.hash(state),
+                    Self::Array(value) => value.hash(state),
+                    Self::ComponentClass(value) => value.hash(state),
+                }
+            }
+        }
+    };
 }
 
-impl<Type: ParameterValueType> Eq for Parameter<Type>
-where
-    Type::Image: Eq,
-    Type::Audio: Eq,
-    Type::Binary: Eq,
-    Type::String: Eq,
-    Type::Integer: Eq,
-    Type::RealNumber: Eq,
-    Type::Boolean: Eq,
-    Type::Dictionary: Eq,
-    Type::Array: Eq,
-    Type::ComponentClass: Eq,
-{
-}
-
-impl<Type: ParameterValueType> Hash for Parameter<Type>
-where
-    Type::Image: Hash,
-    Type::Audio: Hash,
-    Type::Binary: Hash,
-    Type::String: Hash,
-    Type::Integer: Hash,
-    Type::RealNumber: Hash,
-    Type::Boolean: Hash,
-    Type::Dictionary: Hash,
-    Type::Array: Hash,
-    Type::ComponentClass: Hash,
-{
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        let tag = mem::discriminant(self);
-        tag.hash(state);
-        match self {
-            Self::None => {}
-            Self::Image(value) => value.hash(state),
-            Self::Audio(value) => value.hash(state),
-            Self::Binary(value) => value.hash(state),
-            Self::String(value) => value.hash(state),
-            Self::Integer(value) => value.hash(state),
-            Self::RealNumber(value) => value.hash(state),
-            Self::Boolean(value) => value.hash(state),
-            Self::Dictionary(value) => value.hash(state),
-            Self::Array(value) => value.hash(state),
-            Self::ComponentClass(value) => value.hash(state),
-        }
-    }
-}
+pub use impl_for_parameter;
 
 impl<Type: ParameterValueType> Debug for Parameter<Type> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
@@ -510,15 +497,19 @@ pub type ParameterType = Parameter<Type>;
 impl ParameterValueType for Type {
     type Image = ();
     type Audio = ();
-    type Binary = Option<Box<[String]>>;
-    type String = Option<Range<usize>>;
-    type Integer = Option<Range<i64>>;
-    type RealNumber = Option<Range<f64>>;
+    type Binary = ();
+    type String = ();
+    type Integer = ();
+    type RealNumber = ();
     type Boolean = ();
     type Dictionary = Vec<(String, Parameter<Type>)>;
     type Array = Box<Parameter<Type>>;
     type ComponentClass = ();
 }
+
+impl_for_parameter!(impl PartialEq for Parameter<Type>);
+impl_for_parameter!(impl Eq for Parameter<Type>);
+impl_for_parameter!(impl Hash for Parameter<Type>);
 
 pub struct TypeExceptComponentClass;
 
@@ -672,17 +663,17 @@ impl ParameterValueType for FrameVariable {
     type ComponentClass = Never;
 }
 
-pub struct NullableValue<K>(PhantomData<K>);
+pub struct NullableValue<K, T>(PhantomData<(K, T)>);
 
-unsafe impl<K> Send for NullableValue<K> {}
+unsafe impl<K, T> Send for NullableValue<K, T> {}
 
-unsafe impl<K> Sync for NullableValue<K> {}
+unsafe impl<K, T> Sync for NullableValue<K, T> {}
 
-pub type ParameterNullableValue<K> = Parameter<NullableValue<K>>;
+pub type ParameterNullableValue<K, T> = Parameter<NullableValue<K, T>>;
 
-impl<K: 'static> ParameterValueType for NullableValue<K> {
-    type Image = Option<Placeholder<TagImage>>;
-    type Audio = Option<Placeholder<TagAudio>>;
+impl<K: 'static, T: ParameterValueType> ParameterValueType for NullableValue<K, T> {
+    type Image = TimeSplitValue<MarkerPinHandle<K>, Option<EasingValue<T::Image>>>;
+    type Audio = TimeSplitValue<MarkerPinHandle<K>, Option<EasingValue<T::Audio>>>;
     type Binary = TimeSplitValue<MarkerPinHandle<K>, Option<EasingValue<AbstractFile>>>;
     type String = TimeSplitValue<MarkerPinHandle<K>, Option<EasingValue<String>>>;
     type Integer = TimeSplitValue<MarkerPinHandle<K>, Option<EasingValue<i64>>>;
@@ -807,7 +798,7 @@ impl Eq for Opacity {}
 
 impl PartialOrd for Opacity {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        self.0.partial_cmp(&other.0)
+        Some(self.cmp(other))
     }
 }
 
@@ -872,7 +863,7 @@ pub enum CompositeOperation {
     Lighter = 12,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub enum VariableParameterPriority {
     PrioritizeManually,
     PrioritizeComponent,
@@ -880,29 +871,30 @@ pub enum VariableParameterPriority {
 
 type PinSplitValue<K, T> = TimeSplitValue<MarkerPinHandle<K>, T>;
 
-pub enum VariableParameterValue<K: 'static, T: ParameterValueType, Manually, Nullable> {
-    Manually(Manually),
-    MayComponent { params: Nullable, components: Vec<ComponentInstanceHandle<K, T>>, priority: VariableParameterPriority },
+#[derive(Debug)]
+pub struct VariableParameterValue<K: 'static, T: ParameterValueType, Nullable> {
+    pub params: Nullable,
+    pub components: Vec<ComponentInstanceHandle<K, T>>,
+    pub priority: VariableParameterPriority,
 }
 
-impl<K, T: ParameterValueType, Manually: Debug, Nullable: Debug> Debug for VariableParameterValue<K, T, Manually, Nullable> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            VariableParameterValue::Manually(manually) => f.debug_tuple("Manually").field(manually).finish(),
-            VariableParameterValue::MayComponent { params, components, priority } => f.debug_struct("MayComponent").field("params", params).field("components", components).field("priority", priority).finish(),
+impl<K, T: ParameterValueType, Nullable: Clone> Clone for VariableParameterValue<K, T, Nullable> {
+    fn clone(&self) -> Self {
+        let VariableParameterValue { params, components, priority } = self;
+        VariableParameterValue {
+            params: params.clone(),
+            components: components.clone(),
+            priority: *priority,
         }
     }
 }
 
-impl<K, T: ParameterValueType, Manually: Clone, Nullable: Clone> Clone for VariableParameterValue<K, T, Manually, Nullable> {
-    fn clone(&self) -> Self {
-        match self {
-            VariableParameterValue::Manually(value) => VariableParameterValue::Manually(value.clone()),
-            VariableParameterValue::MayComponent { params, components, priority } => VariableParameterValue::MayComponent {
-                params: params.clone(),
-                components: components.clone(),
-                priority: priority.clone(),
-            },
+impl<K: 'static, T: ParameterValueType, Nullable> VariableParameterValue<K, T, Nullable> {
+    pub fn new(value: Nullable) -> VariableParameterValue<K, T, Nullable> {
+        VariableParameterValue {
+            params: value,
+            components: Vec::new(),
+            priority: VariableParameterPriority::PrioritizeManually,
         }
     }
 }
@@ -919,9 +911,9 @@ pub struct ImageRequiredParams<K: 'static, T: ParameterValueType> {
 
 impl<K, T: ParameterValueType> ImageRequiredParams<K, T> {
     pub fn new_default(marker_left: &MarkerPinHandle<K>, marker_right: &MarkerPinHandle<K>) -> ImageRequiredParams<K, T> {
-        let one = TimeSplitValue::new(marker_left.clone(), EasingValue::new(DynEditableSelfEasingValue(1., 1.), Arc::new(DefaultEasing)), marker_right.clone());
-        let one_value = VariableParameterValue::Manually(one);
-        let zero = VariableParameterValue::Manually(TimeSplitValue::new(marker_left.clone(), EasingValue::new(DynEditableSelfEasingValue(0., 0.), Arc::new(DefaultEasing)), marker_right.clone()));
+        let one = TimeSplitValue::new(marker_left.clone(), Some(EasingValue::new(DynEditableSelfEasingValue(1., 1.), Arc::new(DefaultEasing))), marker_right.clone());
+        let one_value = VariableParameterValue::new(one);
+        let zero = VariableParameterValue::new(TimeSplitValue::new(marker_left.clone(), Some(EasingValue::new(DynEditableSelfEasingValue(0., 0.), Arc::new(DefaultEasing))), marker_right.clone()));
         ImageRequiredParams {
             aspect_ratio: (1, 1),
             transform: ImageRequiredParamsTransform::Params {
@@ -964,7 +956,7 @@ impl<K, T: ParameterValueType> Clone for ImageRequiredParams<K, T> {
     }
 }
 
-pub type Vector3Params<K, T> = Vector3<VariableParameterValue<K, T, PinSplitValue<K, EasingValue<f64>>, PinSplitValue<K, Option<EasingValue<f64>>>>>;
+pub type Vector3Params<K, T> = Vector3<VariableParameterValue<K, T, PinSplitValue<K, Option<EasingValue<f64>>>>>;
 
 #[derive(Debug)]
 pub enum ImageRequiredParamsTransform<K: 'static, T: ParameterValueType> {
@@ -1100,7 +1092,7 @@ pub enum ImageRequiredParamsTransformFixed {
 
 #[derive(Debug)]
 pub struct AudioRequiredParams<K: 'static, T: ParameterValueType> {
-    pub volume: Vec<VariableParameterValue<K, T, PinSplitValue<K, EasingValue<f64>>, PinSplitValue<K, Option<EasingValue<f64>>>>>,
+    pub volume: Vec<VariableParameterValue<K, T, PinSplitValue<K, Option<EasingValue<f64>>>>>,
 }
 
 impl<K, T: ParameterValueType> Clone for AudioRequiredParams<K, T> {

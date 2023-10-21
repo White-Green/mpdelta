@@ -1,18 +1,12 @@
 use crate::component::class::ComponentClass;
 use crate::component::instance::ComponentInstanceHandleCow;
 use crate::component::link::MarkerLink;
-use crate::component::marker_pin::MarkerTime;
-use crate::component::parameter::placeholder::{Placeholder, TagAudio, TagImage};
-use crate::component::parameter::value::FrameVariableValue;
-use crate::component::parameter::{AbstractFile, ComponentProcessorInputValue, Never, Parameter, ParameterFrameVariableValue, ParameterSelect, ParameterType, ParameterValueFixed, ParameterValueType};
-use crate::native::processor::NativeProcessor;
+use crate::component::parameter::{Parameter, ParameterSelect, ParameterType, ParameterValueFixed, ParameterValueType};
+
 use crate::ptr::{StaticPointer, StaticPointerCow};
 use crate::time::TimelineTime;
 use async_trait::async_trait;
 use qcell::TCell;
-use std::borrow::Cow;
-use std::collections::HashMap;
-use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::RwLock;
@@ -72,7 +66,14 @@ pub trait ComponentProcessor<K, T: ParameterValueType>: Send + Sync {
 #[async_trait]
 pub trait ComponentProcessorNative<K, T: ParameterValueType>: ComponentProcessor<K, T> {
     fn supports_output_type(&self, out: Parameter<ParameterSelect>) -> bool;
-    async fn process(&self, fixed_parameters: &[ParameterValueFixed<T::Image, T::Audio>], variable_parameters: &[ComponentProcessorInputValue], variable_parameter_type: &[(String, ParameterType)], time: TimelineTime, output_type: ParameterSelect) -> ParameterValueFixed<T::Image, T::Audio>;
+    async fn process(
+        &self,
+        fixed_parameters: &[ParameterValueFixed<T::Image, T::Audio>],
+        variable_parameters: &[ParameterValueFixed<T::Image, T::Audio>],
+        variable_parameter_type: &[(String, ParameterType)],
+        time: TimelineTime,
+        output_type: Parameter<ParameterSelect>,
+    ) -> ParameterValueFixed<T::Image, T::Audio>;
 }
 
 #[async_trait]

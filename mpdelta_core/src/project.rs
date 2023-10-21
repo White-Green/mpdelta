@@ -1,10 +1,10 @@
 use crate::common::time_split_value::TimeSplitValue;
 use crate::component::class::ComponentClass;
-use crate::component::instance::{ComponentInstance, ComponentInstanceHandle, ComponentInstanceHandleCow, ComponentInstanceHandleOwned};
+use crate::component::instance::{ComponentInstance, ComponentInstanceHandle, ComponentInstanceHandleOwned};
 use crate::component::link::MarkerLink;
 use crate::component::marker_pin::{MarkerPin, MarkerPinHandle, MarkerPinHandleOwned, MarkerTime};
 use crate::component::parameter::value::{DefaultEasing, DynEditableSelfEasingValue, EasingValue};
-use crate::component::parameter::{AudioRequiredParams, ComponentProcessorInputValue, ImageRequiredParams, ImageRequiredParamsTransform, ParameterType, ParameterValueFixed, ParameterValueType, VariableParameterValue};
+use crate::component::parameter::{AudioRequiredParams, ImageRequiredParams, ImageRequiredParamsTransform, ParameterType, ParameterValueFixed, ParameterValueType, VariableParameterValue};
 use crate::component::processor::{ComponentProcessor, ComponentProcessorComponent, ComponentsLinksPair};
 use crate::ptr::{StaticPointer, StaticPointerCow, StaticPointerOwned};
 use crate::time::TimelineTime;
@@ -133,9 +133,9 @@ impl<K, T: ParameterValueType + 'static> ComponentClass<K, T> for RootComponentC
         let guard = self.item.0.read().await;
         let marker_left = StaticPointerOwned::reference(&guard.left).clone();
         let marker_right = StaticPointerOwned::reference(&guard.right).clone();
-        let one = TimeSplitValue::new(marker_left.clone(), EasingValue::new(DynEditableSelfEasingValue(1., 1.), Arc::new(DefaultEasing)), marker_right.clone());
-        let one_value = VariableParameterValue::Manually(one);
-        let zero = VariableParameterValue::Manually(TimeSplitValue::new(marker_left.clone(), EasingValue::new(DynEditableSelfEasingValue(0., 0.), Arc::new(DefaultEasing)), marker_right.clone()));
+        let one = TimeSplitValue::new(marker_left.clone(), Some(EasingValue::new(DynEditableSelfEasingValue(1., 1.), Arc::new(DefaultEasing))), marker_right.clone());
+        let one_value = VariableParameterValue::new(one);
+        let zero = VariableParameterValue::new(TimeSplitValue::new(marker_left.clone(), Some(EasingValue::new(DynEditableSelfEasingValue(0., 0.), Arc::new(DefaultEasing))), marker_right.clone()));
         let image_required_params = ImageRequiredParams {
             aspect_ratio: (16, 9),
             transform: ImageRequiredParamsTransform::Params {

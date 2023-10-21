@@ -2,14 +2,13 @@ use async_trait::async_trait;
 use mpdelta_core::component::class::ComponentClass;
 use mpdelta_core::component::instance::ComponentInstance;
 use mpdelta_core::component::marker_pin::{MarkerPin, MarkerTime};
-use mpdelta_core::component::parameter::{ComponentProcessorInputValue, ImageRequiredParams, Parameter, ParameterFrameVariableValue, ParameterSelect, ParameterType, ParameterTypeExceptComponentClass, ParameterValueFixed, ParameterValueType};
-use mpdelta_core::component::processor::{ComponentProcessor, ComponentProcessorComponent, ComponentProcessorNative, ComponentsLinksPair};
+use mpdelta_core::component::parameter::{ImageRequiredParams, Parameter, ParameterSelect, ParameterType, ParameterTypeExceptComponentClass, ParameterValueFixed, ParameterValueType};
+use mpdelta_core::component::processor::{ComponentProcessor, ComponentProcessorNative};
 use mpdelta_core::native::processor::{NativeProcessor, ParameterNativeProcessorInputFixed};
 use mpdelta_core::ptr::{StaticPointer, StaticPointerCow, StaticPointerOwned};
 use mpdelta_core::time::TimelineTime;
 use mpdelta_core_vulkano::ImageType;
 use qcell::TCell;
-use std::borrow::Cow;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::RwLock;
@@ -83,7 +82,14 @@ impl<K, T: ParameterValueType<Image = ImageType>> ComponentProcessorNative<K, T>
         matches!(out, Parameter::Image(_))
     }
 
-    async fn process(&self, fixed_parameters: &[ParameterValueFixed<T::Image, T::Audio>], variable_parameters: &[ComponentProcessorInputValue], variable_parameter_type: &[(String, ParameterType)], time: TimelineTime, output_type: ParameterSelect) -> ParameterValueFixed<T::Image, T::Audio> {
+    async fn process(
+        &self,
+        _fixed_parameters: &[ParameterValueFixed<T::Image, T::Audio>],
+        _variable_parameters: &[ParameterValueFixed<T::Image, T::Audio>],
+        _variable_parameter_type: &[(String, ParameterType)],
+        _time: TimelineTime,
+        _output_type: Parameter<ParameterSelect>,
+    ) -> ParameterValueFixed<T::Image, T::Audio> {
         ParameterValueFixed::Image(ImageType(Arc::clone(&self.0)))
     }
 }

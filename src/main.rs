@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use mpdelta_components::rectangle::RectangleClass;
 use mpdelta_core::component::class::ComponentClass;
-use mpdelta_core::component::parameter::{AudioRequiredParamsFrameVariable, ParameterValueType};
+use mpdelta_core::component::parameter::{AudioRequiredParamsFixed, ParameterValueType};
 use mpdelta_core::core::{ComponentClassLoader, MPDeltaCore};
 use mpdelta_core::ptr::{StaticPointer, StaticPointerOwned};
 use mpdelta_core_vulkano::ImageType;
@@ -9,6 +9,7 @@ use mpdelta_gui::view::MPDeltaGUI;
 use mpdelta_gui::viewmodel::ViewModelParamsImpl;
 use mpdelta_gui_vulkano::MPDeltaGUIVulkano;
 use mpdelta_renderer::{Combiner, CombinerBuilder, MPDeltaRendererBuilder};
+use mpdelta_rendering_controller::LRUCacheRenderingControllerBuilder;
 use mpdelta_services::history::InMemoryEditHistoryStore;
 use mpdelta_services::id_generator::UniqueIdGenerator;
 use mpdelta_services::project_editor::ProjectEditor;
@@ -48,7 +49,7 @@ struct TmpAudioCombiner;
 
 impl CombinerBuilder<()> for TmpAudioCombiner {
     type Request = ();
-    type Param = AudioRequiredParamsFrameVariable;
+    type Param = AudioRequiredParamsFixed;
     type Combiner = TmpAudioCombiner;
 
     fn new_combiner(&self, _request: Self::Request) -> Self::Combiner {
@@ -57,7 +58,7 @@ impl CombinerBuilder<()> for TmpAudioCombiner {
 }
 
 impl Combiner<()> for TmpAudioCombiner {
-    type Param = AudioRequiredParamsFrameVariable;
+    type Param = AudioRequiredParamsFixed;
 
     fn add(&mut self, _data: (), _param: Self::Param) {}
 
@@ -108,7 +109,14 @@ fn main() {
     component_class_loader.add(RectangleClass::new(Arc::clone(context.graphics_queue()), context.memory_allocator(), &command_buffer_allocator));
     let component_class_loader = Arc::new(component_class_loader);
     let key = Arc::new(RwLock::new(TCellOwner::<ProjectKey>::new()));
-    let component_renderer_builder = Arc::new(MPDeltaRendererBuilder::new(Arc::clone(&id_generator), Arc::new(ImageCombinerBuilder::new(Arc::clone(&context))), Arc::new(TmpAudioCombiner), Arc::clone(&key)));
+    let component_renderer_builder = Arc::new(MPDeltaRendererBuilder::new(
+        Arc::clone(&id_generator),
+        Arc::new(ImageCombinerBuilder::new(Arc::clone(&context))),
+        Arc::new(LRUCacheRenderingControllerBuilder::new()),
+        Arc::new(TmpAudioCombiner),
+        Arc::clone(&key),
+        runtime.handle().clone(),
+    ));
     let project_editor = Arc::new(ProjectEditor::new(Arc::clone(&key)));
     let edit_history = Arc::new(InMemoryEditHistoryStore::new(100));
     let core = Arc::new(MPDeltaCore::new(

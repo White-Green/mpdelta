@@ -255,6 +255,12 @@ impl<T: ?Sized> AsRef<StaticPointer<T>> for StaticPointerCow<T> {
     }
 }
 
+impl<T: ?Sized> AsRef<StaticPointer<T>> for StaticPointer<T> {
+    fn as_ref(&self) -> &StaticPointer<T> {
+        self
+    }
+}
+
 impl<T: ?Sized> Deref for StaticPointerCow<T> {
     type Target = StaticPointer<T>;
 

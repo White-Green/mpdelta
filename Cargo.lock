@@ -66,6 +66,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "allocator-api2"
+version = "0.2.16"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0942ffc6dcaadf03badf6e6a2d0228460359d5e34b57ccdc720b7382dfbd5ec5"
+
+[[package]]
 name = "android-activity"
 version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1013,6 +1019,10 @@ name = "hashbrown"
 version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2c6201b9ff9fd90a5a3bac2e56a830d0caa509576f0e503818ee82c181b3437a"
+dependencies = [
+ "ahash 0.8.3",
+ "allocator-api2",
+]
 
 [[package]]
 name = "heck"
@@ -1356,6 +1366,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "lru"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1efa59af2ddfad1854ae27d75009d538d0998b4b2fd47083e743ac1a10e46c60"
+dependencies = [
+ "hashbrown 0.14.0",
+]
+
+[[package]]
 name = "malloc_buf"
 version = "0.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1489,6 +1508,7 @@ dependencies = [
  "mpdelta_gui",
  "mpdelta_gui_vulkano",
  "mpdelta_renderer",
+ "mpdelta_rendering_controller",
  "mpdelta_services",
  "mpdelta_video_renderer_vulkano",
  "qcell",
@@ -1542,6 +1562,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "mpdelta_differential"
+version = "0.1.0"
+dependencies = [
+ "mpdelta_core",
+ "qcell",
+ "thiserror",
+]
+
+[[package]]
 name = "mpdelta_dyn_usecase"
 version = "0.1.0"
 dependencies = [
@@ -1586,6 +1615,7 @@ dependencies = [
  "mpdelta_gui_hot_reload_lib",
  "mpdelta_gui_vulkano",
  "mpdelta_renderer",
+ "mpdelta_rendering_controller",
  "mpdelta_services",
  "mpdelta_video_renderer_vulkano",
  "notify 6.1.1",
@@ -1638,10 +1668,21 @@ dependencies = [
  "either",
  "futures",
  "mpdelta_core",
+ "mpdelta_differential",
  "once_cell",
  "qcell",
+ "rayon",
  "thiserror",
  "tokio",
+]
+
+[[package]]
+name = "mpdelta_rendering_controller"
+version = "0.1.0"
+dependencies = [
+ "lru",
+ "mpdelta_core",
+ "mpdelta_renderer",
 ]
 
 [[package]]
@@ -2201,9 +2242,9 @@ checksum = "f2ff9a1f06a88b01621b7ae906ef0211290d1c8a168a15542486a8f61c0833b9"
 
 [[package]]
 name = "rayon"
-version = "1.7.0"
+version = "1.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1d2df5196e37bcc87abebc0053e20787d73847bb33134a69841207dd0a47f03b"
+checksum = "9c27db03db7734835b3f53954b534c91069375ce6ccaa2e065441e07d9b6cdb1"
 dependencies = [
  "either",
  "rayon-core",
@@ -2211,14 +2252,12 @@ dependencies = [
 
 [[package]]
 name = "rayon-core"
-version = "1.11.0"
+version = "1.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4b8f95bd6966f5c87776639160a66bd8ab9895d9d4ab01ddba9fc60661aebe8d"
+checksum = "5ce3fb6ad83f861aac485e76e1985cd109d9a3713802152be56c3b1f0e0658ed"
 dependencies = [
- "crossbeam-channel",
  "crossbeam-deque",
  "crossbeam-utils",
- "num_cpus",
 ]
 
 [[package]]

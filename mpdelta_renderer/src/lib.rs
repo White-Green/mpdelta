@@ -26,6 +26,7 @@ use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::{oneshot, RwLock};
 
 mod render;
+mod thread_cancel;
 
 pub struct MPDeltaRendererBuilder<K: 'static, Id, C, ImageCombinerBuilder, AudioCombinerBuilder> {
     id: Arc<Id>,

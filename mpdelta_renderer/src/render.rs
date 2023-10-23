@@ -1,3 +1,4 @@
+use crate::thread_cancel::{AutoCancellable, CancellationGuard};
 use crate::{Combiner, CombinerBuilder, ImageSizeRequest, RenderError};
 use cgmath::Vector3;
 use futures::{stream, StreamExt, TryStreamExt};
@@ -172,11 +173,13 @@ where
         let component = component.ro(&ctx.key);
         let fixed_parameters = component.fixed_parameters();
         let variable_parameters = async {
+            let cancellation_guard = CancellationGuard::new();
             let variable_parameters = ctx
                 .runtime
                 .spawn_blocking({
                     let component_handle = component_handle.clone();
                     let ctx = ctx.clone();
+                    let cancellation_token = cancellation_guard.token();
                     move || {
                         let Some(component) = component_handle.upgrade() else {
                             return Err(RenderError::InvalidComponent(component_handle.clone()));
@@ -194,7 +197,7 @@ where
                             .par_iter()
                             .zip(variable_parameters_type)
                             .enumerate()
-                            .map(|(i, (param, (_, ty)))| evaluate_parameter::evaluate_parameter(param, ty, at, &ctx).unwrap_or_else(|| Err(RenderError::InvalidVariableParameter { component: component_handle.clone(), index: i })))
+                            .map(|(i, (param, (_, ty)))| evaluate_parameter::evaluate_parameter(param, ty, at, &ctx, &cancellation_token).unwrap_or_else(|| Err(RenderError::InvalidVariableParameter { component: component_handle.clone(), index: i })))
                             .try_fold(Vec::new, |mut acc, result| {
                                 acc.push(result?);
                                 Ok(acc)
@@ -210,6 +213,7 @@ where
                     }
                 })
                 .await;
+            drop(cancellation_guard);
             match variable_parameters {
                 Ok(value) => value,
                 Err(err) => panic::resume_unwind(err.into_panic()),
@@ -224,7 +228,9 @@ where
                 ref blend_mode,
                 ref composite_operation,
             } = component.image_required_params().unwrap();
-            let eval_at = |value: &VariableParameterValue<_, _, _>| evaluate_parameter::evaluate_parameter_f64(value, at, ctx).unwrap().map(|result| result.into_real_number().unwrap());
+            let cancellation_guard = CancellationGuard::new();
+            let cancellation_token = cancellation_guard.token();
+            let eval_at = |value: &VariableParameterValue<_, _, _>| evaluate_parameter::evaluate_parameter_f64(value, at, ctx, &cancellation_token).unwrap().map(|result| result.into_real_number().unwrap());
             let transform = match transform {
                 ImageRequiredParamsTransform::Params {
                     scale: Vector3 { x: scale_x, y: scale_y, z: scale_z },
@@ -306,8 +312,13 @@ where
         };
         let audio_required_params = || {
             let AudioRequiredParams { volume } = component.audio_required_params().unwrap();
+            let cancellation_guard = CancellationGuard::new();
+            let cancellation_token = cancellation_guard.token();
             Ok::<_, RenderError<K, T>>(AudioRequiredParamsFixed {
-                volume: volume.iter().map(|volume| evaluate_parameter::evaluate_parameter_f64(volume, at, ctx).unwrap().map(|result| result.into_real_number().unwrap())).collect::<Result<Vec<_>, _>>()?,
+                volume: volume
+                    .iter()
+                    .map(|volume| evaluate_parameter::evaluate_parameter_f64(volume, at, ctx, &cancellation_token).unwrap().map(|result| result.into_real_number().unwrap()))
+                    .collect::<Result<Vec<_>, _>>()?,
             })
         };
         let internal_at = match time_map::<K, T>(component.marker_left(), component.markers(), component.marker_right(), &ctx.key, at) {
@@ -334,17 +345,19 @@ where
                     ParameterType::Image(_) => {
                         let image = stream::iter(components)
                             .map(|component| {
-                                ctx.runtime.spawn({
-                                    let ty = ty.clone();
-                                    let ctx: RenderContext<_, _, _, _> = ctx.clone();
-                                    async move {
-                                        match render_inner(&component, internal_at, &ty, &ctx).await {
-                                            Err(RenderError::NotProvided) => None,
-                                            Err(RenderError::RenderTargetTimeOutOfRange { component: c, .. }) if &c == component.ptr() => None,
-                                            other => Some((other, component)),
+                                ctx.runtime
+                                    .spawn({
+                                        let ty = ty.clone();
+                                        let ctx: RenderContext<_, _, _, _> = ctx.clone();
+                                        async move {
+                                            match render_inner(&component, internal_at, &ty, &ctx).await {
+                                                Err(RenderError::NotProvided) => None,
+                                                Err(RenderError::RenderTargetTimeOutOfRange { component: c, .. }) if &c == component.ptr() => None,
+                                                other => Some((other, component)),
+                                            }
                                         }
-                                    }
-                                })
+                                    })
+                                    .auto_cancel()
                             })
                             .buffered(10)
                             .map(|join_result| join_result.unwrap_or_else(|err| panic::resume_unwind(err.into_panic())))
@@ -368,17 +381,19 @@ where
                     ParameterType::Audio(_) => {
                         let image = stream::iter(components)
                             .map(|component| {
-                                ctx.runtime.spawn({
-                                    let ty = ty.clone();
-                                    let ctx = ctx.clone();
-                                    async move {
-                                        match render_inner(&component, internal_at, &ty, &ctx).await {
-                                            Err(RenderError::NotProvided) => None,
-                                            Err(RenderError::RenderTargetTimeOutOfRange { component: c, .. }) if &c == component.ptr() => None,
-                                            other => Some((other, component)),
+                                ctx.runtime
+                                    .spawn({
+                                        let ty = ty.clone();
+                                        let ctx = ctx.clone();
+                                        async move {
+                                            match render_inner(&component, internal_at, &ty, &ctx).await {
+                                                Err(RenderError::NotProvided) => None,
+                                                Err(RenderError::RenderTargetTimeOutOfRange { component: c, .. }) if &c == component.ptr() => None,
+                                                other => Some((other, component)),
+                                            }
                                         }
-                                    }
-                                })
+                                    })
+                                    .auto_cancel()
                             })
                             .buffered(10)
                             .map(|join_result| join_result.unwrap_or_else(|err| panic::resume_unwind(err.into_panic())))
@@ -401,17 +416,19 @@ where
                     }
                     ParameterType::Binary(_) | ParameterType::String(_) | ParameterType::Integer(_) | ParameterType::RealNumber(_) | ParameterType::Boolean(_) | ParameterType::Dictionary(_) | ParameterType::Array(_) => stream::iter(components.into_iter().rev())
                         .map(|component| {
-                            ctx.runtime.spawn({
-                                let ty = ty.clone();
-                                let ctx = ctx.clone();
-                                async move {
-                                    match render_inner(&component, internal_at, &ty, &ctx).await {
-                                        Err(RenderError::NotProvided) => None,
-                                        Err(RenderError::RenderTargetTimeOutOfRange { component: c, .. }) if &c == component.ptr() => None,
-                                        other => Some(other),
+                            ctx.runtime
+                                .spawn({
+                                    let ty = ty.clone();
+                                    let ctx = ctx.clone();
+                                    async move {
+                                        match render_inner(&component, internal_at, &ty, &ctx).await {
+                                            Err(RenderError::NotProvided) => None,
+                                            Err(RenderError::RenderTargetTimeOutOfRange { component: c, .. }) if &c == component.ptr() => None,
+                                            other => Some(other),
+                                        }
                                     }
-                                }
-                            })
+                                })
+                                .auto_cancel()
                         })
                         .buffered(10)
                         .map(|join_result| join_result.unwrap_or_else(|err| panic::resume_unwind(err.into_panic())))

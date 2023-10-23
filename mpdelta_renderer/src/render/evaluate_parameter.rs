@@ -1,4 +1,5 @@
 use crate::render::{RenderContext, RenderOutput};
+use crate::thread_cancel::CancellationToken;
 use crate::{render, Combiner, CombinerBuilder, ImageSizeRequest, RenderError};
 use futures::pin_mut;
 use mpdelta_core::common::time_split_value::TimeSplitValue;
@@ -16,6 +17,7 @@ pub(super) fn evaluate_parameter_f64<'a, K, T, Key, ImageCombinerBuilder, AudioC
     param: &'a VariableParameterValue<K, T, TimeSplitValue<MarkerPinHandle<K>, Option<EasingValue<f64>>>>,
     at: TimelineTime,
     ctx: &'a RenderContext<Key, T, ImageCombinerBuilder, AudioCombinerBuilder>,
+    cancellation_token: &CancellationToken,
 ) -> Option<Result<ParameterValueFixed<T::Image, T::Audio>, RenderError<K, T>>>
 where
     K: 'static,
@@ -28,7 +30,7 @@ where
     let get_manually_param = || evaluate_time_split_value_at(params, at, &ctx.key).map(|result| result.map(ParameterValueFixed::RealNumber));
     let ty = &ParameterType::RealNumber(());
     let component_param = ComponentParamCalculator { components, ty, at, ctx };
-    evaluate_parameter_inner(get_manually_param, component_param, priority, ty, ctx)
+    evaluate_parameter_inner(get_manually_param, component_param, priority, ty, ctx, cancellation_token)
 }
 
 pub(super) fn evaluate_parameter<'a, K, T, Key, ImageCombinerBuilder, AudioCombinerBuilder>(
@@ -36,6 +38,7 @@ pub(super) fn evaluate_parameter<'a, K, T, Key, ImageCombinerBuilder, AudioCombi
     ty: &ParameterType,
     at: TimelineTime,
     ctx: &'a RenderContext<Key, T, ImageCombinerBuilder, AudioCombinerBuilder>,
+    cancellation_token: &CancellationToken,
 ) -> Option<Result<ParameterValueFixed<T::Image, T::Audio>, RenderError<K, T>>>
 where
     K: 'static,
@@ -70,7 +73,7 @@ where
         }
     };
     let component_param = ComponentParamCalculator { components, ty, at, ctx };
-    evaluate_parameter_inner(get_manually_param, component_param, priority, ty, ctx)
+    evaluate_parameter_inner(get_manually_param, component_param, priority, ty, ctx, cancellation_token)
 }
 
 struct ComponentParamCalculator<'a, K: 'static, T: ParameterValueType, Key, ImageCombinerBuilder, AudioCombinerBuilder> {
@@ -125,6 +128,7 @@ fn evaluate_parameter_inner<K, T, Key, ImageCombinerBuilder, AudioCombinerBuilde
     priority: &VariableParameterPriority,
     ty: &ParameterType,
     ctx: &RenderContext<Key, T, ImageCombinerBuilder, AudioCombinerBuilder>,
+    cancellation_token: &CancellationToken,
 ) -> Option<Result<ParameterValueFixed<T::Image, T::Audio>, RenderError<K, T>>>
 where
     K: 'static,
@@ -141,21 +145,22 @@ where
             match component_param.calc() {
                 None => Some(Ok(default_value(ty, ctx))),
                 Some(Err(err)) => Some(Err(err)),
-                Some(Ok(value)) => Some(await_future_in_rayon_context(value).map(render::into_parameter_value_fixed)),
+                Some(Ok(value)) => Some(await_future_in_rayon_context(value, cancellation_token).map(render::into_parameter_value_fixed)),
             }
         }
         VariableParameterPriority::PrioritizeComponent => match component_param.calc() {
             Some(Err(err)) => Some(Err(err)),
-            Some(Ok(value)) => Some(await_future_in_rayon_context(value).map(render::into_parameter_value_fixed)),
+            Some(Ok(value)) => Some(await_future_in_rayon_context(value, cancellation_token).map(render::into_parameter_value_fixed)),
             None => Some(get_manually_param().unwrap_or_else(|| Ok(default_value(ty, ctx)))),
         },
     }
 }
 
-fn await_future_in_rayon_context<F: Future>(fut: F) -> F::Output {
+fn await_future_in_rayon_context<F: Future>(fut: F, cancellation_token: &CancellationToken) -> F::Output {
     pin_mut!(fut);
     let mut context = Context::from_waker(futures::task::noop_waker_ref());
     loop {
+        cancellation_token.assert_not_canceled();
         match fut.as_mut().poll(&mut context) {
             Poll::Ready(value) => return value,
             Poll::Pending => {
@@ -237,7 +242,7 @@ pub(super) fn evaluate_time_split_value_at<K, T: ParameterValueType, V: 'static>
 mod tests {
     use super::*;
     use assert_matches::assert_matches;
-    use mpdelta_core::component::marker_pin::{MarkerPin, MarkerTime};
+    use mpdelta_core::component::marker_pin::MarkerPin;
     use mpdelta_core::component::parameter::value::{Easing, NamedAny};
     use mpdelta_core::ptr::StaticPointerOwned;
     use mpdelta_core::time_split_value;

@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use mpdelta_core::component::parameter::ParameterValueType;
 use mpdelta_core::core::{ProjectMemory, RootComponentClassMemory};
 use mpdelta_core::project::{Project, ProjectHandle, ProjectHandleOwned, RootComponentClass, RootComponentClassHandle, RootComponentClassHandleOwned};
 use mpdelta_core::ptr::{StaticPointer, StaticPointerOwned};
@@ -82,22 +83,34 @@ impl<RootKey: PartialEq, Root, Child> Default for ForestMap<RootKey, Root, Child
 }
 
 #[derive(Debug)]
-pub struct InMemoryProjectStore<K: 'static, T>(RwLock<ForestMap<PathBuf, RwLock<Project<K, T>>, RwLock<RootComponentClass<K, T>>>>);
+pub struct InMemoryProjectStore<K: 'static, T: ParameterValueType>(RwLock<ForestMap<PathBuf, RwLock<Project<K, T>>, RwLock<RootComponentClass<K, T>>>>);
 
-impl<K, T> InMemoryProjectStore<K, T> {
+impl<K, T> InMemoryProjectStore<K, T>
+where
+    K: 'static,
+    T: ParameterValueType,
+{
     pub fn new() -> InMemoryProjectStore<K, T> {
         InMemoryProjectStore(RwLock::new(ForestMap::new()))
     }
 }
 
-impl<K, T> Default for InMemoryProjectStore<K, T> {
+impl<K, T> Default for InMemoryProjectStore<K, T>
+where
+    K: 'static,
+    T: ParameterValueType,
+{
     fn default() -> Self {
         Self::new()
     }
 }
 
 #[async_trait]
-impl<K, T> ProjectMemory<K, T> for InMemoryProjectStore<K, T> {
+impl<K, T> ProjectMemory<K, T> for InMemoryProjectStore<K, T>
+where
+    K: 'static,
+    T: ParameterValueType,
+{
     async fn insert_new_project(&self, path: Option<&Path>, project: ProjectHandleOwned<K, T>) {
         self.0.write().await.insert_root(path.map(Path::to_path_buf), project);
     }
@@ -112,7 +125,11 @@ impl<K, T> ProjectMemory<K, T> for InMemoryProjectStore<K, T> {
 }
 
 #[async_trait]
-impl<K, T> RootComponentClassMemory<K, T> for InMemoryProjectStore<K, T> {
+impl<K, T> RootComponentClassMemory<K, T> for InMemoryProjectStore<K, T>
+where
+    K: 'static,
+    T: ParameterValueType,
+{
     async fn insert_new_root_component_class(&self, parent: Option<&ProjectHandle<K, T>>, root_component_class: RootComponentClassHandleOwned<K, T>) {
         self.0.write().await.insert_child(parent, root_component_class);
     }

@@ -18,6 +18,7 @@ mpdelta_gui = { workspace = true }
 mpdelta_gui_hot_reload_lib = { path = "./mpdelta_gui_hot_reload_lib" }
 mpdelta_gui_vulkano = { workspace = true }
 mpdelta_renderer = { workspace = true }
+mpdelta_rendering_controller = { workspace = true }
 mpdelta_services = { workspace = true }
 mpdelta_video_renderer_vulkano = { workspace = true }
 notify = { workspace = true }

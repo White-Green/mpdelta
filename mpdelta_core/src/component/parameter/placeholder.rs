@@ -62,7 +62,7 @@ impl<Tag> Eq for Placeholder<Tag> {}
 
 impl<Tag> PartialOrd for Placeholder<Tag> {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        self.id.partial_cmp(&other.id)
+        Some(self.id.cmp(&other.id))
     }
 }
 

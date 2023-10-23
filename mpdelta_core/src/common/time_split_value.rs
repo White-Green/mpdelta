@@ -15,7 +15,7 @@ pub struct TimeSplitValue<Time, Value> {
 
 #[macro_export]
 macro_rules! time_split_value {
-    ($($value:expr),+) => {
+    ($($value:expr),+$(,)?) => {
         time_split_value![@ $($value),+;]
     };
     (@ $time:expr, $value:expr, $($tail:expr),*; $(,)?$($set:expr),*) => {

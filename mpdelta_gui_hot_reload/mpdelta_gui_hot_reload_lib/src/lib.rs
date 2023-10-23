@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use mpdelta_async_runtime::AsyncRuntimeDyn;
 use mpdelta_core::component::class::ComponentClass;
-use mpdelta_core::component::parameter::{AudioRequiredParamsFrameVariable, ParameterValueType};
+use mpdelta_core::component::parameter::{AudioRequiredParamsFixed, ParameterValueType};
 use mpdelta_core::core::ComponentClassLoader;
 use mpdelta_core::ptr::{StaticPointer, StaticPointerOwned};
 use mpdelta_core_vulkano::ImageType;
@@ -37,7 +37,7 @@ pub struct TmpAudioCombiner;
 
 impl CombinerBuilder<()> for TmpAudioCombiner {
     type Request = ();
-    type Param = AudioRequiredParamsFrameVariable;
+    type Param = AudioRequiredParamsFixed;
     type Combiner = TmpAudioCombiner;
 
     fn new_combiner(&self, _request: Self::Request) -> Self::Combiner {
@@ -46,7 +46,7 @@ impl CombinerBuilder<()> for TmpAudioCombiner {
 }
 
 impl Combiner<()> for TmpAudioCombiner {
-    type Param = AudioRequiredParamsFrameVariable;
+    type Param = AudioRequiredParamsFixed;
 
     fn add(&mut self, _data: (), _param: Self::Param) {}
 

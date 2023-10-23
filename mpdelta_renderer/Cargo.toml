@@ -14,7 +14,12 @@ dashmap = { workspace = true }
 either = { workspace = true }
 futures = { workspace = true }
 mpdelta_core = { workspace = true }
+mpdelta_differential = { workspace = true }
 once_cell = { workspace = true }
 qcell = { workspace = true }
+rayon = { workspace = true }
 thiserror = { workspace = true }
-tokio = { workspace = true, features=["full"] }
+tokio = { workspace = true, features = ["full"] }
+
+[dev-dependencies]
+assert_matches = { workspace = true }

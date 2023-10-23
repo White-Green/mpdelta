@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use dashmap::DashMap;
 use mpdelta_core::component::instance::ComponentInstanceHandle;
 use mpdelta_core::component::link::MarkerLink;
+use mpdelta_core::component::parameter::ParameterValueType;
 use mpdelta_core::core::{EditEventListener, Editor};
 use mpdelta_core::edit::{InstanceEditCommand, InstanceEditEvent, RootComponentEditCommand, RootComponentEditEvent};
 use mpdelta_core::project::RootComponentClassHandle;
@@ -52,7 +53,11 @@ impl<K, T> Drop for ProjectEditListenerGuard<K, T> {
 }
 
 #[async_trait]
-impl<K, T: 'static> Editor<K, T> for ProjectEditor<K, T> {
+impl<K, T> Editor<K, T> for ProjectEditor<K, T>
+where
+    K: 'static,
+    T: ParameterValueType,
+{
     type Log = ProjectEditLog;
     type Err = ProjectEditError;
     type EditEventListenerGuard = ProjectEditListenerGuard<K, T>;

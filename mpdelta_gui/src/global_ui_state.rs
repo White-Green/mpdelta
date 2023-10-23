@@ -15,14 +15,18 @@ use std::sync::{Arc, Mutex, RwLock as StdRwLock};
 use std::time::Instant;
 
 #[derive(Debug)]
-pub enum GlobalUIEvent<K: 'static, T> {
+pub enum GlobalUIEvent<K: 'static, T: ParameterValueType> {
     BeginRenderFrame,
     EndRenderFrame,
     SelectRootComponentClass(Option<RootComponentClassHandle<K, T>>),
     SelectComponentInstance(Option<ComponentInstanceHandle<K, T>>),
 }
 
-impl<K: 'static, T> Clone for GlobalUIEvent<K, T> {
+impl<K, T> Clone for GlobalUIEvent<K, T>
+where
+    K: 'static,
+    T: ParameterValueType,
+{
     fn clone(&self) -> Self {
         match self {
             GlobalUIEvent::BeginRenderFrame => GlobalUIEvent::BeginRenderFrame,
@@ -33,7 +37,11 @@ impl<K: 'static, T> Clone for GlobalUIEvent<K, T> {
     }
 }
 
-impl<K: 'static, T> PartialEq for GlobalUIEvent<K, T> {
+impl<K, T> PartialEq for GlobalUIEvent<K, T>
+where
+    K: 'static,
+    T: ParameterValueType,
+{
     fn eq(&self, other: &Self) -> bool {
         if mem::discriminant(self) != mem::discriminant(other) {
             return false;
@@ -48,7 +56,12 @@ impl<K: 'static, T> PartialEq for GlobalUIEvent<K, T> {
     }
 }
 
-impl<K: 'static, T> Eq for GlobalUIEvent<K, T> {}
+impl<K, T> Eq for GlobalUIEvent<K, T>
+where
+    K: 'static,
+    T: ParameterValueType,
+{
+}
 
 #[derive(Clone, PartialEq, Eq)]
 pub enum Message {
@@ -56,11 +69,11 @@ pub enum Message {
     EndRenderFrame,
 }
 
-pub trait GlobalUIEventHandler<K: 'static, T> {
+pub trait GlobalUIEventHandler<K: 'static, T: ParameterValueType> {
     fn handle(&self, event: GlobalUIEvent<K, T>);
 }
 
-pub trait GlobalUIState<K: 'static, T>: Send + Sync + 'static {
+pub trait GlobalUIState<K: 'static, T: ParameterValueType>: Send + Sync + 'static {
     fn register_global_ui_event_handler(&self, handler: Arc<impl GlobalUIEventHandler<K, T> + Send + Sync + 'static>);
     fn begin_render_frame(&self);
     fn end_render_frame(&self);

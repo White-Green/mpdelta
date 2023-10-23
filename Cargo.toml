@@ -15,6 +15,7 @@ members = [
     "mpdelta_components",
     "mpdelta_core",
     "mpdelta_core_vulkano",
+    "mpdelta_differential",
     "mpdelta_dyn_usecase",
     "mpdelta_gui",
     "mpdelta_gui_hot_reload",
@@ -22,6 +23,7 @@ members = [
     "mpdelta_gui_vulkano",
     "mpdelta_services",
     "mpdelta_renderer",
+    "mpdelta_rendering_controller",
     "mpdelta_video_renderer_vulkano",
     "mpdelta_video_renderer_vulkano/shaders/composite_operation",
     "mpdelta_video_renderer_vulkano/shaders/texture_drawing",
@@ -33,6 +35,7 @@ default-members = [
     "mpdelta_components",
     "mpdelta_core",
     "mpdelta_core_vulkano",
+    "mpdelta_differential",
     "mpdelta_dyn_usecase",
     "mpdelta_gui",
     "mpdelta_gui_hot_reload",
@@ -40,12 +43,14 @@ default-members = [
     "mpdelta_gui_vulkano",
     "mpdelta_services",
     "mpdelta_renderer",
+    "mpdelta_rendering_controller",
     "mpdelta_video_renderer_vulkano",
 ]
 
 [workspace.dependencies]
 arc-swap = "1.5.1"
 arrayvec = "0.7.2"
+assert_matches = "1.5.0"
 async-trait = "0.1.56"
 bitflags = "1.3.2"
 bytemuck = "1.12.3"
@@ -59,19 +64,23 @@ either = "1.7.0"
 futures = "0.3.21"
 glam = { version = "0.24", default-features = false, features = ["libm"] }
 hot-lib-reloader = "0.6.5"
+lru = "0.12.0"
 mpdelta_components = { path = "mpdelta_components" }
 mpdelta_async_runtime = { path = "mpdelta_common/mpdelta_async_runtime" }
 mpdelta_core = { path = "mpdelta_core" }
 mpdelta_core_vulkano = { path = "mpdelta_core_vulkano" }
+mpdelta_differential = { path = "mpdelta_differential" }
 mpdelta_dyn_usecase = { path = "mpdelta_dyn_usecase" }
 mpdelta_gui = { path = "mpdelta_gui" }
 mpdelta_gui_vulkano = { path = "mpdelta_gui_vulkano" }
 mpdelta_renderer = { path = "mpdelta_renderer" }
+mpdelta_rendering_controller = { path = "mpdelta_rendering_controller" }
 mpdelta_services = { path = "mpdelta_services" }
 mpdelta_video_renderer_vulkano = { path = "mpdelta_video_renderer_vulkano" }
 notify = "6.1.1"
 once_cell = "1.13.1"
 qcell = "0.5.2"
+rayon = "1.8.0"
 regex = "1.6.0"
 shader_builder = { path = "mpdelta_build_utils/shader_builder" }
 spirv-builder = "0.9.0"
@@ -85,7 +94,6 @@ vulkano-util = "0.33.0"
 vulkano-win = "0.33.0"
 winit = "0.28.3"
 
-
 [dependencies]
 async-trait = { workspace = true }
 mpdelta_async_runtime = { workspace = true, features = ["tokio"] }
@@ -95,6 +103,7 @@ mpdelta_core_vulkano = { workspace = true }
 mpdelta_gui = { workspace = true }
 mpdelta_gui_vulkano = { workspace = true }
 mpdelta_renderer = { workspace = true }
+mpdelta_rendering_controller = { workspace = true }
 mpdelta_services = { workspace = true }
 mpdelta_video_renderer_vulkano = { workspace = true }
 qcell = { workspace = true }

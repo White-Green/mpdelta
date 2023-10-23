@@ -234,7 +234,11 @@ pub struct ProjectData<Handle> {
     pub name: String,
 }
 
-impl<K, T> ProjectData<ProjectHandle<K, T>> {
+impl<K, T> ProjectData<ProjectHandle<K, T>>
+where
+    K: 'static,
+    T: ParameterValueType,
+{
     fn new(handle: ProjectHandle<K, T>) -> ProjectData<ProjectHandle<K, T>> {
         ProjectData { handle, name: "Project".to_string() }
     }
@@ -250,7 +254,11 @@ pub struct RootComponentClassData<Handle> {
     pub name: String,
 }
 
-impl<K, T> RootComponentClassData<RootComponentClassHandle<K, T>> {
+impl<K, T> RootComponentClassData<RootComponentClassHandle<K, T>>
+where
+    K: 'static,
+    T: ParameterValueType,
+{
     fn new(handle: RootComponentClassHandle<K, T>) -> RootComponentClassData<RootComponentClassHandle<K, T>> {
         RootComponentClassData { handle, name: "RootComponentClass".to_string() }
     }
@@ -273,7 +281,7 @@ pub trait MainWindowViewModel<K: 'static, T> {
     fn render_frame<R>(&self, f: impl FnOnce() -> R) -> R;
 }
 
-pub struct MainWindowViewModelImpl<K: 'static, T, GlobalUIState, MessageHandler, Runtime> {
+pub struct MainWindowViewModelImpl<K: 'static, T: ParameterValueType, GlobalUIState, MessageHandler, Runtime> {
     projects: Arc<RwLock<ProjectDataList<ProjectHandle<K, T>>>>,
     root_component_classes: Arc<RwLock<RootComponentClassDataList<RootComponentClassHandle<K, T>>>>,
     global_ui_state: Arc<GlobalUIState>,
@@ -281,14 +289,18 @@ pub struct MainWindowViewModelImpl<K: 'static, T, GlobalUIState, MessageHandler,
 }
 
 #[derive(Debug)]
-pub enum Message<K: 'static, T> {
+pub enum Message<K: 'static, T: ParameterValueType> {
     NewProject,
     SelectProject(ProjectHandle<K, T>),
     NewRootComponentClass,
     SelectRootComponentClass(RootComponentClassHandle<K, T>),
 }
 
-impl<K: 'static, T> Clone for Message<K, T> {
+impl<K, T> Clone for Message<K, T>
+where
+    K: 'static,
+    T: ParameterValueType,
+{
     fn clone(&self) -> Self {
         match self {
             Message::NewProject => Message::NewProject,
@@ -299,7 +311,11 @@ impl<K: 'static, T> Clone for Message<K, T> {
     }
 }
 
-impl<K: 'static, T> PartialEq for Message<K, T> {
+impl<K, T> PartialEq for Message<K, T>
+where
+    K: 'static,
+    T: ParameterValueType,
+{
     fn eq(&self, other: &Self) -> bool {
         if mem::discriminant(self) != mem::discriminant(other) {
             return false;
@@ -314,9 +330,18 @@ impl<K: 'static, T> PartialEq for Message<K, T> {
     }
 }
 
-impl<K: 'static, T> Eq for Message<K, T> {}
+impl<K, T> Eq for Message<K, T>
+where
+    K: 'static,
+    T: ParameterValueType,
+{
+}
 
-impl<K: 'static, T: ParameterValueType> MainWindowViewModelImpl<K, T, (), (), ()> {
+impl<K, T: ParameterValueType> MainWindowViewModelImpl<K, T, (), (), ()>
+where
+    K: 'static,
+    T: ParameterValueType,
+{
     pub fn new<S: GlobalUIState<K, T>, P: ViewModelParams<K, T>>(global_ui_state: &Arc<S>, params: &P) -> Arc<MainWindowViewModelImpl<K, T, S, impl MessageHandler<Message<K, T>, P::AsyncRuntime>, P::AsyncRuntime>> {
         let projects = Arc::new(RwLock::new(ProjectDataList { list: Vec::new(), selected: 0 }));
         let root_component_classes = Arc::new(RwLock::new(RootComponentClassDataList { list: Vec::new(), selected: 0 }));

@@ -2,14 +2,13 @@ use async_trait::async_trait;
 use mpdelta_core::component::class::ComponentClass;
 use mpdelta_core::component::instance::ComponentInstance;
 use mpdelta_core::component::marker_pin::{MarkerPin, MarkerTime};
-use mpdelta_core::component::parameter::{ImageRequiredParams, Parameter, ParameterFrameVariableValue, ParameterSelect, ParameterType, ParameterTypeExceptComponentClass, ParameterValueFixed, ParameterValueType};
-use mpdelta_core::component::processor::{ComponentProcessor, ComponentProcessorBody, NativeProcessorBuilder, NativeProcessorExecutable};
+use mpdelta_core::component::parameter::{ImageRequiredParams, Parameter, ParameterSelect, ParameterType, ParameterTypeExceptComponentClass, ParameterValueFixed, ParameterValueType};
+use mpdelta_core::component::processor::{ComponentProcessor, ComponentProcessorNative};
 use mpdelta_core::native::processor::{NativeProcessor, ParameterNativeProcessorInputFixed};
 use mpdelta_core::ptr::{StaticPointer, StaticPointerCow, StaticPointerOwned};
 use mpdelta_core::time::TimelineTime;
 use mpdelta_core_vulkano::ImageType;
 use qcell::TCell;
-use std::borrow::Cow;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::RwLock;
@@ -64,33 +63,34 @@ impl<K, T: ParameterValueType<Image = ImageType>> ComponentClass<K, T> for Recta
         let left = StaticPointerOwned::new(TCell::new(MarkerPin::new(TimelineTime::ZERO, MarkerTime::ZERO)));
         let right = StaticPointerOwned::new(TCell::new(MarkerPin::new(TimelineTime::new(1.).unwrap(), MarkerTime::new(1.).unwrap())));
         let image_required_params = ImageRequiredParams::new_default(StaticPointerOwned::reference(&left), StaticPointerOwned::reference(&right));
-        ComponentInstance::new_no_param(this.clone(), StaticPointerCow::Owned(left), StaticPointerCow::Owned(right), Some(image_required_params), None, Arc::clone(&self.0) as _)
-    }
-}
-
-impl<T: ParameterValueType<Image = ImageType>> NativeProcessorBuilder<T> for Rectangle {
-    fn output_type(&self) -> Parameter<ParameterSelect> {
-        Parameter::Image(())
-    }
-
-    fn build(&self, _: &[ParameterValueFixed], _: &[ParameterFrameVariableValue], _: &[(String, ParameterType)], _: &mut dyn Iterator<Item = TimelineTime>, _: &dyn Fn(TimelineTime) -> MarkerTime) -> NativeProcessorExecutable<T> {
-        NativeProcessorExecutable {
-            processor: Arc::new(self.clone()),
-            parameter: Arc::new([]),
-        }
+        ComponentInstance::new_no_param(this.clone(), StaticPointerCow::Owned(left), StaticPointerCow::Owned(right), Some(image_required_params), None, Arc::clone(&self.0) as Arc<dyn ComponentProcessorNative<K, T>>)
     }
 }
 
 #[async_trait]
 impl<K, T: ParameterValueType<Image = ImageType>> ComponentProcessor<K, T> for Rectangle {
-    async fn update_variable_parameter(&self, _: &mut [ParameterValueFixed], _: &mut Vec<(String, ParameterType)>) {}
+    async fn update_variable_parameter(&self, _: &mut [ParameterValueFixed<T::Image, T::Audio>], _: &mut Vec<(String, ParameterType)>) {}
 
-    async fn natural_length(&self, _: &[ParameterValueFixed]) -> Duration {
+    async fn natural_length(&self, _: &[ParameterValueFixed<T::Image, T::Audio>]) -> Duration {
         Duration::from_secs(1)
     }
+}
 
-    async fn get_processor(&self) -> ComponentProcessorBody<'_, K, T> {
-        ComponentProcessorBody::Native(Cow::Owned(vec![Arc::new(self.clone()) as Arc<_>]))
+#[async_trait]
+impl<K, T: ParameterValueType<Image = ImageType>> ComponentProcessorNative<K, T> for Rectangle {
+    fn supports_output_type(&self, out: Parameter<ParameterSelect>) -> bool {
+        matches!(out, Parameter::Image(_))
+    }
+
+    async fn process(
+        &self,
+        _fixed_parameters: &[ParameterValueFixed<T::Image, T::Audio>],
+        _variable_parameters: &[ParameterValueFixed<T::Image, T::Audio>],
+        _variable_parameter_type: &[(String, ParameterType)],
+        _time: TimelineTime,
+        _output_type: Parameter<ParameterSelect>,
+    ) -> ParameterValueFixed<T::Image, T::Audio> {
+        ParameterValueFixed::Image(ImageType(Arc::clone(&self.0)))
     }
 }
 

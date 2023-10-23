@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use mpdelta_core::component::instance::ComponentInstanceHandle;
+use mpdelta_core::component::parameter::ParameterValueType;
 use mpdelta_core::core::EditHistory;
 use mpdelta_core::project::RootComponentClassHandle;
 use std::collections::{HashMap, VecDeque};
@@ -40,16 +41,25 @@ impl<Key: Hash + Eq, Log> HistoryStore<Key, Log> {
     }
 }
 
-pub struct InMemoryEditHistoryStore<K: 'static, T, Log>(Mutex<HistoryStore<(RootComponentClassHandle<K, T>, Option<ComponentInstanceHandle<K, T>>), Arc<Log>>>);
+pub struct InMemoryEditHistoryStore<K: 'static, T: ParameterValueType, Log>(Mutex<HistoryStore<(RootComponentClassHandle<K, T>, Option<ComponentInstanceHandle<K, T>>), Arc<Log>>>);
 
-impl<K, T, Log> InMemoryEditHistoryStore<K, T, Log> {
+impl<K, T, Log> InMemoryEditHistoryStore<K, T, Log>
+where
+    K: 'static,
+    T: ParameterValueType,
+{
     pub fn new(max_history: usize) -> InMemoryEditHistoryStore<K, T, Log> {
         InMemoryEditHistoryStore(Mutex::new(HistoryStore::new(max_history)))
     }
 }
 
 #[async_trait]
-impl<K: 'static, T, Log: Send + Sync> EditHistory<K, T, Log> for InMemoryEditHistoryStore<K, T, Log> {
+impl<K, T, Log> EditHistory<K, T, Log> for InMemoryEditHistoryStore<K, T, Log>
+where
+    K: 'static,
+    T: ParameterValueType,
+    Log: Send + Sync,
+{
     async fn push_history(&self, root: &RootComponentClassHandle<K, T>, target: Option<&ComponentInstanceHandle<K, T>>, log: Log) {
         self.0.lock().await.push_history((root.clone(), target.cloned()), Arc::new(log));
     }

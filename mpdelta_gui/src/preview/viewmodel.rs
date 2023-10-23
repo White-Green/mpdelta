@@ -23,7 +23,7 @@ pub trait PreviewViewModel<K: 'static, T: ParameterValueType> {
     fn set_seek(&self, seek: usize);
 }
 
-pub struct PreviewViewModelImpl<K: 'static, T, GlobalUIState, RealtimeRenderComponent, R, G, Runtime, JoinHandle> {
+pub struct PreviewViewModelImpl<K: 'static, T: ParameterValueType, GlobalUIState, RealtimeRenderComponent, R, G, Runtime, JoinHandle> {
     renderer: Arc<RealtimeRenderComponent>,
     real_time_renderer: Arc<ArcSwapOption<(R, ComponentInstanceHandleOwned<K, T>, RootComponentClassHandle<K, T>)>>,
     global_ui_state: Arc<GlobalUIState>,

@@ -10,11 +10,13 @@
 !/mpdelta_common
 !/mpdelta_components
 !/mpdelta_core
-!/mpdelta_dyn_usecase
 !/mpdelta_core_vulkano
+!/mpdelta_differential
+!/mpdelta_dyn_usecase
 !/mpdelta_gui
 !/mpdelta_gui_hot_reload
 !/mpdelta_gui_vulkano
 !/mpdelta_services
 !/mpdelta_renderer
+!/mpdelta_rendering_controller
 !/mpdelta_video_renderer_vulkano

@@ -232,3 +232,83 @@ pub(super) fn evaluate_time_split_value_at<K, T: ParameterValueType, V: 'static>
     }
     None
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use assert_matches::assert_matches;
+    use mpdelta_core::component::marker_pin::{MarkerPin, MarkerTime};
+    use mpdelta_core::component::parameter::value::{Easing, NamedAny};
+    use mpdelta_core::ptr::StaticPointerOwned;
+    use mpdelta_core::time_split_value;
+    use qcell::TCell;
+    use std::sync::Arc;
+
+    struct TestParameterValueType;
+
+    impl ParameterValueType for TestParameterValueType {
+        type Image = ();
+        type Audio = ();
+        type Binary = ();
+        type String = ();
+        type Integer = ();
+        type RealNumber = ();
+        type Boolean = ();
+        type Dictionary = ();
+        type Array = ();
+        type ComponentClass = ();
+    }
+
+    #[test]
+    fn test_evaluate_time_split_value_at() {
+        struct K;
+        let key = TCellOwner::<K>::new();
+        #[derive(Clone)]
+        struct SimpleEasingValue(f64, f64);
+        impl DynEditableEasingValueMarker for SimpleEasingValue {
+            type Out = f64;
+            fn get_raw_values_mut(&mut self) -> (&mut dyn NamedAny, &mut dyn NamedAny) {
+                (&mut self.0, &mut self.1)
+            }
+            fn get_value(&self, p: f64) -> f64 {
+                self.0 + (self.1 - self.0) * p
+            }
+        }
+        struct FunctionEasing<F>(F);
+        impl<F: Send + Sync + Fn(f64) -> f64> Easing for FunctionEasing<F> {
+            fn easing(&self, from: EasingInput) -> f64 {
+                (self.0)(from.value())
+            }
+        }
+        let markers = [
+            StaticPointerOwned::new(TCell::new(MarkerPin::new_unlocked(TimelineTime::new(0.).unwrap()))),
+            StaticPointerOwned::new(TCell::new(MarkerPin::new_unlocked(TimelineTime::new(1.).unwrap()))),
+            StaticPointerOwned::new(TCell::new(MarkerPin::new_unlocked(TimelineTime::new(2.).unwrap()))),
+            StaticPointerOwned::new(TCell::new(MarkerPin::new_unlocked(TimelineTime::new(3.).unwrap()))),
+        ];
+        let value = time_split_value![
+            StaticPointerOwned::reference(&markers[0]).clone(),
+            EasingValue::new(SimpleEasingValue(0.0, 1.0), Arc::new(FunctionEasing(|p: f64| p))),
+            StaticPointerOwned::reference(&markers[1]).clone(),
+            EasingValue::new(SimpleEasingValue(1.0, 2.0), Arc::new(FunctionEasing(|p: f64| p * p))),
+            StaticPointerOwned::reference(&markers[2]).clone(),
+            EasingValue::new(SimpleEasingValue(2.0, 0.0), Arc::new(FunctionEasing(|p: f64| p.sqrt()))),
+            StaticPointerOwned::reference(&markers[3]).clone(),
+        ];
+        assert_matches!(evaluate_time_split_value_at::<_, TestParameterValueType, f64>(&value, TimelineTime::new(-0.25).unwrap(), &key), None);
+        assert_matches!(evaluate_time_split_value_at::<_, TestParameterValueType, f64>(&value, TimelineTime::new(0.00).unwrap(), &key), Some(Ok(v)) if (v - 0.0000).abs() < f64::EPSILON);
+        assert_matches!(evaluate_time_split_value_at::<_, TestParameterValueType, f64>(&value, TimelineTime::new(0.25).unwrap(), &key), Some(Ok(v)) if (v - 0.2500).abs() < f64::EPSILON);
+        assert_matches!(evaluate_time_split_value_at::<_, TestParameterValueType, f64>(&value, TimelineTime::new(0.50).unwrap(), &key), Some(Ok(v)) if (v - 0.5000).abs() < f64::EPSILON);
+        assert_matches!(evaluate_time_split_value_at::<_, TestParameterValueType, f64>(&value, TimelineTime::new(0.75).unwrap(), &key), Some(Ok(v)) if (v - 0.7500).abs() < f64::EPSILON);
+        assert_matches!(evaluate_time_split_value_at::<_, TestParameterValueType, f64>(&value, TimelineTime::new(1.00).unwrap(), &key), Some(Ok(v)) if (v - 1.0000).abs() < f64::EPSILON);
+        assert_matches!(evaluate_time_split_value_at::<_, TestParameterValueType, f64>(&value, TimelineTime::new(1.25).unwrap(), &key), Some(Ok(v)) if (v - 1.0625).abs() < f64::EPSILON);
+        assert_matches!(evaluate_time_split_value_at::<_, TestParameterValueType, f64>(&value, TimelineTime::new(1.50).unwrap(), &key), Some(Ok(v)) if (v - 1.2500).abs() < f64::EPSILON);
+        assert_matches!(evaluate_time_split_value_at::<_, TestParameterValueType, f64>(&value, TimelineTime::new(1.75).unwrap(), &key), Some(Ok(v)) if (v - 1.5625).abs() < f64::EPSILON);
+        assert_matches!(evaluate_time_split_value_at::<_, TestParameterValueType, f64>(&value, TimelineTime::new(2.00).unwrap(), &key), Some(Ok(v)) if (v - 2.0000).abs() < f64::EPSILON);
+        assert_matches!(evaluate_time_split_value_at::<_, TestParameterValueType, f64>(&value, TimelineTime::new(2.25).unwrap(), &key), Some(Ok(v)) if (v - 1.0000).abs() < f64::EPSILON);
+        assert_matches!(evaluate_time_split_value_at::<_, TestParameterValueType, f64>(&value, TimelineTime::new(2.50).unwrap(), &key), Some(Ok(v)) if (v - (2.0 - f64::sqrt(2.))).abs() < f64::EPSILON);
+        assert_matches!(evaluate_time_split_value_at::<_, TestParameterValueType, f64>(&value, TimelineTime::new(2.75).unwrap(), &key), Some(Ok(v)) if (v - (2.0 - f64::sqrt(3.))).abs() < f64::EPSILON);
+        assert_matches!(evaluate_time_split_value_at::<_, TestParameterValueType, f64>(&value, TimelineTime::new(3.00).unwrap(), &key), Some(Ok(v)) if (v - 0.0000).abs() < f64::EPSILON);
+        assert_matches!(evaluate_time_split_value_at::<_, TestParameterValueType, f64>(&value, TimelineTime::new(3.25).unwrap(), &key), None);
+    }
+}

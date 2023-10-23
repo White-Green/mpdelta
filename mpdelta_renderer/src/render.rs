@@ -477,3 +477,69 @@ fn time_map<K, T: ParameterValueType>(left: &MarkerPinHandle<K>, markers: &[Mark
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use assert_matches::assert_matches;
+    use mpdelta_core::component::marker_pin::{MarkerPin, MarkerTime};
+    use qcell::TCell;
+
+    struct TestParameterValueType;
+
+    impl ParameterValueType for TestParameterValueType {
+        type Image = ();
+        type Audio = ();
+        type Binary = ();
+        type String = ();
+        type Integer = ();
+        type RealNumber = ();
+        type Boolean = ();
+        type Dictionary = ();
+        type Array = ();
+        type ComponentClass = ();
+    }
+
+    #[test]
+    fn test_time_map() {
+        struct K;
+        let key = TCellOwner::new();
+        fn time_map_for_test(markers: &[MarkerPinHandleOwned<K>], key: &TCellOwner<K>, at: TimelineTime) -> Result<TimelineTime, RenderError<K, TestParameterValueType>> {
+            assert!(markers.len() >= 2);
+            let [left, markers @ .., right] = markers else { unreachable!() };
+            time_map(StaticPointerOwned::reference(left), markers, StaticPointerOwned::reference(right), key, at)
+        }
+        macro_rules! marker {
+            ($t:expr$(,)?) => {
+                StaticPointerOwned::new(TCell::new(MarkerPin::new_unlocked(TimelineTime::new($t).unwrap())))
+            };
+            ($t:expr, $m:expr$(,)?) => {
+                StaticPointerOwned::new(TCell::new(MarkerPin::new(TimelineTime::new($t).unwrap(), MarkerTime::new($m).unwrap())))
+            };
+        }
+        let markers = [marker!(3.), marker!(4.), marker!(5.), marker!(6.)];
+        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(3.0).unwrap()), Ok(v) if (v.value() - 0.0).abs() < f64::EPSILON);
+        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(3.5).unwrap()), Ok(v) if (v.value() - 0.5).abs() < f64::EPSILON);
+        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(5.0).unwrap()), Ok(v) if (v.value() - 2.0).abs() < f64::EPSILON);
+        let markers = [marker!(3.), marker!(4.), marker!(5., 10.), marker!(6.)];
+        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(3.0).unwrap()), Ok(v) if (v.value() - 8.0).abs() < f64::EPSILON);
+        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(3.5).unwrap()), Ok(v) if (v.value() - 8.5).abs() < f64::EPSILON);
+        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(5.0).unwrap()), Ok(v) if (v.value() - 10.0).abs() < f64::EPSILON);
+        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(5.5).unwrap()), Ok(v) if (v.value() - 10.5).abs() < f64::EPSILON);
+        let markers = [marker!(3.), marker!(4., 8.), marker!(5., 10.), marker!(6.)];
+        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(3.0).unwrap()), Ok(v) if (v.value() - 6.0).abs() < f64::EPSILON);
+        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(3.5).unwrap()), Ok(v) if (v.value() - 7.0).abs() < f64::EPSILON);
+        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(4.5).unwrap()), Ok(v) if (v.value() - 9.0).abs() < f64::EPSILON);
+        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(5.0).unwrap()), Ok(v) if (v.value() - 10.0).abs() < f64::EPSILON);
+        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(5.5).unwrap()), Ok(v) if (v.value() - 11.0).abs() < f64::EPSILON);
+        let markers = [marker!(3.), marker!(4., 8.), marker!(5., 10.), marker!(6.), marker!(7., 13.), marker!(8.), marker!(10., 10.)];
+        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(3.0).unwrap()), Ok(v) if (v.value() - 6.0).abs() < f64::EPSILON);
+        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(3.5).unwrap()), Ok(v) if (v.value() - 7.0).abs() < f64::EPSILON);
+        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(4.5).unwrap()), Ok(v) if (v.value() - 9.0).abs() < f64::EPSILON);
+        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(5.0).unwrap()), Ok(v) if (v.value() - 10.0).abs() < f64::EPSILON);
+        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(6.0).unwrap()), Ok(v) if (v.value() - 11.5).abs() < f64::EPSILON);
+        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(7.0).unwrap()), Ok(v) if (v.value() - 13.0).abs() < f64::EPSILON);
+        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(8.0).unwrap()), Ok(v) if (v.value() - 12.0).abs() < f64::EPSILON);
+        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(10.0).unwrap()), Ok(v) if (v.value() - 10.0).abs() < f64::EPSILON);
+    }
+}

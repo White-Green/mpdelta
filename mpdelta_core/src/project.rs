@@ -14,11 +14,11 @@ use qcell::TCell;
 use std::collections::HashSet;
 use std::fmt::{Debug, Formatter};
 use std::hash::{Hash, Hasher};
-use std::ops::{Deref, DerefMut};
+use std::mem;
+use std::ops::Deref;
 use std::sync::Arc;
 use std::time::Duration;
-use std::{iter, mem};
-use tokio::sync::RwLock;
+use tokio::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use uuid::Uuid;
 
 #[derive(Debug)]
@@ -228,40 +228,28 @@ impl<K, T: ParameterValueType> RootComponentClass<K, T> {
         old_parent
     }
 
-    pub async fn get(&self) -> impl Deref<Target = RootComponentClassItem<K, T>> + '_ {
+    pub async fn get(&self) -> RwLockReadGuard<'_, RootComponentClassItem<K, T>> {
         self.item.0.read().await
     }
 
-    pub async fn get_mut(&self) -> impl DerefMut<Target = RootComponentClassItem<K, T>> + '_ {
+    pub async fn get_mut(&self) -> RwLockWriteGuard<'_, RootComponentClassItem<K, T>> {
         self.item.0.write().await
     }
 
-    pub async fn left(&self) -> MarkerPinHandle<K> {
-        StaticPointerOwned::reference(&self.item.0.read().await.left).clone()
+    pub async fn left(&self) -> impl Deref<Target = MarkerPinHandle<K>> + '_ {
+        RwLockReadGuard::map(self.item.0.read().await, |guard| StaticPointerOwned::reference(&guard.left))
     }
 
-    pub async fn right(&self) -> MarkerPinHandle<K> {
-        StaticPointerOwned::reference(&self.item.0.read().await.right).clone()
+    pub async fn right(&self) -> impl Deref<Target = MarkerPinHandle<K>> + '_ {
+        RwLockReadGuard::map(self.item.0.read().await, |guard| StaticPointerOwned::reference(&guard.right))
     }
 
-    pub async fn components(&self) -> impl Iterator<Item = ComponentInstanceHandle<K, T>> + '_ {
-        let guard = self.item.0.read().await;
-        let mut i = 0;
-        iter::from_fn(move || {
-            let ret = guard.component.get(i).map(|component| StaticPointerOwned::reference(component).clone());
-            i += 1;
-            ret
-        })
+    pub async fn components(&self) -> impl Deref<Target = [impl AsRef<ComponentInstanceHandle<K, T>>]> + '_ {
+        RwLockReadGuard::map(self.item.0.read().await, |guard| guard.component.as_ref())
     }
 
-    pub async fn links(&self) -> impl Iterator<Item = StaticPointer<TCell<K, MarkerLink<K>>>> + '_ {
-        let guard = self.item.0.read().await;
-        let mut i = 0;
-        iter::from_fn(move || {
-            let ret = guard.link.get(i).map(|component| StaticPointerOwned::reference(component).clone());
-            i += 1;
-            ret
-        })
+    pub async fn links(&self) -> impl Deref<Target = [impl AsRef<StaticPointer<TCell<K, MarkerLink<K>>>>]> + '_ {
+        RwLockReadGuard::map(self.item.0.read().await, |guard| guard.link.as_ref())
     }
 }
 

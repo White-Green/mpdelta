@@ -10,6 +10,7 @@ async-trait = { workspace = true }
 dashmap = { workspace = true }
 futures = { workspace = true }
 mpdelta_core = { workspace = true }
+mpdelta_differential = { workspace = true }
 qcell = { workspace = true }
 thiserror = { workspace = true }
 time = { workspace = true }

@@ -381,9 +381,11 @@ impl<K: Send + Sync + 'static, T: ParameterValueType> TimelineViewModelImpl<K, T
         };
         let (root_component_class, key) = tokio::join!(root_component_class.read(), key.read());
         let mut pin_map = HashMap::new();
-        component_instances.list.extend(root_component_class.components().await.enumerate().filter_map(|(i, handle)| ComponentInstanceData::new(handle, &key, i, &mut pin_map)));
+        component_instances
+            .list
+            .extend(root_component_class.components().await.iter().enumerate().filter_map(|(i, handle)| ComponentInstanceData::new(handle.as_ref().clone(), &key, i, &mut pin_map)));
         let component_map = component_instances.list.iter().cloned().map(|component| (component.handle.clone(), component)).collect();
-        component_links.list.extend(root_component_class.links().await.filter_map(|handle| ComponentLinkData::new(handle, &key, &pin_map, &component_map)));
+        component_links.list.extend(root_component_class.links().await.iter().filter_map(|handle| ComponentLinkData::new(handle.as_ref().clone(), &key, &pin_map, &component_map)));
     }
 }
 

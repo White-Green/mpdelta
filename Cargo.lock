@@ -1700,6 +1700,7 @@ dependencies = [
  "dashmap",
  "futures",
  "mpdelta_core",
+ "mpdelta_differential",
  "qcell",
  "thiserror",
  "time",

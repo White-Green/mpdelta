@@ -78,7 +78,7 @@ where
             RootComponentEditCommand::AddComponentInstance(instance) => {
                 let instance_ref = StaticPointerOwned::reference(&instance).clone();
                 let key = self.key.read().await;
-                let base = if let Some(base) = target.get().await.component().last() { base.ro(&key).marker_left().reference() } else { target.left().await };
+                let base = if let Some(base) = target.get().await.component().last() { base.ro(&key).marker_left().reference() } else { target.left().await.clone() };
                 let guard = instance.ro(&key);
                 let left = guard.marker_left();
                 let right = guard.marker_right();
@@ -95,6 +95,10 @@ where
                 let mut item = target.get_mut().await;
                 item.component_mut().push(instance);
                 item.link_mut().extend([StaticPointerOwned::new(TCell::new(link_for_zero)), StaticPointerOwned::new(TCell::new(link_for_length))]);
+                let item = item.downgrade();
+                if let Err(err) = mpdelta_differential::collect_cached_time(item.component(), item.link(), item.left().as_ref(), item.right().as_ref(), &key) {
+                    eprintln!("{err}");
+                }
                 drop(item);
                 drop(target);
                 drop(key);
@@ -103,7 +107,14 @@ where
                 Ok(ProjectEditLog::Unimplemented)
             }
             RootComponentEditCommand::RemoveMarkerLink(link) => {
-                target.get_mut().await.link_mut().retain(|l| *l != link);
+                let mut item = target.get_mut().await;
+                item.link_mut().retain(|l| *l != link);
+                let item = item.downgrade();
+                let key = self.key.read().await;
+                if let Err(err) = mpdelta_differential::collect_cached_time(item.component(), item.link(), item.left().as_ref(), item.right().as_ref(), &key) {
+                    eprintln!("{err}");
+                }
+                drop(item);
                 drop(target);
                 self.edit_event_listeners.iter().for_each(|listener| listener.on_edit(target_ref, RootComponentEditEvent::RemoveMarkerLink(&link)));
                 Ok(ProjectEditLog::Unimplemented)
@@ -112,6 +123,11 @@ where
                 if let Some(link) = link.upgrade() {
                     let mut key = self.key.write().await;
                     link.rw(&mut key).len = len;
+                    let key = key.downgrade();
+                    let item = target.get().await;
+                    if let Err(err) = mpdelta_differential::collect_cached_time(item.component(), item.link(), item.left().as_ref(), item.right().as_ref(), &key) {
+                        eprintln!("{err}");
+                    }
                 }
                 drop(target);
                 self.edit_event_listeners.iter().for_each(|listener| listener.on_edit(target_ref, RootComponentEditEvent::EditMarkerLinkLength(&link, len)));

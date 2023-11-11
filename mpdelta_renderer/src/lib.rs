@@ -28,6 +28,8 @@ use tokio::sync::{oneshot, RwLock};
 mod render;
 mod thread_cancel;
 
+pub use render::TimeMap;
+
 pub struct MPDeltaRendererBuilder<K: 'static, Id, C, ImageCombinerBuilder, AudioCombinerBuilder> {
     id: Arc<Id>,
     controller_builder: Arc<C>,

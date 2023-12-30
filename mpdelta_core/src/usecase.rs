@@ -8,13 +8,14 @@ use crate::ptr::StaticPointer;
 use async_trait::async_trait;
 use std::borrow::Cow;
 use std::error::Error;
+use std::future::Future;
 use std::ops::Deref;
 use std::path::Path;
 use tokio::sync::RwLock;
 
 #[async_trait]
 pub trait LoadProjectUsecase<K, T: ParameterValueType>: Send + Sync {
-    type Err: Error + 'static;
+    type Err: Error + Send + 'static;
     async fn load_project(&self, path: impl AsRef<Path> + Send + Sync) -> Result<ProjectHandle<K, T>, Self::Err>;
 }
 
@@ -34,7 +35,7 @@ where
 
 #[async_trait]
 pub trait WriteProjectUsecase<K, T: ParameterValueType>: Send + Sync {
-    type Err: Error + 'static;
+    type Err: Error + Send + 'static;
     async fn write_project(&self, project: &ProjectHandle<K, T>, path: impl AsRef<Path> + Send + Sync) -> Result<(), Self::Err>;
 }
 
@@ -155,11 +156,11 @@ where
 }
 
 pub trait RealtimeComponentRenderer<T: ParameterValueType>: Send + Sync {
-    type Err: Error + 'static;
+    type Err: Error + Send + 'static;
     fn get_frame_count(&self) -> usize;
     fn render_frame(&self, frame: usize) -> Result<T::Image, Self::Err>;
     fn sampling_rate(&self) -> u32;
-    fn mix_audio(&self, offset: usize, length: usize) -> Result<T::Audio, Self::Err>;
+    fn mix_audio(&self, offset: usize, length: usize) -> impl Future<Output = Result<T::Audio, Self::Err>> + Send + '_;
     fn render_param(&self, param: Parameter<ParameterSelect>) -> Result<Parameter<T>, Self::Err>;
 }
 
@@ -184,7 +185,7 @@ where
         self.deref().sampling_rate()
     }
 
-    fn mix_audio(&self, offset: usize, length: usize) -> Result<T::Audio, Self::Err> {
+    fn mix_audio(&self, offset: usize, length: usize) -> impl Future<Output = Result<T::Audio, Self::Err>> + Send + '_ {
         self.deref().mix_audio(offset, length)
     }
 
@@ -195,7 +196,7 @@ where
 
 #[async_trait]
 pub trait RealtimeRenderComponentUsecase<K, T: ParameterValueType>: Send + Sync {
-    type Err: Error + 'static;
+    type Err: Error + Send + 'static;
     type Renderer: RealtimeComponentRenderer<T> + 'static;
     async fn render_component(&self, component: &ComponentInstanceHandle<K, T>) -> Result<Self::Renderer, Self::Err>;
 }
@@ -217,7 +218,7 @@ where
 
 #[async_trait]
 pub trait EditUsecase<K, T: ParameterValueType>: Send + Sync {
-    type Err: Error + 'static;
+    type Err: Error + Send + 'static;
     async fn edit(&self, target: &RootComponentClassHandle<K, T>, command: RootComponentEditCommand<K, T>) -> Result<(), Self::Err>;
     async fn edit_instance(&self, root: &RootComponentClassHandle<K, T>, target: &ComponentInstanceHandle<K, T>, command: InstanceEditCommand<K, T>) -> Result<(), Self::Err>;
 }

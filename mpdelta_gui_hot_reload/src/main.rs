@@ -1,8 +1,11 @@
+use cpal::traits::HostTrait;
 use egui::Context;
 use mpdelta_async_runtime::AsyncRuntimeDyn;
+use mpdelta_audio_mixer::MPDeltaAudioMixerBuilder;
 use mpdelta_components::rectangle::RectangleClass;
 use mpdelta_core::component::parameter::ParameterValueType;
 use mpdelta_core::core::MPDeltaCore;
+use mpdelta_core_audio::AudioType;
 use mpdelta_dyn_usecase::{
     EditUsecaseDyn, GetAvailableComponentClassesUsecaseDyn, GetLoadedProjectsUsecaseDyn, GetRootComponentClassesUsecaseDyn, LoadProjectUsecaseDyn, NewProjectUsecaseDyn, NewRootComponentClassUsecaseDyn, RealtimeRenderComponentUsecaseDyn, RedoUsecaseDyn, SetOwnerForRootComponentClassUsecaseDyn,
     SubscribeEditEventUsecaseDyn, UndoUsecaseDyn, WriteProjectUsecaseDyn,
@@ -10,7 +13,9 @@ use mpdelta_dyn_usecase::{
 use mpdelta_gui::view::Gui;
 use mpdelta_gui::viewmodel::ViewModelParamsImpl;
 use mpdelta_gui::ImageRegister;
-use mpdelta_gui_hot_reload_lib::{ComponentClassList, ProjectKey, TmpAudioCombiner, ValueType};
+use mpdelta_gui_audio_player_cpal::CpalAudioPlayer;
+use mpdelta_gui_hot_reload_lib::dyn_trait::AudioTypePlayerDyn;
+use mpdelta_gui_hot_reload_lib::{ComponentClassList, ProjectKey, ValueType};
 use mpdelta_gui_vulkano::MPDeltaGUIVulkano;
 use mpdelta_renderer::MPDeltaRendererBuilder;
 use mpdelta_rendering_controller::LRUCacheRenderingControllerBuilder;
@@ -119,7 +124,7 @@ fn main() {
         Arc::clone(&id_generator),
         Arc::new(ImageCombinerBuilder::new(Arc::clone(&context))),
         Arc::new(LRUCacheRenderingControllerBuilder::new()),
-        Arc::new(TmpAudioCombiner),
+        Arc::new(MPDeltaAudioMixerBuilder::new()),
         Arc::clone(&key),
         runtime.handle().clone(),
     ));
@@ -137,6 +142,16 @@ fn main() {
         edit_history,
         Arc::clone(&key),
     ));
+    let audio_player = Arc::new(
+        CpalAudioPlayer::new(
+            || {
+                let host = cpal::default_host();
+                host.default_output_device().unwrap()
+            },
+            runtime.handle(),
+        )
+        .unwrap(),
+    );
     let params = ViewModelParamsImpl::new(
         Arc::new(runtime.handle().clone()) as Arc<dyn AsyncRuntimeDyn<()>>,
         Arc::new(Arc::clone(&core) as Arc<dyn EditUsecaseDyn<ProjectKey, ValueType> + Send + Sync>),
@@ -153,6 +168,7 @@ fn main() {
         Arc::new(Arc::clone(&core) as Arc<dyn UndoUsecaseDyn<ProjectKey, ValueType> + Send + Sync>),
         Arc::new(Arc::clone(&core) as Arc<dyn WriteProjectUsecaseDyn<ProjectKey, ValueType> + Send + Sync>),
         Arc::clone(&key),
+        Arc::new(audio_player as Arc<dyn AudioTypePlayerDyn<AudioType> + Send + Sync>),
     );
     let gui = lib::create_gui(params.clone());
     let gui = SharedDynGui::new(gui);

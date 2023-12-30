@@ -4,8 +4,10 @@ use crate::message_router::handler::{IntoAsyncFunctionHandler, IntoFunctionHandl
 use crate::message_router::{MessageHandler, MessageRouter};
 use crate::view_model_util::use_arc;
 use crate::viewmodel::ViewModelParams;
+use arc_swap::ArcSwap;
 use egui::epaint::ahash::{HashSet, HashSetExt};
 use mpdelta_async_runtime::{AsyncRuntime, JoinHandle};
+use mpdelta_core::component::class::ComponentClass;
 use mpdelta_core::component::instance::ComponentInstanceHandle;
 use mpdelta_core::component::link::MarkerLink;
 use mpdelta_core::component::marker_pin::MarkerPinHandle;
@@ -128,6 +130,24 @@ pub struct ComponentLinkDataList<LinkHandle, ComponentHandle> {
     pub list: Vec<ComponentLinkData<LinkHandle, ComponentHandle>>,
 }
 
+pub struct ComponentClassData<Handle> {
+    pub handle: Handle,
+}
+
+impl<K, T> ComponentClassData<StaticPointer<RwLock<dyn ComponentClass<K, T>>>>
+where
+    K: 'static,
+    T: ParameterValueType,
+{
+    fn new(handle: StaticPointer<RwLock<dyn ComponentClass<K, T>>>) -> ComponentClassData<StaticPointer<RwLock<dyn ComponentClass<K, T>>>> {
+        ComponentClassData { handle }
+    }
+}
+
+pub struct ComponentClassDataList<Handle> {
+    pub list: Vec<ComponentClassData<Handle>>,
+}
+
 pub trait TimelineViewModel<K: 'static, T: ParameterValueType> {
     fn seek(&self) -> usize;
     type ComponentInstanceHandle: Clone + Hash;
@@ -138,12 +158,15 @@ pub trait TimelineViewModel<K: 'static, T: ParameterValueType> {
     type ComponentLinkHandle: Clone + Hash;
     fn component_links<R>(&self, f: impl FnOnce(&ComponentLinkDataList<Self::ComponentLinkHandle, Self::ComponentInstanceHandle>) -> R) -> R;
     fn edit_marker_link_length(&self, link: &Self::ComponentLinkHandle, value: TimelineTime);
-    fn add_component_instance(&self);
+    type ComponentClassHandle: Clone + Hash;
+    fn component_classes<R>(&self, f: impl FnOnce(&ComponentClassDataList<Self::ComponentClassHandle>) -> R) -> R;
+    fn add_component_instance(&self, class: Self::ComponentClassHandle);
 }
 
 pub struct TimelineViewModelImpl<K: 'static, T: ParameterValueType, GlobalUIState, MessageHandler, G, Runtime, JoinHandle> {
     key: Arc<RwLock<TCellOwner<K>>>,
     global_ui_state: Arc<GlobalUIState>,
+    component_classes: Arc<ArcSwap<ComponentClassDataList<StaticPointer<RwLock<dyn ComponentClass<K, T>>>>>>,
     component_instances: Arc<RwLock<ComponentInstanceDataList<ComponentInstanceHandle<K, T>>>>,
     component_links: Arc<RwLock<ComponentLinkDataList<StaticPointer<TCell<K, MarkerLink<K>>>, ComponentInstanceHandle<K, T>>>>,
     selected_components: Arc<RwLock<HashSet<ComponentInstanceHandle<K, T>>>>,
@@ -156,7 +179,7 @@ pub struct TimelineViewModelImpl<K: 'static, T: ParameterValueType, GlobalUIStat
 
 pub enum Message<K: 'static, T: ParameterValueType> {
     GlobalUIEvent(GlobalUIEvent<K, T>),
-    AddComponentInstance,
+    AddComponentInstance(StaticPointer<RwLock<dyn ComponentClass<K, T>>>),
     ClickComponentInstance(ComponentInstanceHandle<K, T>),
     DragComponentInstance(ComponentInstanceHandle<K, T>, f32, f32),
     EditMarkerLinkLength(StaticPointer<TCell<K, MarkerLink<K>>>, TimelineTime),
@@ -170,7 +193,7 @@ where
     fn clone(&self) -> Self {
         match self {
             Message::GlobalUIEvent(value) => Message::GlobalUIEvent(value.clone()),
-            Message::AddComponentInstance => Message::AddComponentInstance,
+            Message::AddComponentInstance(value) => Message::AddComponentInstance(value.clone()),
             Message::ClickComponentInstance(value) => Message::ClickComponentInstance(value.clone()),
             &Message::DragComponentInstance(ref value, x, y) => Message::DragComponentInstance(value.clone(), x, y),
             &Message::EditMarkerLinkLength(ref value, length) => Message::EditMarkerLinkLength(value.clone(), length),
@@ -189,7 +212,7 @@ where
         }
         match (self, other) {
             (Message::GlobalUIEvent(a), Message::GlobalUIEvent(b)) => a == b,
-            (Message::AddComponentInstance, Message::AddComponentInstance) => true,
+            (Message::AddComponentInstance(a), Message::AddComponentInstance(b)) => a == b,
             (Message::ClickComponentInstance(a), Message::ClickComponentInstance(b)) => a == b,
             (Message::DragComponentInstance(a, ax, ay), Message::DragComponentInstance(b, bx, by)) => a == b && ax == bx && ay == by,
             (Message::EditMarkerLinkLength(a, al), Message::EditMarkerLinkLength(b, bl)) => a == b && al == bl,
@@ -249,6 +272,7 @@ impl<K: Send + Sync + 'static, T: ParameterValueType> TimelineViewModelImpl<K, T
         edit: &Arc<Edit>,
         params: &P,
     ) -> Arc<TimelineViewModelImpl<K, T, S, impl MessageHandler<Message<K, T>, P::AsyncRuntime>, <P::SubscribeEditEvent as SubscribeEditEventUsecase<K, T>>::EditEventListenerGuard, P::AsyncRuntime, <P::AsyncRuntime as AsyncRuntime<()>>::JoinHandle>> {
+        let component_classes = Arc::new(ArcSwap::new(Arc::new(ComponentClassDataList { list: Vec::new() })));
         let selected_components = Arc::new(RwLock::new(HashSet::new()));
         let component_links = Arc::new(RwLock::new(ComponentLinkDataList { list: Vec::new() }));
         let component_instances = Arc::new(RwLock::new(ComponentInstanceDataList { list: Vec::new() }));
@@ -274,19 +298,18 @@ impl<K: Send + Sync + 'static, T: ParameterValueType> TimelineViewModelImpl<K, T
                     .build()
             })
             .handle(|handler| {
-                handler.filter(|message| *message == Message::AddComponentInstance).handle_async({
-                    use_arc!(selected_root_component_class, edit, get_available_component_classes = params.get_available_component_classes());
-                    move |_| {
-                        use_arc!(selected_root_component_class, edit, get_available_component_classes);
+                handler.filter_map(|message| if let Message::AddComponentInstance(value) = message { Some(value) } else { None }).handle_async({
+                    use_arc!(selected_root_component_class, edit);
+                    move |pointer| {
+                        use_arc!(selected_root_component_class, edit);
                         async move {
                             let selected_root_component_class = selected_root_component_class.read().await;
                             let Some(target) = selected_root_component_class.clone() else {
                                 return;
                             };
                             drop(selected_root_component_class);
-                            let pointer = &get_available_component_classes.get_available_component_classes().await[0];
                             let class = pointer.upgrade().unwrap();
-                            let instance = class.read().await.instantiate(pointer).await;
+                            let instance = class.read().await.instantiate(&pointer).await;
                             let instance = StaticPointerOwned::new(TCell::new(instance));
                             edit.edit(&target, RootComponentEditCommand::AddComponentInstance(instance));
                         }
@@ -325,9 +348,19 @@ impl<K: Send + Sync + 'static, T: ParameterValueType> TimelineViewModelImpl<K, T
                 })
             })
             .build(params.runtime().clone());
+        params.runtime().spawn({
+            use_arc!(component_classes, get_available_component_classes = params.get_available_component_classes());
+            async move {
+                let available_component_classes = get_available_component_classes.get_available_component_classes().await;
+                component_classes.store(Arc::new(ComponentClassDataList {
+                    list: available_component_classes.iter().cloned().map(ComponentClassData::new).collect(),
+                }));
+            }
+        });
         let arc = Arc::new(TimelineViewModelImpl {
             key: Arc::clone(params.key()),
             global_ui_state: Arc::clone(global_ui_state),
+            component_classes,
             component_instances,
             component_links,
             selected_components,
@@ -429,7 +462,13 @@ where
         self.message_router.handle(Message::EditMarkerLinkLength(link.clone(), value));
     }
 
-    fn add_component_instance(&self) {
-        self.message_router.handle(Message::AddComponentInstance);
+    type ComponentClassHandle = StaticPointer<RwLock<dyn ComponentClass<K, T>>>;
+
+    fn component_classes<R>(&self, f: impl FnOnce(&ComponentClassDataList<Self::ComponentClassHandle>) -> R) -> R {
+        f(&self.component_classes.load())
+    }
+
+    fn add_component_instance(&self, class: Self::ComponentClassHandle) {
+        self.message_router.handle(Message::AddComponentInstance(class));
     }
 }

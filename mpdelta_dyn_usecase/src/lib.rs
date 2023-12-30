@@ -20,7 +20,7 @@ use std::path::Path;
 use std::pin::Pin;
 use tokio::sync::RwLock;
 
-pub struct DynError(pub Box<dyn Error + 'static>);
+pub struct DynError(pub Box<dyn Error + Send + 'static>);
 
 impl Debug for DynError {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
@@ -43,7 +43,7 @@ impl Error for DynError {
 pub type DynFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
 pub trait LoadProjectUsecaseDyn<K, T: ParameterValueType>: Send + Sync {
-    fn load_project_dyn<'life0, 'life1, 'async_trait>(&'life0 self, path: &'life1 Path) -> DynFuture<'async_trait, Result<ProjectHandle<K, T>, Box<dyn Error + 'static>>>
+    fn load_project_dyn<'life0, 'life1, 'async_trait>(&'life0 self, path: &'life1 Path) -> DynFuture<'async_trait, Result<ProjectHandle<K, T>, Box<dyn Error + Send + 'static>>>
     where
         Self: 'async_trait,
         'life0: 'async_trait,
@@ -56,13 +56,13 @@ where
     T: ParameterValueType,
     O: LoadProjectUsecase<K, T>,
 {
-    fn load_project_dyn<'life0, 'life1, 'async_trait>(&'life0 self, path: &'life1 Path) -> DynFuture<'async_trait, Result<ProjectHandle<K, T>, Box<dyn Error + 'static>>>
+    fn load_project_dyn<'life0, 'life1, 'async_trait>(&'life0 self, path: &'life1 Path) -> DynFuture<'async_trait, Result<ProjectHandle<K, T>, Box<dyn Error + Send + 'static>>>
     where
         Self: 'async_trait,
         'life0: 'async_trait,
         'life1: 'async_trait,
     {
-        Box::pin(async move { self.load_project(path).map_err(|err| Box::new(err) as Box<dyn Error + 'static>).await })
+        Box::pin(async move { self.load_project(path).map_err(|err| Box::new(err) as Box<dyn Error + Send + 'static>).await })
     }
 }
 
@@ -80,7 +80,7 @@ where
 }
 
 pub trait WriteProjectUsecaseDyn<K, T: ParameterValueType>: Send + Sync {
-    fn write_project_dyn<'life0, 'life1, 'life2, 'async_trait>(&'life0 self, project: &'life1 ProjectHandle<K, T>, path: &'life2 Path) -> DynFuture<'async_trait, Result<(), Box<dyn Error + 'static>>>
+    fn write_project_dyn<'life0, 'life1, 'life2, 'async_trait>(&'life0 self, project: &'life1 ProjectHandle<K, T>, path: &'life2 Path) -> DynFuture<'async_trait, Result<(), Box<dyn Error + Send + 'static>>>
     where
         Self: 'async_trait,
         'life0: 'async_trait,
@@ -94,14 +94,14 @@ where
     T: ParameterValueType,
     O: WriteProjectUsecase<K, T>,
 {
-    fn write_project_dyn<'life0, 'life1, 'life2, 'async_trait>(&'life0 self, project: &'life1 ProjectHandle<K, T>, path: &'life2 Path) -> DynFuture<'async_trait, Result<(), Box<dyn Error + 'static>>>
+    fn write_project_dyn<'life0, 'life1, 'life2, 'async_trait>(&'life0 self, project: &'life1 ProjectHandle<K, T>, path: &'life2 Path) -> DynFuture<'async_trait, Result<(), Box<dyn Error + Send + 'static>>>
     where
         Self: 'async_trait,
         'life0: 'async_trait,
         'life1: 'async_trait,
         'life2: 'async_trait,
     {
-        Box::pin(async move { self.write_project(project, path).map_err(|err| Box::new(err) as Box<dyn Error + 'static>).await })
+        Box::pin(async move { self.write_project(project, path).map_err(|err| Box::new(err) as Box<dyn Error + Send + 'static>).await })
     }
 }
 
@@ -324,10 +324,10 @@ where
 
 pub trait RealtimeComponentRendererDyn<T: ParameterValueType>: Send + Sync {
     fn get_frame_count_dyn(&self) -> usize;
-    fn render_frame_dyn(&self, frame: usize) -> Result<T::Image, Box<dyn Error + 'static>>;
+    fn render_frame_dyn(&self, frame: usize) -> Result<T::Image, Box<dyn Error + Send + 'static>>;
     fn sampling_rate_dyn(&self) -> u32;
-    fn mix_audio_dyn(&self, offset: usize, length: usize) -> Result<T::Audio, Box<dyn Error + 'static>>;
-    fn render_param_dyn(&self, param: Parameter<ParameterSelect>) -> Result<Parameter<T>, Box<dyn Error + 'static>>;
+    fn mix_audio_dyn(&self, offset: usize, length: usize) -> Pin<Box<dyn Future<Output = Result<T::Audio, Box<dyn Error + Send + 'static>>> + Send + '_>>;
+    fn render_param_dyn(&self, param: Parameter<ParameterSelect>) -> Result<Parameter<T>, Box<dyn Error + Send + 'static>>;
 }
 
 impl<T, O> RealtimeComponentRendererDyn<T> for O
@@ -339,20 +339,20 @@ where
         self.get_frame_count()
     }
 
-    fn render_frame_dyn(&self, frame: usize) -> Result<T::Image, Box<dyn Error + 'static>> {
-        self.render_frame(frame).map_err(|err| Box::new(err) as Box<dyn Error + 'static>)
+    fn render_frame_dyn(&self, frame: usize) -> Result<T::Image, Box<dyn Error + Send + 'static>> {
+        self.render_frame(frame).map_err(|err| Box::new(err) as Box<dyn Error + Send + 'static>)
     }
 
     fn sampling_rate_dyn(&self) -> u32 {
         self.sampling_rate()
     }
 
-    fn mix_audio_dyn(&self, offset: usize, length: usize) -> Result<T::Audio, Box<dyn Error + 'static>> {
-        self.mix_audio(offset, length).map_err(|err| Box::new(err) as Box<dyn Error + 'static>)
+    fn mix_audio_dyn(&self, offset: usize, length: usize) -> Pin<Box<dyn Future<Output = Result<T::Audio, Box<dyn Error + Send + 'static>>> + Send + '_>> {
+        Box::pin(self.mix_audio(offset, length).map_err(|err| Box::new(err) as Box<dyn Error + Send + 'static>))
     }
 
-    fn render_param_dyn(&self, param: Parameter<ParameterSelect>) -> Result<Parameter<T>, Box<dyn Error + 'static>> {
-        self.render_param(param).map_err(|err| Box::new(err) as Box<dyn Error + 'static>)
+    fn render_param_dyn(&self, param: Parameter<ParameterSelect>) -> Result<Parameter<T>, Box<dyn Error + Send + 'static>> {
+        self.render_param(param).map_err(|err| Box::new(err) as Box<dyn Error + Send + 'static>)
     }
 }
 
@@ -371,7 +371,7 @@ impl<T: ParameterValueType> RealtimeComponentRenderer<T> for dyn RealtimeCompone
         self.sampling_rate_dyn()
     }
 
-    fn mix_audio(&self, offset: usize, length: usize) -> Result<T::Audio, Self::Err> {
+    fn mix_audio(&self, offset: usize, length: usize) -> impl Future<Output = Result<T::Audio, Self::Err>> + Send + '_ {
         self.mix_audio_dyn(offset, length).map_err(DynError)
     }
 
@@ -381,7 +381,7 @@ impl<T: ParameterValueType> RealtimeComponentRenderer<T> for dyn RealtimeCompone
 }
 
 pub trait RealtimeRenderComponentUsecaseDyn<K, T: ParameterValueType>: Send + Sync {
-    fn render_component_dyn<'life0, 'life1, 'async_trait>(&'life0 self, component: &'life1 ComponentInstanceHandle<K, T>) -> DynFuture<'async_trait, Result<Box<dyn RealtimeComponentRendererDyn<T> + Send + Sync + 'static>, Box<dyn Error + 'static>>>
+    fn render_component_dyn<'life0, 'life1, 'async_trait>(&'life0 self, component: &'life1 ComponentInstanceHandle<K, T>) -> DynFuture<'async_trait, Result<Box<dyn RealtimeComponentRendererDyn<T> + Send + Sync + 'static>, Box<dyn Error + Send + 'static>>>
     where
         Self: 'async_trait,
         'life0: 'async_trait,
@@ -393,7 +393,7 @@ where
     T: ParameterValueType,
     O: RealtimeRenderComponentUsecase<K, T>,
 {
-    fn render_component_dyn<'life0, 'life1, 'async_trait>(&'life0 self, component: &'life1 ComponentInstanceHandle<K, T>) -> DynFuture<'async_trait, Result<Box<dyn RealtimeComponentRendererDyn<T> + Send + Sync + 'static>, Box<dyn Error + 'static>>>
+    fn render_component_dyn<'life0, 'life1, 'async_trait>(&'life0 self, component: &'life1 ComponentInstanceHandle<K, T>) -> DynFuture<'async_trait, Result<Box<dyn RealtimeComponentRendererDyn<T> + Send + Sync + 'static>, Box<dyn Error + Send + 'static>>>
     where
         Self: 'async_trait,
         'life0: 'async_trait,
@@ -403,7 +403,7 @@ where
             self.render_component(component)
                 .map(|result| match result {
                     Ok(renderer) => Ok(Box::new(renderer) as Box<dyn RealtimeComponentRendererDyn<T> + Send + Sync + 'static>),
-                    Err(err) => Err(Box::new(err) as Box<dyn Error + 'static>),
+                    Err(err) => Err(Box::new(err) as Box<dyn Error + Send + 'static>),
                 })
                 .await
         })
@@ -425,12 +425,12 @@ where
 }
 
 pub trait EditUsecaseDyn<K, T: ParameterValueType>: Send + Sync {
-    fn edit_dyn<'life0, 'life1, 'async_trait>(&'life0 self, target: &'life1 RootComponentClassHandle<K, T>, command: RootComponentEditCommand<K, T>) -> DynFuture<'async_trait, Result<(), Box<dyn Error + 'static>>>
+    fn edit_dyn<'life0, 'life1, 'async_trait>(&'life0 self, target: &'life1 RootComponentClassHandle<K, T>, command: RootComponentEditCommand<K, T>) -> DynFuture<'async_trait, Result<(), Box<dyn Error + Send + 'static>>>
     where
         Self: 'async_trait,
         'life0: 'async_trait,
         'life1: 'async_trait;
-    fn edit_instance_dyn<'life0, 'life1, 'life2, 'async_trait>(&'life0 self, root: &'life1 RootComponentClassHandle<K, T>, target: &'life2 ComponentInstanceHandle<K, T>, command: InstanceEditCommand<K, T>) -> DynFuture<'async_trait, Result<(), Box<dyn Error + 'static>>>
+    fn edit_instance_dyn<'life0, 'life1, 'life2, 'async_trait>(&'life0 self, root: &'life1 RootComponentClassHandle<K, T>, target: &'life2 ComponentInstanceHandle<K, T>, command: InstanceEditCommand<K, T>) -> DynFuture<'async_trait, Result<(), Box<dyn Error + Send + 'static>>>
     where
         Self: 'async_trait,
         'life0: 'async_trait,
@@ -444,23 +444,23 @@ where
     T: ParameterValueType,
     O: EditUsecase<K, T>,
 {
-    fn edit_dyn<'life0, 'life1, 'async_trait>(&'life0 self, target: &'life1 RootComponentClassHandle<K, T>, command: RootComponentEditCommand<K, T>) -> DynFuture<'async_trait, Result<(), Box<dyn Error + 'static>>>
+    fn edit_dyn<'life0, 'life1, 'async_trait>(&'life0 self, target: &'life1 RootComponentClassHandle<K, T>, command: RootComponentEditCommand<K, T>) -> DynFuture<'async_trait, Result<(), Box<dyn Error + Send + 'static>>>
     where
         Self: 'async_trait,
         'life0: 'async_trait,
         'life1: 'async_trait,
     {
-        Box::pin(async move { self.edit(target, command).map_err(|err| Box::new(err) as Box<dyn Error + 'static>).await })
+        Box::pin(async move { self.edit(target, command).map_err(|err| Box::new(err) as Box<dyn Error + Send + 'static>).await })
     }
 
-    fn edit_instance_dyn<'life0, 'life1, 'life2, 'async_trait>(&'life0 self, root: &'life1 RootComponentClassHandle<K, T>, target: &'life2 ComponentInstanceHandle<K, T>, command: InstanceEditCommand<K, T>) -> DynFuture<'async_trait, Result<(), Box<dyn Error + 'static>>>
+    fn edit_instance_dyn<'life0, 'life1, 'life2, 'async_trait>(&'life0 self, root: &'life1 RootComponentClassHandle<K, T>, target: &'life2 ComponentInstanceHandle<K, T>, command: InstanceEditCommand<K, T>) -> DynFuture<'async_trait, Result<(), Box<dyn Error + Send + 'static>>>
     where
         Self: 'async_trait,
         'life0: 'async_trait,
         'life1: 'async_trait,
         'life2: 'async_trait,
     {
-        Box::pin(async move { self.edit_instance(root, target, command).map_err(|err| Box::new(err) as Box<dyn Error + 'static>).await })
+        Box::pin(async move { self.edit_instance(root, target, command).map_err(|err| Box::new(err) as Box<dyn Error + Send + 'static>).await })
     }
 }
 

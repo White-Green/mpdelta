@@ -1,9 +1,11 @@
+use crate::dyn_trait::AudioTypePlayerDyn;
 use async_trait::async_trait;
 use mpdelta_async_runtime::AsyncRuntimeDyn;
 use mpdelta_core::component::class::ComponentClass;
-use mpdelta_core::component::parameter::{AudioRequiredParamsFixed, ParameterValueType};
+use mpdelta_core::component::parameter::ParameterValueType;
 use mpdelta_core::core::ComponentClassLoader;
 use mpdelta_core::ptr::{StaticPointer, StaticPointerOwned};
+use mpdelta_core_audio::AudioType;
 use mpdelta_core_vulkano::ImageType;
 use mpdelta_dyn_usecase::{
     EditUsecaseDyn, GetAvailableComponentClassesUsecaseDyn, GetLoadedProjectsUsecaseDyn, GetRootComponentClassesUsecaseDyn, LoadProjectUsecaseDyn, NewProjectUsecaseDyn, NewRootComponentClassUsecaseDyn, RealtimeRenderComponentUsecaseDyn, RedoUsecaseDyn, SetOwnerForRootComponentClassUsecaseDyn,
@@ -11,10 +13,12 @@ use mpdelta_dyn_usecase::{
 };
 use mpdelta_gui::view::{Gui, MPDeltaGUI};
 use mpdelta_gui::viewmodel::ViewModelParamsImpl;
-use mpdelta_renderer::{Combiner, CombinerBuilder};
+
 use std::borrow::Cow;
 use std::sync::Arc;
 use tokio::sync::RwLock;
+
+pub mod dyn_trait;
 
 pub struct ProjectKey;
 
@@ -22,7 +26,7 @@ pub struct ValueType;
 
 impl ParameterValueType for ValueType {
     type Image = ImageType;
-    type Audio = ();
+    type Audio = AudioType;
     type Binary = ();
     type String = ();
     type Integer = ();
@@ -31,26 +35,6 @@ impl ParameterValueType for ValueType {
     type Dictionary = ();
     type Array = ();
     type ComponentClass = ();
-}
-
-pub struct TmpAudioCombiner;
-
-impl CombinerBuilder<()> for TmpAudioCombiner {
-    type Request = ();
-    type Param = AudioRequiredParamsFixed;
-    type Combiner = TmpAudioCombiner;
-
-    fn new_combiner(&self, _request: Self::Request) -> Self::Combiner {
-        TmpAudioCombiner
-    }
-}
-
-impl Combiner<()> for TmpAudioCombiner {
-    type Param = AudioRequiredParamsFixed;
-
-    fn add(&mut self, _data: (), _param: Self::Param) {}
-
-    fn collect(self) {}
 }
 
 #[derive(Default)]
@@ -93,6 +77,7 @@ pub type Param = ViewModelParamsImpl<
     Arc<dyn SetOwnerForRootComponentClassUsecaseDyn<ProjectKey, ValueType> + Send + Sync>,
     Arc<dyn UndoUsecaseDyn<ProjectKey, ValueType> + Send + Sync>,
     Arc<dyn WriteProjectUsecaseDyn<ProjectKey, ValueType> + Send + Sync>,
+    Arc<dyn AudioTypePlayerDyn<AudioType> + Send + Sync>,
 >;
 
 #[no_mangle]

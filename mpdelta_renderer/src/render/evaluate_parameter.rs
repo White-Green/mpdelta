@@ -1,12 +1,12 @@
 use crate::render::{RenderContext, RenderOutput};
 use crate::thread_cancel::CancellationToken;
-use crate::{render, Combiner, CombinerBuilder, ImageSizeRequest, RenderError};
+use crate::{render, AudioCombinerParam, AudioCombinerRequest, Combiner, CombinerBuilder, ImageCombinerParam, ImageCombinerRequest, ImageSizeRequest, RenderError};
 use futures::pin_mut;
 use mpdelta_core::common::time_split_value::TimeSplitValue;
 use mpdelta_core::component::instance::ComponentInstanceHandle;
 use mpdelta_core::component::marker_pin::MarkerPinHandle;
 use mpdelta_core::component::parameter::value::{DynEditableEasingValueMarker, EasingInput, EasingValue};
-use mpdelta_core::component::parameter::{AbstractFile, AudioRequiredParamsFixed, ImageRequiredParamsFixed, Never, Parameter, ParameterNullableValue, ParameterType, ParameterValueFixed, ParameterValueType, VariableParameterPriority, VariableParameterValue};
+use mpdelta_core::component::parameter::{AbstractFile, Never, Parameter, ParameterNullableValue, ParameterType, ParameterValueFixed, ParameterValueType, VariableParameterPriority, VariableParameterValue};
 use mpdelta_core::time::TimelineTime;
 use qcell::TCellOwner;
 use std::future::Future;
@@ -23,8 +23,8 @@ where
     K: 'static,
     T: ParameterValueType,
     Key: Deref<Target = TCellOwner<K>> + Send + Sync + 'static,
-    ImageCombinerBuilder: CombinerBuilder<T::Image, Request = ImageSizeRequest, Param = ImageRequiredParamsFixed> + 'static,
-    AudioCombinerBuilder: CombinerBuilder<T::Audio, Request = (), Param = AudioRequiredParamsFixed> + 'static,
+    ImageCombinerBuilder: CombinerBuilder<T::Image, Request = ImageCombinerRequest, Param = ImageCombinerParam> + 'static,
+    AudioCombinerBuilder: CombinerBuilder<T::Audio, Request = AudioCombinerRequest, Param = AudioCombinerParam> + 'static,
 {
     let VariableParameterValue { params, components, priority } = param;
     let get_manually_param = || evaluate_time_split_value_at(params, at, &ctx.key).map(|result| result.map(ParameterValueFixed::RealNumber));
@@ -44,8 +44,8 @@ where
     K: 'static,
     T: ParameterValueType,
     Key: Deref<Target = TCellOwner<K>> + Send + Sync + 'static,
-    ImageCombinerBuilder: CombinerBuilder<T::Image, Request = ImageSizeRequest, Param = ImageRequiredParamsFixed> + 'static,
-    AudioCombinerBuilder: CombinerBuilder<T::Audio, Request = (), Param = AudioRequiredParamsFixed> + 'static,
+    ImageCombinerBuilder: CombinerBuilder<T::Image, Request = ImageCombinerRequest, Param = ImageCombinerParam> + 'static,
+    AudioCombinerBuilder: CombinerBuilder<T::Audio, Request = AudioCombinerRequest, Param = AudioCombinerParam> + 'static,
 {
     let VariableParameterValue { params, components, priority } = param;
     if !params.equals_type(ty) {
@@ -88,8 +88,8 @@ where
     K: 'static,
     T: ParameterValueType,
     Key: Deref<Target = TCellOwner<K>> + Send + Sync + 'static,
-    ImageCombinerBuilder: CombinerBuilder<T::Image, Request = ImageSizeRequest, Param = ImageRequiredParamsFixed> + 'static,
-    AudioCombinerBuilder: CombinerBuilder<T::Audio, Request = (), Param = AudioRequiredParamsFixed> + 'static,
+    ImageCombinerBuilder: CombinerBuilder<T::Image, Request = ImageCombinerRequest, Param = ImageCombinerParam> + 'static,
+    AudioCombinerBuilder: CombinerBuilder<T::Audio, Request = AudioCombinerRequest, Param = AudioCombinerParam> + 'static,
 {
     fn calc(self) -> Option<Result<impl Future<Output = Result<Parameter<RenderOutput<T::Image, T::Audio>>, RenderError<K, T>>> + 'a, RenderError<K, T>>> {
         let ComponentParamCalculator { components, ty, at, ctx } = self;
@@ -134,8 +134,8 @@ where
     K: 'static,
     T: ParameterValueType,
     Key: Deref<Target = TCellOwner<K>> + Send + Sync + 'static,
-    ImageCombinerBuilder: CombinerBuilder<T::Image, Request = ImageSizeRequest, Param = ImageRequiredParamsFixed> + 'static,
-    AudioCombinerBuilder: CombinerBuilder<T::Audio, Request = (), Param = AudioRequiredParamsFixed> + 'static,
+    ImageCombinerBuilder: CombinerBuilder<T::Image, Request = ImageCombinerRequest, Param = ImageCombinerParam> + 'static,
+    AudioCombinerBuilder: CombinerBuilder<T::Audio, Request = AudioCombinerRequest, Param = AudioCombinerParam> + 'static,
 {
     match priority {
         VariableParameterPriority::PrioritizeManually => {
@@ -172,13 +172,13 @@ fn await_future_in_rayon_context<F: Future>(fut: F, cancellation_token: &Cancell
 
 fn default_value<Key, T: ParameterValueType, ImageCombinerBuilder, AudioCombinerBuilder>(ty: &ParameterType, ctx: &RenderContext<Key, T, ImageCombinerBuilder, AudioCombinerBuilder>) -> ParameterValueFixed<T::Image, T::Audio>
 where
-    ImageCombinerBuilder: CombinerBuilder<T::Image, Request = ImageSizeRequest, Param = ImageRequiredParamsFixed> + 'static,
-    AudioCombinerBuilder: CombinerBuilder<T::Audio, Request = (), Param = AudioRequiredParamsFixed> + 'static,
+    ImageCombinerBuilder: CombinerBuilder<T::Image, Request = ImageCombinerRequest, Param = ImageCombinerParam> + 'static,
+    AudioCombinerBuilder: CombinerBuilder<T::Audio, Request = AudioCombinerRequest, Param = AudioCombinerParam> + 'static,
 {
     match ty {
         ParameterType::None => ParameterValueFixed::None,
         ParameterType::Image(_) => ParameterValueFixed::Image(ctx.image_combiner_builder.new_combiner(ImageSizeRequest { width: 0., height: 0. }).collect()),
-        ParameterType::Audio(_) => ParameterValueFixed::Audio(ctx.audio_combiner_builder.new_combiner(()).collect()),
+        ParameterType::Audio(_) => ParameterValueFixed::Audio(ctx.audio_combiner_builder.new_combiner(TimelineTime::ZERO).collect()),
         ParameterType::Binary(_) => ParameterValueFixed::Binary(AbstractFile::default()),
         ParameterType::String(_) => ParameterValueFixed::String(String::default()),
         ParameterType::Integer(_) => ParameterValueFixed::Integer(0),

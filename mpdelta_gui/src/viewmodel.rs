@@ -2,6 +2,7 @@ use crate::global_ui_state::GlobalUIState;
 use crate::message_router::handler::{IntoAsyncFunctionHandler, IntoDerefHandler, MessageHandlerBuilder};
 use crate::message_router::{handler, MessageHandler, MessageRouter};
 use crate::view_model_util::use_arc;
+use crate::AudioTypePlayer;
 use mpdelta_async_runtime::AsyncRuntime;
 use mpdelta_core::component::parameter::ParameterValueType;
 use mpdelta_core::project::{ProjectHandle, RootComponentClassHandle};
@@ -15,6 +16,7 @@ use std::hash::Hash;
 use std::mem;
 use std::sync::Arc;
 use tokio::sync::RwLock;
+
 pub trait ViewModelParams<K: 'static, T: ParameterValueType> {
     type AsyncRuntime: AsyncRuntime<()> + Clone + 'static;
     type Edit: EditUsecase<K, T> + 'static;
@@ -30,6 +32,7 @@ pub trait ViewModelParams<K: 'static, T: ParameterValueType> {
     type SetOwnerForRootComponentClass: SetOwnerForRootComponentClassUsecase<K, T> + 'static;
     type Undo: UndoUsecase<K, T> + 'static;
     type WriteProject: WriteProjectUsecase<K, T> + 'static;
+    type AudioPlayer: AudioTypePlayer<T::Audio> + 'static;
 
     fn runtime(&self) -> &Self::AsyncRuntime;
     fn key(&self) -> &Arc<RwLock<TCellOwner<K>>>;
@@ -46,9 +49,10 @@ pub trait ViewModelParams<K: 'static, T: ParameterValueType> {
     fn set_owner_for_root_component_class(&self) -> &Arc<Self::SetOwnerForRootComponentClass>;
     fn undo(&self) -> &Arc<Self::Undo>;
     fn write_project(&self) -> &Arc<Self::WriteProject>;
+    fn audio_player(&self) -> &Arc<Self::AudioPlayer>;
 }
 
-pub struct ViewModelParamsImpl<K: 'static, Runtime, Edit, SubscribeEditEvent, GetAvailableComponentClasses, GetLoadedProjects, GetRootComponentClasses, LoadProject, NewProject, NewRootComponentClass, RealtimeRenderComponent, Redo, SetOwnerForRootComponentClass, Undo, WriteProject> {
+pub struct ViewModelParamsImpl<K: 'static, Runtime, Edit, SubscribeEditEvent, GetAvailableComponentClasses, GetLoadedProjects, GetRootComponentClasses, LoadProject, NewProject, NewRootComponentClass, RealtimeRenderComponent, Redo, SetOwnerForRootComponentClass, Undo, WriteProject, AudioPlayer> {
     runtime: Runtime,
     edit: Arc<Edit>,
     subscribe_edit_event: Arc<SubscribeEditEvent>,
@@ -64,10 +68,11 @@ pub struct ViewModelParamsImpl<K: 'static, Runtime, Edit, SubscribeEditEvent, Ge
     undo: Arc<Undo>,
     write_project: Arc<WriteProject>,
     key: Arc<RwLock<TCellOwner<K>>>,
+    audio_player: Arc<AudioPlayer>,
 }
 
-impl<K, Runtime, Edit, SubscribeEditEvent, GetAvailableComponentClasses, GetLoadedProjects, GetRootComponentClasses, LoadProject, NewProject, NewRootComponentClass, RealtimeRenderComponent, Redo, SetOwnerForRootComponentClass, Undo, WriteProject>
-    ViewModelParamsImpl<K, Runtime, Edit, SubscribeEditEvent, GetAvailableComponentClasses, GetLoadedProjects, GetRootComponentClasses, LoadProject, NewProject, NewRootComponentClass, RealtimeRenderComponent, Redo, SetOwnerForRootComponentClass, Undo, WriteProject>
+impl<K, Runtime, Edit, SubscribeEditEvent, GetAvailableComponentClasses, GetLoadedProjects, GetRootComponentClasses, LoadProject, NewProject, NewRootComponentClass, RealtimeRenderComponent, Redo, SetOwnerForRootComponentClass, Undo, WriteProject, AudioPlayer>
+    ViewModelParamsImpl<K, Runtime, Edit, SubscribeEditEvent, GetAvailableComponentClasses, GetLoadedProjects, GetRootComponentClasses, LoadProject, NewProject, NewRootComponentClass, RealtimeRenderComponent, Redo, SetOwnerForRootComponentClass, Undo, WriteProject, AudioPlayer>
 {
     pub fn new(
         runtime: Runtime,
@@ -85,7 +90,8 @@ impl<K, Runtime, Edit, SubscribeEditEvent, GetAvailableComponentClasses, GetLoad
         undo: Arc<Undo>,
         write_project: Arc<WriteProject>,
         key: Arc<RwLock<TCellOwner<K>>>,
-    ) -> ViewModelParamsImpl<K, Runtime, Edit, SubscribeEditEvent, GetAvailableComponentClasses, GetLoadedProjects, GetRootComponentClasses, LoadProject, NewProject, NewRootComponentClass, RealtimeRenderComponent, Redo, SetOwnerForRootComponentClass, Undo, WriteProject> {
+        audio_player: Arc<AudioPlayer>,
+    ) -> ViewModelParamsImpl<K, Runtime, Edit, SubscribeEditEvent, GetAvailableComponentClasses, GetLoadedProjects, GetRootComponentClasses, LoadProject, NewProject, NewRootComponentClass, RealtimeRenderComponent, Redo, SetOwnerForRootComponentClass, Undo, WriteProject, AudioPlayer> {
         ViewModelParamsImpl {
             runtime,
             edit,
@@ -102,12 +108,13 @@ impl<K, Runtime, Edit, SubscribeEditEvent, GetAvailableComponentClasses, GetLoad
             undo,
             write_project,
             key,
+            audio_player,
         }
     }
 }
 
-impl<K, Runtime, Edit, SubscribeEditEvent, GetAvailableComponentClasses, GetLoadedProjects, GetRootComponentClasses, LoadProject, NewProject, NewRootComponentClass, RealtimeRenderComponent, Redo, SetOwnerForRootComponentClass, Undo, WriteProject> Clone
-    for ViewModelParamsImpl<K, Runtime, Edit, SubscribeEditEvent, GetAvailableComponentClasses, GetLoadedProjects, GetRootComponentClasses, LoadProject, NewProject, NewRootComponentClass, RealtimeRenderComponent, Redo, SetOwnerForRootComponentClass, Undo, WriteProject>
+impl<K, Runtime, Edit, SubscribeEditEvent, GetAvailableComponentClasses, GetLoadedProjects, GetRootComponentClasses, LoadProject, NewProject, NewRootComponentClass, RealtimeRenderComponent, Redo, SetOwnerForRootComponentClass, Undo, WriteProject, AudioPlayer> Clone
+    for ViewModelParamsImpl<K, Runtime, Edit, SubscribeEditEvent, GetAvailableComponentClasses, GetLoadedProjects, GetRootComponentClasses, LoadProject, NewProject, NewRootComponentClass, RealtimeRenderComponent, Redo, SetOwnerForRootComponentClass, Undo, WriteProject, AudioPlayer>
 where
     Runtime: Clone,
 {
@@ -128,6 +135,7 @@ where
             undo,
             write_project,
             key,
+            audio_player,
         } = self;
         ViewModelParamsImpl {
             runtime: runtime.clone(),
@@ -145,12 +153,14 @@ where
             undo: Arc::clone(undo),
             write_project: Arc::clone(write_project),
             key: Arc::clone(key),
+            audio_player: Arc::clone(audio_player),
         }
     }
 }
 
-impl<K, T: ParameterValueType, Runtime, Edit, SubscribeEditEvent, GetAvailableComponentClasses, GetLoadedProjects, GetRootComponentClasses, LoadProject, NewProject, NewRootComponentClass, RealtimeRenderComponent, Redo, SetOwnerForRootComponentClass, Undo, WriteProject> ViewModelParams<K, T>
-    for ViewModelParamsImpl<K, Runtime, Edit, SubscribeEditEvent, GetAvailableComponentClasses, GetLoadedProjects, GetRootComponentClasses, LoadProject, NewProject, NewRootComponentClass, RealtimeRenderComponent, Redo, SetOwnerForRootComponentClass, Undo, WriteProject>
+impl<K, T: ParameterValueType, Runtime, Edit, SubscribeEditEvent, GetAvailableComponentClasses, GetLoadedProjects, GetRootComponentClasses, LoadProject, NewProject, NewRootComponentClass, RealtimeRenderComponent, Redo, SetOwnerForRootComponentClass, Undo, WriteProject, AudioPlayer>
+    ViewModelParams<K, T>
+    for ViewModelParamsImpl<K, Runtime, Edit, SubscribeEditEvent, GetAvailableComponentClasses, GetLoadedProjects, GetRootComponentClasses, LoadProject, NewProject, NewRootComponentClass, RealtimeRenderComponent, Redo, SetOwnerForRootComponentClass, Undo, WriteProject, AudioPlayer>
 where
     Runtime: AsyncRuntime<()> + Clone + 'static,
     Edit: EditUsecase<K, T> + 'static,
@@ -167,6 +177,7 @@ where
     SetOwnerForRootComponentClass: SetOwnerForRootComponentClassUsecase<K, T> + 'static,
     Undo: UndoUsecase<K, T> + 'static,
     WriteProject: WriteProjectUsecase<K, T> + 'static,
+    AudioPlayer: AudioTypePlayer<T::Audio> + 'static,
 {
     type AsyncRuntime = Runtime;
     type Edit = Edit;
@@ -182,6 +193,7 @@ where
     type SetOwnerForRootComponentClass = SetOwnerForRootComponentClass;
     type Undo = Undo;
     type WriteProject = WriteProject;
+    type AudioPlayer = AudioPlayer;
     fn runtime(&self) -> &Self::AsyncRuntime {
         &self.runtime
     }
@@ -226,6 +238,9 @@ where
     }
     fn write_project(&self) -> &Arc<WriteProject> {
         &self.write_project
+    }
+    fn audio_player(&self) -> &Arc<AudioPlayer> {
+        &self.audio_player
     }
 }
 

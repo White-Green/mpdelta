@@ -1,5 +1,5 @@
 use crate::thread_cancel::{AutoCancellable, CancellationGuard};
-use crate::{Combiner, CombinerBuilder, ImageSizeRequest, RenderError};
+use crate::{AudioCombinerParam, AudioCombinerRequest, Combiner, CombinerBuilder, ImageCombinerParam, ImageCombinerRequest, ImageSizeRequest, RenderError};
 use cgmath::Vector3;
 use futures::{stream, StreamExt, TryStreamExt};
 use mpdelta_core::component::instance::ComponentInstanceHandle;
@@ -35,8 +35,8 @@ impl<K, T, ImageCombinerBuilder, AudioCombinerBuilder> Renderer<K, T, ImageCombi
 where
     K: 'static,
     T: ParameterValueType,
-    ImageCombinerBuilder: CombinerBuilder<T::Image, Request = ImageSizeRequest, Param = ImageRequiredParamsFixed> + 'static,
-    AudioCombinerBuilder: CombinerBuilder<T::Audio, Request = (), Param = AudioRequiredParamsFixed> + 'static,
+    ImageCombinerBuilder: CombinerBuilder<T::Image, Request = ImageCombinerRequest, Param = ImageCombinerParam> + 'static,
+    AudioCombinerBuilder: CombinerBuilder<T::Audio, Request = AudioCombinerRequest, Param = AudioCombinerParam> + 'static,
 {
     pub(crate) fn new(runtime: Handle, component: ComponentInstanceHandle<K, T>, image_combiner_builder: Arc<ImageCombinerBuilder>, audio_combiner_builder: Arc<AudioCombinerBuilder>) -> Self {
         Renderer {
@@ -100,8 +100,8 @@ where
     Image: Send + Sync + Clone + 'static,
     Audio: Send + Sync + Clone + 'static,
 {
-    type Image = (Image, ImageRequiredParamsFixed);
-    type Audio = (Audio, AudioRequiredParamsFixed);
+    type Image = (Image, ImageCombinerParam);
+    type Audio = (Audio, AudioCombinerParam);
     type Binary = AbstractFile;
     type String = String;
     type Integer = i64;
@@ -163,8 +163,8 @@ where
     K: 'static,
     T: ParameterValueType,
     Key: Deref<Target = TCellOwner<K>> + Send + Sync + 'static,
-    ImageCombinerBuilder: CombinerBuilder<T::Image, Request = ImageSizeRequest, Param = ImageRequiredParamsFixed> + 'static,
-    AudioCombinerBuilder: CombinerBuilder<T::Audio, Request = (), Param = AudioRequiredParamsFixed> + 'static,
+    ImageCombinerBuilder: CombinerBuilder<T::Image, Request = ImageCombinerRequest, Param = ImageCombinerParam> + 'static,
+    AudioCombinerBuilder: CombinerBuilder<T::Audio, Request = AudioCombinerRequest, Param = AudioCombinerParam> + 'static,
 {
     async move {
         let Some(component) = component_handle.upgrade() else {
@@ -310,7 +310,7 @@ where
                 composite_operation: evaluate_parameter::evaluate_time_split_value_at(composite_operation, at, &ctx.key).unwrap()?,
             })
         };
-        let audio_required_params = || {
+        let _audio_required_params = || {
             let AudioRequiredParams { volume } = component.audio_required_params().unwrap();
             let cancellation_guard = CancellationGuard::new();
             let cancellation_token = cancellation_guard.token();
@@ -336,7 +336,7 @@ where
                 }
                 match processor.process(fixed_parameters, &variable_parameters.await?, component.variable_parameters_type(), internal_at, ty.select()).await {
                     Parameter::Image(image) => Ok(Parameter::Image((image, image_required_params()?))),
-                    Parameter::Audio(audio) => Ok(Parameter::Audio((audio, audio_required_params()?))),
+                    Parameter::Audio(audio) => Ok(Parameter::Audio((audio, time_map.clone()))),
                     other => Ok(from_parameter_value_fixed(other)),
                 }
             }
@@ -382,6 +382,9 @@ where
                         Ok(Parameter::Image((image, image_required_params()?)))
                     }
                     ParameterType::Audio(_) => {
+                        let left = component.marker_left().upgrade().unwrap().ro(&ctx.key).cached_timeline_time();
+                        let right = component.marker_right().upgrade().unwrap().ro(&ctx.key).cached_timeline_time();
+                        let length = right - left;
                         let image = stream::iter(components)
                             .map(|component| {
                                 ctx.runtime
@@ -402,7 +405,7 @@ where
                             .map(|join_result| join_result.unwrap_or_else(|err| panic::resume_unwind(err.into_panic())))
                             .filter_map(future::ready)
                             .map(|(result, component)| result.map(|result| (result, component)))
-                            .try_fold(ctx.audio_combiner_builder.new_combiner(()), |mut combiner, (result, component)| {
+                            .try_fold(ctx.audio_combiner_builder.new_combiner(length), |mut combiner, (result, component)| {
                                 let Parameter::Audio((audio, audio_required_params)) = result else {
                                     return future::ready(Err(RenderError::OutputTypeMismatch {
                                         component: component.reference(),
@@ -415,7 +418,7 @@ where
                             })
                             .await?
                             .collect();
-                        Ok(Parameter::Audio((image, audio_required_params()?)))
+                        Ok(Parameter::Audio((image, time_map.clone())))
                     }
                     ParameterType::Binary(_) | ParameterType::String(_) | ParameterType::Integer(_) | ParameterType::RealNumber(_) | ParameterType::Boolean(_) | ParameterType::Dictionary(_) | ParameterType::Array(_) => stream::iter(components.into_iter().rev())
                         .map(|component| {

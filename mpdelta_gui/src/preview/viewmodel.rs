@@ -1,5 +1,6 @@
 use crate::global_ui_state::{GlobalUIEvent, GlobalUIEventHandler, GlobalUIState};
 use crate::viewmodel::ViewModelParams;
+use crate::AudioTypePlayer;
 use arc_swap::ArcSwapOption;
 use mpdelta_async_runtime::{AsyncRuntime, JoinHandle};
 use mpdelta_core::component::class::ComponentClass;
@@ -9,6 +10,7 @@ use mpdelta_core::core::EditEventListener;
 use mpdelta_core::edit::{InstanceEditEvent, RootComponentEditEvent};
 use mpdelta_core::project::RootComponentClassHandle;
 use mpdelta_core::ptr::StaticPointerOwned;
+use mpdelta_core::time::TimelineTime;
 use mpdelta_core::usecase::{RealtimeComponentRenderer, RealtimeRenderComponentUsecase, SubscribeEditEventUsecase};
 use qcell::TCell;
 use std::future;
@@ -23,22 +25,24 @@ pub trait PreviewViewModel<K: 'static, T: ParameterValueType> {
     fn set_seek(&self, seek: usize);
 }
 
-pub struct PreviewViewModelImpl<K: 'static, T: ParameterValueType, GlobalUIState, RealtimeRenderComponent, R, G, Runtime, JoinHandle> {
+pub struct PreviewViewModelImpl<K: 'static, T: ParameterValueType, GlobalUIState, RealtimeRenderComponent, R, AudioPlayer, G, Runtime, JoinHandle> {
     renderer: Arc<RealtimeRenderComponent>,
     real_time_renderer: Arc<ArcSwapOption<(R, ComponentInstanceHandleOwned<K, T>, RootComponentClassHandle<K, T>)>>,
+    audio_player: Arc<AudioPlayer>,
     global_ui_state: Arc<GlobalUIState>,
     create_renderer: Mutex<JoinHandle>,
     handle: Runtime,
     guard: OnceLock<G>,
 }
 
-impl<K, T, S, R, G, Runtime> GlobalUIEventHandler<K, T> for PreviewViewModelImpl<K, T, S, R, R::Renderer, G, Runtime, Runtime::JoinHandle>
+impl<K, T, S, R, A, G, Runtime> GlobalUIEventHandler<K, T> for PreviewViewModelImpl<K, T, S, R, R::Renderer, A, G, Runtime, Runtime::JoinHandle>
 where
     K: Send + Sync + 'static,
     T: ParameterValueType,
     S: GlobalUIState<K, T>,
     R: RealtimeRenderComponentUsecase<K, T> + 'static,
     R::Renderer: 'static,
+    A: AudioTypePlayer<T::Audio> + 'static,
     G: Send + Sync + 'static,
     Runtime: AsyncRuntime<()> + Clone + 'static,
 {
@@ -53,13 +57,14 @@ where
     }
 }
 
-impl<K, T, S, R, G, Runtime> EditEventListener<K, T> for PreviewViewModelImpl<K, T, S, R, R::Renderer, G, Runtime, Runtime::JoinHandle>
+impl<K, T, S, R, A, G, Runtime> EditEventListener<K, T> for PreviewViewModelImpl<K, T, S, R, R::Renderer, A, G, Runtime, Runtime::JoinHandle>
 where
     K: Send + Sync + 'static,
     T: ParameterValueType,
     S: GlobalUIState<K, T>,
     R: RealtimeRenderComponentUsecase<K, T> + 'static,
     R::Renderer: 'static,
+    A: AudioTypePlayer<T::Audio> + 'static,
     G: Send + Sync + 'static,
     Runtime: AsyncRuntime<()> + Clone + 'static,
 {
@@ -82,17 +87,28 @@ where
     }
 }
 
-impl<K: Send + Sync + 'static, T: ParameterValueType> PreviewViewModelImpl<K, T, (), (), (), (), (), ()> {
+impl<K: Send + Sync + 'static, T: ParameterValueType> PreviewViewModelImpl<K, T, (), (), (), (), (), (), ()> {
     pub fn new<S: GlobalUIState<K, T>, P: ViewModelParams<K, T>>(
         global_ui_state: &Arc<S>,
         params: &P,
     ) -> Arc<
-        PreviewViewModelImpl<K, T, S, P::RealtimeRenderComponent, <P::RealtimeRenderComponent as RealtimeRenderComponentUsecase<K, T>>::Renderer, <P::SubscribeEditEvent as SubscribeEditEventUsecase<K, T>>::EditEventListenerGuard, P::AsyncRuntime, <P::AsyncRuntime as AsyncRuntime<()>>::JoinHandle>,
+        PreviewViewModelImpl<
+            K,
+            T,
+            S,
+            P::RealtimeRenderComponent,
+            <P::RealtimeRenderComponent as RealtimeRenderComponentUsecase<K, T>>::Renderer,
+            P::AudioPlayer,
+            <P::SubscribeEditEvent as SubscribeEditEventUsecase<K, T>>::EditEventListenerGuard,
+            P::AsyncRuntime,
+            <P::AsyncRuntime as AsyncRuntime<()>>::JoinHandle,
+        >,
     > {
         let handle = params.runtime().clone();
         let arc = Arc::new(PreviewViewModelImpl {
             renderer: Arc::clone(params.realtime_render_component()),
             real_time_renderer: Arc::new(ArcSwapOption::empty()),
+            audio_player: Arc::clone(params.audio_player()),
             global_ui_state: Arc::clone(global_ui_state),
             create_renderer: Mutex::new(handle.spawn(future::ready(()))),
             handle,
@@ -105,23 +121,24 @@ impl<K: Send + Sync + 'static, T: ParameterValueType> PreviewViewModelImpl<K, T,
     }
 }
 
-impl<K, T, S, R, G, Runtime> PreviewViewModelImpl<K, T, S, R, R::Renderer, G, Runtime, Runtime::JoinHandle>
+impl<K, T, S, R, A, G, Runtime> PreviewViewModelImpl<K, T, S, R, R::Renderer, A, G, Runtime, Runtime::JoinHandle>
 where
     K: Send + Sync + 'static,
     T: ParameterValueType,
     S: GlobalUIState<K, T>,
     R: RealtimeRenderComponentUsecase<K, T> + 'static,
     R::Renderer: 'static,
+    A: AudioTypePlayer<T::Audio> + 'static,
     G: Send + Sync + 'static,
     Runtime: AsyncRuntime<()> + Clone + 'static,
 {
     fn create_real_time_renderer(&self, root_component_class: RootComponentClassHandle<K, T>) {
         let mut create_renderer = self.create_renderer.lock().unwrap();
         create_renderer.abort();
-        *create_renderer = self.handle.spawn(Self::create_real_time_renderer_inner(root_component_class, Arc::clone(&self.renderer), Arc::clone(&self.real_time_renderer)));
+        *create_renderer = self.handle.spawn(Self::create_real_time_renderer_inner(root_component_class, Arc::clone(&self.renderer), Arc::clone(&self.real_time_renderer), Arc::clone(&self.audio_player)));
     }
 
-    async fn create_real_time_renderer_inner(root_component_class: RootComponentClassHandle<K, T>, renderer: Arc<R>, real_time_renderer: Arc<ArcSwapOption<(R::Renderer, ComponentInstanceHandleOwned<K, T>, RootComponentClassHandle<K, T>)>>) {
+    async fn create_real_time_renderer_inner(root_component_class: RootComponentClassHandle<K, T>, renderer: Arc<R>, real_time_renderer: Arc<ArcSwapOption<(R::Renderer, ComponentInstanceHandleOwned<K, T>, RootComponentClassHandle<K, T>)>>, audio_player: Arc<A>) {
         let new_renderer = 'renderer: {
             let Some(class) = root_component_class.upgrade() else {
                 break 'renderer None;
@@ -129,7 +146,17 @@ where
             let class = class.read().await;
             let instance = StaticPointerOwned::new(TCell::new(class.instantiate(&root_component_class.clone().map(|weak| weak as _)).await));
             match renderer.render_component(StaticPointerOwned::reference(&instance)).await {
-                Ok(renderer) => Some(Arc::new((renderer, instance, root_component_class.clone()))),
+                Ok(renderer) => {
+                    let audio = match renderer.mix_audio(0, 0).await {
+                        Ok(audio) => audio,
+                        Err(err) => {
+                            eprintln!("failed to mix audio by {err}");
+                            break 'renderer None;
+                        }
+                    };
+                    audio_player.set_audio(audio);
+                    Some(Arc::new((renderer, instance, root_component_class.clone())))
+                }
                 Err(err) => {
                     eprintln!("failed to create renderer by {err}");
                     None
@@ -140,12 +167,13 @@ where
     }
 }
 
-impl<K, T, S, R, G, Runtime> PreviewViewModel<K, T> for PreviewViewModelImpl<K, T, S, R, R::Renderer, G, Runtime, Runtime::JoinHandle>
+impl<K, T, S, R, A, G, Runtime> PreviewViewModel<K, T> for PreviewViewModelImpl<K, T, S, R, R::Renderer, A, G, Runtime, Runtime::JoinHandle>
 where
     K: 'static,
     T: ParameterValueType,
     S: GlobalUIState<K, T>,
     R: RealtimeRenderComponentUsecase<K, T>,
+    A: AudioTypePlayer<T::Audio>,
     Runtime: AsyncRuntime<()> + Clone,
 {
     fn get_preview_image(&self) -> Option<T::Image> {
@@ -158,10 +186,12 @@ where
 
     fn play(&self) {
         self.global_ui_state.play();
+        self.audio_player.play();
     }
 
     fn pause(&self) {
         self.global_ui_state.pause();
+        self.audio_player.pause();
     }
 
     fn seek(&self) -> usize {
@@ -170,5 +200,6 @@ where
 
     fn set_seek(&self, seek: usize) {
         self.global_ui_state.set_seek(seek);
+        self.audio_player.seek(TimelineTime::new(seek as f64 / 60.).unwrap());
     }
 }

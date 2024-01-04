@@ -1,10 +1,8 @@
 [package]
 name = "mpdelta_audio_mixer"
-version = "0.1.0"
-edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
+version = { workspace = true }
+edition = { workspace = true }
+authors = { workspace = true }
 [dependencies]
 mpdelta_core = { workspace = true }
 mpdelta_core_audio = { workspace = true }

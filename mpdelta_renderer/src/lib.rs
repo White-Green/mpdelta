@@ -5,7 +5,7 @@ use futures::FutureExt;
 use mpdelta_core::component::instance::ComponentInstanceHandle;
 use mpdelta_core::component::link::MarkerLink;
 use mpdelta_core::component::marker_pin::MarkerPinHandle;
-use mpdelta_core::component::parameter::{AudioRequiredParamsFixed, ImageRequiredParamsFixed, Parameter, ParameterSelect, ParameterType, ParameterValueType};
+use mpdelta_core::component::parameter::{ImageRequiredParamsFixed, Parameter, ParameterSelect, ParameterType, ParameterValueType};
 use mpdelta_core::core::{ComponentRendererBuilder, IdGenerator};
 use mpdelta_core::ptr::StaticPointer;
 use mpdelta_core::time::TimelineTime;
@@ -17,16 +17,23 @@ use std::fmt::{Debug, Formatter};
 use std::future::Future;
 use std::hash::{Hash, Hasher};
 use std::ops::Range;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::Duration;
 use thiserror::Error;
 use tokio::runtime::Handle;
 use tokio::sync::mpsc::error::SendError;
 use tokio::sync::mpsc::UnboundedSender;
-use tokio::sync::{oneshot, RwLock};
+use tokio::sync::{oneshot, Mutex, RwLock};
 
 mod render;
 mod thread_cancel;
+
+pub use render::TimeMap;
+
+type ImageCombinerRequest = ImageSizeRequest;
+type ImageCombinerParam = ImageRequiredParamsFixed;
+type AudioCombinerRequest = TimelineTime;
+type AudioCombinerParam = TimeMap;
 
 pub struct MPDeltaRendererBuilder<K: 'static, Id, C, ImageCombinerBuilder, AudioCombinerBuilder> {
     id: Arc<Id>,
@@ -56,8 +63,8 @@ where
     K: Send + Sync + 'static,
     T: ParameterValueType + 'static,
     C: MPDeltaRenderingControllerBuilder + 'static,
-    ImageCombinerBuilder: CombinerBuilder<T::Image, Request = ImageSizeRequest, Param = ImageRequiredParamsFixed> + 'static,
-    AudioCombinerBuilder: CombinerBuilder<T::Audio, Request = (), Param = AudioRequiredParamsFixed> + 'static,
+    ImageCombinerBuilder: CombinerBuilder<T::Image, Request = ImageCombinerRequest, Param = ImageCombinerParam> + 'static,
+    AudioCombinerBuilder: CombinerBuilder<T::Audio, Request = AudioCombinerRequest, Param = AudioCombinerParam> + 'static,
     Id: IdGenerator + 'static,
 {
     type Err = Infallible;
@@ -80,6 +87,7 @@ where
 
 enum RenderingMessage<K: 'static, T: ParameterValueType> {
     RequestRenderFrame { frame: usize, ret: oneshot::Sender<Result<T::Image, RenderError<K, T>>> },
+    RequestConstructAudio { ret: oneshot::Sender<Result<T::Audio, RenderError<K, T>>> },
 }
 
 struct RenderingCache<T> {
@@ -148,8 +156,8 @@ where
     K: 'static + Send + Sync,
     T: ParameterValueType + 'static,
     C: MPDeltaRenderingControllerBuilder,
-    ImageCombinerBuilder: CombinerBuilder<T::Image, Request = ImageSizeRequest, Param = ImageRequiredParamsFixed> + 'static,
-    AudioCombinerBuilder: CombinerBuilder<T::Audio, Request = (), Param = AudioRequiredParamsFixed> + 'static,
+    ImageCombinerBuilder: CombinerBuilder<T::Image, Request = ImageCombinerRequest, Param = ImageCombinerParam> + 'static,
+    AudioCombinerBuilder: CombinerBuilder<T::Audio, Request = AudioCombinerRequest, Param = AudioCombinerParam> + 'static,
 {
     let (sender, mut receiver) = tokio::sync::mpsc::unbounded_channel();
     let (controller_sender, mut controller_receiver) = tokio::sync::mpsc::unbounded_channel();
@@ -181,6 +189,23 @@ where
                                         }),
                                         Err(e) => Err(e),
                                     }), move |result| { let _ = ret.send(result.cloned()); }).await
+                            });
+                        }
+                        RenderingMessage::RequestConstructAudio {ret} => {
+                            let renderer = Arc::clone(&renderer);
+                            let component = component.clone();
+                            let key = Arc::clone(&key);
+                            runtime.spawn(async move {
+                                let result = match renderer.render(0, ParameterType::Audio(()), Arc::new(key.read_owned().await)).await {
+                                    Ok(Parameter::Audio(value)) => Ok(value),
+                                    Ok(value) => Err(RenderError::OutputTypeMismatch{
+                                        component,
+                                        expect: Parameter::Audio(()),
+                                        actual: value.select(),
+                                    }),
+                                    Err(e) => Err(e),
+                                };
+                                let _ = ret.send(result);
                             });
                         }
                     }
@@ -283,8 +308,8 @@ where
     K: Send + Sync,
     T: ParameterValueType + 'static,
     C: MPDeltaRenderingControllerBuilder + 'static,
-    ImageCombinerBuilder: CombinerBuilder<T::Image, Request = ImageSizeRequest, Param = ImageRequiredParamsFixed> + 'static,
-    AudioCombinerBuilder: CombinerBuilder<T::Audio, Request = (), Param = AudioRequiredParamsFixed> + 'static,
+    ImageCombinerBuilder: CombinerBuilder<T::Image, Request = ImageCombinerRequest, Param = ImageCombinerParam> + 'static,
+    AudioCombinerBuilder: CombinerBuilder<T::Audio, Request = AudioCombinerRequest, Param = AudioCombinerParam> + 'static,
 {
     type Err = RenderError<K, T>;
 
@@ -293,9 +318,9 @@ where
     }
 
     fn render_frame(&self, frame: usize) -> Result<T::Image, Self::Err> {
-        let mut loop_sender = self.loop_sender.lock().unwrap();
         self.runtime
             .block_on(async {
+                let mut loop_sender = self.loop_sender.lock().await;
                 tokio::time::timeout(Duration::from_millis(16), async {
                     loop {
                         let (sender, receiver) = oneshot::channel();
@@ -330,8 +355,31 @@ where
         48_000
     }
 
-    fn mix_audio(&self, _offset: usize, _length: usize) -> Result<T::Audio, Self::Err> {
-        todo!()
+    async fn mix_audio(&self, _offset: usize, _length: usize) -> Result<T::Audio, Self::Err> {
+        let mut loop_sender = self.loop_sender.lock().await;
+        loop {
+            let (sender, receiver) = oneshot::channel();
+            let mut message = Some(RenderingMessage::RequestConstructAudio { ret: sender });
+            loop {
+                match loop_sender.send(message.take().unwrap()) {
+                    Ok(()) => break,
+                    Err(SendError(failed_message)) => {
+                        message = Some(failed_message);
+                        let (new_loop_sender, fut) = rendering_loop(Arc::clone(&self.key), self.component.clone(), &*self.controller_builder, Arc::clone(&self.image_combiner_builder), Arc::clone(&self.audio_combiner_builder), self.runtime.clone());
+                        self.runtime.spawn(fut);
+                        *loop_sender = new_loop_sender;
+                    }
+                };
+            }
+            match receiver.await {
+                Ok(Ok(result)) => break Ok(result),
+                Ok(Err(result)) => {
+                    eprintln!("{}", result);
+                    break Err(result);
+                }
+                Err(_) => {}
+            }
+        }
     }
 
     fn render_param(&self, _param: Parameter<ParameterSelect>) -> Result<Parameter<T>, Self::Err> {

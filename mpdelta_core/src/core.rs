@@ -85,7 +85,7 @@ pub trait IdGenerator: Send + Sync {
 
 #[async_trait]
 pub trait ProjectLoader<K, T: ParameterValueType>: Send + Sync {
-    type Err: Error + 'static;
+    type Err: Error + Send + 'static;
     async fn load_project(&self, path: &Path) -> Result<ProjectHandleOwned<K, T>, Self::Err>;
 }
 
@@ -129,7 +129,7 @@ where
 
 #[async_trait]
 pub trait ProjectWriter<K, T: ParameterValueType>: Send + Sync {
-    type Err: Error + 'static;
+    type Err: Error + Send + 'static;
     async fn write_project(&self, project: &ProjectHandle<K, T>, path: &Path) -> Result<(), Self::Err>;
 }
 
@@ -235,7 +235,7 @@ where
 
 #[async_trait]
 pub trait ComponentRendererBuilder<K, T: ParameterValueType>: Send + Sync {
-    type Err: Error + 'static;
+    type Err: Error + Send + 'static;
     type Renderer: RealtimeComponentRenderer<T> + Send + Sync + 'static;
     async fn create_renderer(&self, component: &ComponentInstanceHandle<K, T>) -> Result<Self::Renderer, Self::Err>;
 }
@@ -276,7 +276,7 @@ where
 #[async_trait]
 pub trait Editor<K, T: ParameterValueType>: Send + Sync {
     type Log: Send + Sync;
-    type Err: Error + 'static;
+    type Err: Error + Send + 'static;
     type EditEventListenerGuard: Send + Sync + 'static;
     fn add_edit_event_listener(&self, listener: impl EditEventListener<K, T> + 'static) -> Self::EditEventListenerGuard;
     async fn edit(&self, target: &RootComponentClassHandle<K, T>, command: RootComponentEditCommand<K, T>) -> Result<Self::Log, Self::Err>;
@@ -383,6 +383,8 @@ where
 mod tests {
     use super::*;
     use crate::component::parameter::{Parameter, ParameterSelect};
+    use std::future;
+
     use std::path::PathBuf;
     use std::sync::atomic;
     use std::sync::atomic::{AtomicU64, AtomicUsize};
@@ -471,9 +473,9 @@ mod tests {
         assert_eq!(*core.project_loader.0.read().await, 2);
         let memory = core.project_memory.memory.read().await;
         assert_eq!(memory.len(), 2);
-        assert_eq!(memory[0].0.as_deref(), Some("1").map(AsRef::as_ref));
+        assert_eq!(memory[0].0.as_deref(), Some(AsRef::as_ref("1")));
         assert_eq!(*memory[0].1.read().await, *Project::new_empty(Uuid::from_u128(0)).read().await);
-        assert_eq!(memory[1].0.as_deref(), Some("3").map(AsRef::as_ref));
+        assert_eq!(memory[1].0.as_deref(), Some(AsRef::as_ref("3")));
         assert_eq!(*memory[1].1.read().await, *Project::new_empty(Uuid::from_u128(1)).read().await);
 
         #[derive(Default)]
@@ -883,7 +885,7 @@ mod tests {
                 unreachable!()
             }
 
-            fn mix_audio(&self, _: usize, _: usize) -> Result<(), Self::Err> {
+            fn mix_audio(&self, _: usize, _: usize) -> future::Ready<Result<(), Self::Err>> {
                 unreachable!()
             }
 

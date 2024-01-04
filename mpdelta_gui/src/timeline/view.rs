@@ -1,4 +1,4 @@
-use crate::timeline::viewmodel::{ComponentInstanceData, ComponentInstanceDataList, ComponentLinkData, ComponentLinkDataList, TimelineViewModel};
+use crate::timeline::viewmodel::{ComponentClassData, ComponentClassDataList, ComponentInstanceData, ComponentInstanceDataList, ComponentLinkData, ComponentLinkDataList, TimelineViewModel};
 use egui::epaint::Shadow;
 use egui::{Color32, Frame, Margin, Pos2, Rect, Sense, Stroke, Style, TextEdit, Ui, Vec2};
 use mpdelta_core::component::parameter::ParameterValueType;
@@ -89,10 +89,14 @@ impl<K: 'static, T: ParameterValueType, VM: TimelineViewModel<K, T>> Timeline<K,
             });
         });
         response.context_menu(|ui| {
-            if ui.button("add").clicked() {
-                self.view_model.add_component_instance();
-                ui.close_menu();
-            }
+            self.view_model.component_classes(|ComponentClassDataList { list }| {
+                for ComponentClassData { handle } in list {
+                    if ui.button("add").clicked() {
+                        self.view_model.add_component_instance(handle.clone());
+                        ui.close_menu();
+                    }
+                }
+            });
         });
     }
 }

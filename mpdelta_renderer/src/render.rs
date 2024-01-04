@@ -1,9 +1,9 @@
 use crate::thread_cancel::{AutoCancellable, CancellationGuard};
-use crate::{Combiner, CombinerBuilder, ImageSizeRequest, RenderError};
+use crate::{AudioCombinerParam, AudioCombinerRequest, Combiner, CombinerBuilder, ImageCombinerParam, ImageCombinerRequest, ImageSizeRequest, RenderError};
 use cgmath::Vector3;
 use futures::{stream, StreamExt, TryStreamExt};
 use mpdelta_core::component::instance::ComponentInstanceHandle;
-use mpdelta_core::component::marker_pin::{MarkerPinHandle, MarkerPinHandleOwned};
+use mpdelta_core::component::marker_pin::{MarkerPinHandle, MarkerPinHandleOwned, MarkerTime};
 use mpdelta_core::component::parameter::AudioRequiredParams;
 use mpdelta_core::component::parameter::{AbstractFile, AudioRequiredParamsFixed, ImageRequiredParams, ImageRequiredParamsFixed, ImageRequiredParamsTransform, ImageRequiredParamsTransformFixed, Opacity, Parameter, ParameterType, ParameterValueFixed, ParameterValueType, VariableParameterValue};
 use mpdelta_core::component::processor::{ComponentProcessorWrapper, ComponentsLinksPair};
@@ -35,8 +35,8 @@ impl<K, T, ImageCombinerBuilder, AudioCombinerBuilder> Renderer<K, T, ImageCombi
 where
     K: 'static,
     T: ParameterValueType,
-    ImageCombinerBuilder: CombinerBuilder<T::Image, Request = ImageSizeRequest, Param = ImageRequiredParamsFixed> + 'static,
-    AudioCombinerBuilder: CombinerBuilder<T::Audio, Request = (), Param = AudioRequiredParamsFixed> + 'static,
+    ImageCombinerBuilder: CombinerBuilder<T::Image, Request = ImageCombinerRequest, Param = ImageCombinerParam> + 'static,
+    AudioCombinerBuilder: CombinerBuilder<T::Audio, Request = AudioCombinerRequest, Param = AudioCombinerParam> + 'static,
 {
     pub(crate) fn new(runtime: Handle, component: ComponentInstanceHandle<K, T>, image_combiner_builder: Arc<ImageCombinerBuilder>, audio_combiner_builder: Arc<AudioCombinerBuilder>) -> Self {
         Renderer {
@@ -100,8 +100,8 @@ where
     Image: Send + Sync + Clone + 'static,
     Audio: Send + Sync + Clone + 'static,
 {
-    type Image = (Image, ImageRequiredParamsFixed);
-    type Audio = (Audio, AudioRequiredParamsFixed);
+    type Image = (Image, ImageCombinerParam);
+    type Audio = (Audio, AudioCombinerParam);
     type Binary = AbstractFile;
     type String = String;
     type Integer = i64;
@@ -163,8 +163,8 @@ where
     K: 'static,
     T: ParameterValueType,
     Key: Deref<Target = TCellOwner<K>> + Send + Sync + 'static,
-    ImageCombinerBuilder: CombinerBuilder<T::Image, Request = ImageSizeRequest, Param = ImageRequiredParamsFixed> + 'static,
-    AudioCombinerBuilder: CombinerBuilder<T::Audio, Request = (), Param = AudioRequiredParamsFixed> + 'static,
+    ImageCombinerBuilder: CombinerBuilder<T::Image, Request = ImageCombinerRequest, Param = ImageCombinerParam> + 'static,
+    AudioCombinerBuilder: CombinerBuilder<T::Audio, Request = AudioCombinerRequest, Param = AudioCombinerParam> + 'static,
 {
     async move {
         let Some(component) = component_handle.upgrade() else {
@@ -310,7 +310,7 @@ where
                 composite_operation: evaluate_parameter::evaluate_time_split_value_at(composite_operation, at, &ctx.key).unwrap()?,
             })
         };
-        let audio_required_params = || {
+        let _audio_required_params = || {
             let AudioRequiredParams { volume } = component.audio_required_params().unwrap();
             let cancellation_guard = CancellationGuard::new();
             let cancellation_token = cancellation_guard.token();
@@ -321,10 +321,13 @@ where
                     .collect::<Result<Vec<_>, _>>()?,
             })
         };
-        let internal_at = match time_map::<K, T>(component.marker_left(), component.markers(), component.marker_right(), &ctx.key, at) {
-            Ok(internal_at) => internal_at,
-            Err(RenderError::RenderTargetTimeOutOfRange { range, at, .. }) => return Err(RenderError::RenderTargetTimeOutOfRange { component: component_handle.clone(), range, at }),
-            Err(err) => return Err(err),
+        let time_map = TimeMap::new(component.marker_left(), component.markers(), component.marker_right(), &ctx.key)?;
+        let Some(internal_at) = time_map.map(at) else {
+            return Err(RenderError::RenderTargetTimeOutOfRange {
+                component: component_handle.clone(),
+                range: time_map.left()..time_map.right(),
+                at,
+            });
         };
         match component.processor() {
             ComponentProcessorWrapper::Native(processor) => {
@@ -333,7 +336,7 @@ where
                 }
                 match processor.process(fixed_parameters, &variable_parameters.await?, component.variable_parameters_type(), internal_at, ty.select()).await {
                     Parameter::Image(image) => Ok(Parameter::Image((image, image_required_params()?))),
-                    Parameter::Audio(audio) => Ok(Parameter::Audio((audio, audio_required_params()?))),
+                    Parameter::Audio(audio) => Ok(Parameter::Audio((audio, time_map.clone()))),
                     other => Ok(from_parameter_value_fixed(other)),
                 }
             }
@@ -379,6 +382,9 @@ where
                         Ok(Parameter::Image((image, image_required_params()?)))
                     }
                     ParameterType::Audio(_) => {
+                        let left = component.marker_left().upgrade().unwrap().ro(&ctx.key).cached_timeline_time();
+                        let right = component.marker_right().upgrade().unwrap().ro(&ctx.key).cached_timeline_time();
+                        let length = right - left;
                         let image = stream::iter(components)
                             .map(|component| {
                                 ctx.runtime
@@ -399,7 +405,7 @@ where
                             .map(|join_result| join_result.unwrap_or_else(|err| panic::resume_unwind(err.into_panic())))
                             .filter_map(future::ready)
                             .map(|(result, component)| result.map(|result| (result, component)))
-                            .try_fold(ctx.audio_combiner_builder.new_combiner(()), |mut combiner, (result, component)| {
+                            .try_fold(ctx.audio_combiner_builder.new_combiner(length), |mut combiner, (result, component)| {
                                 let Parameter::Audio((audio, audio_required_params)) = result else {
                                     return future::ready(Err(RenderError::OutputTypeMismatch {
                                         component: component.reference(),
@@ -412,7 +418,7 @@ where
                             })
                             .await?
                             .collect();
-                        Ok(Parameter::Audio((image, audio_required_params()?)))
+                        Ok(Parameter::Audio((image, time_map.clone())))
                     }
                     ParameterType::Binary(_) | ParameterType::String(_) | ParameterType::Integer(_) | ParameterType::RealNumber(_) | ParameterType::Boolean(_) | ParameterType::Dictionary(_) | ParameterType::Array(_) => stream::iter(components.into_iter().rev())
                         .map(|component| {
@@ -447,50 +453,63 @@ where
     }
 }
 
-fn time_map<K, T: ParameterValueType>(left: &MarkerPinHandle<K>, markers: &[MarkerPinHandleOwned<K>], right: &MarkerPinHandle<K>, key: &TCellOwner<K>, at: TimelineTime) -> Result<TimelineTime, RenderError<K, T>> {
-    let left_ref = left.upgrade().ok_or_else(|| RenderError::InvalidMarker(left.clone()))?;
-    let right_ref = right.upgrade().ok_or_else(|| RenderError::InvalidMarker(right.clone()))?;
-    if at < left_ref.ro(key).cached_timeline_time() || right_ref.ro(key).cached_timeline_time() < at {
-        return Err(RenderError::RenderTargetTimeOutOfRange {
-            component: Default::default(),
-            range: left_ref.ro(key).cached_timeline_time()..right_ref.ro(key).cached_timeline_time(),
-            at,
-        });
+#[derive(Debug, Clone)]
+pub struct TimeMap {
+    left: TimelineTime,
+    right: TimelineTime,
+    markers: Vec<(TimelineTime, MarkerTime)>,
+}
+
+impl TimeMap {
+    fn new<K, T: ParameterValueType>(left: &MarkerPinHandle<K>, markers: &[MarkerPinHandleOwned<K>], right: &MarkerPinHandle<K>, key: &TCellOwner<K>) -> Result<TimeMap, RenderError<K, T>> {
+        let markers = iter::once(left)
+            .chain(markers.iter().map(StaticPointerOwned::reference))
+            .chain(iter::once(right))
+            .filter_map(|marker| {
+                let Some(marker) = marker.upgrade() else {
+                    return Some(Err(RenderError::InvalidMarker(marker.clone())));
+                };
+                let marker = marker.ro(key);
+                Some(Ok((marker.cached_timeline_time(), marker.locked_component_time()?)))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let left_ref = left.upgrade().ok_or_else(|| RenderError::InvalidMarker(left.clone()))?;
+        let right_ref = right.upgrade().ok_or_else(|| RenderError::InvalidMarker(right.clone()))?;
+        let left = left_ref.ro(key).cached_timeline_time();
+        let right = right_ref.ro(key).cached_timeline_time();
+        Ok(TimeMap { left, right, markers })
     }
-    let markers = iter::once(left)
-        .chain(markers.iter().map(StaticPointerOwned::reference))
-        .chain(iter::once(right))
-        .map(|marker| marker.upgrade().ok_or_else(|| RenderError::InvalidMarker(marker.clone())))
-        .filter(|marker| match marker {
-            Ok(marker) => marker.ro(key).locked_component_time().is_some(),
-            Err(_) => true,
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-    match markers.as_slice() {
-        [] => Ok(at - left_ref.ro(key).cached_timeline_time()),
-        [marker] => {
-            let marker = marker.ro(key);
-            Ok(at - marker.cached_timeline_time() + marker.locked_component_time().unwrap().into())
+
+    pub fn left(&self) -> TimelineTime {
+        self.left
+    }
+
+    pub fn right(&self) -> TimelineTime {
+        self.right
+    }
+
+    pub fn map(&self, at: TimelineTime) -> Option<TimelineTime> {
+        let TimeMap { left, right, ref markers } = *self;
+        if at < left || right < at {
+            return None;
         }
-        [marker1, marker2] => {
-            let marker1 = marker1.ro(key);
-            let marker2 = marker2.ro(key);
-            let time1 = marker1.cached_timeline_time();
-            let time2 = marker2.cached_timeline_time();
-            let p = (at - time1) / (time2 - time1);
-            let time = marker1.locked_component_time().unwrap().value() + (marker2.locked_component_time().unwrap().value() - marker1.locked_component_time().unwrap().value()) * p;
-            Ok(TimelineTime::new(time).unwrap())
-        }
-        markers => {
-            let i = markers.binary_search_by_key(&at, |marker| marker.ro(key).cached_timeline_time()).unwrap_or_else(|x| x);
-            let [marker1, marker2] = &markers[i.saturating_sub(1).min(markers.len() - 2)..][..2] else { unreachable!() };
-            let marker1 = marker1.ro(key);
-            let marker2 = marker2.ro(key);
-            let time1 = marker1.cached_timeline_time();
-            let time2 = marker2.cached_timeline_time();
-            let p = (at - time1) / (time2 - time1);
-            let time = marker1.locked_component_time().unwrap().value() + (marker2.locked_component_time().unwrap().value() - marker1.locked_component_time().unwrap().value()) * p;
-            Ok(TimelineTime::new(time).unwrap())
+        match *markers.as_slice() {
+            [] => Some(at - left),
+            [(timeline_time, component_time)] => Some(at - timeline_time + component_time.into()),
+            [(timeline_time1, component_time1), (timeline_time2, component_time2)] => {
+                let p = (at - timeline_time1) / (timeline_time2 - timeline_time1);
+                let time = component_time1.value() + (component_time2.value() - component_time1.value()) * p;
+                Some(TimelineTime::new(time).unwrap())
+            }
+            ref markers => {
+                let i = markers.binary_search_by_key(&at, |&(time, _)| time).unwrap_or_else(|x| x);
+                let [(timeline_time1, component_time1), (timeline_time2, component_time2)] = markers[i.saturating_sub(1).min(markers.len() - 2)..][..2] else {
+                    unreachable!()
+                };
+                let p = (at - timeline_time1) / (timeline_time2 - timeline_time1);
+                let time = component_time1.value() + (component_time2.value() - component_time1.value()) * p;
+                Some(TimelineTime::new(time).unwrap())
+            }
         }
     }
 }
@@ -521,10 +540,10 @@ mod tests {
     fn test_time_map() {
         struct K;
         let key = TCellOwner::new();
-        fn time_map_for_test(markers: &[MarkerPinHandleOwned<K>], key: &TCellOwner<K>, at: TimelineTime) -> Result<TimelineTime, RenderError<K, TestParameterValueType>> {
+        fn time_map_for_test(markers: &[MarkerPinHandleOwned<K>], key: &TCellOwner<K>, at: TimelineTime) -> Option<TimelineTime> {
             assert!(markers.len() >= 2);
             let [left, markers @ .., right] = markers else { unreachable!() };
-            time_map(StaticPointerOwned::reference(left), markers, StaticPointerOwned::reference(right), key, at)
+            TimeMap::new::<K, TestParameterValueType>(StaticPointerOwned::reference(left), markers, StaticPointerOwned::reference(right), key).ok()?.map(at)
         }
         macro_rules! marker {
             ($t:expr$(,)?) => {
@@ -535,28 +554,28 @@ mod tests {
             };
         }
         let markers = [marker!(3.), marker!(4.), marker!(5.), marker!(6.)];
-        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(3.0).unwrap()), Ok(v) if (v.value() - 0.0).abs() < f64::EPSILON);
-        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(3.5).unwrap()), Ok(v) if (v.value() - 0.5).abs() < f64::EPSILON);
-        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(5.0).unwrap()), Ok(v) if (v.value() - 2.0).abs() < f64::EPSILON);
+        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(3.0).unwrap()), Some(v) if (v.value() - 0.0).abs() < f64::EPSILON);
+        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(3.5).unwrap()), Some(v) if (v.value() - 0.5).abs() < f64::EPSILON);
+        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(5.0).unwrap()), Some(v) if (v.value() - 2.0).abs() < f64::EPSILON);
         let markers = [marker!(3.), marker!(4.), marker!(5., 10.), marker!(6.)];
-        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(3.0).unwrap()), Ok(v) if (v.value() - 8.0).abs() < f64::EPSILON);
-        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(3.5).unwrap()), Ok(v) if (v.value() - 8.5).abs() < f64::EPSILON);
-        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(5.0).unwrap()), Ok(v) if (v.value() - 10.0).abs() < f64::EPSILON);
-        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(5.5).unwrap()), Ok(v) if (v.value() - 10.5).abs() < f64::EPSILON);
+        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(3.0).unwrap()), Some(v) if (v.value() - 8.0).abs() < f64::EPSILON);
+        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(3.5).unwrap()), Some(v) if (v.value() - 8.5).abs() < f64::EPSILON);
+        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(5.0).unwrap()), Some(v) if (v.value() - 10.0).abs() < f64::EPSILON);
+        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(5.5).unwrap()), Some(v) if (v.value() - 10.5).abs() < f64::EPSILON);
         let markers = [marker!(3.), marker!(4., 8.), marker!(5., 10.), marker!(6.)];
-        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(3.0).unwrap()), Ok(v) if (v.value() - 6.0).abs() < f64::EPSILON);
-        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(3.5).unwrap()), Ok(v) if (v.value() - 7.0).abs() < f64::EPSILON);
-        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(4.5).unwrap()), Ok(v) if (v.value() - 9.0).abs() < f64::EPSILON);
-        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(5.0).unwrap()), Ok(v) if (v.value() - 10.0).abs() < f64::EPSILON);
-        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(5.5).unwrap()), Ok(v) if (v.value() - 11.0).abs() < f64::EPSILON);
+        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(3.0).unwrap()), Some(v) if (v.value() - 6.0).abs() < f64::EPSILON);
+        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(3.5).unwrap()), Some(v) if (v.value() - 7.0).abs() < f64::EPSILON);
+        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(4.5).unwrap()), Some(v) if (v.value() - 9.0).abs() < f64::EPSILON);
+        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(5.0).unwrap()), Some(v) if (v.value() - 10.0).abs() < f64::EPSILON);
+        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(5.5).unwrap()), Some(v) if (v.value() - 11.0).abs() < f64::EPSILON);
         let markers = [marker!(3.), marker!(4., 8.), marker!(5., 10.), marker!(6.), marker!(7., 13.), marker!(8.), marker!(10., 10.)];
-        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(3.0).unwrap()), Ok(v) if (v.value() - 6.0).abs() < f64::EPSILON);
-        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(3.5).unwrap()), Ok(v) if (v.value() - 7.0).abs() < f64::EPSILON);
-        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(4.5).unwrap()), Ok(v) if (v.value() - 9.0).abs() < f64::EPSILON);
-        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(5.0).unwrap()), Ok(v) if (v.value() - 10.0).abs() < f64::EPSILON);
-        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(6.0).unwrap()), Ok(v) if (v.value() - 11.5).abs() < f64::EPSILON);
-        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(7.0).unwrap()), Ok(v) if (v.value() - 13.0).abs() < f64::EPSILON);
-        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(8.0).unwrap()), Ok(v) if (v.value() - 12.0).abs() < f64::EPSILON);
-        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(10.0).unwrap()), Ok(v) if (v.value() - 10.0).abs() < f64::EPSILON);
+        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(3.0).unwrap()), Some(v) if (v.value() - 6.0).abs() < f64::EPSILON);
+        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(3.5).unwrap()), Some(v) if (v.value() - 7.0).abs() < f64::EPSILON);
+        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(4.5).unwrap()), Some(v) if (v.value() - 9.0).abs() < f64::EPSILON);
+        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(5.0).unwrap()), Some(v) if (v.value() - 10.0).abs() < f64::EPSILON);
+        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(6.0).unwrap()), Some(v) if (v.value() - 11.5).abs() < f64::EPSILON);
+        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(7.0).unwrap()), Some(v) if (v.value() - 13.0).abs() < f64::EPSILON);
+        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(8.0).unwrap()), Some(v) if (v.value() - 12.0).abs() < f64::EPSILON);
+        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(10.0).unwrap()), Some(v) if (v.value() - 10.0).abs() < f64::EPSILON);
     }
 }

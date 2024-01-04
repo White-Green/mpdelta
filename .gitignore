@@ -6,14 +6,17 @@
 !/Cargo.lock
 !/Cargo.toml
 !/rustfmt.toml
+!/mpdelta_audio_mixer
 !/mpdelta_build_utils
 !/mpdelta_common
 !/mpdelta_components
 !/mpdelta_core
+!/mpdelta_core_audio
 !/mpdelta_core_vulkano
 !/mpdelta_differential
 !/mpdelta_dyn_usecase
 !/mpdelta_gui
+!/mpdelta_gui_audio_player_cpal
 !/mpdelta_gui_hot_reload
 !/mpdelta_gui_vulkano
 !/mpdelta_services

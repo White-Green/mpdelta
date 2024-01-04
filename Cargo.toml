@@ -11,7 +11,7 @@ members = [
     ".",
     "mpdelta_audio_mixer",
     "mpdelta_build_utils/rust_gpu_builder",
-    #    "mpdelta_build_utils/shader_builder",
+    "mpdelta_build_utils/shader_builder",
     "mpdelta_common/mpdelta_async_runtime",
     "mpdelta_common/mpdelta_dsp",
     "mpdelta_components",

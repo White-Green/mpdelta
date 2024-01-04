@@ -47,6 +47,7 @@ impl ShaderBuilder {
                 .args(["run", "--release"])
                 .arg("--target-dir")
                 .arg(workspace_dir.join("target_for_shaders"))
+                .args(["--features", "spirv-builder"])
                 .arg("--")
                 .arg("--base")
                 .arg(&base)

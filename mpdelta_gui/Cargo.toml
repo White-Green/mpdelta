@@ -5,9 +5,7 @@ edition = { workspace = true }
 authors = { workspace = true }
 [dependencies]
 arc-swap = { workspace = true }
-bitflags = { workspace = true }
 cgmath = { workspace = true }
-dashmap = { workspace = true }
 egui = { workspace = true }
 futures = { workspace = true }
 mpdelta_async_runtime = { workspace = true }

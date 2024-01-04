@@ -4,8 +4,6 @@ version = { workspace = true }
 edition = { workspace = true }
 authors = { workspace = true }
 [dependencies]
-arc-swap = { workspace = true }
-arrayvec = { workspace = true }
 async-trait = { workspace = true }
 cgmath = { workspace = true }
 dashmap = { workspace = true }

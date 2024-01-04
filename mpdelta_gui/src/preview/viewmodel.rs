@@ -135,10 +135,16 @@ where
     fn create_real_time_renderer(&self, root_component_class: RootComponentClassHandle<K, T>) {
         let mut create_renderer = self.create_renderer.lock().unwrap();
         create_renderer.abort();
-        *create_renderer = self.handle.spawn(Self::create_real_time_renderer_inner(root_component_class, Arc::clone(&self.renderer), Arc::clone(&self.real_time_renderer), Arc::clone(&self.audio_player)));
+        *create_renderer = self.handle.spawn(Self::create_real_time_renderer_inner(
+            root_component_class,
+            Arc::clone(&self.renderer),
+            Arc::clone(&self.real_time_renderer),
+            Arc::clone(&self.audio_player),
+            TimelineTime::new(self.global_ui_state.seek() as f64 / 60.).unwrap(),
+        ));
     }
 
-    async fn create_real_time_renderer_inner(root_component_class: RootComponentClassHandle<K, T>, renderer: Arc<R>, real_time_renderer: Arc<ArcSwapOption<(R::Renderer, ComponentInstanceHandleOwned<K, T>, RootComponentClassHandle<K, T>)>>, audio_player: Arc<A>) {
+    async fn create_real_time_renderer_inner(root_component_class: RootComponentClassHandle<K, T>, renderer: Arc<R>, real_time_renderer: Arc<ArcSwapOption<(R::Renderer, ComponentInstanceHandleOwned<K, T>, RootComponentClassHandle<K, T>)>>, audio_player: Arc<A>, current_time: TimelineTime) {
         let new_renderer = 'renderer: {
             let Some(class) = root_component_class.upgrade() else {
                 break 'renderer None;
@@ -155,6 +161,7 @@ where
                         }
                     };
                     audio_player.set_audio(audio);
+                    audio_player.seek(current_time);
                     Some(Arc::new((renderer, instance, root_component_class.clone())))
                 }
                 Err(err) => {
@@ -192,6 +199,7 @@ where
     fn pause(&self) {
         self.global_ui_state.pause();
         self.audio_player.pause();
+        self.audio_player.seek(TimelineTime::new(self.global_ui_state.seek() as f64 / 60.).unwrap());
     }
 
     fn seek(&self) -> usize {

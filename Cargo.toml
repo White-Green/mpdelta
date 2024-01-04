@@ -66,7 +66,7 @@ async-trait = "0.1.77"
 bytemuck = "1.14.0"
 bytemuck_derive = "1.5.0"
 cgmath = "0.18.0"
-clap = { version = "3.2.16", features = ["derive"] }
+clap = { version = "4.4.12", features = ["derive"] }
 cpal = "0.15.2"
 crossbeam-queue = "0.3.10"
 dashmap = "5.5.3"

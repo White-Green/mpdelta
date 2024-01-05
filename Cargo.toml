@@ -70,8 +70,8 @@ clap = { version = "4.4.12", features = ["derive"] }
 cpal = "0.15.2"
 crossbeam-queue = "0.3.10"
 dashmap = "5.5.3"
-egui = "0.21.0"
-egui_winit_vulkano = "0.24.0"
+egui = "0.24.1"
+egui_winit_vulkano = "0.27.0"
 either = "1.9.0"
 futures = "0.3.30"
 glam = { version = "0.24", default-features = false, features = ["libm"] }
@@ -100,16 +100,17 @@ qcell = "0.5.4"
 rayon = "1.8.0"
 regex = "1.10.2"
 shader_builder = { path = "mpdelta_build_utils/shader_builder" }
+smallvec = "1.8"
 spirv-builder = "0.9.0"
 spirv-std = "0.9.0"
 thiserror = "1.0.56"
 time = { version = "0.3.31", features = ["std"] }
 tokio = { version = "1.35.1", features = ["fs", "macros", "sync", "time"] }
 uuid = "1.6.1"
-vulkano = "0.33.0"
-vulkano-util = "0.33.0"
-vulkano-win = "0.33.0"
-winit = "0.28.3"
+vulkano = "0.34.1"
+vulkano-util = "0.34.1"
+vulkano-win = "0.34.0"
+winit = "0.28.7"
 
 [dependencies]
 async-trait = { workspace = true }

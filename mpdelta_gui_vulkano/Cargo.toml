@@ -3,6 +3,7 @@ name = "mpdelta_gui_vulkano"
 version = { workspace = true }
 edition = { workspace = true }
 authors = { workspace = true }
+
 [dependencies]
 egui = { workspace = true }
 egui_winit_vulkano = { workspace = true }

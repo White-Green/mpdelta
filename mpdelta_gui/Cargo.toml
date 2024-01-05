@@ -3,6 +3,7 @@ name = "mpdelta_gui"
 version = { workspace = true }
 edition = { workspace = true }
 authors = { workspace = true }
+
 [dependencies]
 arc-swap = { workspace = true }
 cgmath = { workspace = true }

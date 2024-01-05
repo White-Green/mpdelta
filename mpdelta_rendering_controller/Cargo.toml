@@ -3,6 +3,7 @@ name = "mpdelta_rendering_controller"
 version = { workspace = true }
 edition = { workspace = true }
 authors = { workspace = true }
+
 [dependencies]
 lru = { workspace = true }
 mpdelta_core = { workspace = true }

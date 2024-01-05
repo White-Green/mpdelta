@@ -3,6 +3,7 @@ name = "mpdelta_dyn_usecase"
 version = { workspace = true }
 edition = { workspace = true }
 authors = { workspace = true }
+
 [dependencies]
 async-trait = { workspace = true }
 futures = { workspace = true }

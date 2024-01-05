@@ -3,6 +3,7 @@ name = "mpdelta_gui_hot_reload_lib"
 version = { workspace = true }
 edition = { workspace = true }
 authors = { workspace = true }
+
 [lib]
 crate-type = ["rlib", "dylib"]
 

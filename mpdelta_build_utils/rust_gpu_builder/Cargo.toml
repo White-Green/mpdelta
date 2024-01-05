@@ -3,6 +3,7 @@ name = "rust_gpu_builder"
 version = { workspace = true }
 edition = { workspace = true }
 authors = { workspace = true }
+
 [dependencies]
 clap = { workspace = true }
 spirv-builder = { workspace = true, optional = true }

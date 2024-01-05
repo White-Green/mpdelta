@@ -3,6 +3,7 @@ name = "mpdelta_gui_audio_player_cpal"
 version = { workspace = true }
 edition = { workspace = true }
 authors = { workspace = true }
+
 [dependencies]
 cpal = { workspace = true }
 crossbeam-queue = { workspace = true }

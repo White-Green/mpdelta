@@ -3,6 +3,7 @@ name = "mpdelta_audio_mixer"
 version = { workspace = true }
 edition = { workspace = true }
 authors = { workspace = true }
+
 [dependencies]
 mpdelta_core = { workspace = true }
 mpdelta_core_audio = { workspace = true }

@@ -3,6 +3,7 @@ name = "mpdelta_differential"
 version = { workspace = true }
 edition = { workspace = true }
 authors = { workspace = true }
+
 [dependencies]
 mpdelta_core = { workspace = true }
 qcell = { workspace = true }

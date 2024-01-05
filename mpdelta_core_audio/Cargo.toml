@@ -3,5 +3,6 @@ name = "mpdelta_core_audio"
 version = { workspace = true }
 edition = { workspace = true }
 authors = { workspace = true }
+
 [dependencies]
 mpdelta_core = { workspace = true }

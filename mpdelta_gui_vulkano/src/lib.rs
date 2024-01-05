@@ -6,6 +6,7 @@ use mpdelta_gui::ImageRegister;
 use std::sync::Arc;
 use vulkano::device::DeviceExtensions;
 use vulkano::format::Format;
+use vulkano::image::sampler::SamplerCreateInfo;
 use vulkano::image::view::ImageView;
 use vulkano::instance::InstanceExtensions;
 use vulkano_util::context::VulkanoContext;
@@ -18,7 +19,7 @@ struct ImageRegisterWrapper<'a>(&'a mut egui_winit_vulkano::Gui);
 
 impl<'a> ImageRegister<ImageType> for ImageRegisterWrapper<'a> {
     fn register_image(&mut self, texture: ImageType) -> TextureId {
-        self.0.register_user_image_view(ImageView::new_default(texture.0).unwrap())
+        self.0.register_user_image_view(ImageView::new_default(texture.0).unwrap(), SamplerCreateInfo::simple_repeat_linear_no_mipmap())
     }
 
     fn unregister_image(&mut self, id: TextureId) {
@@ -50,7 +51,7 @@ impl<T: Gui<ImageType> + 'static> MPDeltaGUIVulkano<T> {
         let MPDeltaGUIVulkano { mut gui, context, event_loop, mut windows } = self;
 
         // TODO: DeviceによってサポートされているFormatを選ぶようなコードにしたほうがいいかもしれない
-        let window = windows.create_window(&event_loop, &context, &WindowDescriptor::default(), |sc| sc.image_format = Some(Format::B8G8R8A8_SRGB));
+        let window = windows.create_window(&event_loop, &context, &WindowDescriptor::default(), |sc| sc.image_format = Format::B8G8R8A8_UNORM);
 
         {
             let window = windows.get_window(window).unwrap();
@@ -58,7 +59,7 @@ impl<T: Gui<ImageType> + 'static> MPDeltaGUIVulkano<T> {
             window.set_inner_size(PhysicalSize::new(1_920, 1_080));
         }
         let renderer = windows.get_renderer_mut(window).unwrap();
-        let mut vulkano_gui = egui_winit_vulkano::Gui::new(&event_loop, renderer.surface(), Arc::clone(context.graphics_queue()), GuiConfig::default());
+        let mut vulkano_gui = egui_winit_vulkano::Gui::new(&event_loop, renderer.surface(), Arc::clone(context.graphics_queue()), Format::B8G8R8A8_UNORM, GuiConfig::default());
 
         event_loop.run(move |event, _, control_flow| {
             let renderer = windows.get_renderer_mut(window).unwrap();

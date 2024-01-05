@@ -1,9 +1,8 @@
 [package]
 name = "mpdelta_gui_hot_reload_lib"
-version = "0.1.0"
-edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+version = { workspace = true }
+edition = { workspace = true }
+authors = { workspace = true }
 
 [lib]
 crate-type = ["rlib", "dylib"]
@@ -17,6 +16,5 @@ mpdelta_core_audio = { workspace = true }
 mpdelta_core_vulkano = { workspace = true }
 mpdelta_dyn_usecase = { workspace = true }
 mpdelta_gui = { workspace = true }
-mpdelta_renderer = { workspace = true }
 qcell = { workspace = true }
 tokio = { workspace = true }

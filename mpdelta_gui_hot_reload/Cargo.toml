@@ -1,9 +1,8 @@
 [package]
 name = "mpdelta_gui_hot_reload"
-version = "0.1.0"
-edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+version = { workspace = true }
+edition = { workspace = true }
+authors = { workspace = true }
 
 [dependencies]
 async-trait = { workspace = true }
@@ -18,8 +17,8 @@ mpdelta_core_audio = { workspace = true }
 mpdelta_core_vulkano = { workspace = true }
 mpdelta_dyn_usecase = { workspace = true }
 mpdelta_gui = { workspace = true }
-mpdelta_gui_hot_reload_lib = { path = "./mpdelta_gui_hot_reload_lib" }
 mpdelta_gui_audio_player_cpal = { workspace = true }
+mpdelta_gui_hot_reload_lib = { path = "./mpdelta_gui_hot_reload_lib" }
 mpdelta_gui_vulkano = { workspace = true }
 mpdelta_renderer = { workspace = true }
 mpdelta_rendering_controller = { workspace = true }

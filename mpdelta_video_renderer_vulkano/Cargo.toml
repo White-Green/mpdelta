@@ -1,9 +1,9 @@
 [package]
 name = "mpdelta_video_renderer_vulkano"
-version = "0.1.0"
-edition = "2021"
+version = { workspace = true }
+edition = { workspace = true }
+authors = { workspace = true }
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 async-trait = { workspace = true }
@@ -17,9 +17,13 @@ mpdelta_core_vulkano = { workspace = true }
 mpdelta_renderer = { workspace = true }
 shader_composite_operation = { path = "shaders/composite_operation" }
 shader_texture_drawing = { path = "shaders/texture_drawing" }
+smallvec = { workspace = true }
 tokio = { workspace = true }
 vulkano = { workspace = true }
 vulkano-util = { workspace = true }
 
 [build-dependencies]
 shader_builder = { workspace = true }
+
+[dev-dependencies]
+vulkano-util = { workspace = true }

@@ -1,5 +1,6 @@
 use crate::preview::viewmodel::PreviewViewModel;
 use crate::ImageRegister;
+use egui::load::SizedTexture;
 use egui::{Color32, Rect, Rounding, Slider, Stroke, TextureId, Ui, Vec2};
 use mpdelta_core::component::parameter::ParameterValueType;
 use std::marker::PhantomData;
@@ -32,8 +33,8 @@ impl<K: 'static, T: ParameterValueType, VM: PreviewViewModel<K, T>> Preview<K, T
             let base_pos = ui.cursor().min + Vec2::new(0., 72.);
             ui.allocate_ui_at_rect(Rect::from_min_size(base_pos + Vec2::new((area_width - image_width) / 2., (area_height - image_height) / 2.), Vec2::new(image_width, image_height)), |ui| {
                 let image_size = Vec2 { x: image_width, y: image_height - 66. };
-                ui.painter().rect(Rect::from_min_size(ui.cursor().min, image_size), Rounding::none(), Color32::BLACK, Stroke::default());
-                ui.image(texture_id, image_size);
+                ui.painter().rect(Rect::from_min_size(ui.cursor().min, image_size), Rounding::ZERO, Color32::BLACK, Stroke::default());
+                ui.image(SizedTexture::new(texture_id, image_size));
                 ui.horizontal(|ui| {
                     let start = ui.cursor().min.x;
                     if self.view_model.playing() {

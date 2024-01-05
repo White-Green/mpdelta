@@ -1,16 +1,16 @@
 use std::sync::Arc;
-use vulkano::image::ImageAccess;
+use vulkano::image::Image;
 
 #[derive(Debug, Clone)]
-pub struct ImageType(pub Arc<dyn ImageAccess + 'static>);
+pub struct ImageType(pub Arc<Image>);
 
-impl From<Arc<dyn ImageAccess + 'static>> for ImageType {
-    fn from(value: Arc<dyn ImageAccess + 'static>) -> Self {
-        ImageType(value as Arc<dyn ImageAccess + 'static>)
+impl From<Arc<Image>> for ImageType {
+    fn from(value: Arc<Image>) -> Self {
+        ImageType(value)
     }
 }
 
-impl From<ImageType> for Arc<dyn ImageAccess + 'static> {
+impl From<ImageType> for Arc<Image> {
     fn from(ImageType(value): ImageType) -> Self {
         value
     }

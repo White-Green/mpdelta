@@ -8,12 +8,12 @@ use mpdelta_core::ptr::{StaticPointer, StaticPointerOwned};
 use mpdelta_core_audio::AudioType;
 use mpdelta_core_vulkano::ImageType;
 use mpdelta_dyn_usecase::{
-    EditUsecaseDyn, GetAvailableComponentClassesUsecaseDyn, GetLoadedProjectsUsecaseDyn, GetRootComponentClassesUsecaseDyn, LoadProjectUsecaseDyn, NewProjectUsecaseDyn, NewRootComponentClassUsecaseDyn, RealtimeRenderComponentUsecaseDyn, RedoUsecaseDyn, SetOwnerForRootComponentClassUsecaseDyn,
-    SubscribeEditEventUsecaseDyn, UndoUsecaseDyn, WriteProjectUsecaseDyn,
+    EditUsecaseDyn, GetAvailableComponentClassesUsecaseDyn, GetLoadedProjectsUsecaseDyn, GetRootComponentClassesUsecaseDyn, LoadProjectUsecaseDyn, NewProjectUsecaseDyn, NewRootComponentClassUsecaseDyn, RealtimeRenderComponentUsecaseDyn, RedoUsecaseDyn, RenderWholeComponentUsecaseDyn,
+    SetOwnerForRootComponentClassUsecaseDyn, SubscribeEditEventUsecaseDyn, UndoUsecaseDyn, WriteProjectUsecaseDyn,
 };
 use mpdelta_gui::view::{Gui, MPDeltaGUI};
 use mpdelta_gui::viewmodel::ViewModelParamsImpl;
-
+use mpdelta_renderer::VideoEncoderBuilderDyn;
 use std::borrow::Cow;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -78,6 +78,8 @@ pub type Param = ViewModelParamsImpl<
     Arc<dyn UndoUsecaseDyn<ProjectKey, ValueType> + Send + Sync>,
     Arc<dyn WriteProjectUsecaseDyn<ProjectKey, ValueType> + Send + Sync>,
     Arc<dyn AudioTypePlayerDyn<AudioType> + Send + Sync>,
+    Box<dyn VideoEncoderBuilderDyn<ImageType, AudioType>>,
+    Arc<dyn RenderWholeComponentUsecaseDyn<ProjectKey, ValueType, Box<dyn VideoEncoderBuilderDyn<ImageType, AudioType>>>>,
 >;
 
 #[no_mangle]

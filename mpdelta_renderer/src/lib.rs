@@ -6,17 +6,18 @@ use mpdelta_core::component::instance::ComponentInstanceHandle;
 use mpdelta_core::component::link::MarkerLink;
 use mpdelta_core::component::marker_pin::MarkerPinHandle;
 use mpdelta_core::component::parameter::{ImageRequiredParamsFixed, Parameter, ParameterSelect, ParameterType, ParameterValueType};
-use mpdelta_core::core::{ComponentRendererBuilder, IdGenerator};
+use mpdelta_core::core::{ComponentEncoder, ComponentRendererBuilder, IdGenerator};
 use mpdelta_core::ptr::StaticPointer;
 use mpdelta_core::time::TimelineTime;
 use mpdelta_core::usecase::RealtimeComponentRenderer;
 use mpdelta_differential::CollectCachedTimeError;
 use qcell::{TCell, TCellOwner};
 use std::convert::Infallible;
-use std::fmt::{Debug, Formatter};
+use std::error::Error;
+use std::fmt::{Debug, Display, Formatter};
 use std::future::Future;
 use std::hash::{Hash, Hasher};
-use std::ops::Range;
+use std::ops::{Deref, DerefMut, Range};
 use std::sync::Arc;
 use std::time::Duration;
 use thiserror::Error;
@@ -34,6 +35,26 @@ type ImageCombinerRequest = ImageSizeRequest;
 type ImageCombinerParam = ImageRequiredParamsFixed;
 type AudioCombinerRequest = TimelineTime;
 type AudioCombinerParam = TimeMap;
+
+pub struct DynError(Box<dyn Error + Send + 'static>);
+
+impl Debug for DynError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        Debug::fmt(&self.0, f)
+    }
+}
+
+impl Display for DynError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        Display::fmt(&self.0, f)
+    }
+}
+
+impl Error for DynError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        Some(&*self.0)
+    }
+}
 
 pub struct MPDeltaRendererBuilder<K: 'static, Id, C, ImageCombinerBuilder, AudioCombinerBuilder> {
     id: Arc<Id>,
@@ -82,6 +103,162 @@ where
             runtime: self.runtime.clone(),
             loop_sender: Mutex::new(sender),
         })
+    }
+}
+
+#[derive(Error)]
+pub enum EncodeError<K: 'static, T: ParameterValueType, E> {
+    #[error("render error: {0}")]
+    RenderError(#[from] RenderError<K, T>),
+    #[error("encoder error: {0}")]
+    EncoderError(E),
+}
+
+impl<K, T, E> Debug for EncodeError<K, T, E>
+where
+    K: 'static,
+    T: ParameterValueType,
+    E: Debug,
+    RenderError<K, T>: Debug,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            EncodeError::RenderError(e) => f.debug_tuple("RenderError").field(e).finish(),
+            EncodeError::EncoderError(e) => f.debug_tuple("EncoderError").field(e).finish(),
+        }
+    }
+}
+
+impl<K, T, C, ImageCombinerBuilder, AudioCombinerBuilder, Id, Encoder> ComponentEncoder<K, T, Encoder> for MPDeltaRendererBuilder<K, Id, C, ImageCombinerBuilder, AudioCombinerBuilder>
+where
+    K: Send + Sync + 'static,
+    T: ParameterValueType + 'static,
+    C: MPDeltaRenderingControllerBuilder + 'static,
+    ImageCombinerBuilder: CombinerBuilder<T::Image, Request = ImageCombinerRequest, Param = ImageCombinerParam> + 'static,
+    AudioCombinerBuilder: CombinerBuilder<T::Audio, Request = AudioCombinerRequest, Param = AudioCombinerParam> + 'static,
+    Id: IdGenerator + 'static,
+    Encoder: VideoEncoderBuilder<T::Image, T::Audio> + 'static,
+{
+    type Err = EncodeError<K, T, Encoder::Err>;
+
+    async fn render_and_encode<'life0, 'life1, 'async_trait>(&'life0 self, component: &'life1 ComponentInstanceHandle<K, T>, mut encoder: Encoder) -> Result<(), Self::Err>
+    where
+        'life0: 'async_trait,
+        'life1: 'async_trait,
+    {
+        let mut encoder = encoder.build().map_err(EncodeError::EncoderError)?;
+        let renderer = Arc::new(Renderer::new(self.runtime.clone(), component.clone(), Arc::clone(&self.image_combiner_builder), Arc::clone(&self.audio_combiner_builder)));
+        let key = Arc::new(Arc::clone(&self.key).read_owned().await);
+        if encoder.requires_audio() {
+            match renderer.render(0, ParameterType::Audio(()), Arc::clone(&key)).await {
+                Ok(Parameter::Audio(value)) => encoder.set_audio(value),
+                Ok(other) => {
+                    return Err(RenderError::OutputTypeMismatch {
+                        component: component.clone(),
+                        expect: Parameter::Audio(()),
+                        actual: other.select(),
+                    }
+                    .into());
+                }
+                Err(err) => return Err(err.into()),
+            }
+        }
+        if encoder.requires_image() {
+            for f in 0..600 {
+                match renderer.render(f, ParameterType::Image(()), Arc::clone(&key)).await {
+                    Ok(Parameter::Image(value)) => encoder.push_frame(value),
+                    Ok(other) => {
+                        return Err(RenderError::OutputTypeMismatch {
+                            component: component.clone(),
+                            expect: Parameter::Image(()),
+                            actual: other.select(),
+                        }
+                        .into());
+                    }
+                    Err(err) => return Err(err.into()),
+                }
+            }
+        }
+        encoder.finish();
+        Ok(())
+    }
+}
+
+pub trait VideoEncoderBuilder<Image, Audio>: Send + Sync {
+    type Err: Error + Send + 'static;
+    type Encoder: VideoEncoder<Image, Audio>;
+    fn build(&mut self) -> Result<Self::Encoder, Self::Err>;
+}
+
+impl<Image, Audio, O> VideoEncoderBuilder<Image, Audio> for O
+where
+    O: DerefMut + Send + Sync,
+    O::Target: VideoEncoderBuilder<Image, Audio>,
+{
+    type Err = <O::Target as VideoEncoderBuilder<Image, Audio>>::Err;
+    type Encoder = <O::Target as VideoEncoderBuilder<Image, Audio>>::Encoder;
+    fn build(&mut self) -> Result<Self::Encoder, Self::Err> {
+        self.deref_mut().build()
+    }
+}
+
+pub trait VideoEncoderBuilderDyn<Image, Audio>: Send + Sync {
+    fn build_dyn(&mut self) -> Result<Box<dyn VideoEncoder<Image, Audio>>, Box<dyn Error + Send + 'static>>;
+}
+
+impl<Image, Audio, O> VideoEncoderBuilderDyn<Image, Audio> for O
+where
+    O: VideoEncoderBuilder<Image, Audio>,
+    O::Encoder: 'static,
+{
+    fn build_dyn(&mut self) -> Result<Box<dyn VideoEncoder<Image, Audio>>, Box<dyn Error + Send + 'static>> {
+        match self.build() {
+            Ok(encoder) => Ok(Box::new(encoder)),
+            Err(err) => Err(Box::new(err)),
+        }
+    }
+}
+
+impl<Image, Audio> VideoEncoderBuilder<Image, Audio> for dyn VideoEncoderBuilderDyn<Image, Audio> {
+    type Err = DynError;
+    type Encoder = Box<dyn VideoEncoder<Image, Audio>>;
+
+    fn build(&mut self) -> Result<Self::Encoder, Self::Err> {
+        self.build_dyn().map_err(DynError)
+    }
+}
+
+pub trait VideoEncoder<Image, Audio>: Send + Sync {
+    fn requires_image(&self) -> bool;
+    fn push_frame(&mut self, frame: Image);
+    fn requires_audio(&self) -> bool;
+    fn set_audio(&mut self, audio: Audio);
+    fn finish(&mut self);
+}
+
+impl<Image, Audio, O> VideoEncoder<Image, Audio> for O
+where
+    O: DerefMut + Send + Sync,
+    O::Target: VideoEncoder<Image, Audio>,
+{
+    fn requires_image(&self) -> bool {
+        self.deref().requires_image()
+    }
+
+    fn push_frame(&mut self, frame: Image) {
+        self.deref_mut().push_frame(frame)
+    }
+
+    fn requires_audio(&self) -> bool {
+        self.deref().requires_audio()
+    }
+
+    fn set_audio(&mut self, audio: Audio) {
+        self.deref_mut().set_audio(audio)
+    }
+
+    fn finish(&mut self) {
+        self.deref_mut().finish()
     }
 }
 

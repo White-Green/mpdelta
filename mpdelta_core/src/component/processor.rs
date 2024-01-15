@@ -2,7 +2,6 @@ use crate::component::class::ComponentClass;
 use crate::component::instance::ComponentInstanceHandleCow;
 use crate::component::link::MarkerLink;
 use crate::component::parameter::{Parameter, ParameterSelect, ParameterType, ParameterValueFixed, ParameterValueType};
-
 use crate::ptr::{StaticPointer, StaticPointerCow};
 use crate::time::TimelineTime;
 use async_trait::async_trait;

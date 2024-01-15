@@ -20,6 +20,8 @@ mpdelta_gui = { workspace = true }
 mpdelta_gui_audio_player_cpal = { workspace = true }
 mpdelta_gui_hot_reload_lib = { path = "./mpdelta_gui_hot_reload_lib" }
 mpdelta_gui_vulkano = { workspace = true }
+mpdelta_multimedia = { workspace = true }
+mpdelta_multimedia_encoder_ffmpeg = { workspace = true }
 mpdelta_renderer = { workspace = true }
 mpdelta_rendering_controller = { workspace = true }
 mpdelta_services = { workspace = true }

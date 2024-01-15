@@ -216,6 +216,31 @@ where
     }
 }
 
+pub trait RenderWholeComponentUsecase<K, T: ParameterValueType, Encoder>: Send + Sync {
+    type Err: Error + Send + 'static;
+    fn render_and_encode<'life0, 'life1, 'async_trait>(&'life0 self, component: &'life1 ComponentInstanceHandle<K, T>, encoder: Encoder) -> impl Future<Output = Result<(), Self::Err>> + Send + 'async_trait
+    where
+        'life0: 'async_trait,
+        'life1: 'async_trait;
+}
+
+impl<K, T, Encoder, O> RenderWholeComponentUsecase<K, T, Encoder> for O
+where
+    T: ParameterValueType,
+    O: Deref + Send + Sync,
+    O::Target: RenderWholeComponentUsecase<K, T, Encoder>,
+{
+    type Err = <O::Target as RenderWholeComponentUsecase<K, T, Encoder>>::Err;
+
+    fn render_and_encode<'life0, 'life1, 'async_trait>(&'life0 self, component: &'life1 ComponentInstanceHandle<K, T>, encoder: Encoder) -> impl Future<Output = Result<(), Self::Err>> + Send + 'async_trait
+    where
+        'life0: 'async_trait,
+        'life1: 'async_trait,
+    {
+        self.deref().render_and_encode(component, encoder)
+    }
+}
+
 #[async_trait]
 pub trait EditUsecase<K, T: ParameterValueType>: Send + Sync {
     type Err: Error + Send + 'static;

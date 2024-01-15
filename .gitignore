@@ -19,6 +19,8 @@
 !/mpdelta_gui_audio_player_cpal
 !/mpdelta_gui_hot_reload
 !/mpdelta_gui_vulkano
+!/mpdelta_multimedia
+!/mpdelta_multimedia_encoder_ffmpeg
 !/mpdelta_services
 !/mpdelta_renderer
 !/mpdelta_rendering_controller

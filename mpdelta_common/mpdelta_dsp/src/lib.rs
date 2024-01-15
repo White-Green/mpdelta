@@ -70,6 +70,10 @@ pub struct Resample {
 }
 
 impl Resample {
+    pub fn builder(original_freq: u32, target_freq: u32) -> ResampleBuilder {
+        ResampleBuilder { original_freq, target_freq }
+    }
+
     fn from_builder(builder: ResampleBuilder) -> Result<Resample, ResampleConstructError> {
         let ResampleBuilder { original_freq, target_freq } = builder;
         if original_freq == 0 || target_freq == 0 {
@@ -126,6 +130,10 @@ impl Resample {
         self.buffer.clear();
         self.buffer.resize(self.default_buffer_length, 0.);
         self.filter_index = self.default_filter_index;
+    }
+
+    pub fn fill_tail_by_zero(&mut self) {
+        self.buffer.extend(iter::repeat(0.).take(self.default_buffer_length));
     }
 
     pub fn buffer_len(&self) -> usize {

@@ -1,16 +1,22 @@
-use crate::global_ui_state::GlobalUIState;
-use crate::message_router::handler::{IntoAsyncFunctionHandler, IntoDerefHandler, MessageHandlerBuilder};
+use crate::global_ui_state::{GlobalUIEvent, GlobalUIEventHandler, GlobalUIState};
+use crate::message_router::handler::{IntoAsyncFunctionHandler, IntoAsyncFunctionHandlerSingle, IntoDerefHandler, MessageHandlerBuilder};
 use crate::message_router::{handler, MessageHandler, MessageRouter};
 use crate::view_model_util::use_arc;
 use crate::AudioTypePlayer;
+use arc_swap::ArcSwapOption;
 use mpdelta_async_runtime::AsyncRuntime;
+use mpdelta_core::component::class::ComponentClass;
 use mpdelta_core::component::parameter::ParameterValueType;
 use mpdelta_core::project::{ProjectHandle, RootComponentClassHandle};
+use mpdelta_core::ptr::StaticPointerOwned;
 use mpdelta_core::usecase::{
-    EditUsecase, GetAvailableComponentClassesUsecase, GetLoadedProjectsUsecase, GetRootComponentClassesUsecase, LoadProjectUsecase, NewProjectUsecase, NewRootComponentClassUsecase, RealtimeRenderComponentUsecase, RedoUsecase, SetOwnerForRootComponentClassUsecase, SubscribeEditEventUsecase,
-    UndoUsecase, WriteProjectUsecase,
+    EditUsecase, GetAvailableComponentClassesUsecase, GetLoadedProjectsUsecase, GetRootComponentClassesUsecase, LoadProjectUsecase, NewProjectUsecase, NewRootComponentClassUsecase, RealtimeRenderComponentUsecase, RedoUsecase, RenderWholeComponentUsecase, SetOwnerForRootComponentClassUsecase,
+    SubscribeEditEventUsecase, UndoUsecase, WriteProjectUsecase,
 };
+use mpdelta_multimedia::{AudioCodec, CodecImplement, FileFormat, VideoCodec};
+use qcell::TCell;
 use qcell::TCellOwner;
+use rfd::AsyncFileDialog;
 use std::borrow::Cow;
 use std::hash::Hash;
 use std::mem;
@@ -33,6 +39,8 @@ pub trait ViewModelParams<K: 'static, T: ParameterValueType> {
     type Undo: UndoUsecase<K, T> + 'static;
     type WriteProject: WriteProjectUsecase<K, T> + 'static;
     type AudioPlayer: AudioTypePlayer<T::Audio> + 'static;
+    type EncoderType: Send + Sync + 'static;
+    type Encode: RenderWholeComponentUsecase<K, T, Self::EncoderType> + 'static;
 
     fn runtime(&self) -> &Self::AsyncRuntime;
     fn key(&self) -> &Arc<RwLock<TCellOwner<K>>>;
@@ -50,9 +58,31 @@ pub trait ViewModelParams<K: 'static, T: ParameterValueType> {
     fn undo(&self) -> &Arc<Self::Undo>;
     fn write_project(&self) -> &Arc<Self::WriteProject>;
     fn audio_player(&self) -> &Arc<Self::AudioPlayer>;
+    fn available_video_codec(&self) -> &Arc<[CodecImplement<VideoCodec, Self::EncoderType>]>;
+    fn available_audio_codec(&self) -> &Arc<[CodecImplement<AudioCodec, Self::EncoderType>]>;
+    fn encode(&self) -> &Arc<Self::Encode>;
 }
 
-pub struct ViewModelParamsImpl<K: 'static, Runtime, Edit, SubscribeEditEvent, GetAvailableComponentClasses, GetLoadedProjects, GetRootComponentClasses, LoadProject, NewProject, NewRootComponentClass, RealtimeRenderComponent, Redo, SetOwnerForRootComponentClass, Undo, WriteProject, AudioPlayer> {
+pub struct ViewModelParamsImpl<
+    K: 'static,
+    Runtime,
+    Edit,
+    SubscribeEditEvent,
+    GetAvailableComponentClasses,
+    GetLoadedProjects,
+    GetRootComponentClasses,
+    LoadProject,
+    NewProject,
+    NewRootComponentClass,
+    RealtimeRenderComponent,
+    Redo,
+    SetOwnerForRootComponentClass,
+    Undo,
+    WriteProject,
+    AudioPlayer,
+    EncoderType,
+    Encode,
+> {
     runtime: Runtime,
     edit: Arc<Edit>,
     subscribe_edit_event: Arc<SubscribeEditEvent>,
@@ -69,10 +99,13 @@ pub struct ViewModelParamsImpl<K: 'static, Runtime, Edit, SubscribeEditEvent, Ge
     write_project: Arc<WriteProject>,
     key: Arc<RwLock<TCellOwner<K>>>,
     audio_player: Arc<AudioPlayer>,
+    available_video_codec: Arc<[CodecImplement<VideoCodec, EncoderType>]>,
+    available_audio_codec: Arc<[CodecImplement<AudioCodec, EncoderType>]>,
+    encode: Arc<Encode>,
 }
 
-impl<K, Runtime, Edit, SubscribeEditEvent, GetAvailableComponentClasses, GetLoadedProjects, GetRootComponentClasses, LoadProject, NewProject, NewRootComponentClass, RealtimeRenderComponent, Redo, SetOwnerForRootComponentClass, Undo, WriteProject, AudioPlayer>
-    ViewModelParamsImpl<K, Runtime, Edit, SubscribeEditEvent, GetAvailableComponentClasses, GetLoadedProjects, GetRootComponentClasses, LoadProject, NewProject, NewRootComponentClass, RealtimeRenderComponent, Redo, SetOwnerForRootComponentClass, Undo, WriteProject, AudioPlayer>
+impl<K, Runtime, Edit, SubscribeEditEvent, GetAvailableComponentClasses, GetLoadedProjects, GetRootComponentClasses, LoadProject, NewProject, NewRootComponentClass, RealtimeRenderComponent, Redo, SetOwnerForRootComponentClass, Undo, WriteProject, AudioPlayer, EncoderType, Encode>
+    ViewModelParamsImpl<K, Runtime, Edit, SubscribeEditEvent, GetAvailableComponentClasses, GetLoadedProjects, GetRootComponentClasses, LoadProject, NewProject, NewRootComponentClass, RealtimeRenderComponent, Redo, SetOwnerForRootComponentClass, Undo, WriteProject, AudioPlayer, EncoderType, Encode>
 {
     pub fn new(
         runtime: Runtime,
@@ -91,7 +124,29 @@ impl<K, Runtime, Edit, SubscribeEditEvent, GetAvailableComponentClasses, GetLoad
         write_project: Arc<WriteProject>,
         key: Arc<RwLock<TCellOwner<K>>>,
         audio_player: Arc<AudioPlayer>,
-    ) -> ViewModelParamsImpl<K, Runtime, Edit, SubscribeEditEvent, GetAvailableComponentClasses, GetLoadedProjects, GetRootComponentClasses, LoadProject, NewProject, NewRootComponentClass, RealtimeRenderComponent, Redo, SetOwnerForRootComponentClass, Undo, WriteProject, AudioPlayer> {
+        available_video_codec: Arc<[CodecImplement<VideoCodec, EncoderType>]>,
+        available_audio_codec: Arc<[CodecImplement<AudioCodec, EncoderType>]>,
+        encode: Arc<Encode>,
+    ) -> ViewModelParamsImpl<
+        K,
+        Runtime,
+        Edit,
+        SubscribeEditEvent,
+        GetAvailableComponentClasses,
+        GetLoadedProjects,
+        GetRootComponentClasses,
+        LoadProject,
+        NewProject,
+        NewRootComponentClass,
+        RealtimeRenderComponent,
+        Redo,
+        SetOwnerForRootComponentClass,
+        Undo,
+        WriteProject,
+        AudioPlayer,
+        EncoderType,
+        Encode,
+    > {
         ViewModelParamsImpl {
             runtime,
             edit,
@@ -109,12 +164,34 @@ impl<K, Runtime, Edit, SubscribeEditEvent, GetAvailableComponentClasses, GetLoad
             write_project,
             key,
             audio_player,
+            available_video_codec,
+            available_audio_codec,
+            encode,
         }
     }
 }
 
-impl<K, Runtime, Edit, SubscribeEditEvent, GetAvailableComponentClasses, GetLoadedProjects, GetRootComponentClasses, LoadProject, NewProject, NewRootComponentClass, RealtimeRenderComponent, Redo, SetOwnerForRootComponentClass, Undo, WriteProject, AudioPlayer> Clone
-    for ViewModelParamsImpl<K, Runtime, Edit, SubscribeEditEvent, GetAvailableComponentClasses, GetLoadedProjects, GetRootComponentClasses, LoadProject, NewProject, NewRootComponentClass, RealtimeRenderComponent, Redo, SetOwnerForRootComponentClass, Undo, WriteProject, AudioPlayer>
+impl<K, Runtime, Edit, SubscribeEditEvent, GetAvailableComponentClasses, GetLoadedProjects, GetRootComponentClasses, LoadProject, NewProject, NewRootComponentClass, RealtimeRenderComponent, Redo, SetOwnerForRootComponentClass, Undo, WriteProject, AudioPlayer, EncoderType, Encode> Clone
+    for ViewModelParamsImpl<
+        K,
+        Runtime,
+        Edit,
+        SubscribeEditEvent,
+        GetAvailableComponentClasses,
+        GetLoadedProjects,
+        GetRootComponentClasses,
+        LoadProject,
+        NewProject,
+        NewRootComponentClass,
+        RealtimeRenderComponent,
+        Redo,
+        SetOwnerForRootComponentClass,
+        Undo,
+        WriteProject,
+        AudioPlayer,
+        EncoderType,
+        Encode,
+    >
 where
     Runtime: Clone,
 {
@@ -136,6 +213,9 @@ where
             write_project,
             key,
             audio_player,
+            available_video_codec,
+            available_audio_codec,
+            encode,
         } = self;
         ViewModelParamsImpl {
             runtime: runtime.clone(),
@@ -154,13 +234,54 @@ where
             write_project: Arc::clone(write_project),
             key: Arc::clone(key),
             audio_player: Arc::clone(audio_player),
+            available_video_codec: Arc::clone(available_video_codec),
+            available_audio_codec: Arc::clone(available_audio_codec),
+            encode: Arc::clone(encode),
         }
     }
 }
 
-impl<K, T: ParameterValueType, Runtime, Edit, SubscribeEditEvent, GetAvailableComponentClasses, GetLoadedProjects, GetRootComponentClasses, LoadProject, NewProject, NewRootComponentClass, RealtimeRenderComponent, Redo, SetOwnerForRootComponentClass, Undo, WriteProject, AudioPlayer>
-    ViewModelParams<K, T>
-    for ViewModelParamsImpl<K, Runtime, Edit, SubscribeEditEvent, GetAvailableComponentClasses, GetLoadedProjects, GetRootComponentClasses, LoadProject, NewProject, NewRootComponentClass, RealtimeRenderComponent, Redo, SetOwnerForRootComponentClass, Undo, WriteProject, AudioPlayer>
+impl<
+        K,
+        T: ParameterValueType,
+        Runtime,
+        Edit,
+        SubscribeEditEvent,
+        GetAvailableComponentClasses,
+        GetLoadedProjects,
+        GetRootComponentClasses,
+        LoadProject,
+        NewProject,
+        NewRootComponentClass,
+        RealtimeRenderComponent,
+        Redo,
+        SetOwnerForRootComponentClass,
+        Undo,
+        WriteProject,
+        AudioPlayer,
+        EncoderType,
+        Encode,
+    > ViewModelParams<K, T>
+    for ViewModelParamsImpl<
+        K,
+        Runtime,
+        Edit,
+        SubscribeEditEvent,
+        GetAvailableComponentClasses,
+        GetLoadedProjects,
+        GetRootComponentClasses,
+        LoadProject,
+        NewProject,
+        NewRootComponentClass,
+        RealtimeRenderComponent,
+        Redo,
+        SetOwnerForRootComponentClass,
+        Undo,
+        WriteProject,
+        AudioPlayer,
+        EncoderType,
+        Encode,
+    >
 where
     Runtime: AsyncRuntime<()> + Clone + 'static,
     Edit: EditUsecase<K, T> + 'static,
@@ -178,6 +299,8 @@ where
     Undo: UndoUsecase<K, T> + 'static,
     WriteProject: WriteProjectUsecase<K, T> + 'static,
     AudioPlayer: AudioTypePlayer<T::Audio> + 'static,
+    EncoderType: Send + Sync + 'static,
+    Encode: RenderWholeComponentUsecase<K, T, EncoderType> + 'static,
 {
     type AsyncRuntime = Runtime;
     type Edit = Edit;
@@ -194,6 +317,9 @@ where
     type Undo = Undo;
     type WriteProject = WriteProject;
     type AudioPlayer = AudioPlayer;
+    type EncoderType = EncoderType;
+    type Encode = Encode;
+
     fn runtime(&self) -> &Self::AsyncRuntime {
         &self.runtime
     }
@@ -241,6 +367,15 @@ where
     }
     fn audio_player(&self) -> &Arc<AudioPlayer> {
         &self.audio_player
+    }
+    fn available_video_codec(&self) -> &Arc<[CodecImplement<VideoCodec, Self::EncoderType>]> {
+        &self.available_video_codec
+    }
+    fn available_audio_codec(&self) -> &Arc<[CodecImplement<AudioCodec, Self::EncoderType>]> {
+        &self.available_audio_codec
+    }
+    fn encode(&self) -> &Arc<Self::Encode> {
+        &self.encode
     }
 }
 
@@ -294,6 +429,7 @@ pub trait MainWindowViewModel<K: 'static, T> {
     fn root_component_classes<R>(&self, f: impl FnOnce(&RootComponentClassDataList<Self::RootComponentClassHandle>) -> R) -> R;
     fn select_root_component_class(&self, handle: &Self::RootComponentClassHandle);
     fn render_frame<R>(&self, f: impl FnOnce() -> R) -> R;
+    fn encode(&self);
 }
 
 pub struct MainWindowViewModelImpl<K: 'static, T: ParameterValueType, GlobalUIState, MessageHandler, Runtime> {
@@ -301,6 +437,7 @@ pub struct MainWindowViewModelImpl<K: 'static, T: ParameterValueType, GlobalUISt
     root_component_classes: Arc<RwLock<RootComponentClassDataList<RootComponentClassHandle<K, T>>>>,
     global_ui_state: Arc<GlobalUIState>,
     message_router: MessageRouter<MessageHandler, Runtime>,
+    selected_root_component_class: Arc<ArcSwapOption<RootComponentClassHandle<K, T>>>,
 }
 
 #[derive(Debug)]
@@ -309,6 +446,7 @@ pub enum Message<K: 'static, T: ParameterValueType> {
     SelectProject(ProjectHandle<K, T>),
     NewRootComponentClass,
     SelectRootComponentClass(RootComponentClassHandle<K, T>),
+    Encode,
 }
 
 impl<K, T> Clone for Message<K, T>
@@ -322,6 +460,7 @@ where
             Message::SelectProject(value) => Message::SelectProject(value.clone()),
             Message::NewRootComponentClass => Message::NewRootComponentClass,
             Message::SelectRootComponentClass(value) => Message::SelectRootComponentClass(value.clone()),
+            Message::Encode => Message::Encode,
         }
     }
 }
@@ -340,6 +479,7 @@ where
             (Message::SelectProject(a), Message::SelectProject(b)) => a == b,
             (Message::NewRootComponentClass, Message::NewRootComponentClass) => true,
             (Message::SelectRootComponentClass(a), Message::SelectRootComponentClass(b)) => a == b,
+            (Message::Encode, Message::Encode) => true,
             _ => unreachable!(),
         }
     }
@@ -350,6 +490,14 @@ where
     K: 'static,
     T: ParameterValueType,
 {
+}
+
+impl<K, T: ParameterValueType, GlobalUIState, MessageHandler, Runtime> GlobalUIEventHandler<K, T> for MainWindowViewModelImpl<K, T, GlobalUIState, MessageHandler, Runtime> {
+    fn handle(&self, event: GlobalUIEvent<K, T>) {
+        if let GlobalUIEvent::SelectRootComponentClass(root_component_class) = event {
+            self.selected_root_component_class.store(root_component_class.map(Arc::new));
+        }
+    }
 }
 
 impl<K, T: ParameterValueType> MainWindowViewModelImpl<K, T, (), (), ()>
@@ -366,6 +514,7 @@ where
                 root_component_classes.write().await.list.clear();
             }
         };
+        let selected_root_component_class = Arc::new(ArcSwapOption::<RootComponentClassHandle<K, T>>::empty());
         let update_selected_project = Arc::new(handler::handle_async::<_, P::AsyncRuntime, _, _>({
             use_arc!(projects, get_root_component_classes = params.get_root_component_classes(), root_component_classes, global_ui_state);
             move |_project| {
@@ -485,13 +634,45 @@ where
                     }
                 })
             })
+            .handle(|handler| {
+                handler.filter(|message| *message == Message::Encode).handle_async_single({
+                    use_arc!(selected_root_component_class, available_video_codec = params.available_video_codec(), available_audio_codec = params.available_audio_codec(), encode = params.encode());
+                    move |_| {
+                        use_arc!(selected_root_component_class, available_video_codec, available_audio_codec, encode);
+                        async move {
+                            if let Some(root_component_class) = selected_root_component_class.load().as_ref() {
+                                let video_codec = &available_video_codec[0];
+                                let audio_codec = &available_audio_codec[0];
+                                let video_codec_handler = video_codec.handler();
+                                assert!(video_codec_handler.eq(&**audio_codec.handler()));
+                                let output_file = AsyncFileDialog::new().add_filter("video", &["mp4"]).save_file().await;
+                                let Some(output_file) = output_file else {
+                                    return;
+                                };
+                                let encoder = video_codec_handler.create_encoder(FileFormat::Mp4, Some((video_codec.codec(), video_codec.default_codec_options())), Some((audio_codec.codec(), audio_codec.default_codec_options())), output_file.inner());
+                                let Some(root_component_class_ref) = root_component_class.upgrade() else {
+                                    return;
+                                };
+                                let instance = root_component_class_ref.read().await.instantiate(&RootComponentClassHandle::clone(root_component_class).map(|weak| weak as _)).await;
+                                let instance = StaticPointerOwned::new(TCell::new(instance));
+                                if let Err(err) = encode.render_and_encode(StaticPointerOwned::reference(&instance), encoder).await {
+                                    eprintln!("failed to encode by {err}");
+                                }
+                            }
+                        }
+                    }
+                })
+            })
             .build(params.runtime().clone());
-        Arc::new(MainWindowViewModelImpl {
+        let arc = Arc::new(MainWindowViewModelImpl {
             projects,
             root_component_classes,
             global_ui_state: Arc::clone(global_ui_state),
             message_router,
-        })
+            selected_root_component_class,
+        });
+        global_ui_state.register_global_ui_event_handler(Arc::clone(&arc));
+        arc
     }
 }
 
@@ -536,5 +717,9 @@ where
         let ret = f();
         self.global_ui_state.end_render_frame();
         ret
+    }
+
+    fn encode(&self) {
+        self.message_router.handle(Message::Encode);
     }
 }

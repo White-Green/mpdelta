@@ -16,5 +16,6 @@ mpdelta_core_audio = { workspace = true }
 mpdelta_core_vulkano = { workspace = true }
 mpdelta_dyn_usecase = { workspace = true }
 mpdelta_gui = { workspace = true }
+mpdelta_renderer = { workspace = true }
 qcell = { workspace = true }
 tokio = { workspace = true }

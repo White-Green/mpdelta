@@ -194,7 +194,7 @@ impl Combiner<ImageType> for ImageCombiner {
                 format: Format::R8G8B8A8_UNORM,
                 view_formats: vec![Format::R8G8B8A8_UNORM],
                 extent: [image_width, image_height, 1],
-                usage: ImageUsage::STORAGE | ImageUsage::TRANSFER_DST | ImageUsage::SAMPLED,
+                usage: ImageUsage::STORAGE | ImageUsage::TRANSFER_DST | ImageUsage::TRANSFER_SRC | ImageUsage::SAMPLED,
                 ..ImageCreateInfo::default()
             },
             AllocationCreateInfo::default(),

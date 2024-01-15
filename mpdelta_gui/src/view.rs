@@ -65,6 +65,10 @@ where
                             println!("File/Open Clicked");
                             ui.close_menu();
                         }
+                        if ui.button("Encode").clicked() {
+                            self.view_model.encode();
+                            ui.close_menu();
+                        }
                     });
                     ui.menu_button("Edit", |ui| {
                         if ui.button("Undo").clicked() {

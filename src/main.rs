@@ -13,6 +13,8 @@ use mpdelta_gui::view::MPDeltaGUI;
 use mpdelta_gui::viewmodel::ViewModelParamsImpl;
 use mpdelta_gui_audio_player_cpal::CpalAudioPlayer;
 use mpdelta_gui_vulkano::MPDeltaGUIVulkano;
+
+use mpdelta_multimedia_encoder_ffmpeg::{FfmpegEncodeSettings, FfmpegEncoderBuilder};
 use mpdelta_renderer::MPDeltaRendererBuilder;
 use mpdelta_rendering_controller::LRUCacheRenderingControllerBuilder;
 use mpdelta_services::history::InMemoryEditHistoryStore;
@@ -23,6 +25,7 @@ use mpdelta_services::project_store::InMemoryProjectStore;
 use mpdelta_video_renderer_vulkano::ImageCombinerBuilder;
 use qcell::TCellOwner;
 use std::borrow::Cow;
+use std::fs::File;
 use std::sync::Arc;
 use tokio::runtime::Runtime;
 use tokio::sync::RwLock;
@@ -112,6 +115,7 @@ fn main() {
         Arc::clone(&project_memory),
         project_memory,
         component_class_loader,
+        Arc::clone(&component_renderer_builder),
         component_renderer_builder,
         project_editor,
         edit_history,
@@ -127,6 +131,7 @@ fn main() {
         )
         .unwrap(),
     );
+    let encoder_builder = Arc::new(FfmpegEncoderBuilder::new(Arc::clone(&context)));
     let params = ViewModelParamsImpl::new(
         runtime.handle().clone(),
         Arc::clone(&core),
@@ -144,6 +149,9 @@ fn main() {
         Arc::clone(&core),
         Arc::clone(&key),
         audio_player,
+        encoder_builder.available_video_codec::<FfmpegEncodeSettings<File>>().into_iter().collect::<Vec<_>>().into(),
+        encoder_builder.available_audio_codec().into_iter().collect::<Vec<_>>().into(),
+        Arc::clone(&core),
     );
     let gui = MPDeltaGUI::new(params);
     let gui = MPDeltaGUIVulkano::new(context, event_loop, windows, gui);

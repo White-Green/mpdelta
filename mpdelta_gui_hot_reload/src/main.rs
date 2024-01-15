@@ -6,9 +6,10 @@ use mpdelta_components::rectangle::RectangleClass;
 use mpdelta_core::component::parameter::ParameterValueType;
 use mpdelta_core::core::MPDeltaCore;
 use mpdelta_core_audio::AudioType;
+use mpdelta_core_vulkano::ImageType;
 use mpdelta_dyn_usecase::{
-    EditUsecaseDyn, GetAvailableComponentClassesUsecaseDyn, GetLoadedProjectsUsecaseDyn, GetRootComponentClassesUsecaseDyn, LoadProjectUsecaseDyn, NewProjectUsecaseDyn, NewRootComponentClassUsecaseDyn, RealtimeRenderComponentUsecaseDyn, RedoUsecaseDyn, SetOwnerForRootComponentClassUsecaseDyn,
-    SubscribeEditEventUsecaseDyn, UndoUsecaseDyn, WriteProjectUsecaseDyn,
+    EditUsecaseDyn, GetAvailableComponentClassesUsecaseDyn, GetLoadedProjectsUsecaseDyn, GetRootComponentClassesUsecaseDyn, LoadProjectUsecaseDyn, NewProjectUsecaseDyn, NewRootComponentClassUsecaseDyn, RealtimeRenderComponentUsecaseDyn, RedoUsecaseDyn, RenderWholeComponentUsecaseDyn,
+    SetOwnerForRootComponentClassUsecaseDyn, SubscribeEditEventUsecaseDyn, UndoUsecaseDyn, WriteProjectUsecaseDyn,
 };
 use mpdelta_gui::view::Gui;
 use mpdelta_gui::viewmodel::ViewModelParamsImpl;
@@ -17,7 +18,8 @@ use mpdelta_gui_audio_player_cpal::CpalAudioPlayer;
 use mpdelta_gui_hot_reload_lib::dyn_trait::AudioTypePlayerDyn;
 use mpdelta_gui_hot_reload_lib::{ComponentClassList, ProjectKey, ValueType};
 use mpdelta_gui_vulkano::MPDeltaGUIVulkano;
-use mpdelta_renderer::MPDeltaRendererBuilder;
+
+use mpdelta_renderer::{MPDeltaRendererBuilder, VideoEncoderBuilderDyn};
 use mpdelta_rendering_controller::LRUCacheRenderingControllerBuilder;
 use mpdelta_services::history::InMemoryEditHistoryStore;
 use mpdelta_services::id_generator::UniqueIdGenerator;
@@ -33,6 +35,8 @@ use std::sync::atomic::AtomicBool;
 use std::sync::{atomic, Arc, Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 use std::{process, thread};
+
+use mpdelta_multimedia_encoder_ffmpeg::FfmpegEncoderBuilder;
 use tokio::runtime::Runtime;
 use tokio::sync::RwLock;
 use vulkano::command_buffer::allocator::{StandardCommandBufferAllocator, StandardCommandBufferAllocatorCreateInfo};
@@ -137,6 +141,7 @@ fn main() {
         Arc::clone(&project_memory),
         project_memory,
         component_class_loader,
+        Arc::clone(&component_renderer_builder),
         component_renderer_builder,
         project_editor,
         edit_history,
@@ -152,6 +157,7 @@ fn main() {
         )
         .unwrap(),
     );
+    let encoder_builder = Arc::new(FfmpegEncoderBuilder::new(Arc::clone(&context)));
     let params = ViewModelParamsImpl::new(
         Arc::new(runtime.handle().clone()) as Arc<dyn AsyncRuntimeDyn<()>>,
         Arc::new(Arc::clone(&core) as Arc<dyn EditUsecaseDyn<ProjectKey, ValueType> + Send + Sync>),
@@ -169,6 +175,9 @@ fn main() {
         Arc::new(Arc::clone(&core) as Arc<dyn WriteProjectUsecaseDyn<ProjectKey, ValueType> + Send + Sync>),
         Arc::clone(&key),
         Arc::new(audio_player as Arc<dyn AudioTypePlayerDyn<AudioType> + Send + Sync>),
+        encoder_builder.available_video_codec().into_iter().collect::<Vec<_>>().into(),
+        encoder_builder.available_audio_codec().into_iter().collect::<Vec<_>>().into(),
+        Arc::new(Arc::clone(&core) as Arc<dyn RenderWholeComponentUsecaseDyn<ProjectKey, ValueType, Box<dyn VideoEncoderBuilderDyn<ImageType, AudioType>>>>),
     );
     let gui = lib::create_gui(params.clone());
     let gui = SharedDynGui::new(gui);

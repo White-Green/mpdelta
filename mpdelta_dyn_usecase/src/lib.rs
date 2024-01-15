@@ -8,8 +8,8 @@ use mpdelta_core::edit::{InstanceEditCommand, RootComponentEditCommand};
 use mpdelta_core::project::{ProjectHandle, RootComponentClassHandle};
 use mpdelta_core::ptr::StaticPointer;
 use mpdelta_core::usecase::{
-    EditUsecase, GetAvailableComponentClassesUsecase, GetLoadedProjectsUsecase, GetRootComponentClassesUsecase, LoadProjectUsecase, NewProjectUsecase, NewRootComponentClassUsecase, RealtimeComponentRenderer, RealtimeRenderComponentUsecase, RedoUsecase, SetOwnerForRootComponentClassUsecase,
-    SubscribeEditEventUsecase, UndoUsecase, WriteProjectUsecase,
+    EditUsecase, GetAvailableComponentClassesUsecase, GetLoadedProjectsUsecase, GetRootComponentClassesUsecase, LoadProjectUsecase, NewProjectUsecase, NewRootComponentClassUsecase, RealtimeComponentRenderer, RealtimeRenderComponentUsecase, RedoUsecase, RenderWholeComponentUsecase,
+    SetOwnerForRootComponentClassUsecase, SubscribeEditEventUsecase, UndoUsecase, WriteProjectUsecase,
 };
 
 use std::borrow::Cow;
@@ -421,6 +421,42 @@ where
 
     async fn render_component(&self, component: &ComponentInstanceHandle<K, T>) -> Result<Self::Renderer, Self::Err> {
         self.render_component_dyn(component).map_err(DynError).await
+    }
+}
+
+pub trait RenderWholeComponentUsecaseDyn<K, T: ParameterValueType, Encoder>: Send + Sync {
+    fn render_and_encode_dyn<'life0, 'life1, 'async_trait>(&'life0 self, component: &'life1 ComponentInstanceHandle<K, T>, encoder: Encoder) -> DynFuture<'async_trait, Result<(), Box<dyn Error + Send + 'static>>>
+    where
+        'life0: 'async_trait,
+        'life1: 'async_trait;
+}
+
+impl<K, T, Encoder, O> RenderWholeComponentUsecaseDyn<K, T, Encoder> for O
+where
+    T: ParameterValueType,
+    O: RenderWholeComponentUsecase<K, T, Encoder>,
+{
+    fn render_and_encode_dyn<'life0, 'life1, 'async_trait>(&'life0 self, component: &'life1 ComponentInstanceHandle<K, T>, encoder: Encoder) -> DynFuture<'async_trait, Result<(), Box<dyn Error + Send + 'static>>>
+    where
+        'life0: 'async_trait,
+        'life1: 'async_trait,
+    {
+        Box::pin(self.render_and_encode(component, encoder).map_err(|err| Box::new(err) as Box<dyn Error + Send + 'static>))
+    }
+}
+
+impl<K, T, Encoder> RenderWholeComponentUsecase<K, T, Encoder> for dyn RenderWholeComponentUsecaseDyn<K, T, Encoder>
+where
+    T: ParameterValueType,
+{
+    type Err = DynError;
+
+    fn render_and_encode<'life0, 'life1, 'async_trait>(&'life0 self, component: &'life1 ComponentInstanceHandle<K, T>, encoder: Encoder) -> impl Future<Output = Result<(), Self::Err>> + Send + 'async_trait
+    where
+        'life0: 'async_trait,
+        'life1: 'async_trait,
+    {
+        self.render_and_encode_dyn(component, encoder).map_err(DynError)
     }
 }
 

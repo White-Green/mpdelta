@@ -1,0 +1,11 @@
+[package]
+name = "mpdelta_ffmpeg"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[dependencies]
+ffmpeg-next = { workspace = true }
+ffmpeg-sys-next = { workspace = true }
+mpdelta_multimedia = { workspace = true }
+thiserror = { workspace = true }

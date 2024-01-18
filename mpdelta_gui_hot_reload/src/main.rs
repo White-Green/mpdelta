@@ -3,6 +3,7 @@ use egui::Context;
 use mpdelta_async_runtime::AsyncRuntimeDyn;
 use mpdelta_audio_mixer::MPDeltaAudioMixerBuilder;
 use mpdelta_components::rectangle::RectangleClass;
+use mpdelta_components::sine_audio::SineAudio;
 use mpdelta_core::component::parameter::ParameterValueType;
 use mpdelta_core::core::MPDeltaCore;
 use mpdelta_core_audio::AudioType;
@@ -18,7 +19,7 @@ use mpdelta_gui_audio_player_cpal::CpalAudioPlayer;
 use mpdelta_gui_hot_reload_lib::dyn_trait::AudioTypePlayerDyn;
 use mpdelta_gui_hot_reload_lib::{ComponentClassList, ProjectKey, ValueType};
 use mpdelta_gui_vulkano::MPDeltaGUIVulkano;
-
+use mpdelta_multimedia_encoder_ffmpeg::FfmpegEncoderBuilder;
 use mpdelta_renderer::{MPDeltaRendererBuilder, VideoEncoderBuilderDyn};
 use mpdelta_rendering_controller::LRUCacheRenderingControllerBuilder;
 use mpdelta_services::history::InMemoryEditHistoryStore;
@@ -35,8 +36,6 @@ use std::sync::atomic::AtomicBool;
 use std::sync::{atomic, Arc, Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 use std::{process, thread};
-
-use mpdelta_multimedia_encoder_ffmpeg::FfmpegEncoderBuilder;
 use tokio::runtime::Runtime;
 use tokio::sync::RwLock;
 use vulkano::command_buffer::allocator::{StandardCommandBufferAllocator, StandardCommandBufferAllocatorCreateInfo};
@@ -122,6 +121,7 @@ fn main() {
     let mut component_class_loader = ComponentClassList::new();
     let command_buffer_allocator = StandardCommandBufferAllocator::new(Arc::clone(context.device()), StandardCommandBufferAllocatorCreateInfo::default());
     component_class_loader.add(RectangleClass::new(Arc::clone(context.graphics_queue()), context.memory_allocator(), &command_buffer_allocator));
+    component_class_loader.add(SineAudio::new());
     let component_class_loader = Arc::new(component_class_loader);
     let key = Arc::new(RwLock::new(TCellOwner::<ProjectKey>::new()));
     let component_renderer_builder = Arc::new(MPDeltaRendererBuilder::new(

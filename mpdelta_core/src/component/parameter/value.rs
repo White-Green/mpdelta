@@ -1,4 +1,5 @@
 use crate::time::TimelineTime;
+use cgmath::Quaternion;
 use futures::prelude::stream::{self, StreamExt};
 use std::any::Any;
 use std::cmp::Ordering;
@@ -50,14 +51,6 @@ impl Ord for EasingInput {
 
 pub trait Easing: Send + Sync {
     fn easing(&self, from: EasingInput) -> f64;
-}
-
-pub struct DefaultEasing;
-
-impl Easing for DefaultEasing {
-    fn easing(&self, _: EasingInput) -> f64 {
-        0.0
-    }
 }
 
 pub struct LinearEasing;
@@ -186,15 +179,31 @@ pub trait DynEditableEasingValueMarker {
 #[derive(Debug, Clone)]
 pub struct DynEditableSelfEasingValue<T>(pub T, pub T);
 
-impl<T: Clone + 'static> DynEditableEasingValueMarker for DynEditableSelfEasingValue<T> {
+pub trait Lerp {
+    fn lerp(&self, other: &Self, easing: f64) -> Self;
+}
+
+impl Lerp for f64 {
+    fn lerp(&self, other: &Self, easing: f64) -> Self {
+        self + (other - self) * easing
+    }
+}
+
+impl Lerp for Quaternion<f64> {
+    fn lerp(&self, other: &Self, easing: f64) -> Self {
+        self.slerp(*other, easing)
+    }
+}
+
+impl<T: Lerp + 'static> DynEditableEasingValueMarker for DynEditableSelfEasingValue<T> {
     type Out = T;
     fn get_raw_values_mut(&mut self) -> (&mut dyn NamedAny, &mut dyn NamedAny) {
         (&mut self.0, &mut self.1)
     }
 
-    fn get_value(&self, _easing: f64) -> Self::Out {
-        let DynEditableSelfEasingValue(left, _) = self;
-        left.clone()
+    fn get_value(&self, easing: f64) -> Self::Out {
+        let DynEditableSelfEasingValue(left, right) = self;
+        left.lerp(right, easing)
     }
 }
 
@@ -216,13 +225,6 @@ pub struct DynEditableEasingValue<T>(Box<dyn DynEditableEasingValueMarkerCloneab
 impl<T> DynEditableEasingValue<T> {
     pub fn new(value: impl DynEditableEasingValueMarkerCloneable<Out = T> + Send + Sync + 'static) -> DynEditableEasingValue<T> {
         DynEditableEasingValue(Box::new(value))
-    }
-
-    pub fn new_self(value: T) -> DynEditableEasingValue<T>
-    where
-        T: Clone + Send + Sync + 'static,
-    {
-        DynEditableEasingValue(Box::new(DynEditableSelfEasingValue(value.clone(), value)))
     }
 }
 
@@ -430,7 +432,7 @@ mod tests {
             }),
             Err(DowncastErrorSingle {
                 expected: any::type_name::<u64>(),
-                actual: any::type_name::<u32>()
+                actual: any::type_name::<u32>(),
             })
         );
         assert_eq!(DynEditableSingleValueMarker::get_value(&value), 20u64);
@@ -481,7 +483,7 @@ mod tests {
             Err(DowncastErrorEasing::Both {
                 expected: any::type_name::<u64>(),
                 actual_left: any::type_name::<u32>(),
-                actual_right: any::type_name::<u32>()
+                actual_right: any::type_name::<u32>(),
             })
         );
         assert_eq!(DynEditableEasingValueMarker::get_value(&value, 0.0), 20);
@@ -508,7 +510,7 @@ mod tests {
             EasingValueEdit::edit_value::<u32, _>(&mut value, |_, _| unreachable!()),
             Err(DowncastErrorEasing::Right {
                 expected: any::type_name::<u32>(),
-                actual: any::type_name::<u64>()
+                actual: any::type_name::<u64>(),
             })
         );
 
@@ -532,7 +534,7 @@ mod tests {
             EasingValueEdit::edit_value::<u32, _>(&mut value, |_, _| unreachable!()),
             Err(DowncastErrorEasing::Left {
                 expected: any::type_name::<u32>(),
-                actual: any::type_name::<u64>()
+                actual: any::type_name::<u64>(),
             })
         );
     }

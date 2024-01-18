@@ -79,8 +79,7 @@ dashmap = "5.5.3"
 egui = "0.24.1"
 egui_winit_vulkano = "0.27.0"
 either = "1.9.0"
-ffmpeg-next = { version = "6.1.1", default-features = false, features = ["codec", "format"] }
-ffmpeg-next-io = "0.1.0"
+ffmpeg-next = { version = "6.1.1", default-features = false, features = ["codec", "format", "software-scaling", "software-resampling"] }
 ffmpeg-sys-next = { version = "6.1.0", default-features = false, features = ["avcodec", "avdevice", "avfilter", "avformat", "swresample", "swscale"] }
 futures = "0.3.30"
 glam = { version = "0.24", default-features = false, features = ["libm"] }

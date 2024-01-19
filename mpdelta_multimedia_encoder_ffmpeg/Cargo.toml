@@ -9,7 +9,6 @@ authors.workspace = true
 [dependencies]
 dashmap = { workspace = true }
 ffmpeg-next = { workspace = true }
-ffmpeg-next-io = { workspace = true }
 indexmap = { workspace = true }
 mpdelta_core = { workspace = true }
 mpdelta_core_audio = { workspace = true }

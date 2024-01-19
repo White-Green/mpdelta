@@ -6,7 +6,6 @@ use ffmpeg_next::format::sample::Type;
 use ffmpeg_next::format::{Pixel, Sample};
 use ffmpeg_next::software::{resampling, scaling};
 use ffmpeg_next::{codec, encoder, frame, ChannelLayout, Codec, Dictionary, Packet, Rational};
-use ffmpeg_next_io::OutputOptions;
 use indexmap::IndexMap;
 use mpdelta_core::time::TimelineTime;
 use mpdelta_core_audio::multi_channel_audio::{MultiChannelAudio, MultiChannelAudioMutOp, MultiChannelAudioOp};
@@ -14,6 +13,7 @@ use mpdelta_core_audio::{AudioProvider, AudioType};
 use mpdelta_core_vulkano::ImageType;
 use mpdelta_dsp::Resample;
 use mpdelta_ffmpeg::codec::{codec_supported_pixel_format, codec_supported_sample_format, codec_supported_sample_rate, new_codec_context_from_codec};
+use mpdelta_ffmpeg::io::FfmpegIoError;
 use mpdelta_multimedia::options_value::{OptionValue, ValueTypeString, ValueWithDefault};
 use mpdelta_multimedia::{AudioCodec, CodecImplement, CodecOptions, FileFormat, MediaCodecImplementHandle, VideoCodec};
 use mpdelta_renderer::{VideoEncoder, VideoEncoderBuilder, VideoEncoderBuilderDyn};
@@ -161,7 +161,7 @@ pub enum FfmpegError {
     #[error("{0}")]
     Ffmpeg(#[from] ffmpeg_next::Error),
     #[error("{0}")]
-    FfmpegIo(#[from] ffmpeg_next_io::FfmpegIOError),
+    FfmpegIo(#[from] FfmpegIoError),
 }
 
 impl<Output> VideoEncoderBuilder<ImageType, AudioType> for FfmpegEncodeSettings<Output>
@@ -173,14 +173,7 @@ where
 
     fn build(&mut self) -> Result<Self::Encoder, Self::Err> {
         let FfmpegEncodeSettings { vulkano_context, file_format, video, audio, output } = self;
-        let mut output = ffmpeg_next_io::Output::seekable(
-            output.take().unwrap(),
-            OutputOptions {
-                format_name: Some(file_format.extension()),
-                ..OutputOptions::default()
-            },
-        )
-        .map_err(|(_, err)| dbg!(err))?;
+        let mut output = mpdelta_ffmpeg::io::Output::builder().file_type(file_format.extension()).build(output.take().unwrap())?;
         let global_header = output.format().flags().contains(format::Flags::GLOBAL_HEADER);
         let mut video_stream = None;
         if let Some((codec, options)) = video.take() {
@@ -252,18 +245,13 @@ where
 
 fn encode_thread<T: Write + Seek + Send + Sync + 'static>(
     vulkano_context: Arc<VulkanoContext>,
-    output: ffmpeg_next_io::Output<T>,
+    mut output: mpdelta_ffmpeg::io::Output<T>,
     video_stream: Option<(usize, video::Encoder, CodecOptions<VideoCodec>)>,
     audio_stream: Option<(usize, audio::Encoder, CodecOptions<AudioCodec>, bool)>,
     image_receiver: Receiver<EncoderMessage<ImageType>>,
     audio_receiver: Receiver<EncoderMessage<AudioType>>,
 ) -> impl FnOnce() + Send + 'static {
-    struct AssumeSend<T>(T);
-    unsafe impl<T> Send for AssumeSend<T> {}
-    let output = AssumeSend(output);
     move || {
-        let output = output;
-        let AssumeSend(mut output) = output;
         output.write_header().unwrap();
         let mut video_stream = video_stream.map(|(id, mut encoder, options)| {
             let mut rgba_frame = frame::Video::new(Pixel::RGBA, options.width(), options.height());
@@ -612,7 +600,7 @@ mod tests {
             encoder.push_frame(ImageType(Arc::clone(&images[f])));
         }
         encoder.finish();
-        // std::fs::write("test_encode_mp4_h264_aac.mp4", output.lock().unwrap().get_ref()).unwrap();
+        std::fs::write("test_encode_mp4_h264_aac.mp4", output.lock().unwrap().get_ref()).unwrap();
     }
 
     #[test]
@@ -642,6 +630,6 @@ mod tests {
         assert!(!encoder.requires_image());
         encoder.set_audio(AudioType::new(TestAudio));
         encoder.finish();
-        // std::fs::write("test_encode_flac.flac", output.lock().unwrap().get_ref()).unwrap();
+        std::fs::write("test_encode_flac.flac", output.lock().unwrap().get_ref()).unwrap();
     }
 }

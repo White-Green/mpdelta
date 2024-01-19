@@ -3,6 +3,7 @@ use mpdelta_multimedia::FileFormat;
 use std::ptr;
 
 pub mod codec;
+pub mod io;
 
 pub fn supports(file_format: FileFormat, codec: ffmpeg_next::codec::Id) -> bool {
     let file_extension = file_format.extension_c();

@@ -956,18 +956,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ffmpeg-next-io"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "88a48b2a831281d840bd2c929c0e7a5105f64fabe4a4c1e78c77e37126cfc496"
-dependencies = [
- "bytes",
- "ffmpeg-next",
- "libc",
- "thiserror",
-]
-
-[[package]]
 name = "ffmpeg-sys-next"
 version = "6.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2112,7 +2100,6 @@ version = "0.1.0"
 dependencies = [
  "dashmap",
  "ffmpeg-next",
- "ffmpeg-next-io",
  "indexmap 2.1.0",
  "mpdelta_core",
  "mpdelta_core_audio",

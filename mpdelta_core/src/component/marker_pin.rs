@@ -88,6 +88,10 @@ impl MarkerPin {
     pub fn locked_component_time(&self) -> Option<MarkerTime> {
         self.locked_component_time
     }
+
+    pub fn set_locked_component_time(&mut self, time: Option<MarkerTime>) {
+        self.locked_component_time = time;
+    }
 }
 
 #[cfg(test)]

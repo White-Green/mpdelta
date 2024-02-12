@@ -88,6 +88,9 @@ impl<K, T: ParameterValueType> ComponentInstance<K, T> {
     pub fn markers(&self) -> &[MarkerPinHandleOwned<K>] {
         &self.markers
     }
+    pub fn markers_mut(&mut self) -> &mut Vec<MarkerPinHandleOwned<K>> {
+        &mut self.markers
+    }
     pub fn image_required_params(&self) -> Option<&ImageRequiredParams<K, T>> {
         self.image_required_params.as_ref()
     }

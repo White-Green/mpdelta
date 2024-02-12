@@ -22,7 +22,7 @@ pub enum FfmpegIoError {
 
 unsafe extern "C" fn write<T: Write>(opaque: *mut c_void, buffer: *mut u8, len: c_int) -> c_int {
     let output = &mut *(opaque as *mut T);
-    output.write_all(slice::from_raw_parts(buffer, len as usize)).map_or(-1, |_| len as i32)
+    output.write_all(slice::from_raw_parts(buffer, len as usize)).map_or(-1, |_| len)
 }
 
 unsafe extern "C" fn seek<T: Seek>(opaque: *mut c_void, seek: i64, whence: c_int) -> i64 {
@@ -32,7 +32,7 @@ unsafe extern "C" fn seek<T: Seek>(opaque: *mut c_void, seek: i64, whence: c_int
         ff::SEEK_CUR => output.seek(SeekFrom::Current(seek)).map_or(-1, |pos| pos as i64),
         ff::SEEK_END => output.seek(SeekFrom::End(seek)).map_or(-1, |pos| pos as i64),
         ff::AVSEEK_SIZE => {
-            let Ok(first_pos) = output.seek(SeekFrom::Current(0)) else {
+            let Ok(first_pos) = output.stream_position() else {
                 return -1;
             };
             let Ok(last_pos) = output.seek(SeekFrom::End(0)) else {
@@ -43,6 +43,6 @@ unsafe extern "C" fn seek<T: Seek>(opaque: *mut c_void, seek: i64, whence: c_int
             };
             last_pos as i64
         }
-        _ => return -1,
+        _ => -1,
     }
 }

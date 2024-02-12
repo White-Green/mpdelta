@@ -11,7 +11,6 @@ use mpdelta_core::usecase::{
     EditUsecase, GetAvailableComponentClassesUsecase, GetLoadedProjectsUsecase, GetRootComponentClassesUsecase, LoadProjectUsecase, NewProjectUsecase, NewRootComponentClassUsecase, RealtimeComponentRenderer, RealtimeRenderComponentUsecase, RedoUsecase, RenderWholeComponentUsecase,
     SetOwnerForRootComponentClassUsecase, SubscribeEditEventUsecase, UndoUsecase, WriteProjectUsecase,
 };
-
 use std::borrow::Cow;
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};

@@ -2,7 +2,7 @@ use crate::common::time_split_value::TimeSplitValue;
 use crate::component::instance::ComponentInstanceHandle;
 use crate::component::marker_pin::MarkerPinHandle;
 use crate::component::parameter::placeholder::{Placeholder, TagAudio, TagImage};
-use crate::component::parameter::value::{DefaultEasing, DynEditableSelfEasingValue, DynEditableSingleValue, EasingValue, FrameVariableValue};
+use crate::component::parameter::value::{DynEditableSelfEasingValue, DynEditableSingleValue, EasingValue, FrameVariableValue, LinearEasing};
 use crate::time::TimelineTime;
 use cgmath::{One, Quaternion, Vector3};
 use either::Either;
@@ -869,7 +869,7 @@ pub enum VariableParameterPriority {
     PrioritizeComponent,
 }
 
-type PinSplitValue<K, T> = TimeSplitValue<MarkerPinHandle<K>, T>;
+pub type PinSplitValue<K, T> = TimeSplitValue<MarkerPinHandle<K>, T>;
 
 #[derive(Debug)]
 pub struct VariableParameterValue<K: 'static, T: ParameterValueType, Nullable> {
@@ -911,9 +911,9 @@ pub struct ImageRequiredParams<K: 'static, T: ParameterValueType> {
 
 impl<K, T: ParameterValueType> ImageRequiredParams<K, T> {
     pub fn new_default(marker_left: &MarkerPinHandle<K>, marker_right: &MarkerPinHandle<K>) -> ImageRequiredParams<K, T> {
-        let one = TimeSplitValue::new(marker_left.clone(), Some(EasingValue::new(DynEditableSelfEasingValue(1., 1.), Arc::new(DefaultEasing))), marker_right.clone());
+        let one = TimeSplitValue::new(marker_left.clone(), Some(EasingValue::new(DynEditableSelfEasingValue(1., 1.), Arc::new(LinearEasing))), marker_right.clone());
         let one_value = VariableParameterValue::new(one);
-        let zero = VariableParameterValue::new(TimeSplitValue::new(marker_left.clone(), Some(EasingValue::new(DynEditableSelfEasingValue(0., 0.), Arc::new(DefaultEasing))), marker_right.clone()));
+        let zero = VariableParameterValue::new(TimeSplitValue::new(marker_left.clone(), Some(EasingValue::new(DynEditableSelfEasingValue(0., 0.), Arc::new(LinearEasing))), marker_right.clone()));
         ImageRequiredParams {
             aspect_ratio: (1, 1),
             transform: ImageRequiredParamsTransform::Params {
@@ -923,12 +923,12 @@ impl<K, T: ParameterValueType> ImageRequiredParams<K, T> {
                     z: one_value,
                 },
                 translate: Vector3 { x: zero.clone(), y: zero.clone(), z: zero.clone() },
-                rotate: TimeSplitValue::new(marker_left.clone(), EasingValue::new(DynEditableSelfEasingValue(Quaternion::one(), Quaternion::one()), Arc::new(DefaultEasing)), marker_right.clone()),
+                rotate: TimeSplitValue::new(marker_left.clone(), EasingValue::new(DynEditableSelfEasingValue(Quaternion::one(), Quaternion::one()), Arc::new(LinearEasing)), marker_right.clone()),
                 scale_center: Vector3 { x: zero.clone(), y: zero.clone(), z: zero.clone() },
                 rotate_center: Vector3 { x: zero.clone(), y: zero.clone(), z: zero },
             },
             background_color: [0; 4],
-            opacity: TimeSplitValue::new(marker_left.clone(), EasingValue::new(DynEditableSelfEasingValue(1., 1.), Arc::new(DefaultEasing)), marker_right.clone()),
+            opacity: TimeSplitValue::new(marker_left.clone(), EasingValue::new(DynEditableSelfEasingValue(1., 1.), Arc::new(LinearEasing)), marker_right.clone()),
             blend_mode: TimeSplitValue::new(marker_left.clone(), Default::default(), marker_right.clone()),
             composite_operation: TimeSplitValue::new(marker_left.clone(), Default::default(), marker_right.clone()),
         }

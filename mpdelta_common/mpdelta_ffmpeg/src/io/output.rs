@@ -2,7 +2,7 @@ use crate::io::FfmpegIoError;
 use ffmpeg_next::format;
 use ffmpeg_sys_next as ff;
 use std::borrow::Cow;
-use std::ffi::{c_void, CStr, CString};
+use std::ffi::{CStr, CString};
 use std::io::{Seek, Write};
 use std::mem::ManuallyDrop;
 use std::ops::{Deref, DerefMut};

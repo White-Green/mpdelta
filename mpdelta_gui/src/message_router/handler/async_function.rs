@@ -1,6 +1,6 @@
 use crate::message_router::static_cow::StaticCow;
 use crate::message_router::MessageHandler;
-use mpdelta_async_runtime::{AsyncRuntime, JoinHandle};
+use mpdelta_async_runtime::{AsyncRuntime, JoinHandleWrapper};
 use std::future::IntoFuture;
 use std::sync::mpsc::{Receiver, SyncSender};
 use std::sync::{Mutex, PoisonError};
@@ -60,7 +60,7 @@ impl<T> MessageReceiver<T> {
 
 pub struct AsyncFunctionHandlerSingle<Message, F, JoinHandle> {
     f: F,
-    handle: Mutex<(Option<JoinHandle>, Receiver<UnboundedReceiver<Message>>)>,
+    handle: Mutex<(Option<JoinHandleWrapper<JoinHandle>>, Receiver<UnboundedReceiver<Message>>)>,
     receiver_return: SyncSender<UnboundedReceiver<Message>>,
     message_sender: UnboundedSender<Message>,
 }

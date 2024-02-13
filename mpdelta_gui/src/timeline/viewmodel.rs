@@ -7,7 +7,7 @@ use crate::viewmodel::ViewModelParams;
 use arc_swap::ArcSwap;
 use egui::epaint::ahash::{HashSet, HashSetExt};
 use egui::Pos2;
-use mpdelta_async_runtime::{AsyncRuntime, JoinHandle};
+use mpdelta_async_runtime::{AsyncRuntime, JoinHandleWrapper};
 use mpdelta_core::component::class::ComponentClass;
 use mpdelta_core::component::instance::ComponentInstanceHandle;
 use mpdelta_core::component::link::MarkerLink;
@@ -218,7 +218,7 @@ pub struct TimelineViewModelImpl<K: 'static, T: ParameterValueType, GlobalUIStat
     selected_root_component_class: Arc<RwLock<Option<RootComponentClassHandle<K, T>>>>,
     message_router: MessageRouter<MessageHandler, Runtime>,
     runtime: Runtime,
-    load_timeline_task: Arc<StdMutex<JoinHandle>>,
+    load_timeline_task: Arc<StdMutex<JoinHandleWrapper<JoinHandle>>>,
     guard: OnceLock<G>,
 }
 

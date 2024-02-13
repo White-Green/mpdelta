@@ -4,7 +4,7 @@ use crate::view_model_util::use_arc;
 use crate::viewmodel::ViewModelParams;
 use arc_swap::ArcSwap;
 use cgmath::{Quaternion, Vector3};
-use mpdelta_async_runtime::{AsyncRuntime, JoinHandle};
+use mpdelta_async_runtime::{AsyncRuntime, JoinHandleWrapper};
 use mpdelta_core::common::time_split_value::TimeSplitValue;
 use mpdelta_core::component::instance::ComponentInstanceHandle;
 use mpdelta_core::component::marker_pin::MarkerPinHandle;
@@ -199,7 +199,7 @@ pub struct PropertyWindowViewModelImpl<K: 'static, T: ParameterValueType, Global
     selected: Arc<StdRwLock<(Option<RootComponentClassHandle<K, T>>, Option<ComponentInstanceHandle<K, T>>)>>,
     selected_instance_at: Arc<ArcSwap<Range<TimelineTime>>>,
     image_required_params: Arc<Mutex<Option<(ImageRequiredParamsForEdit<K, T>, Vec<TimelineTime>)>>>,
-    image_required_params_update_task: Mutex<JoinHandle>,
+    image_required_params_update_task: Mutex<JoinHandleWrapper<JoinHandle>>,
     runtime: Runtime,
     key: Arc<RwLock<TCellOwner<K>>>,
 }

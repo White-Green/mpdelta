@@ -491,7 +491,7 @@ where
                         .take_while(|&p| p != &pin)
                         .filter(|p| p.upgrade().is_some_and(|p| p.ro(&key).locked_component_time().is_some()))
                         .last()
-                        .or_else(|| all_pins.filter(|p| p.upgrade().is_some_and(|p| p.ro(&key).locked_component_time().is_some())).next())
+                        .or_else(|| all_pins.find(|p| p.upgrade().is_some_and(|p| p.ro(&key).locked_component_time().is_some())))
                         .unwrap();
 
                     let mut pin_union_find = UnionFind::new();
@@ -568,6 +568,7 @@ where
                         };
                         all_links.push(StaticPointerOwned::new(TCell::new(link)));
                     }
+                    drop(all_pins);
                     target.rw(&mut key).markers_mut().remove(remove_marker_index);
 
                     if let Err(err) = mpdelta_differential::collect_cached_time(root.component(), root.link(), root.left().as_ref(), root.right().as_ref(), &key) {

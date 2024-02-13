@@ -111,8 +111,9 @@ pub enum LoadProjectError<PLErr> {
 }
 
 #[async_trait]
-impl<K, T: ParameterValueType, T0: Send + Sync, PL: Send + Sync, T2: Send + Sync, PM: Send + Sync, T4: Send + Sync, T5: Send + Sync, T6: Send + Sync, T7: Send + Sync, T8: Send + Sync, T9: Send + Sync> LoadProjectUsecase<K, T> for MPDeltaCore<K, T0, PL, T2, PM, T4, T5, T6, T7, T8, T9>
+impl<K, T: ParameterValueType, T0, PL, T2, PM, T4, T5, T6, T7, T8, T9> LoadProjectUsecase<K, T> for MPDeltaCore<K, T0, PL, T2, PM, T4, T5, T6, T7, T8, T9>
 where
+    Self: Send + Sync,
     PL: ProjectLoader<K, T>,
     PM: ProjectMemory<K, T>,
 {
@@ -145,8 +146,9 @@ pub enum WriteProjectError<PWErr> {
 }
 
 #[async_trait]
-impl<K, T: ParameterValueType, T0: Send + Sync, T1: Send + Sync, PW: Send + Sync, T3: Send + Sync, T4: Send + Sync, T5: Send + Sync, T6: Send + Sync, T7: Send + Sync, T8: Send + Sync, T9: Send + Sync> WriteProjectUsecase<K, T> for MPDeltaCore<K, T0, T1, PW, T3, T4, T5, T6, T7, T8, T9>
+impl<K, T: ParameterValueType, T0, T1, PW, T3, T4, T5, T6, T7, T8, T9> WriteProjectUsecase<K, T> for MPDeltaCore<K, T0, T1, PW, T3, T4, T5, T6, T7, T8, T9>
 where
+    Self: Send + Sync,
     PW: ProjectWriter<K, T>,
 {
     type Err = WriteProjectError<PW::Err>;
@@ -157,8 +159,9 @@ where
 }
 
 #[async_trait]
-impl<K, T: ParameterValueType, ID: Send + Sync, T1: Send + Sync, T2: Send + Sync, PM: Send + Sync, T4: Send + Sync, T5: Send + Sync, T6: Send + Sync, T7: Send + Sync, T8: Send + Sync, T9: Send + Sync> NewProjectUsecase<K, T> for MPDeltaCore<K, ID, T1, T2, PM, T4, T5, T6, T7, T8, T9>
+impl<K, T: ParameterValueType, ID, T1, T2, PM, T4, T5, T6, T7, T8, T9> NewProjectUsecase<K, T> for MPDeltaCore<K, ID, T1, T2, PM, T4, T5, T6, T7, T8, T9>
 where
+    Self: Send + Sync,
     ID: IdGenerator,
     PM: ProjectMemory<K, T>,
 {
@@ -180,8 +183,9 @@ pub trait RootComponentClassMemory<K, T: ParameterValueType>: Send + Sync {
 }
 
 #[async_trait]
-impl<K, T: ParameterValueType, ID: Send + Sync, T1: Send + Sync, T2: Send + Sync, T3: Send + Sync, RM: Send + Sync, T5: Send + Sync, T6: Send + Sync, T7: Send + Sync, T8: Send + Sync, T9: Send + Sync> NewRootComponentClassUsecase<K, T> for MPDeltaCore<K, ID, T1, T2, T3, RM, T5, T6, T7, T8, T9>
+impl<K, T: ParameterValueType, ID, T1, T2, T3, RM, T5, T6, T7, T8, T9> NewRootComponentClassUsecase<K, T> for MPDeltaCore<K, ID, T1, T2, T3, RM, T5, T6, T7, T8, T9>
 where
+    Self: Send + Sync,
     ID: IdGenerator,
     RM: RootComponentClassMemory<K, T>,
 {
@@ -194,9 +198,9 @@ where
 }
 
 #[async_trait]
-impl<K, T: ParameterValueType, T0: Send + Sync, T1: Send + Sync, T2: Send + Sync, T3: Send + Sync, RM: Send + Sync, T5: Send + Sync, T6: Send + Sync, T7: Send + Sync, T8: Send + Sync, T9: Send + Sync> SetOwnerForRootComponentClassUsecase<K, T>
-    for MPDeltaCore<K, T0, T1, T2, T3, RM, T5, T6, T7, T8, T9>
+impl<K, T: ParameterValueType, T0, T1, T2, T3, RM, T5, T6, T7, T8, T9> SetOwnerForRootComponentClassUsecase<K, T> for MPDeltaCore<K, T0, T1, T2, T3, RM, T5, T6, T7, T8, T9>
 where
+    Self: Send + Sync,
     RM: RootComponentClassMemory<K, T>,
 {
     async fn set_owner_for_root_component_class(&self, component: &RootComponentClassHandle<K, T>, owner: &ProjectHandle<K, T>) {
@@ -205,8 +209,9 @@ where
 }
 
 #[async_trait]
-impl<K, T: ParameterValueType, T0: Send + Sync, T1: Send + Sync, T2: Send + Sync, PM: Send + Sync, T4: Send + Sync, T5: Send + Sync, T6: Send + Sync, T7: Send + Sync, T8: Send + Sync, T9: Send + Sync> GetLoadedProjectsUsecase<K, T> for MPDeltaCore<K, T0, T1, T2, PM, T4, T5, T6, T7, T8, T9>
+impl<K, T: ParameterValueType, T0, T1, T2, PM, T4, T5, T6, T7, T8, T9> GetLoadedProjectsUsecase<K, T> for MPDeltaCore<K, T0, T1, T2, PM, T4, T5, T6, T7, T8, T9>
 where
+    Self: Send + Sync,
     PM: ProjectMemory<K, T>,
 {
     async fn get_loaded_projects(&self) -> Cow<[ProjectHandle<K, T>]> {
@@ -215,8 +220,9 @@ where
 }
 
 #[async_trait]
-impl<K, T: ParameterValueType, T0: Send + Sync, T1: Send + Sync, T2: Send + Sync, T3: Send + Sync, RM: Send + Sync, T5: Send + Sync, T6: Send + Sync, T7: Send + Sync, T8: Send + Sync, T9: Send + Sync> GetRootComponentClassesUsecase<K, T> for MPDeltaCore<K, T0, T1, T2, T3, RM, T5, T6, T7, T8, T9>
+impl<K, T: ParameterValueType, T0, T1, T2, T3, RM, T5, T6, T7, T8, T9> GetRootComponentClassesUsecase<K, T> for MPDeltaCore<K, T0, T1, T2, T3, RM, T5, T6, T7, T8, T9>
 where
+    Self: Send + Sync,
     RM: RootComponentClassMemory<K, T>,
 {
     async fn get_root_component_classes(&self, project: &ProjectHandle<K, T>) -> Cow<[RootComponentClassHandle<K, T>]> {
@@ -230,9 +236,9 @@ pub trait ComponentClassLoader<K, T: ParameterValueType>: Send + Sync {
 }
 
 #[async_trait]
-impl<K, T: ParameterValueType, T0: Send + Sync, T1: Send + Sync, T2: Send + Sync, T3: Send + Sync, T4: Send + Sync, CL: Send + Sync, T6: Send + Sync, T7: Send + Sync, T8: Send + Sync, T9: Send + Sync> GetAvailableComponentClassesUsecase<K, T>
-    for MPDeltaCore<K, T0, T1, T2, T3, T4, CL, T6, T7, T8, T9>
+impl<K, T: ParameterValueType, T0, T1, T2, T3, T4, CL, T6, T7, T8, T9> GetAvailableComponentClassesUsecase<K, T> for MPDeltaCore<K, T0, T1, T2, T3, T4, CL, T6, T7, T8, T9>
 where
+    Self: Send + Sync,
     CL: ComponentClassLoader<K, T>,
 {
     async fn get_available_component_classes(&self) -> Cow<[StaticPointer<RwLock<dyn ComponentClass<K, T>>>]> {
@@ -248,8 +254,9 @@ pub trait ComponentRendererBuilder<K, T: ParameterValueType>: Send + Sync {
 }
 
 #[async_trait]
-impl<K, T: ParameterValueType, T0: Send + Sync, T1: Send + Sync, T2: Send + Sync, T3: Send + Sync, T4: Send + Sync, T5: Send + Sync, CR: Send + Sync, T7: Send + Sync, T8: Send + Sync, T9: Send + Sync> RealtimeRenderComponentUsecase<K, T> for MPDeltaCore<K, T0, T1, T2, T3, T4, T5, CR, T7, T8, T9>
+impl<K, T: ParameterValueType, T0, T1, T2, T3, T4, T5, CR, T7, T8, T9> RealtimeRenderComponentUsecase<K, T> for MPDeltaCore<K, T0, T1, T2, T3, T4, T5, CR, T7, T8, T9>
 where
+    Self: Send + Sync,
     ComponentInstanceHandle<K, T>: Sync,
     CR: ComponentRendererBuilder<K, T>,
 {
@@ -269,9 +276,9 @@ pub trait ComponentEncoder<K, T: ParameterValueType, Encoder>: Send + Sync {
         'life1: 'async_trait;
 }
 
-impl<K, T: ParameterValueType, T0: Send + Sync, T1: Send + Sync, T2: Send + Sync, T3: Send + Sync, T4: Send + Sync, T5: Send + Sync, T6: Send + Sync, VE: Send + Sync, T8: Send + Sync, T9: Send + Sync, Encoder> RenderWholeComponentUsecase<K, T, Encoder>
-    for MPDeltaCore<K, T0, T1, T2, T3, T4, T5, T6, VE, T8, T9>
+impl<K, T: ParameterValueType, T0, T1, T2, T3, T4, T5, T6, VE, T8, T9, Encoder> RenderWholeComponentUsecase<K, T, Encoder> for MPDeltaCore<K, T0, T1, T2, T3, T4, T5, T6, VE, T8, T9>
 where
+    Self: Send + Sync,
     VE: ComponentEncoder<K, T, Encoder>,
 {
     type Err = VE::Err;
@@ -324,8 +331,9 @@ pub trait EditHistory<K, T: ParameterValueType, Log>: Send + Sync {
 }
 
 #[async_trait]
-impl<K, T: ParameterValueType, T0: Send + Sync, T1: Send + Sync, T2: Send + Sync, T3: Send + Sync, T4: Send + Sync, T5: Send + Sync, T6: Send + Sync, T7: Send + Sync, ED: Send + Sync, HS: Send + Sync> EditUsecase<K, T> for MPDeltaCore<K, T0, T1, T2, T3, T4, T5, T6, T7, ED, HS>
+impl<K, T: ParameterValueType, T0, T1, T2, T3, T4, T5, T6, T7, ED, HS> EditUsecase<K, T> for MPDeltaCore<K, T0, T1, T2, T3, T4, T5, T6, T7, ED, HS>
 where
+    Self: Send + Sync,
     ComponentInstanceHandle<K, T>: Sync,
     ED: Editor<K, T>,
     HS: EditHistory<K, T, ED::Log>,
@@ -346,8 +354,9 @@ where
 }
 
 #[async_trait]
-impl<K, T: ParameterValueType, T0: Send + Sync, T1: Send + Sync, T2: Send + Sync, T3: Send + Sync, T4: Send + Sync, T5: Send + Sync, T6: Send + Sync, T7: Send + Sync, ED: Send + Sync, T9: Send + Sync> SubscribeEditEventUsecase<K, T> for MPDeltaCore<K, T0, T1, T2, T3, T4, T5, T6, T7, ED, T9>
+impl<K, T: ParameterValueType, T0, T1, T2, T3, T4, T5, T6, T7, ED, T9> SubscribeEditEventUsecase<K, T> for MPDeltaCore<K, T0, T1, T2, T3, T4, T5, T6, T7, ED, T9>
 where
+    Self: Send + Sync,
     ComponentInstanceHandle<K, T>: Sync,
     ED: Editor<K, T>,
 {
@@ -359,8 +368,9 @@ where
 }
 
 #[async_trait]
-impl<K, T: ParameterValueType, T0: Send + Sync, T1: Send + Sync, T2: Send + Sync, T3: Send + Sync, T4: Send + Sync, T5: Send + Sync, T6: Send + Sync, T7: Send + Sync, ED: Send + Sync, HS: Send + Sync> UndoUsecase<K, T> for MPDeltaCore<K, T0, T1, T2, T3, T4, T5, T6, T7, ED, HS>
+impl<K, T: ParameterValueType, T0, T1, T2, T3, T4, T5, T6, T7, ED, HS> UndoUsecase<K, T> for MPDeltaCore<K, T0, T1, T2, T3, T4, T5, T6, T7, ED, HS>
 where
+    Self: Send + Sync,
     ComponentInstanceHandle<K, T>: Sync,
     ED: Editor<K, T>,
     HS: EditHistory<K, T, ED::Log>,
@@ -385,8 +395,9 @@ where
 }
 
 #[async_trait]
-impl<K, T: ParameterValueType, T0: Send + Sync, T1: Send + Sync, T2: Send + Sync, T3: Send + Sync, T4: Send + Sync, T5: Send + Sync, T6: Send + Sync, T7: Send + Sync, ED: Send + Sync, HS: Send + Sync> RedoUsecase<K, T> for MPDeltaCore<K, T0, T1, T2, T3, T4, T5, T6, T7, ED, HS>
+impl<K, T: ParameterValueType, T0, T1, T2, T3, T4, T5, T6, T7, ED, HS> RedoUsecase<K, T> for MPDeltaCore<K, T0, T1, T2, T3, T4, T5, T6, T7, ED, HS>
 where
+    Self: Send + Sync,
     ComponentInstanceHandle<K, T>: Sync,
     ED: Editor<K, T>,
     HS: EditHistory<K, T, ED::Log>,

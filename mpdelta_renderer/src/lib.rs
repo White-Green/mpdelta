@@ -17,7 +17,7 @@ use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
 use std::future::Future;
 use std::hash::{Hash, Hasher};
-use std::ops::{Deref, DerefMut, Range};
+use std::ops::{DerefMut, Range};
 use std::sync::Arc;
 use std::time::Duration;
 use thiserror::Error;

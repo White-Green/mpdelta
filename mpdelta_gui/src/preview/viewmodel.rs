@@ -2,7 +2,7 @@ use crate::global_ui_state::{GlobalUIEvent, GlobalUIEventHandler, GlobalUIState}
 use crate::viewmodel::ViewModelParams;
 use crate::AudioTypePlayer;
 use arc_swap::ArcSwapOption;
-use mpdelta_async_runtime::{AsyncRuntime, JoinHandle};
+use mpdelta_async_runtime::{AsyncRuntime, JoinHandleWrapper};
 use mpdelta_core::component::class::ComponentClass;
 use mpdelta_core::component::instance::{ComponentInstanceHandle, ComponentInstanceHandleOwned};
 use mpdelta_core::component::parameter::ParameterValueType;
@@ -30,7 +30,7 @@ pub struct PreviewViewModelImpl<K: 'static, T: ParameterValueType, GlobalUIState
     real_time_renderer: Arc<ArcSwapOption<(R, ComponentInstanceHandleOwned<K, T>, RootComponentClassHandle<K, T>)>>,
     audio_player: Arc<AudioPlayer>,
     global_ui_state: Arc<GlobalUIState>,
-    create_renderer: Mutex<JoinHandle>,
+    create_renderer: Mutex<JoinHandleWrapper<JoinHandle>>,
     handle: Runtime,
     guard: OnceLock<G>,
 }

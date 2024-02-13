@@ -8,6 +8,41 @@ use std::task::{Context, Poll};
 #[cfg(feature = "tokio")]
 pub mod implementation;
 
+pub struct JoinHandleWrapper<H>(H);
+
+impl<H> JoinHandleWrapper<H> {
+    fn new(handle: H) -> Self {
+        JoinHandleWrapper(handle)
+    }
+
+    fn into_inner(self) -> H {
+        self.0
+    }
+}
+
+impl<H: JoinHandle> JoinHandleWrapper<H> {
+    pub fn abort(&self) {
+        self.0.abort()
+    }
+
+    pub fn is_finished(&self) -> bool {
+        self.0.is_finished()
+    }
+}
+
+impl<H> Future for JoinHandleWrapper<H>
+where
+    H: JoinHandle,
+{
+    type Output = H::Output;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        // SAFETY: fieldの値をclosure外部とやり取りしていないので安全
+        // ref: https://doc.rust-lang.org/std/pin/index.html#pinning-is-structural-for-field
+        unsafe { self.map_unchecked_mut(|JoinHandleWrapper(h)| h).poll(cx) }
+    }
+}
+
 pub trait JoinHandle: Future + Send + Sync {
     fn abort(&self);
     fn is_finished(&self) -> bool;
@@ -36,7 +71,7 @@ impl<T: JoinHandle + ?Sized> JoinHandle for Pin<Box<T>> {
 pub trait AnyAsyncRuntime: Send + Sync {
     type Err: Error + Send + 'static;
     type JoinHandle<T: Send + 'static>: JoinHandle<Output = Result<T, Self::Err>> + 'static;
-    fn spawn<Fut>(&self, fut: Fut) -> Self::JoinHandle<Fut::Output>
+    fn spawn<Fut>(&self, fut: Fut) -> JoinHandleWrapper<Self::JoinHandle<Fut::Output>>
     where
         Fut: Future + Send + 'static,
         Fut::Output: Send;
@@ -45,7 +80,7 @@ pub trait AnyAsyncRuntime: Send + Sync {
 pub trait AsyncRuntime<Out>: Send + Sync {
     type Err: Error + Send + 'static;
     type JoinHandle: JoinHandle<Output = Result<Out, Self::Err>> + 'static;
-    fn spawn<Fut: Future<Output = Out> + Send + 'static>(&self, fut: Fut) -> Self::JoinHandle;
+    fn spawn<Fut: Future<Output = Out> + Send + 'static>(&self, fut: Fut) -> JoinHandleWrapper<Self::JoinHandle>;
 }
 
 pub trait AsyncRuntimeDyn<Out>: Send + Sync {
@@ -56,7 +91,7 @@ impl<Runtime: AnyAsyncRuntime, T: Send + 'static> AsyncRuntime<T> for Runtime {
     type Err = Runtime::Err;
     type JoinHandle = Runtime::JoinHandle<T>;
 
-    fn spawn<Fut: Future<Output = T> + Send + 'static>(&self, fut: Fut) -> Self::JoinHandle {
+    fn spawn<Fut: Future<Output = T> + Send + 'static>(&self, fut: Fut) -> JoinHandleWrapper<Self::JoinHandle> {
         AnyAsyncRuntime::spawn(self, fut)
     }
 }
@@ -66,7 +101,7 @@ where
     T: AsyncRuntime<Out>,
 {
     fn spawn_dyn(&self, fut: Pin<Box<dyn Future<Output = Out> + Send + 'static>>) -> Pin<Box<dyn JoinHandle<Output = Result<Out, BoxedError>>>> {
-        Box::pin(BoxedErrorFuture(self.spawn(fut)))
+        Box::pin(BoxedErrorFuture(self.spawn(fut).into_inner()))
     }
 }
 
@@ -74,8 +109,8 @@ impl<Out: 'static> AsyncRuntime<Out> for dyn AsyncRuntimeDyn<Out> {
     type Err = BoxedError;
     type JoinHandle = Pin<Box<dyn JoinHandle<Output = Result<Out, Self::Err>>>>;
 
-    fn spawn<Fut: Future<Output = Out> + Send + 'static>(&self, fut: Fut) -> Self::JoinHandle {
-        self.spawn_dyn(Box::pin(fut))
+    fn spawn<Fut: Future<Output = Out> + Send + 'static>(&self, fut: Fut) -> JoinHandleWrapper<Self::JoinHandle> {
+        JoinHandleWrapper::new(self.spawn_dyn(Box::pin(fut)))
     }
 }
 
@@ -86,7 +121,7 @@ where
     type Err = O::Err;
     type JoinHandle = O::JoinHandle;
 
-    fn spawn<Fut: Future<Output = Out> + Send + 'static>(&self, fut: Fut) -> Self::JoinHandle {
+    fn spawn<Fut: Future<Output = Out> + Send + 'static>(&self, fut: Fut) -> JoinHandleWrapper<Self::JoinHandle> {
         O::spawn(self, fut)
     }
 }

@@ -21,12 +21,12 @@ pub enum FfmpegIoError {
 }
 
 unsafe extern "C" fn write<T: Write>(opaque: *mut c_void, buffer: *mut u8, len: c_int) -> c_int {
-    let output = &mut *(opaque as *mut T);
+    let output = opaque.cast::<T>().as_mut().unwrap();
     output.write_all(slice::from_raw_parts(buffer, len as usize)).map_or(-1, |_| len)
 }
 
 unsafe extern "C" fn seek<T: Seek>(opaque: *mut c_void, seek: i64, whence: c_int) -> i64 {
-    let output = &mut *(opaque as *mut T);
+    let output = opaque.cast::<T>().as_mut().unwrap();
     match whence {
         ff::SEEK_SET => output.seek(SeekFrom::Start(seek as u64)).map_or(-1, |pos| pos as i64),
         ff::SEEK_CUR => output.seek(SeekFrom::Current(seek)).map_or(-1, |pos| pos as i64),

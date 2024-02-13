@@ -3,6 +3,7 @@ use std::future::Future;
 use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
 use std::ops::Deref;
+use std::ptr;
 use std::sync::{Arc, Weak};
 
 pub struct StaticPointerOwned<T: ?Sized>(Arc<T>, StaticPointer<T>);
@@ -172,25 +173,25 @@ impl<'a, T: ?Sized + PartialEq> PartialEq<StaticPointerOwned<T>> for StaticPoint
 
 impl<T: ?Sized> PartialEq<StaticPointerOwned<T>> for StaticPointer<T> {
     fn eq(&self, other: &StaticPointerOwned<T>) -> bool {
-        Weak::as_ptr(&self.0) == Arc::as_ptr(&other.0)
+        ptr::eq(Weak::as_ptr(&self.0), Arc::as_ptr(&other.0))
     }
 }
 
 impl<T: ?Sized> PartialEq<StaticPointer<T>> for StaticPointerOwned<T> {
     fn eq(&self, other: &StaticPointer<T>) -> bool {
-        Arc::as_ptr(&self.0) == Weak::as_ptr(&other.0)
+        ptr::eq(Arc::as_ptr(&self.0), Weak::as_ptr(&other.0))
     }
 }
 
 impl<'a, T: ?Sized> PartialEq<StaticPointerStrongRef<'a, T>> for StaticPointer<T> {
     fn eq(&self, other: &StaticPointerStrongRef<'a, T>) -> bool {
-        Weak::as_ptr(&self.0) == Arc::as_ptr(&other.0)
+        ptr::eq(Weak::as_ptr(&self.0), Arc::as_ptr(&other.0))
     }
 }
 
 impl<'a, T: ?Sized> PartialEq<StaticPointer<T>> for StaticPointerStrongRef<'a, T> {
     fn eq(&self, other: &StaticPointer<T>) -> bool {
-        Arc::as_ptr(&self.0) == Weak::as_ptr(&other.0)
+        ptr::eq(Arc::as_ptr(&self.0), Weak::as_ptr(&other.0))
     }
 }
 

@@ -98,8 +98,7 @@ fn as_dictionary(value: &IndexMap<Cow<'static, str>, OptionValue>) -> Dictionary
 
 impl<Encoder: From<FfmpegEncodeSettings<File>>> MediaCodecImplementHandle<Encoder> for FfmpegEncoderBuilder {
     fn eq(&self, rhs: &dyn MediaCodecImplementHandle<Encoder>) -> bool {
-        // TODO:ptr::addr_eqがstabilizeしたら書き替える
-        ptr::eq(self as &dyn MediaCodecImplementHandle<Encoder> as *const dyn MediaCodecImplementHandle<Encoder> as *const (), rhs as *const dyn MediaCodecImplementHandle<Encoder> as *const ())
+        ptr::addr_eq(self, rhs)
     }
 
     fn supports(&self, file_format: FileFormat, video: Option<VideoCodec>, audio: Option<AudioCodec>) -> bool {

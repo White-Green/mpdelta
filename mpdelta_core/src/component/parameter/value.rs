@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 use std::fmt::{Debug, Formatter};
 use std::future::Future;
 use std::sync::Arc;
-use std::{any, fmt};
+use std::{any, fmt, ptr};
 use thiserror::Error;
 
 #[derive(Debug, Clone, Copy)]
@@ -75,7 +75,7 @@ where
     U: Any,
 {
     if T::type_id(value) == any::TypeId::of::<U>() {
-        Some(unsafe { &mut *(value as *mut T as *mut U) })
+        Some(unsafe { ptr::from_mut(value).cast::<U>().as_mut().unwrap() })
     } else {
         None
     }

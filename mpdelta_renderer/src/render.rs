@@ -322,13 +322,18 @@ where
             })
         };
         let time_map = TimeMap::new(component.marker_left(), component.markers(), component.marker_right(), &ctx.key)?;
-        let Some(internal_at) = time_map.map(at) else {
-            return Err(RenderError::RenderTargetTimeOutOfRange {
+
+        // これは再生位置によらずAudioだけはCombinerに読ませるための特殊処理(できれば消したい)
+        let internal_at = if ty.equals_type(&ParameterType::Audio(())) {
+            TimelineTime::ZERO
+        } else {
+            time_map.map(at).ok_or_else(|| RenderError::RenderTargetTimeOutOfRange {
                 component: component_handle.clone(),
                 range: time_map.left()..time_map.right(),
                 at,
-            });
+            })?
         };
+
         match component.processor() {
             ComponentProcessorWrapper::Native(processor) => {
                 if !processor.supports_output_type(ty.select()) {

@@ -110,7 +110,7 @@ where
         if param.right() <= begin || end <= param.left() {
             continue;
         }
-        let offset = (begin - param.left()).max(TimelineTime::ZERO);
+        let offset = begin.max(param.left());
         // TODO: 再生速度変化の対応が未だ
         // TODO: サンプリングレートが違う場合の対応も未だ
         let computed_len = audio.compute_audio(param.map(offset).unwrap(), buffer.slice_mut(..).unwrap());

@@ -301,18 +301,26 @@ where
 
 impl AudioTypePlayer<AudioType> for CpalAudioPlayer {
     fn set_audio(&self, audio: AudioType) {
-        self.inner.read().unwrap().audio_sender.send(audio).unwrap();
+        if let Err(err) = self.inner.read().unwrap().audio_sender.send(audio) {
+            eprintln!("[{}:{}] {err}", file!(), line!());
+        }
     }
 
     fn seek(&self, time: TimelineTime) {
-        self.inner.read().unwrap().seek_message_sender.send(time).unwrap();
+        if let Err(err) = self.inner.read().unwrap().seek_message_sender.send(time) {
+            eprintln!("[{}:{}] {err}", file!(), line!());
+        }
     }
 
     fn play(&self) {
-        self.inner.read().unwrap().play_message_sender.send(StreamMessage::Play).unwrap();
+        if let Err(err) = self.inner.read().unwrap().play_message_sender.send(StreamMessage::Play) {
+            eprintln!("[{}:{}] {err}", file!(), line!());
+        }
     }
 
     fn pause(&self) {
-        self.inner.read().unwrap().play_message_sender.send(StreamMessage::Pause).unwrap();
+        if let Err(err) = self.inner.read().unwrap().play_message_sender.send(StreamMessage::Pause) {
+            eprintln!("[{}:{}] {err}", file!(), line!());
+        }
     }
 }

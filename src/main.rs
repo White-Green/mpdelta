@@ -1,4 +1,4 @@
-use async_trait::async_trait;
+use async_trait :: async_trait;
 use cpal::traits::HostTrait;
 use mpdelta_audio_mixer::MPDeltaAudioMixerBuilder;
 use mpdelta_components::rectangle::RectangleClass;

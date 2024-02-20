@@ -4,7 +4,7 @@ use crate::timeline::viewmodel::{ComponentClassData, ComponentClassDataList, Com
 use egui::style::ScrollStyle;
 use egui::{PointerButton, ScrollArea, Sense, Stroke, Ui, Vec2};
 use mpdelta_core::component::parameter::ParameterValueType;
-use mpdelta_core::time::TimelineTime;
+use ordered_float::OrderedFloat;
 use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -28,11 +28,11 @@ impl<K: 'static, T: ParameterValueType, VM: TimelineViewModel<K, T>> Timeline<K,
         let output = ScrollArea::both().id_source("Timeline").show_viewport(ui, |ui, rect| {
             let available_size = ui.available_size();
             let response = ui.allocate_response(Vec2::new(self.size.x.max(available_size.x), available_size.y), Sense::click_and_drag());
-            let time_to_point = |time: TimelineTime| time.value() as f32 * 100. - rect.left();
-            let point_to_time = |point: f32| TimelineTime::new((point + rect.left()) as f64 / 100.).unwrap();
+            let time_to_point = |time: f64| time as f32 * 100. - rect.left();
+            let point_to_time = |point: f32| (point + rect.left()) as f64 / 100.;
             if response.clicked_by(PointerButton::Primary) || response.dragged_by(PointerButton::Primary) {
                 let time = point_to_time(response.interact_pointer_pos().unwrap().x);
-                let frame = ((time.value() * 60.).round() as usize).clamp(0, 599);
+                let frame = ((time * 60.).round() as usize).clamp(0, 599);
                 self.view_model.set_seek(frame);
             }
             let top = response.rect.top();
@@ -53,7 +53,7 @@ impl<K: 'static, T: ParameterValueType, VM: TimelineViewModel<K, T>> Timeline<K,
                 });
                 let mut range_max = RangeMax::new();
                 for instance_data in component_instances.iter() {
-                    let top = range_max.get(&instance_data.start_time..&instance_data.end_time).copied().unwrap_or(top);
+                    let top = range_max.get(&OrderedFloat(instance_data.start_time)..&OrderedFloat(instance_data.end_time)).copied().unwrap_or(top);
                     let block_bottom = ComponentInstanceBlock::new(instance_data, top, time_to_point, point_to_time, |event| match event {
                         ComponentInstanceEditEvent::Click => self.view_model.click_component_instance(&instance_data.handle),
                         ComponentInstanceEditEvent::Delete => self.view_model.delete_component_instance(&instance_data.handle),
@@ -61,11 +61,11 @@ impl<K: 'static, T: ParameterValueType, VM: TimelineViewModel<K, T>> Timeline<K,
                         ComponentInstanceEditEvent::MovePinTemporary(pin, to) | ComponentInstanceEditEvent::MovePin(pin, to) => self.view_model.move_marker_pin(&instance_data.handle, pin, to),
                     })
                     .show(ui);
-                    range_max.insert(instance_data.start_time..instance_data.end_time, block_bottom);
+                    range_max.insert(OrderedFloat(instance_data.start_time)..OrderedFloat(instance_data.end_time), block_bottom);
                 }
             });
             let seek = self.view_model.seek();
-            let seek_line_position = time_to_point(TimelineTime::new(seek as f64 / 60.).unwrap());
+            let seek_line_position = time_to_point(seek as f64 / 60.);
             ui.painter().vline(seek_line_position, response.rect.y_range(), Stroke::new(1., egui::Color32::RED));
             response.context_menu(|ui| {
                 self.view_model.component_classes(|ComponentClassDataList { list }| {
@@ -89,6 +89,7 @@ mod tests {
     use crate::timeline::viewmodel::{ComponentInstanceData, ComponentLinkDataList, MarkerPinData};
     use egui::{Pos2, Visuals};
     use egui_image_renderer::FileFormat;
+    use mpdelta_core::time::TimelineTime;
     use std::cell::Cell;
     use std::io::Cursor;
     use std::sync::Mutex;
@@ -130,22 +131,22 @@ mod tests {
                             handle: "ComponentInstance0",
                             name: "Component Instance 0".to_string(),
                             selected: false,
-                            start_time: TimelineTime::new(0.0).unwrap(),
-                            end_time: TimelineTime::new(1.0).unwrap(),
+                            start_time: 0.0,
+                            end_time: 1.0,
                             layer: 0.0,
                             left_pin: MarkerPinData {
                                 handle: "0 - left",
-                                at: TimelineTime::new(0.0).unwrap(),
+                                at: 0.0,
                                 render_location: Cell::new(Pos2::default()),
                             },
                             right_pin: MarkerPinData {
                                 handle: "0 - right",
-                                at: TimelineTime::new(1.0).unwrap(),
+                                at: 1.0,
                                 render_location: Cell::new(Pos2::default()),
                             },
                             pins: vec![MarkerPinData {
                                 handle: "0 - pin 0",
-                                at: TimelineTime::new(0.5).unwrap(),
+                                at: 0.5,
                                 render_location: Cell::new(Pos2::default()),
                             }],
                         },
@@ -153,17 +154,17 @@ mod tests {
                             handle: "ComponentInstance1",
                             name: "Component Instance 1".to_string(),
                             selected: false,
-                            start_time: TimelineTime::new(2.0).unwrap(),
-                            end_time: TimelineTime::new(4.0).unwrap(),
+                            start_time: 2.0,
+                            end_time: 4.0,
                             layer: 0.0,
                             left_pin: MarkerPinData {
                                 handle: "1 - left",
-                                at: TimelineTime::new(2.0).unwrap(),
+                                at: 2.0,
                                 render_location: Cell::new(Pos2::default()),
                             },
                             right_pin: MarkerPinData {
                                 handle: "1 - right",
-                                at: TimelineTime::new(4.0).unwrap(),
+                                at: 4.0,
                                 render_location: Cell::new(Pos2::default()),
                             },
                             pins: vec![],
@@ -172,28 +173,28 @@ mod tests {
                             handle: "ComponentInstance2",
                             name: "Component Instance 2".to_string(),
                             selected: true,
-                            start_time: TimelineTime::new(0.5).unwrap(),
-                            end_time: TimelineTime::new(1.8).unwrap(),
+                            start_time: 0.5,
+                            end_time: 1.8,
                             layer: 0.0,
                             left_pin: MarkerPinData {
                                 handle: "2 - left",
-                                at: TimelineTime::new(0.5).unwrap(),
+                                at: 0.5,
                                 render_location: Cell::new(Pos2::default()),
                             },
                             right_pin: MarkerPinData {
                                 handle: "2 - right",
-                                at: TimelineTime::new(1.8).unwrap(),
+                                at: 1.8,
                                 render_location: Cell::new(Pos2::default()),
                             },
                             pins: vec![
                                 MarkerPinData {
                                     handle: "2 - pin 0",
-                                    at: TimelineTime::new(0.6).unwrap(),
+                                    at: 0.6,
                                     render_location: Cell::new(Pos2::default()),
                                 },
                                 MarkerPinData {
                                     handle: "2 - pin 1",
-                                    at: TimelineTime::new(1.5).unwrap(),
+                                    at: 1.5,
                                     render_location: Cell::new(Pos2::default()),
                                 },
                             ],
@@ -207,9 +208,9 @@ mod tests {
 
             fn delete_component_instance(&self, _handle: &Self::ComponentInstanceHandle) {}
 
-            fn move_component_instance(&self, _handle: &Self::ComponentInstanceHandle, _to: TimelineTime) {}
+            fn move_component_instance(&self, _handle: &Self::ComponentInstanceHandle, _to: f64) {}
 
-            fn move_marker_pin(&self, _instance_handle: &Self::ComponentInstanceHandle, _pin_handle: &Self::MarkerPinHandle, _to: TimelineTime) {}
+            fn move_marker_pin(&self, _instance_handle: &Self::ComponentInstanceHandle, _pin_handle: &Self::MarkerPinHandle, _to: f64) {}
 
             type ComponentLinkHandle = &'static str;
 
@@ -218,7 +219,7 @@ mod tests {
                 f(&list)
             }
 
-            fn edit_marker_link_length(&self, _link: &Self::ComponentLinkHandle, _value: TimelineTime) {}
+            fn edit_marker_link_length(&self, _link: &Self::ComponentLinkHandle, _value: f64) {}
 
             type ComponentClassHandle = &'static str;
 

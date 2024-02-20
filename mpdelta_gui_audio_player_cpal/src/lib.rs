@@ -1,6 +1,7 @@
 use cpal::traits::{DeviceTrait, StreamTrait};
 use cpal::{BufferSize, Device, FromSample, SampleFormat, SizedSample, StreamConfig, SupportedBufferSize, SupportedStreamConfig, SupportedStreamConfigsError};
 use crossbeam_queue::ArrayQueue;
+use mpdelta_core::common::mixed_fraction::MixedFraction;
 use mpdelta_core::time::TimelineTime;
 use mpdelta_core_audio::multi_channel_audio::{MultiChannelAudio, MultiChannelAudioMutOp, MultiChannelAudioOp};
 use mpdelta_core_audio::AudioProvider;
@@ -266,7 +267,7 @@ where
                         let result_len = audio.compute_audio(play_time, audio_buffer.slice_mut(..).unwrap());
                         audio_buffer.iter().take(result_len).for_each(|audio_data| resample.iter_mut().zip(audio_data).for_each(|(resample, &a)| resample.extend([a])));
                         if result_len == sample_len {
-                            play_time = play_time + TimelineTime::new(result_len as f64 / audio.sample_rate() as f64).unwrap();
+                            play_time = play_time + TimelineTime::new(MixedFraction::from_fraction(result_len as i64, audio.sample_rate()));
                         } else {
                             play_time = TimelineTime::ZERO;
                         }

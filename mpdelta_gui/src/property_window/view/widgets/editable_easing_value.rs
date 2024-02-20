@@ -3,7 +3,6 @@ use egui::scroll_area::ScrollBarVisibility;
 use egui::{CursorIcon, Id, PointerButton, Pos2, Rect, ScrollArea, Sense, Shape, Ui, Vec2};
 use mpdelta_core::common::time_split_value::TimeSplitValue;
 use mpdelta_core::component::parameter::value::EasingValue;
-use mpdelta_core::time::TimelineTime;
 use std::hash::Hash;
 use std::iter;
 use std::ops::{Bound, Range};
@@ -67,8 +66,8 @@ pub enum EasingValueEditEvent {
 
 pub struct EasingValueEditor<'a, F> {
     id: Id,
-    time_range: Range<TimelineTime>,
-    times: &'a [TimelineTime],
+    time_range: Range<f64>,
+    times: &'a [f64],
     value: &'a TimeSplitValue<usize, Option<EasingValue<f64>>>,
     value_range: Range<f64>,
     point_per_second: f64,
@@ -80,7 +79,7 @@ impl<'a, F> EasingValueEditor<'a, F>
 where
     F: FnMut(EasingValueEditEvent) + 'a,
 {
-    pub fn new(id: impl Hash, times: &'a [TimelineTime], time_range: Range<TimelineTime>, value: &'a TimeSplitValue<usize, Option<EasingValue<f64>>>, value_range: Range<f64>, point_per_second: f64, scroll_offset: &'a mut f32, update: F) -> EasingValueEditor<'a, F> {
+    pub fn new(id: impl Hash, times: &'a [f64], time_range: Range<f64>, value: &'a TimeSplitValue<usize, Option<EasingValue<f64>>>, value_range: Range<f64>, point_per_second: f64, scroll_offset: &'a mut f32, update: F) -> EasingValueEditor<'a, F> {
         EasingValueEditor {
             id: Id::new(id),
             time_range,
@@ -107,7 +106,7 @@ where
         let scroll_area_output = ScrollArea::horizontal().id_source(id).scroll_offset(Vec2::new(*scroll_offset, 0.)).scroll_bar_visibility(ScrollBarVisibility::AlwaysHidden).show(ui, |ui| {
             let id = ui.make_persistent_id(id);
             let mut state: InnerStateEdit = ui.data(|data| data.get_temp::<InnerState>(id).unwrap_or_default().into());
-            let width = ((time_range.end.value() - time_range.start.value()) * point_per_second) as f32;
+            let width = ((time_range.end - time_range.start) * point_per_second) as f32;
             let (response, mut painter) = ui.allocate_painter(Vec2::new(width, state.height()), Sense::hover());
             let whole_rect = response.rect;
             painter.set_clip_rect(painter.clip_rect().intersect(whole_rect));
@@ -115,25 +114,25 @@ where
             let widget_visuals = ui.visuals().widgets.inactive;
             let slider_width = painter.round_to_pixel(ui.spacing().interact_size.y / 6.);
             let plot_area_rect = whole_rect.with_min_y(whole_rect.top() + slider_width * 3.).with_max_y(whole_rect.bottom() - slider_width);
-            let time_map = glam::Mat2::from_cols(glam::Vec2::new(time_range.start.value() as f32, time_range.end.value() as f32), glam::Vec2::new(1., 1.)).inverse() * glam::Vec2::new(plot_area_rect.left(), plot_area_rect.right());
+            let time_map = glam::Mat2::from_cols(glam::Vec2::new(time_range.start as f32, time_range.end as f32), glam::Vec2::new(1., 1.)).inverse() * glam::Vec2::new(plot_area_rect.left(), plot_area_rect.right());
             let value_map = glam::Mat2::from_cols(glam::Vec2::new(value_range.start as f32, value_range.end as f32), glam::Vec2::new(1., 1.)).inverse() * glam::Vec2::new(plot_area_rect.bottom(), plot_area_rect.top());
             {
                 let &[left, ref center @ .., right] = times else {
                     unreachable!();
                 };
-                let left_position = glam::Vec2::new(left.value() as f32, 1.).dot(time_map);
+                let left_position = glam::Vec2::new(left as f32, 1.).dot(time_map);
                 let response = ui.interact(Rect::from_x_y_ranges(left_position..=left_position + slider_width * 2., whole_rect.top()..=whole_rect.top() + slider_width * 3.), id.with(("pin_head", 0usize)), Sense::click());
                 if response.clicked() {
                     update(EasingValueEditEvent::FlipPin(0));
                 }
                 for (i, &time) in center.iter().enumerate() {
-                    let x = glam::Vec2::new(time.value() as f32, 1.).dot(time_map);
+                    let x = glam::Vec2::new(time as f32, 1.).dot(time_map);
                     let response = ui.interact(Rect::from_x_y_ranges(x - slider_width * 2.0..=x + slider_width * 2., whole_rect.top()..=whole_rect.top() + slider_width * 3.), id.with(("pin_head", i + 1)), Sense::click());
                     if response.clicked() {
                         update(EasingValueEditEvent::FlipPin(i + 1));
                     }
                 }
-                let right_position = glam::Vec2::new(right.value() as f32, 1.).dot(time_map);
+                let right_position = glam::Vec2::new(right as f32, 1.).dot(time_map);
                 let response = ui.interact(
                     Rect::from_x_y_ranges(right_position - slider_width * 2.0..=right_position, whole_rect.top()..=whole_rect.top() + slider_width * 3.),
                     id.with(("pin_head", center.len() + 1)),
@@ -163,7 +162,7 @@ where
                 };
                 for i in 0..value.len_value() {
                     let (&left, _, &right) = value.get_value(i).unwrap();
-                    let left_time_position = glam::Vec2::new(times[left].value() as f32, 1.).dot(time_map);
+                    let left_time_position = glam::Vec2::new(times[left] as f32, 1.).dot(time_map);
                     let response = ui.interact(Rect::from_x_y_ranges(left_time_position..=left_time_position + slider_width * 2., plot_area_rect.y_range()), id.with(("pin_slider", i, Side::Left)), Sense::click_and_drag());
                     let interact_pointer_pos = response.interact_pointer_pos().map(|Pos2 { y, .. }| y.clamp(cursor_y_range.start, cursor_y_range.end));
                     let update_value = interact_pointer_pos.map(|y| ((y - value_map.y) / value_map.x) as f64);
@@ -190,7 +189,7 @@ where
                             ))
                             .is_none());
                     }
-                    let right_time_position = glam::Vec2::new(times[right].value() as f32, 1.).dot(time_map);
+                    let right_time_position = glam::Vec2::new(times[right] as f32, 1.).dot(time_map);
                     let response = ui.interact(Rect::from_x_y_ranges(right_time_position - slider_width * 2.0..=right_time_position, plot_area_rect.y_range()), id.with(("pin_slider", i, Side::Right)), Sense::click_and_drag());
                     let interact_pointer_pos = response.interact_pointer_pos().map(|Pos2 { y, .. }| y.clamp(cursor_y_range.start, cursor_y_range.end));
                     let update_value = interact_pointer_pos.map(|y| ((y - value_map.y) / value_map.x) as f64);
@@ -231,7 +230,7 @@ where
                     times[(Bound::Excluded(left), Bound::Excluded(right))].iter().copied()
                 })
                 .flat_map(|time| {
-                    let base_position = glam::Vec2::new(time.value() as f32, 1.).dot(time_map);
+                    let base_position = glam::Vec2::new(time as f32, 1.).dot(time_map);
                     [
                         Shape::Path(PathShape {
                             points: vec![
@@ -261,7 +260,7 @@ where
 
             let foreground_pin = (0..value.len_time()).flat_map(|i| {
                 let (left, &time, right) = value.get_time(i).unwrap();
-                let base_time_pixel = glam::Vec2::new(times[time].value() as f32, 1.).dot(time_map);
+                let base_time_pixel = glam::Vec2::new(times[time] as f32, 1.).dot(time_map);
                 let (moving_segment_left, moving_segment_right, override_pos) = update_state
                     .map(|(update_state, pos)| match update_state {
                         EasingValueEditEvent::MoveValueTemporary { value_index, side: Side::Left, .. } | EasingValueEditEvent::MoveValue { value_index, side: Side::Left, .. } => (value_index == i, false, pos),
@@ -390,8 +389,8 @@ where
             let segment_lines = (0..value.len_value()).filter_map(|i| {
                 let (&left, value, &right) = value.get_value(i).unwrap();
                 let value = value.as_ref()?;
-                let left = times[left].value();
-                let right = times[right].value();
+                let left = times[left];
+                let right = times[right];
                 let points = ((left * 60.).floor() as i32..=(right * 60.).ceil() as i32)
                     .map(|t| t as f64 / 60.)
                     .map(move |t| {
@@ -462,8 +461,7 @@ mod tests {
         }
         macro_rules! create_editor {
             ($editor:ident) => {
-                let t = |v| TimelineTime::new(v).unwrap();
-                let times = [t(1.), t(2.), t(3.), t(4.)];
+                let times = [1., 2., 3., 4.];
                 let value = time_split_value!(
                     0,
                     /*Some(EasingValue::new(LinearEasingF64 { start: 0., end: 1. }, Arc::new(Easing1)))*/ None,
@@ -472,7 +470,7 @@ mod tests {
                     3,
                 );
                 let mut scroll_offset = 0.;
-                let $editor = EasingValueEditor::new("editor", &times, t(1.)..t(4.), &value, -0.5..1.5, 150., &mut scroll_offset, |_| {});
+                let $editor = EasingValueEditor::new("editor", &times, 1.0..4.0, &value, -0.5..1.5, 150., &mut scroll_offset, |_| {});
             };
         }
         let width = 512;

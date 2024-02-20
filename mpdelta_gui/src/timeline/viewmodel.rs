@@ -8,6 +8,7 @@ use arc_swap::ArcSwap;
 use egui::epaint::ahash::{HashSet, HashSetExt};
 use egui::Pos2;
 use mpdelta_async_runtime::{AsyncRuntime, JoinHandleWrapper};
+use mpdelta_core::common::mixed_fraction::MixedFraction;
 use mpdelta_core::component::class::ComponentClass;
 use mpdelta_core::component::instance::ComponentInstanceHandle;
 use mpdelta_core::component::link::MarkerLink;
@@ -30,7 +31,7 @@ use tokio::sync::{Mutex, RwLock};
 #[derive(Clone)]
 pub struct MarkerPinData<Handle> {
     pub handle: Handle,
-    pub at: TimelineTime,
+    pub at: f64,
     pub render_location: Cell<Pos2>,
 }
 
@@ -39,8 +40,8 @@ pub struct ComponentInstanceData<InstanceHandle, PinHandle> {
     pub handle: InstanceHandle,
     pub name: String,
     pub selected: bool,
-    pub start_time: TimelineTime,
-    pub end_time: TimelineTime,
+    pub start_time: f64,
+    pub end_time: f64,
     pub layer: f32,
     pub left_pin: MarkerPinData<PinHandle>,
     pub right_pin: MarkerPinData<PinHandle>,
@@ -55,17 +56,17 @@ where
     fn new(handle: ComponentInstanceHandle<K, T>, key: &TCellOwner<K>, i: usize, pin_map: &mut HashMap<MarkerPinHandle<K>, ComponentInstanceHandle<K, T>>) -> Option<ComponentInstanceData<ComponentInstanceHandle<K, T>, MarkerPinHandle<K>>> {
         let component = handle.upgrade()?;
         let component = component.ro(key);
-        let start_time = component.marker_left().upgrade()?.ro(key).cached_timeline_time();
-        let end_time = component.marker_right().upgrade()?.ro(key).cached_timeline_time();
+        let start_time = component.marker_left().upgrade()?.ro(key).cached_timeline_time().value().into_f64();
+        let end_time = component.marker_right().upgrade()?.ro(key).cached_timeline_time().value().into_f64();
         pin_map.extend(component.markers().iter().map(StaticPointerOwned::reference).chain([component.marker_left(), component.marker_right()]).cloned().map(|marker| (marker, handle.clone())));
         let left_pin = MarkerPinData {
             handle: component.marker_left().clone(),
-            at: component.marker_left().upgrade()?.ro(key).cached_timeline_time(),
+            at: component.marker_left().upgrade()?.ro(key).cached_timeline_time().value().into_f64(),
             render_location: Cell::new(Pos2::default()),
         };
         let right_pin = MarkerPinData {
             handle: component.marker_right().clone(),
-            at: component.marker_right().upgrade()?.ro(key).cached_timeline_time(),
+            at: component.marker_right().upgrade()?.ro(key).cached_timeline_time().value().into_f64(),
             render_location: Cell::new(Pos2::default()),
         };
         let pins = component
@@ -73,7 +74,7 @@ where
             .iter()
             .map(|pin| MarkerPinData {
                 handle: StaticPointerOwned::reference(pin).clone(),
-                at: pin.ro(key).cached_timeline_time(),
+                at: pin.ro(key).cached_timeline_time().value().into_f64(),
                 render_location: Cell::new(Pos2::default()),
             })
             .collect();
@@ -105,8 +106,8 @@ pub struct ComponentLinkData<LinkHandle, PinHandle, ComponentHandle> {
     pub to_component: Option<ComponentHandle>,
     pub from_layer: f32,
     pub to_layer: f32,
-    pub from_time: TimelineTime,
-    pub to_time: TimelineTime,
+    pub from_time: f64,
+    pub to_time: f64,
 }
 
 impl<K, T> ComponentLinkData<StaticPointer<TCell<K, MarkerLink<K>>>, MarkerPinHandle<K>, ComponentInstanceHandle<K, T>>
@@ -127,8 +128,8 @@ where
         let link = link.ro(key);
         let from_pin = link.from.clone();
         let to_pin = link.to.clone();
-        let from_time = link.from.upgrade().unwrap().ro(key).cached_timeline_time();
-        let to_time = link.to.upgrade().unwrap().ro(key).cached_timeline_time();
+        let from_time = link.from.upgrade().unwrap().ro(key).cached_timeline_time().value().into_f64();
+        let to_time = link.to.upgrade().unwrap().ro(key).cached_timeline_time().value().into_f64();
         let from_component = marker_map.get(&link.from).cloned();
         let to_component = marker_map.get(&link.to).cloned();
         let from_layer;
@@ -198,11 +199,11 @@ pub trait TimelineViewModel<K: 'static, T: ParameterValueType> {
     fn component_instances<R>(&self, f: impl FnOnce(&ComponentInstanceDataList<Self::ComponentInstanceHandle, Self::MarkerPinHandle>) -> R) -> R;
     fn click_component_instance(&self, handle: &Self::ComponentInstanceHandle);
     fn delete_component_instance(&self, handle: &Self::ComponentInstanceHandle);
-    fn move_component_instance(&self, handle: &Self::ComponentInstanceHandle, to: TimelineTime);
-    fn move_marker_pin(&self, instance_handle: &Self::ComponentInstanceHandle, pin_handle: &Self::MarkerPinHandle, to: TimelineTime);
+    fn move_component_instance(&self, handle: &Self::ComponentInstanceHandle, to: f64);
+    fn move_marker_pin(&self, instance_handle: &Self::ComponentInstanceHandle, pin_handle: &Self::MarkerPinHandle, to: f64);
     type ComponentLinkHandle: Clone + Eq + Hash;
     fn component_links<R>(&self, f: impl FnOnce(&ComponentLinkDataList<Self::ComponentLinkHandle, Self::MarkerPinHandle, Self::ComponentInstanceHandle>) -> R) -> R;
-    fn edit_marker_link_length(&self, link: &Self::ComponentLinkHandle, value: TimelineTime);
+    fn edit_marker_link_length(&self, link: &Self::ComponentLinkHandle, value: f64);
     type ComponentClassHandle: Clone + Eq + Hash;
     fn component_classes<R>(&self, f: impl FnOnce(&ComponentClassDataList<Self::ComponentClassHandle>) -> R) -> R;
     fn add_component_instance(&self, class: Self::ComponentClassHandle);
@@ -227,10 +228,10 @@ pub enum Message<K: 'static, T: ParameterValueType> {
     AddComponentInstance(StaticPointer<RwLock<dyn ComponentClass<K, T>>>),
     ClickComponentInstance(ComponentInstanceHandle<K, T>),
     DeleteComponentInstance(ComponentInstanceHandle<K, T>),
-    MoveComponentInstance(ComponentInstanceHandle<K, T>, TimelineTime),
-    MoveMarkerPin(ComponentInstanceHandle<K, T>, MarkerPinHandle<K>, TimelineTime),
+    MoveComponentInstance(ComponentInstanceHandle<K, T>, f64),
+    MoveMarkerPin(ComponentInstanceHandle<K, T>, MarkerPinHandle<K>, f64),
     DragComponentInstance(ComponentInstanceHandle<K, T>, f32, f32),
-    EditMarkerLinkLength(StaticPointer<TCell<K, MarkerLink<K>>>, TimelineTime),
+    EditMarkerLinkLength(StaticPointer<TCell<K, MarkerLink<K>>>, f64),
 }
 
 impl<K, T> Clone for Message<K, T>
@@ -370,7 +371,7 @@ impl<K: Send + Sync + 'static, T: ParameterValueType> TimelineViewModelImpl<K, T
                                     RootComponentEditCommand::AddComponentInstance(instance)
                                 }
                                 Message::DeleteComponentInstance(handle) => RootComponentEditCommand::DeleteComponentInstance(handle),
-                                Message::EditMarkerLinkLength(target, len) => RootComponentEditCommand::EditMarkerLinkLength(target, len),
+                                Message::EditMarkerLinkLength(target, len) => RootComponentEditCommand::EditMarkerLinkLength(target, TimelineTime::new(MixedFraction::from_f64(len))),
                                 _ => unreachable!(),
                             };
                             edit.edit(&target, command);
@@ -405,8 +406,8 @@ impl<K: Send + Sync + 'static, T: ParameterValueType> TimelineViewModelImpl<K, T
                             };
                             drop(selected_root_component_class);
                             let (target, command) = match message {
-                                Message::MoveComponentInstance(target, to) => (target, InstanceEditCommand::MoveComponentInstance(to)),
-                                Message::MoveMarkerPin(target, pin, to) => (target, InstanceEditCommand::MoveMarkerPin(pin, to)),
+                                Message::MoveComponentInstance(target, to) => (target, InstanceEditCommand::MoveComponentInstance(TimelineTime::new(MixedFraction::from_f64(to)))),
+                                Message::MoveMarkerPin(target, pin, to) => (target, InstanceEditCommand::MoveMarkerPin(pin, TimelineTime::new(MixedFraction::from_f64(to)))),
                                 _ => unreachable!(),
                             };
                             edit.edit_instance(&target_root, &target, command);
@@ -522,11 +523,11 @@ where
         self.message_router.handle(Message::DeleteComponentInstance(handle.clone()));
     }
 
-    fn move_component_instance(&self, handle: &Self::ComponentInstanceHandle, to: TimelineTime) {
+    fn move_component_instance(&self, handle: &Self::ComponentInstanceHandle, to: f64) {
         self.message_router.handle(Message::MoveComponentInstance(handle.clone(), to));
     }
 
-    fn move_marker_pin(&self, instance_handle: &Self::ComponentInstanceHandle, pin_handle: &Self::MarkerPinHandle, to: TimelineTime) {
+    fn move_marker_pin(&self, instance_handle: &Self::ComponentInstanceHandle, pin_handle: &Self::MarkerPinHandle, to: f64) {
         self.message_router.handle(Message::MoveMarkerPin(instance_handle.clone(), pin_handle.clone(), to));
     }
 
@@ -536,7 +537,7 @@ where
         f(&self.component_links.blocking_read())
     }
 
-    fn edit_marker_link_length(&self, link: &Self::ComponentLinkHandle, value: TimelineTime) {
+    fn edit_marker_link_length(&self, link: &Self::ComponentLinkHandle, value: f64) {
         self.message_router.handle(Message::EditMarkerLinkLength(link.clone(), value));
     }
 

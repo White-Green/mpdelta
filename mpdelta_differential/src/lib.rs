@@ -47,7 +47,7 @@ where
         let to = to.upgrade().ok_or_else(|| CollectCachedTimeError::InvalidMarker(to.clone()))?;
         let from = from.ro(key);
         let to = to.ro(key);
-        to.cache_timeline_time(TimelineTime::new(from.cached_timeline_time().value() + len.value()).unwrap());
+        to.cache_timeline_time(TimelineTime::new(from.cached_timeline_time().value() + len.value()));
     }
     if links.is_empty() {
         Ok(())

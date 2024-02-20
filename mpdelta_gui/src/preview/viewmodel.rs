@@ -3,6 +3,7 @@ use crate::viewmodel::ViewModelParams;
 use crate::AudioTypePlayer;
 use arc_swap::ArcSwapOption;
 use mpdelta_async_runtime::{AsyncRuntime, JoinHandleWrapper};
+use mpdelta_core::common::mixed_fraction::MixedFraction;
 use mpdelta_core::component::class::ComponentClass;
 use mpdelta_core::component::instance::{ComponentInstanceHandle, ComponentInstanceHandleOwned};
 use mpdelta_core::component::parameter::ParameterValueType;
@@ -140,7 +141,7 @@ where
             Arc::clone(&self.renderer),
             Arc::clone(&self.real_time_renderer),
             Arc::clone(&self.audio_player),
-            TimelineTime::new(self.global_ui_state.seek() as f64 / 60.).unwrap(),
+            TimelineTime::new(MixedFraction::from_fraction(self.global_ui_state.seek() as i64, 60)),
         ));
     }
 
@@ -199,7 +200,7 @@ where
     fn pause(&self) {
         self.global_ui_state.pause();
         self.audio_player.pause();
-        self.audio_player.seek(TimelineTime::new(self.global_ui_state.seek() as f64 / 60.).unwrap());
+        self.audio_player.seek(TimelineTime::new(MixedFraction::from_fraction(self.global_ui_state.seek() as i64, 60)));
     }
 
     fn seek(&self) -> usize {
@@ -208,6 +209,6 @@ where
 
     fn set_seek(&self, seek: usize) {
         self.global_ui_state.set_seek(seek);
-        self.audio_player.seek(TimelineTime::new(seek as f64 / 60.).unwrap());
+        self.audio_player.seek(TimelineTime::new(MixedFraction::from_fraction(seek as i64, 60)));
     }
 }

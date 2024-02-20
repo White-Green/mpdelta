@@ -1,3 +1,4 @@
+use mpdelta_core::common::mixed_fraction::MixedFraction;
 use mpdelta_core::time::TimelineTime;
 use mpdelta_core_audio::multi_channel_audio::{MultiChannelAudio, MultiChannelAudioMutOp, MultiChannelAudioOp, MultiChannelAudioSliceMut};
 use mpdelta_core_audio::{AudioProvider, AudioType};
@@ -85,7 +86,7 @@ impl AudioProvider for MixedAudio {
     }
 
     fn compute_audio(&mut self, begin: TimelineTime, mut dst: MultiChannelAudioSliceMut<f32>) -> usize {
-        let end = begin + TimelineTime::new(dst.len() as f64 / 96000.).unwrap();
+        let end = begin + TimelineTime::new(MixedFraction::from_fraction(dst.len() as i64, 96000));
         // copy on write
         let mixed_audio = Arc::make_mut(&mut self.inner);
         match (dst.channels(), mixed_audio.buffer.channels()) {
@@ -95,7 +96,7 @@ impl AudioProvider for MixedAudio {
             (_, 1) => compute_audio_inner(mixed_audio, self.sample_rate, begin, end, dst.slice_mut(..).unwrap(), |a, b| a[..2].iter_mut().for_each(|a| *a += b[0])),
             (_, _) => compute_audio_inner(mixed_audio, self.sample_rate, begin, end, dst.slice_mut(..).unwrap(), |a, b| a.iter_mut().zip(b).for_each(|(a, b)| *a += *b)),
         }
-        (((self.length - begin).value() * 96000.) as usize).min(dst.len())
+        (((self.length - begin).value() * MixedFraction::from_integer(96000)).deconstruct().0.max(0) as usize).min(dst.len())
     }
 }
 
@@ -114,11 +115,13 @@ where
         // TODO: 再生速度変化の対応が未だ
         // TODO: サンプリングレートが違う場合の対応も未だ
         let computed_len = audio.compute_audio(param.map(offset).unwrap(), buffer.slice_mut(..).unwrap());
-        for (a, b) in dst.slice_mut(((param.left() - begin).value() * sample_rate as f64) as usize..).unwrap().iter_mut().zip(buffer.slice(..computed_len).unwrap().iter()) {
+        for (a, b) in dst
+            .slice_mut(((param.left() - begin).value() * MixedFraction::from_integer(sample_rate as i32)).deconstruct().0.max(0) as usize..)
+            .unwrap()
+            .iter_mut()
+            .zip(buffer.slice(..computed_len).unwrap().iter())
+        {
             combiner(a, b)
         }
     }
 }
-
-#[cfg(test)]
-mod tests {}

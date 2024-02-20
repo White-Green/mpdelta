@@ -1,3 +1,4 @@
+use crate::common::mixed_fraction::MixedFraction;
 use crate::common::time_split_value::TimeSplitValue;
 use crate::component::class::ComponentClass;
 use crate::component::instance::{ComponentInstance, ComponentInstanceHandle, ComponentInstanceHandleOwned};
@@ -206,8 +207,8 @@ impl<K, T: ParameterValueType> RootComponentClass<K, T> {
             id,
             parent: None,
             item: Arc::new(RootComponentClassItemWrapper(RwLock::new(RootComponentClassItem {
-                left: StaticPointerOwned::new(TCell::new(MarkerPin::new(TimelineTime::new(0.).unwrap(), MarkerTime::new(0.).unwrap()))),
-                right: StaticPointerOwned::new(TCell::new(MarkerPin::new(TimelineTime::new(10.).unwrap(), MarkerTime::new(10.).unwrap()))),
+                left: StaticPointerOwned::new(TCell::new(MarkerPin::new(TimelineTime::new(MixedFraction::ZERO), MarkerTime::new(MixedFraction::ZERO).unwrap()))),
+                right: StaticPointerOwned::new(TCell::new(MarkerPin::new(TimelineTime::new(MixedFraction::from_integer(10)), MarkerTime::new(MixedFraction::from_integer(10)).unwrap()))),
                 component: Vec::new(),
                 link: Vec::new(),
                 length: Duration::from_secs(10),

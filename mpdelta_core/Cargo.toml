@@ -9,11 +9,13 @@ async-trait = { workspace = true }
 cgmath = { workspace = true }
 either = { workspace = true }
 futures = { workspace = true }
+num = { workspace = true }
 qcell = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 uuid = { workspace = true }
 
 [dev-dependencies]
+proptest = { workspace = true }
 regex = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread"] }

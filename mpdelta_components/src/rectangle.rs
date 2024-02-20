@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use mpdelta_core::common::mixed_fraction::MixedFraction;
 use mpdelta_core::component::class::ComponentClass;
 use mpdelta_core::component::instance::ComponentInstance;
 use mpdelta_core::component::marker_pin::{MarkerPin, MarkerTime};
@@ -77,7 +78,7 @@ impl<K, T: ParameterValueType<Image = ImageType>> ComponentClass<K, T> for Recta
 
     async fn instantiate(&self, this: &StaticPointer<RwLock<dyn ComponentClass<K, T>>>) -> ComponentInstance<K, T> {
         let left = StaticPointerOwned::new(TCell::new(MarkerPin::new(TimelineTime::ZERO, MarkerTime::ZERO)));
-        let right = StaticPointerOwned::new(TCell::new(MarkerPin::new(TimelineTime::new(1.).unwrap(), MarkerTime::new(1.).unwrap())));
+        let right = StaticPointerOwned::new(TCell::new(MarkerPin::new(TimelineTime::new(MixedFraction::from_integer(1)), MarkerTime::new(MixedFraction::from_integer(1)).unwrap())));
         let image_required_params = ImageRequiredParams::new_default(StaticPointerOwned::reference(&left), StaticPointerOwned::reference(&right));
         ComponentInstance::new_no_param(this.clone(), StaticPointerCow::Owned(left), StaticPointerCow::Owned(right), Some(image_required_params), None, Arc::clone(&self.0) as Arc<dyn ComponentProcessorNative<K, T>>)
     }

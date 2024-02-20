@@ -7,6 +7,7 @@ use ffmpeg_next::format::{Pixel, Sample};
 use ffmpeg_next::software::{resampling, scaling};
 use ffmpeg_next::{codec, encoder, frame, ChannelLayout, Codec, Dictionary, Packet, Rational};
 use indexmap::IndexMap;
+use mpdelta_core::common::mixed_fraction::MixedFraction;
 use mpdelta_core::time::TimelineTime;
 use mpdelta_core_audio::multi_channel_audio::{MultiChannelAudio, MultiChannelAudioMutOp, MultiChannelAudioOp};
 use mpdelta_core_audio::{AudioProvider, AudioType};
@@ -352,7 +353,7 @@ fn encode_thread<T: Write + Seek + Send + Sync + 'static>(
                             next_break = true;
                             break;
                         }
-                        let len = audio.compute_audio(TimelineTime::new((src_timestamp * frame_size) as f64 / audio.sample_rate() as f64).unwrap(), audio_buffer.slice_mut(..).unwrap());
+                        let len = audio.compute_audio(TimelineTime::new(MixedFraction::from_fraction((src_timestamp * frame_size) as i64, audio.sample_rate())), audio_buffer.slice_mut(..).unwrap());
                         src_timestamp += 1;
                         if len == 0 {
                             resample.iter_mut().for_each(Resample::fill_tail_by_zero);
@@ -523,11 +524,11 @@ mod tests {
 
         fn compute_audio(&mut self, begin: TimelineTime, mut dst: MultiChannelAudioSliceMut<f32>) -> usize {
             let all_audio_len = (TEST_VIDEO_LENGTH * self.sample_rate() as f64).round() as usize;
-            let len = all_audio_len.saturating_sub(begin.value() as usize * self.sample_rate() as usize).min(dst.len());
+            let len = all_audio_len.saturating_sub(begin.value().deconstruct().0 as usize * self.sample_rate() as usize).min(dst.len());
             let mut dst = dst.slice_mut(..len).unwrap();
             dst.fill(0.);
             for (t, data) in dst.iter_mut().enumerate() {
-                let t = t as f64 / self.sample_rate() as f64 + begin.value();
+                let t = t as f64 / self.sample_rate() as f64 + begin.value().into_f64();
                 let f = (t * 440. * 2. * std::f64::consts::PI).sin() * 0.3;
                 if let Some(data) = data.get_mut(t as usize % 2) {
                     *data = f as f32;

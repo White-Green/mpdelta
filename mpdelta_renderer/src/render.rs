@@ -2,6 +2,7 @@ use crate::thread_cancel::{AutoCancellable, CancellationGuard};
 use crate::{AudioCombinerParam, AudioCombinerRequest, Combiner, CombinerBuilder, ImageCombinerParam, ImageCombinerRequest, ImageSizeRequest, RenderError};
 use cgmath::Vector3;
 use futures::{stream, StreamExt, TryStreamExt};
+use mpdelta_core::common::mixed_fraction::MixedFraction;
 use mpdelta_core::component::instance::ComponentInstanceHandle;
 use mpdelta_core::component::marker_pin::{MarkerPinHandle, MarkerPinHandleOwned, MarkerTime};
 use mpdelta_core::component::parameter::AudioRequiredParams;
@@ -57,7 +58,7 @@ where
         };
         let component = self.component.clone();
         async move {
-            render_inner(&component, TimelineTime::new(at as f64 / 60.).unwrap() /* TODO: */, &ty, &ctx).await.map(into_parameter_value_fixed)
+            render_inner(&component, TimelineTime::new(MixedFraction::from_fraction(at as i64, 60)) /* TODO: */, &ty, &ctx).await.map(into_parameter_value_fixed)
         }
     }
 }
@@ -504,7 +505,7 @@ impl TimeMap {
             [(timeline_time1, component_time1), (timeline_time2, component_time2)] => {
                 let p = (at - timeline_time1) / (timeline_time2 - timeline_time1);
                 let time = component_time1.value() + (component_time2.value() - component_time1.value()) * p;
-                Some(TimelineTime::new(time).unwrap())
+                Some(TimelineTime::new(time))
             }
             ref markers => {
                 let i = markers.binary_search_by_key(&at, |&(time, _)| time).unwrap_or_else(|x| x);
@@ -513,7 +514,7 @@ impl TimeMap {
                 };
                 let p = (at - timeline_time1) / (timeline_time2 - timeline_time1);
                 let time = component_time1.value() + (component_time2.value() - component_time1.value()) * p;
-                Some(TimelineTime::new(time).unwrap())
+                Some(TimelineTime::new(time))
             }
         }
     }
@@ -524,6 +525,7 @@ mod tests {
     use super::*;
     use assert_matches::assert_matches;
     use mpdelta_core::component::marker_pin::{MarkerPin, MarkerTime};
+    use mpdelta_core::mfrac;
     use qcell::TCell;
 
     struct TestParameterValueType;
@@ -552,35 +554,43 @@ mod tests {
         }
         macro_rules! marker {
             ($t:expr$(,)?) => {
-                StaticPointerOwned::new(TCell::new(MarkerPin::new_unlocked(TimelineTime::new($t).unwrap())))
+                StaticPointerOwned::new(TCell::new(MarkerPin::new_unlocked(TimelineTime::new($t))))
             };
             ($t:expr, $m:expr$(,)?) => {
-                StaticPointerOwned::new(TCell::new(MarkerPin::new(TimelineTime::new($t).unwrap(), MarkerTime::new($m).unwrap())))
+                StaticPointerOwned::new(TCell::new(MarkerPin::new(TimelineTime::new($t), MarkerTime::new($m).unwrap())))
             };
         }
-        let markers = [marker!(3.), marker!(4.), marker!(5.), marker!(6.)];
-        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(3.0).unwrap()), Some(v) if (v.value() - 0.0).abs() < f64::EPSILON);
-        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(3.5).unwrap()), Some(v) if (v.value() - 0.5).abs() < f64::EPSILON);
-        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(5.0).unwrap()), Some(v) if (v.value() - 2.0).abs() < f64::EPSILON);
-        let markers = [marker!(3.), marker!(4.), marker!(5., 10.), marker!(6.)];
-        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(3.0).unwrap()), Some(v) if (v.value() - 8.0).abs() < f64::EPSILON);
-        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(3.5).unwrap()), Some(v) if (v.value() - 8.5).abs() < f64::EPSILON);
-        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(5.0).unwrap()), Some(v) if (v.value() - 10.0).abs() < f64::EPSILON);
-        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(5.5).unwrap()), Some(v) if (v.value() - 10.5).abs() < f64::EPSILON);
-        let markers = [marker!(3.), marker!(4., 8.), marker!(5., 10.), marker!(6.)];
-        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(3.0).unwrap()), Some(v) if (v.value() - 6.0).abs() < f64::EPSILON);
-        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(3.5).unwrap()), Some(v) if (v.value() - 7.0).abs() < f64::EPSILON);
-        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(4.5).unwrap()), Some(v) if (v.value() - 9.0).abs() < f64::EPSILON);
-        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(5.0).unwrap()), Some(v) if (v.value() - 10.0).abs() < f64::EPSILON);
-        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(5.5).unwrap()), Some(v) if (v.value() - 11.0).abs() < f64::EPSILON);
-        let markers = [marker!(3.), marker!(4., 8.), marker!(5., 10.), marker!(6.), marker!(7., 13.), marker!(8.), marker!(10., 10.)];
-        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(3.0).unwrap()), Some(v) if (v.value() - 6.0).abs() < f64::EPSILON);
-        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(3.5).unwrap()), Some(v) if (v.value() - 7.0).abs() < f64::EPSILON);
-        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(4.5).unwrap()), Some(v) if (v.value() - 9.0).abs() < f64::EPSILON);
-        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(5.0).unwrap()), Some(v) if (v.value() - 10.0).abs() < f64::EPSILON);
-        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(6.0).unwrap()), Some(v) if (v.value() - 11.5).abs() < f64::EPSILON);
-        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(7.0).unwrap()), Some(v) if (v.value() - 13.0).abs() < f64::EPSILON);
-        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(8.0).unwrap()), Some(v) if (v.value() - 12.0).abs() < f64::EPSILON);
-        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(10.0).unwrap()), Some(v) if (v.value() - 10.0).abs() < f64::EPSILON);
+        let markers = [marker!(mfrac!(3)), marker!(mfrac!(4)), marker!(mfrac!(5)), marker!(mfrac!(6))];
+        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(mfrac!(3, 0, 10))), Some(v) if (v.value() - mfrac!(0, 0, 10)) == MixedFraction::ZERO);
+        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(mfrac!(3, 5, 10))), Some(v) if (v.value() - mfrac!(0, 5, 10)) == MixedFraction::ZERO);
+        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(mfrac!(5, 0, 10))), Some(v) if (v.value() - mfrac!(2, 0, 10)) == MixedFraction::ZERO);
+        let markers = [marker!(mfrac!(3)), marker!(mfrac!(4)), marker!(mfrac!(5), mfrac!(10)), marker!(mfrac!(6))];
+        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(mfrac!(3, 0, 10))), Some(v) if (v.value() - mfrac!(8, 0, 10)) == MixedFraction::ZERO);
+        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(mfrac!(3, 5, 10))), Some(v) if (v.value() - mfrac!(8, 5, 10)) == MixedFraction::ZERO);
+        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(mfrac!(5, 0, 10))), Some(v) if (v.value() - mfrac!(10, 0, 10)) == MixedFraction::ZERO);
+        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(mfrac!(5, 5, 10))), Some(v) if (v.value() - mfrac!(10, 5, 10)) == MixedFraction::ZERO);
+        let markers = [marker!(mfrac!(3)), marker!(mfrac!(4), mfrac!(8)), marker!(mfrac!(5), mfrac!(10)), marker!(mfrac!(6))];
+        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(mfrac!(3, 0, 10))), Some(v) if (v.value() - mfrac!(6, 0, 10)) == MixedFraction::ZERO);
+        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(mfrac!(3, 5, 10))), Some(v) if (v.value() - mfrac!(7, 0, 10)) == MixedFraction::ZERO);
+        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(mfrac!(4, 5, 10))), Some(v) if (v.value() - mfrac!(9, 0, 10)) == MixedFraction::ZERO);
+        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(mfrac!(5, 0, 10))), Some(v) if (v.value() - mfrac!(10, 0, 10)) == MixedFraction::ZERO);
+        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(mfrac!(5, 5, 10))), Some(v) if (v.value() - mfrac!(11, 0, 10)) == MixedFraction::ZERO);
+        let markers = [
+            marker!(mfrac!(3)),
+            marker!(mfrac!(4), mfrac!(8)),
+            marker!(mfrac!(5), mfrac!(10)),
+            marker!(mfrac!(6)),
+            marker!(mfrac!(7), mfrac!(13)),
+            marker!(mfrac!(8)),
+            marker!(mfrac!(10), mfrac!(10)),
+        ];
+        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(mfrac!(3, 0, 10))), Some(v) if (v.value() - mfrac!(6, 0, 10)) == MixedFraction::ZERO);
+        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(mfrac!(3, 5, 10))), Some(v) if (v.value() - mfrac!(7, 0, 10)) == MixedFraction::ZERO);
+        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(mfrac!(4, 5, 10))), Some(v) if (v.value() - mfrac!(9, 0, 10)) == MixedFraction::ZERO);
+        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(mfrac!(5, 0, 10))), Some(v) if (v.value() - mfrac!(10, 0, 10)) == MixedFraction::ZERO);
+        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(mfrac!(6, 0, 10))), Some(v) if (v.value() - mfrac!(11, 5, 10)) == MixedFraction::ZERO);
+        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(mfrac!(7, 0, 10))), Some(v) if (v.value() - mfrac!(13, 0, 10)) == MixedFraction::ZERO);
+        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(mfrac!(8, 0, 10))), Some(v) if (v.value() - mfrac!(12, 0, 10)) == MixedFraction::ZERO);
+        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(mfrac!(10, 0, 10))), Some(v) if (v.value() - mfrac!(10, 0, 10)) == MixedFraction::ZERO);
     }
 }

@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use mpdelta_core::common::mixed_fraction::MixedFraction;
 use mpdelta_core::component::class::ComponentClass;
 use mpdelta_core::component::instance::ComponentInstance;
 use mpdelta_core::component::marker_pin::{MarkerPin, MarkerTime};
@@ -43,7 +44,7 @@ impl<K, T: ParameterValueType<Audio = AudioType>> ComponentClass<K, T> for SineA
 
     async fn instantiate(&self, this: &StaticPointer<RwLock<dyn ComponentClass<K, T>>>) -> ComponentInstance<K, T> {
         let left = StaticPointerOwned::new(TCell::new(MarkerPin::new(TimelineTime::ZERO, MarkerTime::ZERO)));
-        let right = StaticPointerOwned::new(TCell::new(MarkerPin::new(TimelineTime::new(1.).unwrap(), MarkerTime::new(1.).unwrap())));
+        let right = StaticPointerOwned::new(TCell::new(MarkerPin::new(TimelineTime::new(MixedFraction::from_integer(1)), MarkerTime::new(MixedFraction::from_integer(1)).unwrap())));
         let image_required_params = ImageRequiredParams::new_default(StaticPointerOwned::reference(&left), StaticPointerOwned::reference(&right));
         ComponentInstance::new_no_param(
             this.clone(),
@@ -86,7 +87,7 @@ impl AudioProvider for SineAudio {
     }
 
     fn compute_audio(&mut self, begin: TimelineTime, mut dst: MultiChannelAudioSliceMut<f32>) -> usize {
-        let begin = begin.value();
+        let begin = begin.value().into_f64();
         assert!(dst.channels() >= 1);
         if dst.channels() == 1 {
             for (i, line) in dst.iter_mut().enumerate() {

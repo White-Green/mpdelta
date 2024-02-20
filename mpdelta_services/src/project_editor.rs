@@ -1,5 +1,7 @@
+use crate::project_editor::dsa::union_find::UnionFind;
 use async_trait::async_trait;
 use dashmap::DashMap;
+use mpdelta_core::common::mixed_fraction::MixedFraction;
 use mpdelta_core::component::instance::ComponentInstanceHandle;
 use mpdelta_core::component::link::MarkerLink;
 use mpdelta_core::component::marker_pin::{MarkerPin, MarkerPinHandle, MarkerTime};
@@ -16,8 +18,6 @@ use std::sync::atomic::AtomicUsize;
 use std::sync::{atomic, Arc};
 use thiserror::Error;
 use tokio::sync::RwLock;
-
-use crate::project_editor::dsa::union_find::UnionFind;
 
 mod dsa;
 
@@ -103,12 +103,12 @@ where
                     let link_for_zero = MarkerLink {
                         from: base,
                         to: left.reference(),
-                        len: TimelineTime::new(1.0).unwrap(),
+                        len: TimelineTime::new(MixedFraction::from_integer(1)),
                     };
                     let link_for_length = MarkerLink {
                         from: left.reference(),
                         to: right.reference(),
-                        len: TimelineTime::new(1.0).unwrap(),
+                        len: TimelineTime::new(MixedFraction::from_integer(1)),
                     };
                     let mut item = target.get_mut().await;
                     item.component_mut().push(instance);

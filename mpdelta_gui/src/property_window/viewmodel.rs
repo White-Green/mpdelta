@@ -52,7 +52,7 @@ pub enum ImageRequiredParamsTransformForEdit<K: 'static, T: ParameterValueType> 
 pub type Vector3ParamsForEdit<K, T> = Vector3<(VariableParameterValue<K, T, PinSplitValue<K, Option<EasingValue<f64>>>>, TimeSplitValue<usize, Option<EasingValue<f64>>>)>;
 
 impl<K: 'static, T: ParameterValueType> ImageRequiredParamsForEdit<K, T> {
-    pub fn from_image_required_params(value: ImageRequiredParams<K, T>, all_pins: impl IntoIterator<Item = MarkerPinHandle<K>>, key: &TCellOwner<K>) -> (ImageRequiredParamsForEdit<K, T>, HashMap<MarkerPinHandle<K>, usize>, Vec<TimelineTime>) {
+    pub fn from_image_required_params(value: ImageRequiredParams<K, T>, all_pins: impl IntoIterator<Item = MarkerPinHandle<K>>, key: &TCellOwner<K>) -> (ImageRequiredParamsForEdit<K, T>, HashMap<MarkerPinHandle<K>, usize>, Vec<f64>) {
         fn get_all_pins_iter<K, T>(values: &PinSplitValue<K, T>) -> impl Iterator<Item = MarkerPinHandle<K>> + '_ {
             (0..values.len_time()).map(|i| {
                 let (_, pin, _) = values.get_time(i).unwrap();
@@ -69,10 +69,10 @@ impl<K: 'static, T: ParameterValueType> ImageRequiredParamsForEdit<K, T> {
                 }
             }
         }
-        fn pins_map_into_required_structures<K>(pins_map: HashMap<MarkerPinHandle<K>, TimelineTime>) -> (HashMap<MarkerPinHandle<K>, usize>, Vec<TimelineTime>) {
+        fn pins_map_into_required_structures<K>(pins_map: HashMap<MarkerPinHandle<K>, TimelineTime>) -> (HashMap<MarkerPinHandle<K>, usize>, Vec<f64>) {
             let mut pins = pins_map.into_iter().collect::<Vec<_>>();
             pins.sort_unstable_by_key(|&(_, time)| time);
-            pins.into_iter().enumerate().map(|(i, (pin, time))| ((pin, i), time)).unzip()
+            pins.into_iter().enumerate().map(|(i, (pin, time))| ((pin, i), time.value().into_f64())).unzip()
         }
         fn into_for_edit<K, T: ParameterValueType>(
             value: VariableParameterValue<K, T, PinSplitValue<K, Option<EasingValue<f64>>>>,
@@ -184,11 +184,11 @@ impl<K: 'static, T: ParameterValueType> ImageRequiredParamsForEdit<K, T> {
 }
 
 pub trait PropertyWindowViewModel<K: 'static, T: ParameterValueType> {
-    type Times: AsRef<[TimelineTime]>;
+    type Times: AsRef<[f64]>;
     type ImageRequiredParams<'a>: DerefMut<Target = Option<(ImageRequiredParamsForEdit<K, T>, Self::Times)>> + 'a
     where
         Self: 'a;
-    fn selected_instance_at(&self) -> Range<TimelineTime>;
+    fn selected_instance_at(&self) -> Range<f64>;
     fn image_required_params(&self) -> Self::ImageRequiredParams<'_>;
     fn updated_image_required_params(&self, image_required_params: &ImageRequiredParamsForEdit<K, T>);
 }
@@ -197,8 +197,8 @@ pub struct PropertyWindowViewModelImpl<K: 'static, T: ParameterValueType, Global
     global_ui_state: Arc<GlobalUIState>,
     edit: Arc<Edit>,
     selected: Arc<StdRwLock<(Option<RootComponentClassHandle<K, T>>, Option<ComponentInstanceHandle<K, T>>)>>,
-    selected_instance_at: Arc<ArcSwap<Range<TimelineTime>>>,
-    image_required_params: Arc<Mutex<Option<(ImageRequiredParamsForEdit<K, T>, Vec<TimelineTime>)>>>,
+    selected_instance_at: Arc<ArcSwap<Range<f64>>>,
+    image_required_params: Arc<Mutex<Option<(ImageRequiredParamsForEdit<K, T>, Vec<f64>)>>>,
     image_required_params_update_task: Mutex<JoinHandleWrapper<JoinHandle>>,
     runtime: Runtime,
     key: Arc<RwLock<TCellOwner<K>>>,
@@ -238,7 +238,7 @@ where
                     *image_required_params = if let Some(instance) = instance.as_ref().and_then(StaticPointer::upgrade) {
                         let instance = instance.ro(&key);
                         if let (Some(left), Some(right)) = (instance.marker_left().upgrade(), instance.marker_right().upgrade()) {
-                            selected_instance_at.store(Arc::new(left.ro(&key).cached_timeline_time()..right.ro(&key).cached_timeline_time()));
+                            selected_instance_at.store(Arc::new(left.ro(&key).cached_timeline_time().value().into_f64()..right.ro(&key).cached_timeline_time().value().into_f64()));
                         }
                         instance.image_required_params().cloned().map(|value| {
                             let markers = iter::once(instance.marker_left()).chain(instance.markers().iter().map(StaticPointerOwned::reference)).chain(iter::once(instance.marker_right())).cloned();
@@ -262,7 +262,7 @@ impl<K: 'static, T: ParameterValueType> PropertyWindowViewModelImpl<K, T, (), ()
             global_ui_state: Arc::clone(global_ui_state),
             edit: Arc::clone(edit),
             selected: Arc::new(StdRwLock::new((None, None))),
-            selected_instance_at: Arc::new(ArcSwap::new(Arc::new(TimelineTime::ZERO..TimelineTime::ZERO))),
+            selected_instance_at: Arc::new(ArcSwap::new(Arc::new(0.0..0.0))),
             image_required_params: Arc::new(Mutex::new(None)),
             image_required_params_update_task: Mutex::new(runtime.spawn(future::ready(()))),
             runtime,
@@ -281,10 +281,10 @@ where
     Edit: EditFunnel<K, T>,
     Runtime: AsyncRuntime<()> + Clone,
 {
-    type Times = Vec<TimelineTime>;
+    type Times = Vec<f64>;
     type ImageRequiredParams<'a> = MutexGuard<'a, Option<(ImageRequiredParamsForEdit<K, T>, Self::Times)>> where Self: 'a;
 
-    fn selected_instance_at(&self) -> Range<TimelineTime> {
+    fn selected_instance_at(&self) -> Range<f64> {
         (**self.selected_instance_at.load()).clone()
     }
 

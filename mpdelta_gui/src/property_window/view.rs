@@ -63,7 +63,7 @@ impl<K: 'static, T: ParameterValueType, VM: PropertyWindowViewModel<K, T>> Prope
     pub fn ui(&mut self, ui: &mut Ui) {
         let id = ui.make_persistent_id("PropertyWindow");
         let instance_range = self.view_model.selected_instance_at();
-        let instance_length = (instance_range.end.value() - instance_range.start.value()) as f32;
+        let instance_length = (instance_range.end - instance_range.start) as f32;
         let point_per_second = 320.;
         let (rect, _) = ui.allocate_at_least(ui.available_size(), Sense::click());
         ui.allocate_ui_at_rect(rect, |ui| {
@@ -130,6 +130,7 @@ mod tests {
     use egui_image_renderer::FileFormat;
     use mpdelta_core::component::marker_pin::{MarkerPin, MarkerPinHandleOwned, MarkerTime};
     use mpdelta_core::component::parameter::{ImageRequiredParams, ParameterValueType};
+    use mpdelta_core::mfrac;
     use mpdelta_core::ptr::StaticPointerOwned;
     use mpdelta_core::time::TimelineTime;
     use qcell::{TCell, TCellOwner};
@@ -155,14 +156,14 @@ mod tests {
             type ComponentClass = ();
         }
         struct VM {
-            params: Mutex<Option<(ImageRequiredParamsForEdit<K, T>, Vec<TimelineTime>)>>,
+            params: Mutex<Option<(ImageRequiredParamsForEdit<K, T>, Vec<f64>)>>,
         }
         impl PropertyWindowViewModel<K, T> for VM {
-            type Times = Vec<TimelineTime>;
+            type Times = Vec<f64>;
             type ImageRequiredParams<'a> = MutexGuard<'a, Option<(ImageRequiredParamsForEdit<K, T>, Self::Times)>>;
 
-            fn selected_instance_at(&self) -> Range<TimelineTime> {
-                TimelineTime::new(0.0).unwrap()..TimelineTime::new(1.0).unwrap()
+            fn selected_instance_at(&self) -> Range<f64> {
+                0.0..1.0
             }
 
             fn image_required_params(&self) -> Self::ImageRequiredParams<'_> {
@@ -172,8 +173,8 @@ mod tests {
             fn updated_image_required_params(&self, _image_required_params: &ImageRequiredParamsForEdit<K, T>) {}
         }
         let owner = TCellOwner::new();
-        let left = MarkerPinHandleOwned::new(TCell::new(MarkerPin::new(TimelineTime::new(0.0).unwrap(), MarkerTime::new(0.0).unwrap())));
-        let right = MarkerPinHandleOwned::new(TCell::new(MarkerPin::new(TimelineTime::new(1.0).unwrap(), MarkerTime::new(1.0).unwrap())));
+        let left = MarkerPinHandleOwned::new(TCell::new(MarkerPin::new(TimelineTime::new(mfrac!(0)), MarkerTime::new(mfrac!(0)).unwrap())));
+        let right = MarkerPinHandleOwned::new(TCell::new(MarkerPin::new(TimelineTime::new(mfrac!(1)), MarkerTime::new(mfrac!(1)).unwrap())));
         let (params, _, times) = ImageRequiredParamsForEdit::from_image_required_params(ImageRequiredParams::new_default(StaticPointerOwned::reference(&left), StaticPointerOwned::reference(&right)), iter::empty(), &owner);
         let mut window = PropertyWindow::new(Arc::new(VM { params: Mutex::new(Some((params, times))) }));
         let mut output = Cursor::new(Vec::new());

@@ -1,16 +1,15 @@
 use crate::timeline::viewmodel::ComponentInstanceData;
 use egui::{Id, PointerButton, Pos2, Rect, Sense, Shape, TextStyle, Ui, Vec2};
-use mpdelta_core::time::TimelineTime;
 use std::fmt::{Debug, Formatter};
 use std::hash::Hash;
 
 pub enum ComponentInstanceEditEvent<'a, PinHandle> {
     Click,
     Delete,
-    MoveWholeBlockTemporary(TimelineTime),
-    MoveWholeBlock(TimelineTime),
-    MovePinTemporary(&'a PinHandle, TimelineTime),
-    MovePin(&'a PinHandle, TimelineTime),
+    MoveWholeBlockTemporary(f64),
+    MoveWholeBlock(f64),
+    MovePinTemporary(&'a PinHandle, f64),
+    MovePin(&'a PinHandle, f64),
 }
 
 impl<'a, PinHandle> Debug for ComponentInstanceEditEvent<'a, PinHandle> {
@@ -38,8 +37,8 @@ impl<'a, InstanceHandle, PinHandle, F1, F2, E> ComponentInstanceBlock<'a, Instan
 where
     InstanceHandle: Clone + Hash,
     PinHandle: Clone + Hash,
-    F1: Fn(TimelineTime) -> f32,
-    F2: Fn(f32) -> TimelineTime,
+    F1: Fn(f64) -> f32,
+    F2: Fn(f32) -> f64,
     E: for<'b> FnMut(ComponentInstanceEditEvent<'b, PinHandle>),
 {
     pub fn new(instance: &'a ComponentInstanceData<InstanceHandle, PinHandle>, top: f32, time_to_point: F1, point_to_time: F2, edit: E) -> ComponentInstanceBlock<'a, InstanceHandle, PinHandle, F1, F2, E> {

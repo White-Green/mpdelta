@@ -1,30 +1,26 @@
+use crate::common::mixed_fraction::atomic::AtomicMixedFraction;
+use crate::common::mixed_fraction::MixedFraction;
 use crate::component::marker_pin::MarkerTime;
-use std::cmp::Ordering;
 use std::fmt::{Debug, Formatter};
-use std::hash::{Hash, Hasher};
+use std::hash::Hash;
 use std::ops::{Add, Div, Neg, Sub};
 use std::sync::atomic;
-use std::sync::atomic::AtomicU64;
 
 /// タイムライン上での時間(秒)
 /// (-∞, ∞)
-#[derive(Debug, Clone, Copy)]
-pub struct TimelineTime(f64);
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct TimelineTime(MixedFraction);
 
 impl TimelineTime {
-    pub const ZERO: TimelineTime = TimelineTime(0.0);
-    pub const MAX: TimelineTime = TimelineTime(f64::MAX);
-    pub const MIN: TimelineTime = TimelineTime(-f64::MAX);
+    pub const ZERO: TimelineTime = TimelineTime(MixedFraction::ZERO);
+    pub const MAX: TimelineTime = TimelineTime(MixedFraction::MAX);
+    pub const MIN: TimelineTime = TimelineTime(MixedFraction::MIN);
 
-    pub fn new(time: f64) -> Option<TimelineTime> {
-        if time.is_finite() {
-            Some(TimelineTime(if time == -0.0 { 0.0 } else { time }))
-        } else {
-            None
-        }
+    pub fn new(time: MixedFraction) -> TimelineTime {
+        TimelineTime(time)
     }
 
-    pub fn value(&self) -> f64 {
+    pub fn value(&self) -> MixedFraction {
         self.0
     }
 }
@@ -35,38 +31,11 @@ impl From<MarkerTime> for TimelineTime {
     }
 }
 
-impl PartialEq for TimelineTime {
-    fn eq(&self, other: &Self) -> bool {
-        self.0 == other.0
-    }
-}
-
-impl Eq for TimelineTime {}
-
-impl PartialOrd for TimelineTime {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for TimelineTime {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.0.partial_cmp(&other.0).unwrap()
-    }
-}
-
-impl Hash for TimelineTime {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        state.write(&self.0.to_ne_bytes())
-    }
-}
-
 impl Neg for TimelineTime {
     type Output = TimelineTime;
 
     fn neg(self) -> Self::Output {
-        // 表現可能な数の範囲が正負で同一なのでsafe
-        TimelineTime(-self.0)
+        TimelineTime(self.0.saturating_neg())
     }
 }
 
@@ -74,7 +43,7 @@ impl Add for TimelineTime {
     type Output = TimelineTime;
 
     fn add(self, rhs: Self) -> Self::Output {
-        TimelineTime((self.0 + rhs.0).clamp(f64::MIN, f64::MAX))
+        TimelineTime(self.0.saturating_add(rhs.0))
     }
 }
 
@@ -82,31 +51,31 @@ impl Sub for TimelineTime {
     type Output = TimelineTime;
 
     fn sub(self, rhs: Self) -> Self::Output {
-        TimelineTime((self.0 - rhs.0).clamp(f64::MIN, f64::MAX))
+        TimelineTime(self.0.saturating_sub(rhs.0))
     }
 }
 
 impl Div for TimelineTime {
-    type Output = f64;
+    type Output = MixedFraction;
 
     fn div(self, rhs: Self) -> Self::Output {
         self.0 / rhs.0
     }
 }
 
-pub struct AtomicTimelineTime(AtomicU64);
+pub struct AtomicTimelineTime(AtomicMixedFraction);
 
 impl AtomicTimelineTime {
     pub fn new(value: TimelineTime) -> AtomicTimelineTime {
-        AtomicTimelineTime(AtomicU64::new(value.0.to_bits()))
+        AtomicTimelineTime(AtomicMixedFraction::new(value.0))
     }
 
     pub fn load(&self, ordering: atomic::Ordering) -> TimelineTime {
-        TimelineTime(f64::from_bits(self.0.load(ordering)))
+        TimelineTime(self.0.load(ordering))
     }
 
     pub fn store(&self, value: TimelineTime, ordering: atomic::Ordering) {
-        self.0.store(value.0.to_bits(), ordering)
+        self.0.store(value.0, ordering)
     }
 }
 
@@ -125,37 +94,5 @@ impl Debug for AtomicTimelineTime {
 impl Clone for AtomicTimelineTime {
     fn clone(&self) -> Self {
         AtomicTimelineTime::new(self.load(atomic::Ordering::Acquire))
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::time::TimelineTime;
-    use std::collections::hash_map::DefaultHasher;
-    use std::hash::{Hash, Hasher};
-
-    #[test]
-    fn timeline_time() {
-        assert_eq!(TimelineTime::new(f64::NEG_INFINITY), None);
-        assert_eq!(TimelineTime::new(f64::MIN), Some(TimelineTime(f64::MIN)));
-        assert_eq!(TimelineTime::new(-0.), Some(TimelineTime(0.)));
-        assert_eq!(TimelineTime::new(0.), Some(TimelineTime(0.)));
-        assert_eq!(TimelineTime::new(0.5), Some(TimelineTime(0.5)));
-        assert_eq!(TimelineTime::new(1.), Some(TimelineTime(1.)));
-        assert_eq!(TimelineTime::new(f64::MAX), Some(TimelineTime(f64::MAX)));
-        assert_eq!(TimelineTime::new(f64::INFINITY), None);
-        assert_eq!(TimelineTime::new(f64::NAN), None);
-
-        let hash_0 = {
-            let mut hasher = DefaultHasher::new();
-            TimelineTime::new(0.).unwrap().hash(&mut hasher);
-            hasher.finish()
-        };
-        let hash_negative_0 = {
-            let mut hasher = DefaultHasher::new();
-            TimelineTime::new(-0.).unwrap().hash(&mut hasher);
-            hasher.finish()
-        };
-        assert_eq!(hash_0, hash_negative_0);
     }
 }

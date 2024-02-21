@@ -1,7 +1,5 @@
-use std::{
-    ops::{Bound, RangeBounds},
-    slice::{ChunksExact, ChunksExactMut},
-};
+use std::ops::{Bound, RangeBounds};
+use std::slice::{ChunksExact, ChunksExactMut};
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct MultiChannelAudio<T> {

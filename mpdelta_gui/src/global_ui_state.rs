@@ -1,5 +1,4 @@
-use crate::message_router::handler::IntoFunctionHandler;
-use crate::message_router::handler::MessageHandlerBuilder;
+use crate::message_router::handler::{IntoFunctionHandler, MessageHandlerBuilder};
 use crate::message_router::{MessageHandler, MessageRouter};
 use crate::view_model_util::use_arc;
 use crate::viewmodel::ViewModelParams;
@@ -9,9 +8,8 @@ use mpdelta_core::component::parameter::ParameterValueType;
 use mpdelta_core::project::{RootComponentClass, RootComponentClassHandle};
 use mpdelta_core::ptr::StaticPointer;
 use std::mem;
-use std::sync::atomic;
 use std::sync::atomic::{AtomicBool, AtomicUsize};
-use std::sync::{Arc, Mutex, RwLock as StdRwLock};
+use std::sync::{atomic, Arc, Mutex, RwLock as StdRwLock};
 use std::time::Instant;
 
 #[derive(Debug)]

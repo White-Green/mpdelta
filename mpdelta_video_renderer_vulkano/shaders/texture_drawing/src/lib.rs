@@ -17,12 +17,10 @@ unsafe impl Pod for TextureDrawingConstant {}
 
 #[cfg(feature = "shader")]
 pub mod shader {
-    use core::hint::unreachable_unchecked;
-    use spirv_std::spirv;
-
     use crate::TextureDrawingConstant;
+    use core::hint::unreachable_unchecked;
     use spirv_std::glam::{vec4, Vec2, Vec4};
-    use spirv_std::{Image, Sampler};
+    use spirv_std::{spirv, Image, Sampler};
 
     #[spirv(fragment)]
     pub fn main_fs(#[spirv(descriptor_set = 0, binding = 0)] image: &Image!(2D, format = rgba8, sampled = true), #[spirv(descriptor_set = 0, binding = 1)] sampler: &Sampler, uv: Vec2, output: &mut Vec4, output_stencil: &mut u32) {

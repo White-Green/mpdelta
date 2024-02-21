@@ -90,9 +90,8 @@ impl CancellationToken {
 mod tests {
     use super::*;
     use assert_matches::assert_matches;
-    use std::sync::atomic;
     use std::sync::atomic::AtomicUsize;
-    use std::sync::Arc;
+    use std::sync::{atomic, Arc};
     use tokio::sync::oneshot;
 
     #[tokio::test]

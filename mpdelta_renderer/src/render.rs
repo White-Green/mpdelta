@@ -5,22 +5,20 @@ use futures::{stream, StreamExt, TryStreamExt};
 use mpdelta_core::common::mixed_fraction::MixedFraction;
 use mpdelta_core::component::instance::ComponentInstanceHandle;
 use mpdelta_core::component::marker_pin::{MarkerPinHandle, MarkerPinHandleOwned, MarkerTime};
-use mpdelta_core::component::parameter::AudioRequiredParams;
-use mpdelta_core::component::parameter::{AbstractFile, AudioRequiredParamsFixed, ImageRequiredParams, ImageRequiredParamsFixed, ImageRequiredParamsTransform, ImageRequiredParamsTransformFixed, Opacity, Parameter, ParameterType, ParameterValueFixed, ParameterValueType, VariableParameterValue};
+use mpdelta_core::component::parameter::{
+    AbstractFile, AudioRequiredParams, AudioRequiredParamsFixed, ImageRequiredParams, ImageRequiredParamsFixed, ImageRequiredParamsTransform, ImageRequiredParamsTransformFixed, Opacity, Parameter, ParameterType, ParameterValueFixed, ParameterValueType, VariableParameterValue,
+};
 use mpdelta_core::component::processor::{ComponentProcessorWrapper, ComponentsLinksPair};
 use mpdelta_core::ptr::StaticPointerOwned;
 use mpdelta_core::time::TimelineTime;
 use qcell::TCellOwner;
-use rayon::iter::IndexedParallelIterator;
-use rayon::iter::IntoParallelRefIterator;
-use rayon::iter::ParallelIterator;
+use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use std::collections::HashMap;
-use std::future;
 use std::future::Future;
 use std::marker::PhantomData;
 use std::ops::Deref;
 use std::sync::Arc;
-use std::{iter, mem, panic};
+use std::{future, iter, mem, panic};
 use tokio::runtime::Handle;
 
 mod evaluate_parameter;

@@ -14,8 +14,7 @@ use mpdelta_core::usecase::{
     SubscribeEditEventUsecase, UndoUsecase, WriteProjectUsecase,
 };
 use mpdelta_multimedia::{AudioCodec, CodecImplement, FileFormat, VideoCodec};
-use qcell::TCell;
-use qcell::TCellOwner;
+use qcell::{TCell, TCellOwner};
 use rfd::AsyncFileDialog;
 use std::borrow::Cow;
 use std::hash::Hash;

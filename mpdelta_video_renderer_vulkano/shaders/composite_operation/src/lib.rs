@@ -18,8 +18,7 @@ pub struct CompositeOperationConstant {
 pub mod shader {
     use crate::CompositeOperationConstant;
     use spirv_std::glam::{UVec3, Vec3Swizzles, Vec4, Vec4Swizzles};
-    use spirv_std::spirv;
-    use spirv_std::Image;
+    use spirv_std::{spirv, Image};
 
     #[spirv(compute(threads(32, 32, 1)))]
     pub fn main(

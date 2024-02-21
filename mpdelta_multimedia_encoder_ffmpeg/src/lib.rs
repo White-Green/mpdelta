@@ -1,11 +1,10 @@
 use dashmap::DashMap;
 use ffmpeg_next::codec::{Capabilities, Id};
 use ffmpeg_next::encoder::{audio, video};
-use ffmpeg_next::format;
 use ffmpeg_next::format::sample::Type;
 use ffmpeg_next::format::{Pixel, Sample};
 use ffmpeg_next::software::{resampling, scaling};
-use ffmpeg_next::{codec, encoder, frame, ChannelLayout, Codec, Dictionary, Packet, Rational};
+use ffmpeg_next::{codec, encoder, format, frame, ChannelLayout, Codec, Dictionary, Packet, Rational};
 use indexmap::IndexMap;
 use mpdelta_core::common::mixed_fraction::MixedFraction;
 use mpdelta_core::time::TimelineTime;

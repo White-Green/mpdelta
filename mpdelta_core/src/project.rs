@@ -2,7 +2,7 @@ use crate::common::mixed_fraction::MixedFraction;
 use crate::common::time_split_value::TimeSplitValue;
 use crate::component::class::ComponentClass;
 use crate::component::instance::{ComponentInstance, ComponentInstanceHandle, ComponentInstanceHandleOwned};
-use crate::component::link::MarkerLink;
+use crate::component::link::{MarkerLinkHandle, MarkerLinkHandleOwned};
 use crate::component::marker_pin::{MarkerPin, MarkerPinHandle, MarkerPinHandleOwned, MarkerTime};
 use crate::component::parameter::value::{DynEditableSelfEasingValue, EasingValue, LinearEasing};
 use crate::component::parameter::{AudioRequiredParams, ImageRequiredParams, ImageRequiredParamsTransform, ParameterType, ParameterValueFixed, ParameterValueType, VariableParameterValue};
@@ -47,8 +47,16 @@ impl<K, T: ParameterValueType> Hash for Project<K, T> {
 }
 
 impl<K, T: ParameterValueType> Project<K, T> {
-    pub(crate) fn new_empty(id: Uuid) -> ProjectHandleOwned<K, T> {
+    pub fn new_empty(id: Uuid) -> ProjectHandleOwned<K, T> {
         StaticPointerOwned::new(RwLock::new(Project { id, children: HashSet::new() }))
+    }
+
+    pub fn children(&self) -> &HashSet<RootComponentClassHandle<K, T>> {
+        &self.children
+    }
+
+    pub fn children_mut(&mut self) -> &mut HashSet<RootComponentClassHandle<K, T>> {
+        &mut self.children
     }
 }
 
@@ -56,7 +64,7 @@ pub struct RootComponentClassItem<K: 'static, T: ParameterValueType> {
     left: MarkerPinHandleOwned<K>,
     right: MarkerPinHandleOwned<K>,
     component: Vec<ComponentInstanceHandleOwned<K, T>>,
-    link: Vec<StaticPointerOwned<TCell<K, MarkerLink<K>>>>,
+    link: Vec<MarkerLinkHandleOwned<K>>,
     length: Duration,
 }
 
@@ -90,10 +98,10 @@ impl<K, T: ParameterValueType> RootComponentClassItem<K, T> {
     pub fn component_mut(&mut self) -> &mut Vec<ComponentInstanceHandleOwned<K, T>> {
         &mut self.component
     }
-    pub fn link(&self) -> &[StaticPointerOwned<TCell<K, MarkerLink<K>>>] {
+    pub fn link(&self) -> &[MarkerLinkHandleOwned<K>] {
         &self.link
     }
-    pub fn link_mut(&mut self) -> &mut Vec<StaticPointerOwned<TCell<K, MarkerLink<K>>>> {
+    pub fn link_mut(&mut self) -> &mut Vec<MarkerLinkHandleOwned<K>> {
         &mut self.link
     }
 }
@@ -249,7 +257,7 @@ impl<K, T: ParameterValueType> RootComponentClass<K, T> {
         RwLockReadGuard::map(self.item.0.read().await, |guard| guard.component.as_ref())
     }
 
-    pub async fn links(&self) -> impl Deref<Target = [impl AsRef<StaticPointer<TCell<K, MarkerLink<K>>>>]> + '_ {
+    pub async fn links(&self) -> impl Deref<Target = [impl AsRef<MarkerLinkHandle<K>>]> + '_ {
         RwLockReadGuard::map(self.item.0.read().await, |guard| guard.link.as_ref())
     }
 }

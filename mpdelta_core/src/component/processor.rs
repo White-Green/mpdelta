@@ -1,16 +1,15 @@
 use crate::component::class::ComponentClass;
 use crate::component::instance::ComponentInstanceHandleCow;
-use crate::component::link::MarkerLink;
+use crate::component::link::MarkerLinkHandleCow;
 use crate::component::parameter::{Parameter, ParameterSelect, ParameterType, ParameterValueFixed, ParameterValueType};
-use crate::ptr::{StaticPointer, StaticPointerCow};
+use crate::ptr::StaticPointer;
 use crate::time::TimelineTime;
 use async_trait::async_trait;
-use qcell::TCell;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::RwLock;
 
-pub struct ComponentsLinksPair<K: 'static, T: ParameterValueType>(pub Vec<ComponentInstanceHandleCow<K, T>>, pub Vec<StaticPointerCow<TCell<K, MarkerLink<K>>>>);
+pub struct ComponentsLinksPair<K: 'static, T: ParameterValueType>(pub Vec<ComponentInstanceHandleCow<K, T>>, pub Vec<MarkerLinkHandleCow<K>>);
 
 #[derive(Clone)]
 pub enum ComponentProcessorWrapper<K, T: ParameterValueType> {

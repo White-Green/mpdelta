@@ -11,7 +11,7 @@ use mpdelta_async_runtime::{AsyncRuntime, JoinHandleWrapper};
 use mpdelta_core::common::mixed_fraction::MixedFraction;
 use mpdelta_core::component::class::ComponentClass;
 use mpdelta_core::component::instance::ComponentInstanceHandle;
-use mpdelta_core::component::link::MarkerLink;
+use mpdelta_core::component::link::MarkerLinkHandle;
 use mpdelta_core::component::marker_pin::MarkerPinHandle;
 use mpdelta_core::component::parameter::ParameterValueType;
 use mpdelta_core::core::EditEventListener;
@@ -110,17 +110,17 @@ pub struct ComponentLinkData<LinkHandle, PinHandle, ComponentHandle> {
     pub to_time: f64,
 }
 
-impl<K, T> ComponentLinkData<StaticPointer<TCell<K, MarkerLink<K>>>, MarkerPinHandle<K>, ComponentInstanceHandle<K, T>>
+impl<K, T> ComponentLinkData<MarkerLinkHandle<K>, MarkerPinHandle<K>, ComponentInstanceHandle<K, T>>
 where
     K: 'static,
     T: ParameterValueType,
 {
     fn new(
-        handle: StaticPointer<TCell<K, MarkerLink<K>>>,
+        handle: MarkerLinkHandle<K>,
         key: &TCellOwner<K>,
         marker_map: &HashMap<MarkerPinHandle<K>, ComponentInstanceHandle<K, T>>,
         component_map: &HashMap<ComponentInstanceHandle<K, T>, ComponentInstanceData<ComponentInstanceHandle<K, T>, MarkerPinHandle<K>>>,
-    ) -> Option<ComponentLinkData<StaticPointer<TCell<K, MarkerLink<K>>>, MarkerPinHandle<K>, ComponentInstanceHandle<K, T>>> {
+    ) -> Option<ComponentLinkData<MarkerLinkHandle<K>, MarkerPinHandle<K>, ComponentInstanceHandle<K, T>>> {
         let Some(link) = handle.upgrade() else {
             eprintln!("StaticPointer::<TCell<K, MarkerLink<K>>>::upgrade failed");
             return None;
@@ -214,7 +214,7 @@ pub struct TimelineViewModelImpl<K: 'static, T: ParameterValueType, GlobalUIStat
     global_ui_state: Arc<GlobalUIState>,
     component_classes: Arc<ArcSwap<ComponentClassDataList<StaticPointer<RwLock<dyn ComponentClass<K, T>>>>>>,
     component_instances: Arc<Mutex<ComponentInstanceDataList<ComponentInstanceHandle<K, T>, MarkerPinHandle<K>>>>,
-    component_links: Arc<RwLock<ComponentLinkDataList<StaticPointer<TCell<K, MarkerLink<K>>>, MarkerPinHandle<K>, ComponentInstanceHandle<K, T>>>>,
+    component_links: Arc<RwLock<ComponentLinkDataList<MarkerLinkHandle<K>, MarkerPinHandle<K>, ComponentInstanceHandle<K, T>>>>,
     selected_components: Arc<RwLock<HashSet<ComponentInstanceHandle<K, T>>>>,
     selected_root_component_class: Arc<RwLock<Option<RootComponentClassHandle<K, T>>>>,
     message_router: MessageRouter<MessageHandler, Runtime>,
@@ -231,7 +231,7 @@ pub enum Message<K: 'static, T: ParameterValueType> {
     MoveComponentInstance(ComponentInstanceHandle<K, T>, f64),
     MoveMarkerPin(ComponentInstanceHandle<K, T>, MarkerPinHandle<K>, f64),
     DragComponentInstance(ComponentInstanceHandle<K, T>, f32, f32),
-    EditMarkerLinkLength(StaticPointer<TCell<K, MarkerLink<K>>>, f64),
+    EditMarkerLinkLength(MarkerLinkHandle<K>, f64),
 }
 
 impl<K, T> Clone for Message<K, T>
@@ -448,7 +448,7 @@ impl<K: Send + Sync + 'static, T: ParameterValueType> TimelineViewModelImpl<K, T
         key: Arc<RwLock<TCellOwner<K>>>,
         root_component_class: Option<RootComponentClassHandle<K, T>>,
         component_instances: Arc<Mutex<ComponentInstanceDataList<ComponentInstanceHandle<K, T>, MarkerPinHandle<K>>>>,
-        component_links: Arc<RwLock<ComponentLinkDataList<StaticPointer<TCell<K, MarkerLink<K>>>, MarkerPinHandle<K>, ComponentInstanceHandle<K, T>>>>,
+        component_links: Arc<RwLock<ComponentLinkDataList<MarkerLinkHandle<K>, MarkerPinHandle<K>, ComponentInstanceHandle<K, T>>>>,
         selected_root_component_class: Arc<RwLock<Option<RootComponentClassHandle<K, T>>>>,
     ) {
         let (mut selected_root_component_class, mut component_instances, mut component_links) = tokio::join!(selected_root_component_class.write(), component_instances.lock(), component_links.write());
@@ -459,7 +459,7 @@ impl<K: Send + Sync + 'static, T: ParameterValueType> TimelineViewModelImpl<K, T
     async fn load_timeline_by_current_root_component_class(
         key: Arc<RwLock<TCellOwner<K>>>,
         component_instances: Arc<Mutex<ComponentInstanceDataList<ComponentInstanceHandle<K, T>, MarkerPinHandle<K>>>>,
-        component_links: Arc<RwLock<ComponentLinkDataList<StaticPointer<TCell<K, MarkerLink<K>>>, MarkerPinHandle<K>, ComponentInstanceHandle<K, T>>>>,
+        component_links: Arc<RwLock<ComponentLinkDataList<MarkerLinkHandle<K>, MarkerPinHandle<K>, ComponentInstanceHandle<K, T>>>>,
         selected_root_component_class: Arc<RwLock<Option<RootComponentClassHandle<K, T>>>>,
     ) {
         let (selected_root_component_class, mut component_instances, mut component_links) = tokio::join!(selected_root_component_class.read(), component_instances.lock(), component_links.write());
@@ -470,7 +470,7 @@ impl<K: Send + Sync + 'static, T: ParameterValueType> TimelineViewModelImpl<K, T
         key: Arc<RwLock<TCellOwner<K>>>,
         root_component_class: Option<&RootComponentClassHandle<K, T>>,
         component_instances: &mut ComponentInstanceDataList<ComponentInstanceHandle<K, T>, MarkerPinHandle<K>>,
-        component_links: &mut ComponentLinkDataList<StaticPointer<TCell<K, MarkerLink<K>>>, MarkerPinHandle<K>, ComponentInstanceHandle<K, T>>,
+        component_links: &mut ComponentLinkDataList<MarkerLinkHandle<K>, MarkerPinHandle<K>, ComponentInstanceHandle<K, T>>,
     ) {
         component_instances.list.clear();
         component_links.list.clear();
@@ -531,7 +531,7 @@ where
         self.message_router.handle(Message::MoveMarkerPin(instance_handle.clone(), pin_handle.clone(), to));
     }
 
-    type ComponentLinkHandle = StaticPointer<TCell<K, MarkerLink<K>>>;
+    type ComponentLinkHandle = MarkerLinkHandle<K>;
 
     fn component_links<R>(&self, f: impl FnOnce(&ComponentLinkDataList<Self::ComponentLinkHandle, Self::MarkerPinHandle, Self::ComponentInstanceHandle>) -> R) -> R {
         f(&self.component_links.blocking_read())

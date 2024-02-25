@@ -1,5 +1,7 @@
 use crate::component::marker_pin::MarkerPinHandle;
+use crate::ptr::{StaticPointer, StaticPointerCow, StaticPointerOwned};
 use crate::time::TimelineTime;
+use qcell::TCell;
 use std::fmt::Debug;
 use std::hash::{Hash, Hasher};
 use std::mem;
@@ -10,6 +12,10 @@ pub struct MarkerLink<K> {
     pub to: MarkerPinHandle<K>,
     pub len: TimelineTime,
 }
+
+pub type MarkerLinkHandle<K> = StaticPointer<TCell<K, MarkerLink<K>>>;
+pub type MarkerLinkHandleOwned<K> = StaticPointerOwned<TCell<K, MarkerLink<K>>>;
+pub type MarkerLinkHandleCow<K> = StaticPointerCow<TCell<K, MarkerLink<K>>>;
 
 impl<K> MarkerLink<K> {
     pub fn flip(&mut self) {

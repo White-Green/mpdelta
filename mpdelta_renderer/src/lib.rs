@@ -3,15 +3,14 @@ use async_trait::async_trait;
 use dashmap::DashMap;
 use futures::FutureExt;
 use mpdelta_core::component::instance::ComponentInstanceHandle;
-use mpdelta_core::component::link::MarkerLink;
+use mpdelta_core::component::link::MarkerLinkHandle;
 use mpdelta_core::component::marker_pin::MarkerPinHandle;
 use mpdelta_core::component::parameter::{ImageRequiredParamsFixed, Parameter, ParameterSelect, ParameterType, ParameterValueType};
 use mpdelta_core::core::{ComponentEncoder, ComponentRendererBuilder, IdGenerator};
-use mpdelta_core::ptr::StaticPointer;
 use mpdelta_core::time::TimelineTime;
 use mpdelta_core::usecase::RealtimeComponentRenderer;
 use mpdelta_differential::CollectCachedTimeError;
-use qcell::{TCell, TCellOwner};
+use qcell::TCellOwner;
 use std::convert::Infallible;
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
@@ -443,7 +442,7 @@ pub enum RenderError<K: 'static, T: ParameterValueType> {
     #[error("invalid marker: {0:?}")]
     InvalidMarker(MarkerPinHandle<K>),
     #[error("invalid marker: {0:?}")]
-    InvalidMarkerLink(StaticPointer<TCell<K, MarkerLink<K>>>),
+    InvalidMarkerLink(MarkerLinkHandle<K>),
     #[error("{index}-th variable parameter of {component:?} is invalid")]
     InvalidVariableParameter { component: ComponentInstanceHandle<K, T>, index: usize },
     #[error("time {at:?} is out of range {range:?}")]

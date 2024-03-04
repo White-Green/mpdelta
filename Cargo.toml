@@ -68,7 +68,7 @@ edition = "2021"
 authors = ["White-Green"]
 
 [workspace.dependencies]
-arc-swap = "1.6.0"
+arc-swap = "1.7.0"
 assert_matches = "1.5.0"
 async-trait = "0.1.77"
 bytemuck = "1.14.3"
@@ -88,8 +88,8 @@ ffmpeg-sys-next = { version = "6.1.0", default-features = false, features = ["av
 futures = "0.3.30"
 glam = { version = "0.24", default-features = false, features = ["libm"] }
 hot-lib-reloader = "0.6.5"
-indexmap = "2.2.3"
-lru = "0.12.2"
+indexmap = "2.2.5"
+lru = "0.12.3"
 mpdelta_async_runtime = { path = "mpdelta_common/mpdelta_async_runtime" }
 mpdelta_audio_mixer = { path = "mpdelta_audio_mixer" }
 mpdelta_components = { path = "mpdelta_components" }
@@ -117,7 +117,7 @@ ordered-float = "4.2.0"
 proptest = "1.4.0"
 proptest-derive = "0.4.0"
 qcell = "0.5.4"
-rayon = "1.8.1"
+rayon = "1.9.0"
 regex = "1.10.3"
 rfd = { version = "0.14.0", features = ["file-handle-inner"] }
 serde = { version = "1.0.197", features = ["derive"] }

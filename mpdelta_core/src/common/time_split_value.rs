@@ -406,6 +406,8 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::any;
+    use proptest::proptest;
 
     #[test]
     fn test_time_split_value() {
@@ -471,5 +473,14 @@ mod tests {
         assert_eq!(serialized, r#"["a",0,"x",24,"y",25,"z"]"#);
         let deserialized: TimeSplitValue<char, i32> = serde_json::from_str(&serialized).unwrap();
         assert_eq!(deserialized, value);
+    }
+
+    proptest! {
+        #[test]
+        fn test_time_split_value_serde_prop(value in any::<TimeSplitValue<String, usize>>()) {
+            let serialized = serde_json::to_string(&value).unwrap();
+            let deserialized:TimeSplitValue<String, usize> = serde_json::from_str(&serialized).unwrap();
+            assert_eq!(deserialized, value);
+        }
     }
 }

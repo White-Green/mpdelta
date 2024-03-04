@@ -56,7 +56,9 @@ impl Ord for EasingInput {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct EasingIdentifier<'a> {
+    #[serde(rename = "ns")]
     pub namespace: Cow<'a, str>,
+    #[serde(rename = "n")]
     pub name: Cow<'a, str>,
 }
 
@@ -134,7 +136,9 @@ where
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct DynEditableSingleValueIdentifier<'a> {
+    #[serde(rename = "ns")]
     pub namespace: Cow<'a, str>,
+    #[serde(rename = "n")]
     pub name: Cow<'a, str>,
 }
 
@@ -321,7 +325,9 @@ where
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct DynEditableEasingValueIdentifier<'a> {
+    #[serde(rename = "ns")]
     pub namespace: Cow<'a, str>,
+    #[serde(rename = "n")]
     pub name: Cow<'a, str>,
 }
 

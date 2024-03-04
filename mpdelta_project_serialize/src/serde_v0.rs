@@ -76,8 +76,8 @@ impl<T: 'static> Serialize for Wrapper<DynEditableSingleValue<T>> {
         S: Serializer,
     {
         let mut serializer = serializer.serialize_map(Some(2))?;
-        serializer.serialize_entry("tag", &self.0.manager().identifier())?;
-        serializer.serialize_entry("value", &self.0)?;
+        serializer.serialize_entry("t", &self.0.manager().identifier())?;
+        serializer.serialize_entry("v", &self.0)?;
         serializer.end()
     }
 }
@@ -88,36 +88,44 @@ impl<T: 'static> Serialize for Wrapper<DynEditableEasingValue<T>> {
         S: Serializer,
     {
         let mut serializer = serializer.serialize_map(Some(2))?;
-        serializer.serialize_entry("tag", &self.0.manager().identifier())?;
-        serializer.serialize_entry("value", &self.0)?;
+        serializer.serialize_entry("t", &self.0.manager().identifier())?;
+        serializer.serialize_entry("v", &self.0)?;
         serializer.end()
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct UnDeserialized<Tag> {
+    #[serde(rename = "t")]
     pub tag: Tag,
+    #[serde(rename = "v")]
     pub value: serde_json::Value,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub enum PinIndex {
+    #[serde(rename = "l")]
     Left,
+    #[serde(rename = "r")]
     Right,
+    #[serde(rename = "m")]
     Marker(usize),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub struct MarkerPinHandleForSerialize {
+    #[serde(rename = "c")]
     pub component: Option<usize>,
+    #[serde(rename = "i")]
     pub index: PinIndex,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub struct ComponentInstanceHandleForSerialize {
+    #[serde(rename = "c")]
     pub component: usize,
 }
 
@@ -152,8 +160,11 @@ fn serialize_vector3_params<K, T: ParameterValueType>(value: &Vector3Params<K, T
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub struct VariableParameterValueForSerialize<Nullable> {
+    #[serde(rename = "v")]
     pub params: Nullable,
+    #[serde(rename = "c")]
     pub components: Vec<ComponentInstanceHandleForSerialize>,
+    #[serde(rename = "p")]
     pub priority: VariableParameterPriority,
 }
 
@@ -163,17 +174,28 @@ pub struct VariableParameterValueForSerialize<Nullable> {
     deserialize = "Vector3ParamsForSerialize<S>: Deserialize<'de>, TimeSplitValue<MarkerPinHandleForSerialize, EasingValueForSerialize<Quaternion<f64>, S>>: Deserialize<'de>"
 ))]
 pub enum ImageRequiredParamsTransformForSerialize<S: SerDeSelect> {
+    #[serde(rename = "p")]
     Params {
+        #[serde(rename = "s")]
         scale: Vector3ParamsForSerialize<S>,
+        #[serde(rename = "t")]
         translate: Vector3ParamsForSerialize<S>,
+        #[serde(rename = "r")]
         rotate: TimeSplitValue<MarkerPinHandleForSerialize, EasingValueForSerialize<Quaternion<f64>, S>>,
+        #[serde(rename = "sc")]
         scale_center: Vector3ParamsForSerialize<S>,
+        #[serde(rename = "rc")]
         rotate_center: Vector3ParamsForSerialize<S>,
     },
+    #[serde(rename = "f")]
     Free {
+        #[serde(rename = "lt")]
         left_top: Vector3ParamsForSerialize<S>,
+        #[serde(rename = "rt")]
         right_top: Vector3ParamsForSerialize<S>,
+        #[serde(rename = "lb")]
         left_bottom: Vector3ParamsForSerialize<S>,
+        #[serde(rename = "rb")]
         right_bottom: Vector3ParamsForSerialize<S>,
     },
 }
@@ -274,7 +296,9 @@ impl<T: 'static> TSerDe for DynEditableEasingValue<T> {
 #[derive(Serialize, Deserialize)]
 #[serde(bound(serialize = "Value: 'static, S::T<DynEditableEasingValue<Value>>: Serialize", deserialize = "Value: 'static, S::T<DynEditableEasingValue<Value>>: Deserialize<'de>"))]
 pub struct EasingValueForSerialize<Value: 'static, S: SerDeSelect> {
+    #[serde(rename = "v")]
     pub value: S::T<DynEditableEasingValue<Value>>,
+    #[serde(rename = "e")]
     pub easing: EasingIdentifier<'static>,
 }
 
@@ -317,11 +341,17 @@ impl<'a, Value> From<&'a EasingValue<Value>> for EasingValueForSerialize<Value, 
     deserialize = "ImageRequiredParamsTransformForSerialize<S>: Deserialize<'de>, PinSplitValueForSerialize<EasingValueForSerialize<f64, S>>: Deserialize<'de>"
 ))]
 pub struct ImageRequiredParamsForSerialize<S: SerDeSelect> {
+    #[serde(rename = "a")]
     pub aspect_ratio: (u32, u32),
+    #[serde(rename = "t")]
     pub transform: ImageRequiredParamsTransformForSerialize<S>,
+    #[serde(rename = "bg")]
     pub background_color: [u8; 4],
+    #[serde(rename = "o")]
     pub opacity: PinSplitValueForSerialize<EasingValueForSerialize<f64, S>>,
+    #[serde(rename = "b")]
     pub blend_mode: PinSplitValueForSerialize<BlendMode>,
+    #[serde(rename = "c")]
     pub composite_operation: PinSplitValueForSerialize<CompositeOperation>,
 }
 
@@ -331,6 +361,7 @@ pub struct ImageRequiredParamsForSerialize<S: SerDeSelect> {
     deserialize = "Vec<VariableParameterValueForSerialize<PinSplitValueForSerialize<Option<EasingValueForSerialize<f64, S>>>>>: Deserialize<'de>"
 ))]
 pub struct AudioRequiredParamsForSerialize<S: SerDeSelect> {
+    #[serde(rename = "v")]
     pub volume: Vec<VariableParameterValueForSerialize<PinSplitValueForSerialize<Option<EasingValueForSerialize<f64, S>>>>>,
 }
 
@@ -340,13 +371,21 @@ pub struct AudioRequiredParamsForSerialize<S: SerDeSelect> {
     deserialize = "Option<ImageRequiredParamsForSerialize<S>>: Deserialize<'de>, Option<AudioRequiredParamsForSerialize<S>>: Deserialize<'de>, Vec<ParameterValueFixedForSerialize<T::Image, T::Audio, S>>: Deserialize<'de>, Vec<VariableParameterValueForSerialize<ParameterNullableValueForSerialize<T, S>>>: Deserialize<'de>"
 ))]
 pub struct ComponentInstanceForSerialize<T: ParameterValueType, S: SerDeSelect> {
+    #[serde(rename = "l")]
     pub left: MarkerPinForSerialize,
+    #[serde(rename = "r")]
     pub right: MarkerPinForSerialize,
+    #[serde(rename = "m")]
     pub markers: Vec<MarkerPinForSerialize>,
+    #[serde(rename = "i")]
     pub image_required_params: Option<ImageRequiredParamsForSerialize<S>>,
+    #[serde(rename = "a")]
     pub audio_required_params: Option<AudioRequiredParamsForSerialize<S>>,
+    #[serde(rename = "f")]
     pub fixed_parameters: Vec<ParameterValueFixedForSerialize<T::Image, T::Audio, S>>,
+    #[serde(rename = "v")]
     pub variable_parameters: Vec<VariableParameterValueForSerialize<ParameterNullableValueForSerialize<T, S>>>,
+    #[serde(rename = "c")]
     pub class: ComponentClassIdentifier<'static>,
 }
 
@@ -381,8 +420,11 @@ impl<T: ParameterValueType, S: SerDeSelect + Debug> Debug for ComponentInstanceF
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub struct MarkerLinkForSerialize {
+    #[serde(rename = "f")]
     pub from: MarkerPinHandleForSerialize,
+    #[serde(rename = "t")]
     pub to: MarkerPinHandleForSerialize,
+    #[serde(rename = "l")]
     pub length: TimelineTime,
 }
 
@@ -390,8 +432,11 @@ pub struct MarkerLinkForSerialize {
 #[serde(bound(serialize = "Vec<ComponentInstanceForSerialize<T, S>>: Serialize", deserialize = "Vec<ComponentInstanceForSerialize<T, S>>: Deserialize<'de>"))]
 pub struct RootComponentClassForSerialize<T: ParameterValueType, S: SerDeSelect> {
     pub id: Uuid,
+    #[serde(rename = "c")]
     pub components: Vec<ComponentInstanceForSerialize<T, S>>,
+    #[serde(rename = "lk")]
     pub links: Vec<MarkerLinkForSerialize>,
+    #[serde(rename = "l")]
     pub length: MarkerTime,
 }
 
@@ -399,6 +444,7 @@ pub struct RootComponentClassForSerialize<T: ParameterValueType, S: SerDeSelect>
 #[serde(bound(serialize = "Vec<RootComponentClassForSerialize<T, S>>: Serialize", deserialize = "Vec<RootComponentClassForSerialize<T, S>>: Deserialize<'de>"))]
 pub struct ProjectForSerialize<T: ParameterValueType, S: SerDeSelect> {
     pub id: Uuid,
+    #[serde(rename = "c")]
     pub components: Vec<RootComponentClassForSerialize<T, S>>,
 }
 

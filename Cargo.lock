@@ -2474,6 +2474,7 @@ dependencies = [
  "regex",
  "serde",
  "serde_json",
+ "serde_repr",
  "thiserror",
  "tokio",
  "uuid",

@@ -15,6 +15,7 @@ proptest = { workspace = true, optional = true }
 proptest-derive = { workspace = true, optional = true }
 qcell = { workspace = true }
 serde = { workspace = true }
+serde_repr = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 uuid = { workspace = true, features = ["serde"] }

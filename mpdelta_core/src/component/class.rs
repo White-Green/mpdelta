@@ -10,8 +10,11 @@ use uuid::Uuid;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ComponentClassIdentifier<'a> {
+    #[serde(rename = "ns")]
     pub namespace: Cow<'a, str>,
+    #[serde(rename = "n")]
     pub name: Cow<'a, str>,
+    #[serde(rename = "i")]
     pub inner_identifier: [Uuid; 2],
 }
 

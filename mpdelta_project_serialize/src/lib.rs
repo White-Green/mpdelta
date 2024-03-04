@@ -139,7 +139,6 @@ impl<K> Debug for DeserializeError<K> {
 
 const MAGIC_NUMBER: &[u8; 4] = b"mpdl";
 
-// TODO: core内のderive(Serialize, Deserialize)をcfg_attrにして、serdeをoptionalにする
 fn write_project<K, T: ParameterValueType>(project: &serde_v0::ProjectForSerialize<T, serde_v0::Ser>, out: impl Write) -> Result<(), SerializeError<K, T>> {
     let mut out = io::BufWriter::new(out);
     out.write_all(MAGIC_NUMBER)?;

@@ -7,6 +7,7 @@ use crate::time::TimelineTime;
 use cgmath::{One, Quaternion, Vector3};
 use either::Either;
 use serde::{Deserialize, Serialize};
+use serde_repr::{Deserialize_repr, Serialize_repr};
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt::{Debug, Formatter};
@@ -36,16 +37,27 @@ pub trait ParameterValueType: 'static + Send + Sync {
 #[derive(Serialize, Deserialize)]
 #[cfg_attr(any(feature = "proptest", test), derive(proptest_derive::Arbitrary))]
 pub enum Parameter<Type: ParameterValueType> {
+    #[serde(rename = "n")]
     None,
+    #[serde(rename = "img")]
     Image(Type::Image),
+    #[serde(rename = "aud")]
     Audio(Type::Audio),
+    #[serde(rename = "bin")]
     Binary(Type::Binary),
+    #[serde(rename = "str")]
     String(Type::String),
+    #[serde(rename = "int")]
     Integer(Type::Integer),
+    #[serde(rename = "real")]
     RealNumber(Type::RealNumber),
+    #[serde(rename = "bool")]
     Boolean(Type::Boolean),
+    #[serde(rename = "dict")]
     Dictionary(Type::Dictionary),
+    #[serde(rename = "arr")]
     Array(Type::Array),
+    #[serde(rename = "cc")]
     ComponentClass(Type::ComponentClass),
 }
 
@@ -853,7 +865,7 @@ impl Default for Opacity {
 }
 
 // ref: https://www.w3.org/TR/compositing-1/
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize_repr, Deserialize_repr)]
 #[cfg_attr(any(feature = "proptest", test), derive(proptest_derive::Arbitrary))]
 #[repr(u8)]
 pub enum BlendMode {
@@ -877,7 +889,7 @@ pub enum BlendMode {
 }
 
 // ref: https://www.w3.org/TR/compositing-1/
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize_repr, Deserialize_repr)]
 #[cfg_attr(any(feature = "proptest", test), derive(proptest_derive::Arbitrary))]
 #[repr(u8)]
 pub enum CompositeOperation {
@@ -900,7 +912,9 @@ pub enum CompositeOperation {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[cfg_attr(any(feature = "proptest", test), derive(proptest_derive::Arbitrary))]
 pub enum VariableParameterPriority {
+    #[serde(rename = "m")]
     PrioritizeManually,
+    #[serde(rename = "c")]
     PrioritizeComponent,
 }
 

@@ -121,6 +121,7 @@ rayon = "1.8.1"
 regex = "1.10.3"
 rfd = { version = "0.14.0", features = ["file-handle-inner"] }
 serde = { version = "1.0.197", features = ["derive"] }
+serde_repr = "0.1.18"
 serde_json = "1.0.114"
 shader_builder = { path = "mpdelta_build_utils/shader_builder" }
 smallvec = "1.13"

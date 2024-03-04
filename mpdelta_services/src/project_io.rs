@@ -1,39 +1,38 @@
 use async_trait::async_trait;
 use mpdelta_core::component::parameter::ParameterValueType;
 use mpdelta_core::core::{ProjectLoader, ProjectWriter};
-use mpdelta_core::project::{ProjectHandle, ProjectHandleOwned};
+use std::fs::{File, OpenOptions};
+use std::io;
 use std::path::Path;
-use thiserror::Error;
 
-pub struct TemporaryProjectLoader;
-
-#[derive(Debug, Error)]
-pub enum Infallible {}
+pub struct LocalFSProjectLoader;
 
 #[async_trait]
-impl<K, T> ProjectLoader<K, T> for TemporaryProjectLoader
+impl<K, T> ProjectLoader<K, T> for LocalFSProjectLoader
 where
     K: 'static,
     T: ParameterValueType,
 {
-    type Err = Infallible;
+    type Err = io::Error;
+    type ProjectRead<'a> = File;
 
-    async fn load_project(&self, _: &Path) -> Result<ProjectHandleOwned<K, T>, Self::Err> {
-        todo!("ProjectLoader is not implemented yet")
+    async fn load_project<'a>(&'a self, path: &Path) -> Result<Self::ProjectRead<'a>, Self::Err> {
+        OpenOptions::new().read(true).open(path)
     }
 }
 
-pub struct TemporaryProjectWriter;
+pub struct LocalFSProjectWriter;
 
 #[async_trait]
-impl<K, T> ProjectWriter<K, T> for TemporaryProjectWriter
+impl<K, T> ProjectWriter<K, T> for LocalFSProjectWriter
 where
     K: 'static,
     T: ParameterValueType,
 {
-    type Err = Infallible;
+    type Err = io::Error;
+    type ProjectWrite<'a> = File;
 
-    async fn write_project(&self, _: &ProjectHandle<K, T>, _: &Path) -> Result<(), Self::Err> {
-        todo!("ProjectWriter is not implemented yet")
+    async fn write_project<'a>(&'a self, path: &Path) -> Result<Self::ProjectWrite<'a>, Self::Err> {
+        OpenOptions::new().write(true).create(true).open(path)
     }
 }

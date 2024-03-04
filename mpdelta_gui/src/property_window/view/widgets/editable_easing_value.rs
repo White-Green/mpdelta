@@ -419,20 +419,24 @@ mod tests {
     use super::*;
     use egui::Visuals;
     use egui_image_renderer::FileFormat;
-    use mpdelta_core::component::parameter::value::{DynEditableEasingValueMarker, Easing, EasingInput, NamedAny};
+    use mpdelta_core::component::parameter::value::{DynEditableEasingValueManager, DynEditableEasingValueMarker, Easing, EasingIdentifier, EasingInput, NamedAny};
     use mpdelta_core::time_split_value;
+    use serde::Serialize;
     use std::io::Cursor;
     use std::sync::Arc;
 
     #[tokio::test]
     async fn test_editable_easing_value_editor() {
-        #[derive(Clone)]
+        #[derive(Clone, Serialize)]
         struct LinearEasingF64 {
             start: f64,
             end: f64,
         }
         impl DynEditableEasingValueMarker for LinearEasingF64 {
             type Out = f64;
+            fn manager(&self) -> &dyn DynEditableEasingValueManager<Self::Out> {
+                todo!()
+            }
 
             fn get_raw_values_mut(&mut self) -> (&mut dyn NamedAny, &mut dyn NamedAny) {
                 let LinearEasingF64 { start, end } = self;
@@ -447,6 +451,9 @@ mod tests {
 
         struct Easing1;
         impl Easing for Easing1 {
+            fn identifier(&self) -> EasingIdentifier {
+                todo!()
+            }
             fn easing(&self, from: EasingInput) -> f64 {
                 let x = 1. - from.value();
                 1. - x * x
@@ -454,6 +461,9 @@ mod tests {
         }
         struct Easing2;
         impl Easing for Easing2 {
+            fn identifier(&self) -> EasingIdentifier {
+                todo!()
+            }
             fn easing(&self, from: EasingInput) -> f64 {
                 let x = from.value();
                 1. - (x * std::f64::consts::PI / 2.).cos()

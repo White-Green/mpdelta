@@ -6,7 +6,7 @@ use mpdelta_core::common::time_split_value::TimeSplitValue;
 use mpdelta_core::component::instance::ComponentInstanceHandle;
 use mpdelta_core::component::marker_pin::MarkerPinHandle;
 use mpdelta_core::component::parameter::value::{DynEditableEasingValueMarker, EasingInput, EasingValue};
-use mpdelta_core::component::parameter::{AbstractFile, Never, Parameter, ParameterNullableValue, ParameterType, ParameterValueFixed, ParameterValueType, VariableParameterPriority, VariableParameterValue};
+use mpdelta_core::component::parameter::{AbstractFile, Never, Parameter, ParameterNullableValue, ParameterType, ParameterValueRaw, ParameterValueType, VariableParameterPriority, VariableParameterValue};
 use mpdelta_core::time::TimelineTime;
 use qcell::TCellOwner;
 use std::future::Future;
@@ -18,7 +18,7 @@ pub(super) fn evaluate_parameter_f64<'a, K, T, Key, ImageCombinerBuilder, AudioC
     at: TimelineTime,
     ctx: &'a RenderContext<Key, T, ImageCombinerBuilder, AudioCombinerBuilder>,
     cancellation_token: &CancellationToken,
-) -> Option<Result<ParameterValueFixed<T::Image, T::Audio>, RenderError<K, T>>>
+) -> Option<Result<ParameterValueRaw<T::Image, T::Audio>, RenderError<K, T>>>
 where
     K: 'static,
     T: ParameterValueType,
@@ -27,7 +27,7 @@ where
     AudioCombinerBuilder: CombinerBuilder<T::Audio, Request = AudioCombinerRequest, Param = AudioCombinerParam> + 'static,
 {
     let VariableParameterValue { params, components, priority } = param;
-    let get_manually_param = || evaluate_time_split_value_at(params, at, &ctx.key).map(|result| result.map(ParameterValueFixed::RealNumber));
+    let get_manually_param = || evaluate_time_split_value_at(params, at, &ctx.key).map(|result| result.map(ParameterValueRaw::RealNumber));
     let ty = &ParameterType::RealNumber(());
     let component_param = ComponentParamCalculator { components, ty, at, ctx };
     evaluate_parameter_inner(get_manually_param, component_param, priority, ty, ctx, cancellation_token)
@@ -39,7 +39,7 @@ pub(super) fn evaluate_parameter<'a, K, T, Key, ImageCombinerBuilder, AudioCombi
     at: TimelineTime,
     ctx: &'a RenderContext<Key, T, ImageCombinerBuilder, AudioCombinerBuilder>,
     cancellation_token: &CancellationToken,
-) -> Option<Result<ParameterValueFixed<T::Image, T::Audio>, RenderError<K, T>>>
+) -> Option<Result<ParameterValueRaw<T::Image, T::Audio>, RenderError<K, T>>>
 where
     K: 'static,
     T: ParameterValueType,
@@ -52,14 +52,14 @@ where
         return None;
     }
     let get_manually_param = || match params {
-        Parameter::None => Some(Ok(ParameterValueFixed::None)),
-        Parameter::Image(value) => evaluate_time_split_value_at(value, at, &ctx.key).map(|result| result.map(ParameterValueFixed::Image)),
-        Parameter::Audio(value) => evaluate_time_split_value_at(value, at, &ctx.key).map(|result| result.map(ParameterValueFixed::Audio)),
-        Parameter::Binary(value) => evaluate_time_split_value_at(value, at, &ctx.key).map(|result| result.map(ParameterValueFixed::Binary)),
-        Parameter::String(value) => evaluate_time_split_value_at(value, at, &ctx.key).map(|result| result.map(ParameterValueFixed::String)),
-        Parameter::Integer(value) => evaluate_time_split_value_at(value, at, &ctx.key).map(|result| result.map(ParameterValueFixed::Integer)),
-        Parameter::RealNumber(value) => evaluate_time_split_value_at(value, at, &ctx.key).map(|result| result.map(ParameterValueFixed::RealNumber)),
-        Parameter::Boolean(value) => evaluate_time_split_value_at(value, at, &ctx.key).map(|result| result.map(ParameterValueFixed::Boolean)),
+        Parameter::None => Some(Ok(ParameterValueRaw::None)),
+        Parameter::Image(value) => evaluate_time_split_value_at(value, at, &ctx.key).map(|result| result.map(ParameterValueRaw::Image)),
+        Parameter::Audio(value) => evaluate_time_split_value_at(value, at, &ctx.key).map(|result| result.map(ParameterValueRaw::Audio)),
+        Parameter::Binary(value) => evaluate_time_split_value_at(value, at, &ctx.key).map(|result| result.map(ParameterValueRaw::Binary)),
+        Parameter::String(value) => evaluate_time_split_value_at(value, at, &ctx.key).map(|result| result.map(ParameterValueRaw::String)),
+        Parameter::Integer(value) => evaluate_time_split_value_at(value, at, &ctx.key).map(|result| result.map(ParameterValueRaw::Integer)),
+        Parameter::RealNumber(value) => evaluate_time_split_value_at(value, at, &ctx.key).map(|result| result.map(ParameterValueRaw::RealNumber)),
+        Parameter::Boolean(value) => evaluate_time_split_value_at(value, at, &ctx.key).map(|result| result.map(ParameterValueRaw::Boolean)),
         Parameter::Dictionary(value) => {
             let _: &Never = value;
             unreachable!()
@@ -123,13 +123,13 @@ where
 }
 
 fn evaluate_parameter_inner<K, T, Key, ImageCombinerBuilder, AudioCombinerBuilder>(
-    get_manually_param: impl FnOnce() -> Option<Result<ParameterValueFixed<T::Image, T::Audio>, RenderError<K, T>>>,
+    get_manually_param: impl FnOnce() -> Option<Result<ParameterValueRaw<T::Image, T::Audio>, RenderError<K, T>>>,
     component_param: ComponentParamCalculator<'_, K, T, Key, ImageCombinerBuilder, AudioCombinerBuilder>,
     priority: &VariableParameterPriority,
     ty: &ParameterType,
     ctx: &RenderContext<Key, T, ImageCombinerBuilder, AudioCombinerBuilder>,
     cancellation_token: &CancellationToken,
-) -> Option<Result<ParameterValueFixed<T::Image, T::Audio>, RenderError<K, T>>>
+) -> Option<Result<ParameterValueRaw<T::Image, T::Audio>, RenderError<K, T>>>
 where
     K: 'static,
     T: ParameterValueType,
@@ -170,23 +170,23 @@ fn await_future_in_rayon_context<F: Future>(fut: F, cancellation_token: &Cancell
     }
 }
 
-fn default_value<Key, T: ParameterValueType, ImageCombinerBuilder, AudioCombinerBuilder>(ty: &ParameterType, ctx: &RenderContext<Key, T, ImageCombinerBuilder, AudioCombinerBuilder>) -> ParameterValueFixed<T::Image, T::Audio>
+fn default_value<Key, T: ParameterValueType, ImageCombinerBuilder, AudioCombinerBuilder>(ty: &ParameterType, ctx: &RenderContext<Key, T, ImageCombinerBuilder, AudioCombinerBuilder>) -> ParameterValueRaw<T::Image, T::Audio>
 where
     ImageCombinerBuilder: CombinerBuilder<T::Image, Request = ImageCombinerRequest, Param = ImageCombinerParam> + 'static,
     AudioCombinerBuilder: CombinerBuilder<T::Audio, Request = AudioCombinerRequest, Param = AudioCombinerParam> + 'static,
 {
     match ty {
-        ParameterType::None => ParameterValueFixed::None,
-        ParameterType::Image(_) => ParameterValueFixed::Image(ctx.image_combiner_builder.new_combiner(ImageSizeRequest { width: 0., height: 0. }).collect()),
-        ParameterType::Audio(_) => ParameterValueFixed::Audio(ctx.audio_combiner_builder.new_combiner(TimelineTime::ZERO).collect()),
-        ParameterType::Binary(_) => ParameterValueFixed::Binary(AbstractFile::default()),
-        ParameterType::String(_) => ParameterValueFixed::String(String::default()),
-        ParameterType::Integer(_) => ParameterValueFixed::Integer(0),
-        ParameterType::RealNumber(_) => ParameterValueFixed::RealNumber(0.),
-        ParameterType::Boolean(_) => ParameterValueFixed::Boolean(false),
-        ParameterType::Dictionary(ty) => ParameterValueFixed::Dictionary(ty.iter().map(|(k, v)| (k.clone(), default_value(v, ctx))).collect()),
-        ParameterType::Array(_) => ParameterValueFixed::Array(Vec::new()),
-        ParameterType::ComponentClass(_) => ParameterValueFixed::ComponentClass(()),
+        ParameterType::None => ParameterValueRaw::None,
+        ParameterType::Image(_) => ParameterValueRaw::Image(ctx.image_combiner_builder.new_combiner(ImageSizeRequest { width: 0., height: 0. }).collect()),
+        ParameterType::Audio(_) => ParameterValueRaw::Audio(ctx.audio_combiner_builder.new_combiner(TimelineTime::ZERO).collect()),
+        ParameterType::Binary(_) => ParameterValueRaw::Binary(AbstractFile::default()),
+        ParameterType::String(_) => ParameterValueRaw::String(String::default()),
+        ParameterType::Integer(_) => ParameterValueRaw::Integer(0),
+        ParameterType::RealNumber(_) => ParameterValueRaw::RealNumber(0.),
+        ParameterType::Boolean(_) => ParameterValueRaw::Boolean(false),
+        ParameterType::Dictionary(ty) => ParameterValueRaw::Dictionary(ty.iter().map(|(k, v)| (k.clone(), default_value(v, ctx))).collect()),
+        ParameterType::Array(_) => ParameterValueRaw::Array(Vec::new()),
+        ParameterType::ComponentClass(_) => ParameterValueRaw::ComponentClass(()),
     }
 }
 
@@ -243,10 +243,11 @@ mod tests {
     use super::*;
     use assert_matches::assert_matches;
     use mpdelta_core::component::marker_pin::MarkerPin;
-    use mpdelta_core::component::parameter::value::{Easing, NamedAny};
+    use mpdelta_core::component::parameter::value::{DynEditableEasingValueManager, Easing, EasingIdentifier, NamedAny};
     use mpdelta_core::ptr::StaticPointerOwned;
     use mpdelta_core::{mfrac, time_split_value};
     use qcell::TCell;
+    use serde::Serialize;
     use std::sync::Arc;
 
     struct TestParameterValueType;
@@ -268,10 +269,14 @@ mod tests {
     fn test_evaluate_time_split_value_at() {
         struct K;
         let key = TCellOwner::<K>::new();
-        #[derive(Clone)]
+        #[derive(Clone, Serialize)]
         struct SimpleEasingValue(f64, f64);
         impl DynEditableEasingValueMarker for SimpleEasingValue {
             type Out = f64;
+            fn manager(&self) -> &dyn DynEditableEasingValueManager<Self::Out> {
+                todo!()
+            }
+
             fn get_raw_values_mut(&mut self) -> (&mut dyn NamedAny, &mut dyn NamedAny) {
                 (&mut self.0, &mut self.1)
             }
@@ -281,6 +286,9 @@ mod tests {
         }
         struct FunctionEasing<F>(F);
         impl<F: Send + Sync + Fn(f64) -> f64> Easing for FunctionEasing<F> {
+            fn identifier(&self) -> EasingIdentifier {
+                todo!()
+            }
             fn easing(&self, from: EasingInput) -> f64 {
                 (self.0)(from.value())
             }

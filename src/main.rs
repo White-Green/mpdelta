@@ -1,10 +1,12 @@
 use async_trait::async_trait;
 use cpal::traits::HostTrait;
+use futures::{pin_mut, stream, FutureExt, StreamExt};
 use mpdelta_audio_mixer::MPDeltaAudioMixerBuilder;
 use mpdelta_components::rectangle::RectangleClass;
 use mpdelta_components::sine_audio::SineAudio;
-use mpdelta_core::component::class::ComponentClass;
-use mpdelta_core::component::parameter::ParameterValueType;
+use mpdelta_core::component::class::{ComponentClass, ComponentClassIdentifier};
+use mpdelta_core::component::parameter::value::{DynEditableSelfEasingValueManager, DynEditableSelfValueManager, LinearEasing};
+use mpdelta_core::component::parameter::{AbstractFile, ParameterAllValues, ParameterValueRaw, ParameterValueType};
 use mpdelta_core::core::{ComponentClassLoader, MPDeltaCore};
 use mpdelta_core::ptr::{StaticPointer, StaticPointerOwned};
 use mpdelta_core_audio::AudioType;
@@ -14,16 +16,20 @@ use mpdelta_gui::viewmodel::ViewModelParamsImpl;
 use mpdelta_gui_audio_player_cpal::CpalAudioPlayer;
 use mpdelta_gui_vulkano::MPDeltaGUIVulkano;
 use mpdelta_multimedia_encoder_ffmpeg::{FfmpegEncodeSettings, FfmpegEncoderBuilder};
+use mpdelta_project_serialize::MPDeltaProjectSerializer;
 use mpdelta_renderer::MPDeltaRendererBuilder;
 use mpdelta_rendering_controller::LRUCacheRenderingControllerBuilder;
+use mpdelta_services::easing_loader::InMemoryEasingLoader;
 use mpdelta_services::history::InMemoryEditHistoryStore;
 use mpdelta_services::id_generator::UniqueIdGenerator;
 use mpdelta_services::project_editor::ProjectEditor;
-use mpdelta_services::project_io::{TemporaryProjectLoader, TemporaryProjectWriter};
+use mpdelta_services::project_io::{LocalFSProjectLoader, LocalFSProjectWriter};
 use mpdelta_services::project_store::InMemoryProjectStore;
+use mpdelta_services::value_manager_loader::InMemoryValueManagerLoader;
 use mpdelta_video_renderer_vulkano::ImageCombinerBuilder;
 use qcell::TCellOwner;
 use std::borrow::Cow;
+use std::collections::HashMap;
 use std::fs::File;
 use std::sync::Arc;
 use tokio::runtime::Runtime;
@@ -74,6 +80,27 @@ impl ComponentClassLoader<ProjectKey, ValueType> for ComponentClassList {
     async fn get_available_component_classes(&self) -> Cow<[StaticPointer<RwLock<dyn ComponentClass<ProjectKey, ValueType>>>]> {
         Cow::Borrowed(&self.1)
     }
+
+    async fn component_class_by_identifier(&self, identifier: ComponentClassIdentifier<'_>) -> Option<StaticPointer<RwLock<dyn ComponentClass<ProjectKey, ValueType>>>> {
+        let map = stream::iter(self.0.iter()).filter(|&class| class.read().map(|class| class.identifier() == identifier)).map(|class| StaticPointerOwned::reference(class).clone());
+        pin_mut!(map);
+        map.next().await
+    }
+}
+
+struct ValueManagerLoaderTypes;
+
+impl ParameterValueType for ValueManagerLoaderTypes {
+    type Image = Arc<InMemoryValueManagerLoader<ImageType>>;
+    type Audio = Arc<InMemoryValueManagerLoader<AudioType>>;
+    type Binary = Arc<InMemoryValueManagerLoader<AbstractFile>>;
+    type String = Arc<InMemoryValueManagerLoader<String>>;
+    type Integer = Arc<InMemoryValueManagerLoader<i64>>;
+    type RealNumber = Arc<InMemoryValueManagerLoader<f64>>;
+    type Boolean = Arc<InMemoryValueManagerLoader<bool>>;
+    type Dictionary = Arc<InMemoryValueManagerLoader<HashMap<String, ParameterValueRaw<ImageType, AudioType>>>>;
+    type Array = Arc<InMemoryValueManagerLoader<Vec<ParameterValueRaw<ImageType, AudioType>>>>;
+    type ComponentClass = Arc<InMemoryValueManagerLoader<()>>;
 }
 
 fn main() {
@@ -88,8 +115,8 @@ fn main() {
     let windows = VulkanoWindows::default();
     let runtime = Runtime::new().unwrap();
     let id_generator = Arc::new(UniqueIdGenerator::new());
-    let project_loader = Arc::new(TemporaryProjectLoader);
-    let project_writer = Arc::new(TemporaryProjectWriter);
+    let project_loader = Arc::new(LocalFSProjectLoader);
+    let project_writer = Arc::new(LocalFSProjectWriter);
     let project_memory = Arc::new(InMemoryProjectStore::<ProjectKey, ValueType>::new());
     let mut component_class_loader = ComponentClassList::new();
     let command_buffer_allocator = StandardCommandBufferAllocator::new(Arc::clone(context.device()), StandardCommandBufferAllocatorCreateInfo::default());
@@ -97,6 +124,21 @@ fn main() {
     component_class_loader.add(SineAudio::new());
     let component_class_loader = Arc::new(component_class_loader);
     let key = Arc::new(RwLock::new(TCellOwner::<ProjectKey>::new()));
+    let value_managers = ParameterAllValues::<ValueManagerLoaderTypes> {
+        image: Arc::new(InMemoryValueManagerLoader::from_iter([], [])),
+        audio: Arc::new(InMemoryValueManagerLoader::from_iter([], [])),
+        binary: Arc::new(InMemoryValueManagerLoader::from_iter([], [])),
+        string: Arc::new(InMemoryValueManagerLoader::from_iter([Arc::new(DynEditableSelfValueManager::default()) as _], [])),
+        integer: Arc::new(InMemoryValueManagerLoader::from_iter([Arc::new(DynEditableSelfValueManager::default()) as _], [])),
+        real_number: Arc::new(InMemoryValueManagerLoader::from_iter([Arc::new(DynEditableSelfValueManager::default()) as _], [Arc::new(DynEditableSelfEasingValueManager::default()) as _])),
+        boolean: Arc::new(InMemoryValueManagerLoader::from_iter([Arc::new(DynEditableSelfValueManager::default()) as _], [])),
+        dictionary: Arc::new(InMemoryValueManagerLoader::from_iter([], [])),
+        array: Arc::new(InMemoryValueManagerLoader::from_iter([], [])),
+        component_class: Arc::new(InMemoryValueManagerLoader::from_iter([], [])),
+    };
+    let quaternion_manager = Arc::new(InMemoryValueManagerLoader::from_iter([Arc::new(DynEditableSelfValueManager::default()) as _], [Arc::new(DynEditableSelfEasingValueManager::default()) as _]));
+    let easing_manager = Arc::new(InMemoryEasingLoader::from_iter([Arc::new(LinearEasing) as _]));
+    let project_serializer = Arc::new(MPDeltaProjectSerializer::new(Arc::clone(&key), runtime.handle().clone(), Arc::clone(&component_class_loader), value_managers, quaternion_manager, easing_manager));
     let component_renderer_builder = Arc::new(MPDeltaRendererBuilder::new(
         Arc::clone(&id_generator),
         Arc::new(ImageCombinerBuilder::new(Arc::clone(&context))),
@@ -109,6 +151,7 @@ fn main() {
     let edit_history = Arc::new(InMemoryEditHistoryStore::new(100));
     let core = Arc::new(MPDeltaCore::new(
         id_generator,
+        project_serializer,
         project_loader,
         project_writer,
         Arc::clone(&project_memory),

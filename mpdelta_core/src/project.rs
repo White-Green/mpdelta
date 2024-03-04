@@ -1,25 +1,25 @@
 use crate::common::mixed_fraction::MixedFraction;
 use crate::common::time_split_value::TimeSplitValue;
-use crate::component::class::ComponentClass;
+use crate::component::class::{ComponentClass, ComponentClassIdentifier};
 use crate::component::instance::{ComponentInstance, ComponentInstanceHandle, ComponentInstanceHandleOwned};
 use crate::component::link::{MarkerLinkHandle, MarkerLinkHandleOwned};
 use crate::component::marker_pin::{MarkerPin, MarkerPinHandle, MarkerPinHandleOwned, MarkerTime};
 use crate::component::parameter::value::{DynEditableSelfEasingValue, EasingValue, LinearEasing};
-use crate::component::parameter::{AudioRequiredParams, ImageRequiredParams, ImageRequiredParamsTransform, ParameterType, ParameterValueFixed, ParameterValueType, VariableParameterValue};
-use crate::component::processor::{ComponentProcessor, ComponentProcessorComponent, ComponentsLinksPair};
+use crate::component::parameter::{AudioRequiredParams, ImageRequiredParams, ImageRequiredParamsTransform, ParameterType, ParameterValueRaw, ParameterValueType, VariableParameterValue};
+use crate::component::processor::{ComponentProcessor, ComponentProcessorComponent, ComponentProcessorWrapper, ComponentsLinksPair};
 use crate::ptr::{StaticPointer, StaticPointerCow, StaticPointerOwned};
 use crate::time::TimelineTime;
 use async_trait::async_trait;
 use cgmath::{One, Quaternion, Vector3};
 use qcell::TCell;
+use std::borrow::Cow;
 use std::collections::HashSet;
 use std::fmt::{Debug, Formatter};
 use std::hash::{Hash, Hasher};
 use std::mem;
 use std::ops::Deref;
 use std::sync::Arc;
-use std::time::Duration;
-use tokio::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+use tokio::sync::{OwnedRwLockReadGuard, OwnedRwLockWriteGuard, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use uuid::Uuid;
 
 #[derive(Debug)]
@@ -47,8 +47,16 @@ impl<K, T: ParameterValueType> Hash for Project<K, T> {
 }
 
 impl<K, T: ParameterValueType> Project<K, T> {
+    pub fn id(&self) -> Uuid {
+        self.id
+    }
+
     pub fn new_empty(id: Uuid) -> ProjectHandleOwned<K, T> {
         StaticPointerOwned::new(RwLock::new(Project { id, children: HashSet::new() }))
+    }
+
+    pub fn with_children(id: Uuid, children: impl IntoIterator<Item = RootComponentClassHandle<K, T>>) -> ProjectHandleOwned<K, T> {
+        StaticPointerOwned::new(RwLock::new(Project { id, children: children.into_iter().collect() }))
     }
 
     pub fn children(&self) -> &HashSet<RootComponentClassHandle<K, T>> {
@@ -65,7 +73,7 @@ pub struct RootComponentClassItem<K: 'static, T: ParameterValueType> {
     right: MarkerPinHandleOwned<K>,
     component: Vec<ComponentInstanceHandleOwned<K, T>>,
     link: Vec<MarkerLinkHandleOwned<K>>,
-    length: Duration,
+    length: MarkerTime,
 }
 
 impl<K, T: ParameterValueType> Debug for RootComponentClassItem<K, T> {
@@ -104,16 +112,28 @@ impl<K, T: ParameterValueType> RootComponentClassItem<K, T> {
     pub fn link_mut(&mut self) -> &mut Vec<MarkerLinkHandleOwned<K>> {
         &mut self.link
     }
+    pub fn length(&self) -> MarkerTime {
+        self.length
+    }
+    pub fn set_length(&mut self, length: MarkerTime) {
+        self.length = length;
+    }
 }
 
 #[derive(Debug)]
-struct RootComponentClassItemWrapper<K: 'static, T: ParameterValueType>(RwLock<RootComponentClassItem<K, T>>);
+struct RootComponentClassItemWrapper<K: 'static, T: ParameterValueType>(Arc<RwLock<RootComponentClassItem<K, T>>>);
+
+impl<K: 'static, T: ParameterValueType> Clone for RootComponentClassItemWrapper<K, T> {
+    fn clone(&self) -> Self {
+        RootComponentClassItemWrapper(Arc::clone(&self.0))
+    }
+}
 
 #[derive(Debug)]
 pub struct RootComponentClass<K: 'static, T: ParameterValueType> {
     id: Uuid,
-    parent: Option<ProjectHandle<K, T>>,
-    item: Arc<RootComponentClassItemWrapper<K, T>>,
+    parent: Option<(ProjectHandle<K, T>, Uuid)>,
+    item: RootComponentClassItemWrapper<K, T>,
 }
 
 pub type RootComponentClassHandle<K, T> = StaticPointer<RwLock<RootComponentClass<K, T>>>;
@@ -122,20 +142,16 @@ pub type RootComponentClassHandleCow<K, T> = StaticPointerCow<RwLock<RootCompone
 
 #[async_trait]
 impl<K, T: ParameterValueType + 'static> ComponentClass<K, T> for RootComponentClass<K, T> {
-    async fn generate_image(&self) -> bool {
-        true
+    fn identifier(&self) -> ComponentClassIdentifier {
+        ComponentClassIdentifier {
+            namespace: Cow::Borrowed("mpdelta"),
+            name: Cow::Borrowed("RootComponentClass"),
+            inner_identifier: [self.parent.as_ref().map(|&(_, id)| id).unwrap_or_else(Uuid::nil), self.id],
+        }
     }
 
-    async fn generate_audio(&self) -> bool {
-        true
-    }
-
-    async fn fixed_parameter_type(&self) -> &[(String, ParameterType)] {
-        &[]
-    }
-
-    async fn default_variable_parameter_type(&self) -> &[(String, ParameterType)] {
-        &[]
+    fn processor(&self) -> ComponentProcessorWrapper<K, T> {
+        ComponentProcessorWrapper::Component(Arc::new(self.item.clone()))
     }
 
     async fn instantiate(&self, this: &StaticPointer<RwLock<dyn ComponentClass<K, T>>>) -> ComponentInstance<K, T> {
@@ -164,16 +180,32 @@ impl<K, T: ParameterValueType + 'static> ComponentClass<K, T> for RootComponentC
             composite_operation: TimeSplitValue::new(marker_left.clone(), Default::default(), marker_right.clone()),
         };
         let audio_required_params = AudioRequiredParams { volume: vec![one_value.clone(), one_value] };
-        let processor = Arc::clone(&self.item) as Arc<dyn ComponentProcessorComponent<K, T>>;
-        ComponentInstance::new_no_param(this.clone(), StaticPointerCow::Reference(marker_left), StaticPointerCow::Reference(marker_right), Some(image_required_params), Some(audio_required_params), processor)
+        let processor = Arc::new(self.item.clone()) as Arc<dyn ComponentProcessorComponent<K, T>>;
+        ComponentInstance::new(
+            this.clone(),
+            StaticPointerCow::Reference(marker_left),
+            StaticPointerCow::Reference(marker_right),
+            Vec::new(),
+            Some(image_required_params),
+            Some(audio_required_params),
+            Box::new([]),
+            Box::new([]),
+            processor,
+        )
     }
 }
 
 #[async_trait]
 impl<K, T: ParameterValueType> ComponentProcessor<K, T> for RootComponentClassItemWrapper<K, T> {
-    async fn update_variable_parameter(&self, _: &mut [ParameterValueFixed<T::Image, T::Audio>], _: &mut Vec<(String, ParameterType)>) {}
+    async fn fixed_parameter_types(&self) -> &[(String, ParameterType)] {
+        &[]
+    }
 
-    async fn natural_length(&self, _: &[ParameterValueFixed<T::Image, T::Audio>]) -> Duration {
+    async fn update_variable_parameter(&self, _: &[ParameterValueRaw<T::Image, T::Audio>], variable_parameters: &mut Vec<(String, ParameterType)>) {
+        variable_parameters.clear();
+    }
+
+    async fn natural_length(&self, _: &[ParameterValueRaw<T::Image, T::Audio>]) -> MarkerTime {
         let guard = self.0.read().await;
         guard.length
     }
@@ -183,7 +215,7 @@ impl<K, T: ParameterValueType> ComponentProcessor<K, T> for RootComponentClassIt
 impl<K, T: ParameterValueType> ComponentProcessorComponent<K, T> for RootComponentClassItemWrapper<K, T> {
     async fn process(
         &self,
-        _fixed_parameters: &[ParameterValueFixed<T::Image, T::Audio>],
+        _fixed_parameters: &[ParameterValueRaw<T::Image, T::Audio>],
         _fixed_parameters_component: &[StaticPointer<RwLock<dyn ComponentClass<K, T>>>],
         _variable_parameters: &[StaticPointer<RwLock<dyn ComponentClass<K, T>>>],
         _variable_parameter_type: &[(String, ParameterType)],
@@ -210,16 +242,30 @@ impl<K, T: ParameterValueType> Hash for RootComponentClass<K, T> {
 }
 
 impl<K, T: ParameterValueType> RootComponentClass<K, T> {
-    pub(crate) fn new_empty(id: Uuid) -> RootComponentClassHandleOwned<K, T> {
+    pub fn new_empty(id: Uuid) -> RootComponentClassHandleOwned<K, T> {
         StaticPointerOwned::new(RwLock::new(RootComponentClass {
             id,
             parent: None,
-            item: Arc::new(RootComponentClassItemWrapper(RwLock::new(RootComponentClassItem {
+            item: RootComponentClassItemWrapper(Arc::new(RwLock::new(RootComponentClassItem {
                 left: StaticPointerOwned::new(TCell::new(MarkerPin::new(TimelineTime::new(MixedFraction::ZERO), MarkerTime::new(MixedFraction::ZERO).unwrap()))),
                 right: StaticPointerOwned::new(TCell::new(MarkerPin::new(TimelineTime::new(MixedFraction::from_integer(10)), MarkerTime::new(MixedFraction::from_integer(10)).unwrap()))),
                 component: Vec::new(),
                 link: Vec::new(),
-                length: Duration::from_secs(10),
+                length: MarkerTime::new(MixedFraction::from_integer(10)).unwrap(),
+            }))),
+        }))
+    }
+
+    pub fn with_item(id: Uuid, component: Vec<ComponentInstanceHandleOwned<K, T>>, link: Vec<MarkerLinkHandleOwned<K>>) -> RootComponentClassHandleOwned<K, T> {
+        StaticPointerOwned::new(RwLock::new(RootComponentClass {
+            id,
+            parent: None,
+            item: RootComponentClassItemWrapper(Arc::new(RwLock::new(RootComponentClassItem {
+                left: StaticPointerOwned::new(TCell::new(MarkerPin::new(TimelineTime::new(MixedFraction::ZERO), MarkerTime::new(MixedFraction::ZERO).unwrap()))),
+                right: StaticPointerOwned::new(TCell::new(MarkerPin::new(TimelineTime::new(MixedFraction::from_integer(10)), MarkerTime::new(MixedFraction::from_integer(10)).unwrap()))),
+                component,
+                link,
+                length: MarkerTime::new(MixedFraction::from_integer(10)).unwrap(),
             }))),
         }))
     }
@@ -227,22 +273,40 @@ impl<K, T: ParameterValueType> RootComponentClass<K, T> {
     pub(crate) async fn set_parent(this: &RootComponentClassHandle<K, T>, parent: Option<ProjectHandle<K, T>>) -> Option<ProjectHandle<K, T>> {
         let this_strong_ref = this.upgrade()?;
         let mut this_guard = this_strong_ref.write().await;
-        if let Some(parent) = &parent {
-            parent.upgrade()?.write().await.children.insert(this.clone());
-        }
-        let old_parent = mem::replace(&mut this_guard.parent, parent);
+        let parent_id = if let Some(parent) = &parent {
+            let parent = parent.upgrade()?;
+            let mut parent = parent.write().await;
+            parent.children.insert(this.clone());
+            parent.id
+        } else {
+            Uuid::nil()
+        };
+        let old_parent = mem::replace(&mut this_guard.parent, parent.map(|parent| (parent, parent_id)));
+        let old_parent = old_parent.map(|(parent, _)| parent);
         if let Some(old_parent) = &old_parent.as_ref().and_then(StaticPointer::upgrade) {
             old_parent.write().await.children.remove(this);
         }
         old_parent
     }
 
+    pub fn id(&self) -> Uuid {
+        self.id
+    }
+
     pub async fn get(&self) -> RwLockReadGuard<'_, RootComponentClassItem<K, T>> {
         self.item.0.read().await
     }
 
+    pub async fn get_owned(&self) -> OwnedRwLockReadGuard<RootComponentClassItem<K, T>> {
+        Arc::clone(&self.item.0).read_owned().await
+    }
+
     pub async fn get_mut(&self) -> RwLockWriteGuard<'_, RootComponentClassItem<K, T>> {
         self.item.0.write().await
+    }
+
+    pub async fn get_owned_mut(&self) -> OwnedRwLockWriteGuard<RootComponentClassItem<K, T>> {
+        Arc::clone(&self.item.0).write_owned().await
     }
 
     pub async fn left(&self) -> impl Deref<Target = MarkerPinHandle<K>> + '_ {
@@ -299,14 +363,14 @@ mod tests {
             assert_eq!(project0.children.len(), 1);
             assert_eq!(project0.children.iter().collect::<Vec<_>>(), vec![StaticPointerOwned::reference(&component0)]);
         }
-        assert_eq!(component0.read().await.parent, Some(StaticPointerOwned::reference(&project0).clone()));
+        assert_eq!(component0.read().await.parent, Some((StaticPointerOwned::reference(&project0).clone(), Uuid::from_u128(0))));
         assert!(RootComponentClass::set_parent(StaticPointerOwned::reference(&component1), Some(StaticPointerOwned::reference(&project1).clone())).await.is_none());
         {
             let project1 = project1.read().await;
             assert_eq!(project1.children.len(), 1);
             assert_eq!(project1.children.iter().collect::<Vec<_>>(), vec![StaticPointerOwned::reference(&component1)]);
         }
-        assert_eq!(component1.read().await.parent, Some(StaticPointerOwned::reference(&project1).clone()));
+        assert_eq!(component1.read().await.parent, Some((StaticPointerOwned::reference(&project1).clone(), Uuid::from_u128(1))));
 
         assert_eq!(
             RootComponentClass::set_parent(StaticPointerOwned::reference(&component0), Some(StaticPointerOwned::reference(&project1).clone())).await,

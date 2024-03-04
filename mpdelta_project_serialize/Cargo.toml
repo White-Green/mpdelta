@@ -1,30 +1,28 @@
 [package]
-name = "mpdelta_core"
+name = "mpdelta_project_serialize"
 version = { workspace = true }
 edition = { workspace = true }
 authors = { workspace = true }
 
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
 [dependencies]
 async-trait = { workspace = true }
 cgmath = { workspace = true }
-either = { workspace = true }
+ciborium = { workspace = true }
 erased-serde = { workspace = true }
 futures = { workspace = true }
-num = { workspace = true }
-proptest = { workspace = true, optional = true }
-proptest-derive = { workspace = true, optional = true }
+mpdelta_core = { workspace = true }
+mpdelta_differential = { workspace = true }
 qcell = { workspace = true }
+rayon = { workspace = true }
 serde = { workspace = true }
+serde_json = { workspace = true }
 thiserror = { workspace = true }
-tokio = { workspace = true }
+tokio = { workspace = true, features = ["sync", "rt"] }
 uuid = { workspace = true, features = ["serde"] }
 
 [dev-dependencies]
+mpdelta_core = { workspace = true, features = ["proptest"] }
 proptest = { workspace = true }
 proptest-derive = { workspace = true }
-regex = { workspace = true }
-serde_json = { workspace = true }
-tokio = { workspace = true, features = ["rt-multi-thread"] }
-
-[features]
-proptest = ["dep:proptest", "dep:proptest-derive"]

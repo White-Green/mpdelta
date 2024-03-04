@@ -63,6 +63,11 @@ where
                         }
                         if ui.button("Open").clicked() {
                             println!("File/Open Clicked");
+                            self.view_model.open_project();
+                            ui.close_menu();
+                        }
+                        if ui.button("Save").clicked() {
+                            self.view_model.save_project();
                             ui.close_menu();
                         }
                         if ui.button("Encode").clicked() {

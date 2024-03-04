@@ -1,11 +1,16 @@
 use crate::time::TimelineTime;
 use cgmath::Quaternion;
+use erased_serde::Error;
 use futures::prelude::stream::{self, StreamExt};
+use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize, Serializer};
 use std::any::Any;
+use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
 use std::fmt::{Debug, Formatter};
 use std::future::Future;
+use std::marker::PhantomData;
 use std::sync::Arc;
 use std::{any, fmt, ptr};
 use thiserror::Error;
@@ -49,13 +54,59 @@ impl Ord for EasingInput {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct EasingIdentifier<'a> {
+    pub namespace: Cow<'a, str>,
+    pub name: Cow<'a, str>,
+}
+
+#[cfg(any(feature = "proptest", test))]
+const _: () = {
+    use proptest::arbitrary::StrategyFor;
+    use proptest::prelude::*;
+    impl<'a> Arbitrary for EasingIdentifier<'a> {
+        type Parameters = (<String as Arbitrary>::Parameters, <String as Arbitrary>::Parameters);
+        type Strategy = proptest::strategy::Map<(StrategyFor<String>, StrategyFor<String>), fn((String, String)) -> EasingIdentifier<'a>>;
+        fn arbitrary_with(args: Self::Parameters) -> Self::Strategy {
+            let (namespace, name) = args;
+            (String::arbitrary_with(namespace), String::arbitrary_with(name)).prop_map(|(namespace, name)| EasingIdentifier {
+                namespace: Cow::Owned(namespace),
+                name: Cow::Owned(name),
+            })
+        }
+    }
+};
+
+impl<'a> EasingIdentifier<'a> {
+    pub fn into_static(self) -> EasingIdentifier<'static> {
+        EasingIdentifier {
+            namespace: Cow::Owned(self.namespace.into_owned()),
+            name: Cow::Owned(self.name.into_owned()),
+        }
+    }
+
+    pub fn as_ref(&self) -> EasingIdentifier {
+        EasingIdentifier {
+            namespace: Cow::Borrowed(&self.namespace),
+            name: Cow::Borrowed(&self.name),
+        }
+    }
+}
+
 pub trait Easing: Send + Sync {
+    fn identifier(&self) -> EasingIdentifier;
     fn easing(&self, from: EasingInput) -> f64;
 }
 
 pub struct LinearEasing;
 
 impl Easing for LinearEasing {
+    fn identifier(&self) -> EasingIdentifier {
+        EasingIdentifier {
+            namespace: Cow::Borrowed("mpdelta"),
+            name: Cow::Borrowed("Linear"),
+        }
+    }
     fn easing(&self, from: EasingInput) -> f64 {
         from.value()
     }
@@ -81,17 +132,96 @@ where
     }
 }
 
-pub trait DynEditableSingleValueMarker {
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct DynEditableSingleValueIdentifier<'a> {
+    pub namespace: Cow<'a, str>,
+    pub name: Cow<'a, str>,
+}
+
+#[cfg(any(feature = "proptest", test))]
+const _: () = {
+    use proptest::arbitrary::StrategyFor;
+    use proptest::prelude::*;
+    impl<'a> Arbitrary for DynEditableSingleValueIdentifier<'a> {
+        type Parameters = (<String as Arbitrary>::Parameters, <String as Arbitrary>::Parameters);
+        type Strategy = proptest::strategy::Map<(StrategyFor<String>, StrategyFor<String>), fn((String, String)) -> DynEditableSingleValueIdentifier<'a>>;
+        fn arbitrary_with(args: Self::Parameters) -> Self::Strategy {
+            let (namespace, name) = args;
+            (String::arbitrary_with(namespace), String::arbitrary_with(name)).prop_map(|(namespace, name)| DynEditableSingleValueIdentifier {
+                namespace: Cow::Owned(namespace),
+                name: Cow::Owned(name),
+            })
+        }
+    }
+};
+
+impl<'a> DynEditableSingleValueIdentifier<'a> {
+    pub fn into_static(self) -> DynEditableSingleValueIdentifier<'static> {
+        DynEditableSingleValueIdentifier {
+            namespace: Cow::Owned(self.namespace.into_owned()),
+            name: Cow::Owned(self.name.into_owned()),
+        }
+    }
+
+    pub fn as_ref(&self) -> DynEditableSingleValueIdentifier {
+        DynEditableSingleValueIdentifier {
+            namespace: Cow::Borrowed(&self.namespace),
+            name: Cow::Borrowed(&self.name),
+        }
+    }
+}
+
+pub trait DynEditableSingleValueManager<T>: Send + Sync {
+    fn identifier(&self) -> DynEditableSingleValueIdentifier;
+    fn deserialize(&self, deserializer: &mut dyn erased_serde::Deserializer) -> Result<DynEditableSingleValue<T>, erased_serde::Error>;
+}
+
+pub trait DynEditableSingleValueMarker: NamedAny + erased_serde::Serialize {
     type Out;
+    fn manager(&self) -> &dyn DynEditableSingleValueManager<Self::Out>;
     fn get_raw_value_mut(&mut self) -> &mut dyn NamedAny;
     fn get_value(&self) -> Self::Out;
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
+pub struct DynEditableSelfValueManager<T>(PhantomData<T>);
+
+impl<T> Default for DynEditableSelfValueManager<T> {
+    fn default() -> Self {
+        DynEditableSelfValueManager(PhantomData)
+    }
+}
+
+impl<T> DynEditableSingleValueManager<T> for DynEditableSelfValueManager<T>
+where
+    Self: Send + Sync,
+    DynEditableSelfValue<T>: Send + Sync + DynEditableSingleValueMarkerCloneable<Out = T> + DeserializeOwned + 'static,
+{
+    fn identifier(&self) -> DynEditableSingleValueIdentifier {
+        DynEditableSingleValueIdentifier {
+            namespace: Cow::Borrowed("mpdelta"),
+            name: Cow::Borrowed("SelfValue"),
+        }
+    }
+
+    fn deserialize(&self, deserializer: &mut dyn erased_serde::Deserializer) -> Result<DynEditableSingleValue<T>, Error> {
+        let value: DynEditableSelfValue<T> = erased_serde::deserialize(deserializer)?;
+        Ok(DynEditableSingleValue::new(value))
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DynEditableSelfValue<T>(pub T);
 
-impl<T: Clone + 'static> DynEditableSingleValueMarker for DynEditableSelfValue<T> {
+impl<T> DynEditableSingleValueMarker for DynEditableSelfValue<T>
+where
+    T: Clone + Send + Sync + Serialize + DeserializeOwned + 'static,
+{
     type Out = T;
+    fn manager(&self) -> &dyn DynEditableSingleValueManager<Self::Out> {
+        &DynEditableSelfValueManager(PhantomData)
+    }
+
     fn get_raw_value_mut(&mut self) -> &mut dyn NamedAny {
         &mut self.0
     }
@@ -116,6 +246,12 @@ where
 
 pub struct DynEditableSingleValue<T>(Box<dyn DynEditableSingleValueMarkerCloneable<Out = T> + Send + Sync + 'static>);
 
+impl<T: 'static> Debug for DynEditableSingleValue<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "DynEditableSingleValue({})", <dyn DynEditableSingleValueMarkerCloneable<Out = T> as NamedAny>::type_name(&*self.0))
+    }
+}
+
 impl<T> DynEditableSingleValue<T> {
     pub fn new(value: impl DynEditableSingleValueMarkerCloneable<Out = T> + Send + Sync + 'static) -> DynEditableSingleValue<T> {
         DynEditableSingleValue(Box::new(value))
@@ -123,14 +259,27 @@ impl<T> DynEditableSingleValue<T> {
 
     pub fn new_self(value: T) -> DynEditableSingleValue<T>
     where
-        T: Clone + Send + Sync + 'static,
+        T: Clone + Send + Sync + Serialize + DeserializeOwned + 'static,
     {
         DynEditableSingleValue(Box::new(DynEditableSelfValue(value)))
     }
 }
 
+impl<T> Serialize for DynEditableSingleValue<T> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        erased_serde::serialize(&*self.0, serializer)
+    }
+}
+
 impl<T: 'static> DynEditableSingleValueMarker for DynEditableSingleValue<T> {
     type Out = T;
+    fn manager(&self) -> &dyn DynEditableSingleValueManager<Self::Out> {
+        self.0.manager()
+    }
+
     fn get_raw_value_mut(&mut self) -> &mut dyn NamedAny {
         <dyn DynEditableSingleValueMarkerCloneable<Out = T>>::get_raw_value_mut(&mut *self.0)
     }
@@ -170,13 +319,58 @@ where
     }
 }
 
-pub trait DynEditableEasingValueMarker {
-    type Out;
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct DynEditableEasingValueIdentifier<'a> {
+    pub namespace: Cow<'a, str>,
+    pub name: Cow<'a, str>,
+}
+
+#[cfg(any(feature = "proptest", test))]
+const _: () = {
+    use proptest::arbitrary::StrategyFor;
+    use proptest::prelude::*;
+    impl<'a> Arbitrary for DynEditableEasingValueIdentifier<'a> {
+        type Parameters = (<String as Arbitrary>::Parameters, <String as Arbitrary>::Parameters);
+        type Strategy = proptest::strategy::Map<(StrategyFor<String>, StrategyFor<String>), fn((String, String)) -> DynEditableEasingValueIdentifier<'a>>;
+        fn arbitrary_with(args: Self::Parameters) -> Self::Strategy {
+            let (namespace, name) = args;
+            (String::arbitrary_with(namespace), String::arbitrary_with(name)).prop_map(|(namespace, name)| DynEditableEasingValueIdentifier {
+                namespace: Cow::Owned(namespace),
+                name: Cow::Owned(name),
+            })
+        }
+    }
+};
+
+impl<'a> DynEditableEasingValueIdentifier<'a> {
+    pub fn into_static(self) -> DynEditableEasingValueIdentifier<'static> {
+        DynEditableEasingValueIdentifier {
+            namespace: Cow::Owned(self.namespace.into_owned()),
+            name: Cow::Owned(self.name.into_owned()),
+        }
+    }
+
+    pub fn as_ref(&self) -> DynEditableEasingValueIdentifier {
+        DynEditableEasingValueIdentifier {
+            namespace: Cow::Borrowed(&self.namespace),
+            name: Cow::Borrowed(&self.name),
+        }
+    }
+}
+
+pub trait DynEditableEasingValueManager<T>: Send + Sync {
+    fn identifier(&self) -> DynEditableEasingValueIdentifier;
+    fn deserialize(&self, deserializer: &mut dyn erased_serde::Deserializer) -> Result<DynEditableEasingValue<T>, erased_serde::Error>;
+}
+
+pub trait DynEditableEasingValueMarker: NamedAny + erased_serde::Serialize {
+    type Out: 'static;
+    fn manager(&self) -> &dyn DynEditableEasingValueManager<Self::Out>;
     fn get_raw_values_mut(&mut self) -> (&mut dyn NamedAny, &mut dyn NamedAny);
     fn get_value(&self, easing: f64) -> Self::Out;
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DynEditableSelfEasingValue<T>(pub T, pub T);
 
 pub trait Lerp {
@@ -195,8 +389,42 @@ impl Lerp for Quaternion<f64> {
     }
 }
 
-impl<T: Lerp + 'static> DynEditableEasingValueMarker for DynEditableSelfEasingValue<T> {
+#[derive(Debug)]
+pub struct DynEditableSelfEasingValueManager<T>(PhantomData<T>);
+
+impl<T> Default for DynEditableSelfEasingValueManager<T> {
+    fn default() -> Self {
+        DynEditableSelfEasingValueManager(PhantomData)
+    }
+}
+
+impl<T> DynEditableEasingValueManager<T> for DynEditableSelfEasingValueManager<T>
+where
+    Self: Send + Sync,
+    DynEditableSelfEasingValue<T>: Send + Sync + DynEditableEasingValueMarkerCloneable<Out = T> + DeserializeOwned + 'static,
+{
+    fn identifier(&self) -> DynEditableEasingValueIdentifier {
+        DynEditableEasingValueIdentifier {
+            namespace: Cow::Borrowed("mpdelta"),
+            name: Cow::Borrowed("SelfEasingValue"),
+        }
+    }
+
+    fn deserialize(&self, deserializer: &mut dyn erased_serde::Deserializer) -> Result<DynEditableEasingValue<T>, erased_serde::Error> {
+        let value: DynEditableSelfEasingValue<T> = erased_serde::deserialize(deserializer)?;
+        Ok(DynEditableEasingValue::new(value))
+    }
+}
+
+impl<T> DynEditableEasingValueMarker for DynEditableSelfEasingValue<T>
+where
+    T: Clone + Send + Sync + Lerp + Serialize + DeserializeOwned + 'static,
+{
     type Out = T;
+    fn manager(&self) -> &dyn DynEditableEasingValueManager<Self::Out> {
+        &DynEditableSelfEasingValueManager(PhantomData)
+    }
+
     fn get_raw_values_mut(&mut self) -> (&mut dyn NamedAny, &mut dyn NamedAny) {
         (&mut self.0, &mut self.1)
     }
@@ -222,14 +450,32 @@ where
 
 pub struct DynEditableEasingValue<T>(Box<dyn DynEditableEasingValueMarkerCloneable<Out = T> + Send + Sync + 'static>);
 
+impl<T: 'static> Debug for DynEditableEasingValue<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "DynEditableEasingValue({})", <dyn DynEditableEasingValueMarkerCloneable<Out = T> as NamedAny>::type_name(&*self.0))
+    }
+}
+
 impl<T> DynEditableEasingValue<T> {
     pub fn new(value: impl DynEditableEasingValueMarkerCloneable<Out = T> + Send + Sync + 'static) -> DynEditableEasingValue<T> {
         DynEditableEasingValue(Box::new(value))
     }
 }
 
+impl<T> Serialize for DynEditableEasingValue<T> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        erased_serde::serialize(&*self.0, serializer)
+    }
+}
+
 impl<T: 'static> DynEditableEasingValueMarker for DynEditableEasingValue<T> {
     type Out = T;
+    fn manager(&self) -> &dyn DynEditableEasingValueManager<Self::Out> {
+        self.0.manager()
+    }
     fn get_raw_values_mut(&mut self) -> (&mut dyn NamedAny, &mut dyn NamedAny) {
         <dyn DynEditableEasingValueMarkerCloneable<Out = T>>::get_raw_values_mut(&mut *self.0)
     }
@@ -400,10 +646,14 @@ mod tests {
 
     #[test]
     fn test_single_value() {
-        #[derive(Clone)]
+        #[derive(Clone, Serialize)]
         struct Value(u32);
         impl DynEditableSingleValueMarker for Value {
             type Out = u64;
+            fn manager(&self) -> &dyn DynEditableSingleValueManager<Self::Out> {
+                todo!()
+            }
+
             fn get_raw_value_mut(&mut self) -> &mut dyn NamedAny {
                 &mut self.0
             }
@@ -440,10 +690,13 @@ mod tests {
 
     #[test]
     fn test_easing_value() {
-        #[derive(Clone)]
+        #[derive(Clone, Serialize)]
         struct Value1(u32, u32);
         impl DynEditableEasingValueMarker for Value1 {
             type Out = u64;
+            fn manager(&self) -> &dyn DynEditableEasingValueManager<Self::Out> {
+                todo!()
+            }
             fn get_raw_values_mut(&mut self) -> (&mut dyn NamedAny, &mut dyn NamedAny) {
                 let Value1(left, right) = self;
                 (left, right)
@@ -490,10 +743,14 @@ mod tests {
         assert_eq!(DynEditableEasingValueMarker::get_value(&value, 0.5), 25);
         assert_eq!(DynEditableEasingValueMarker::get_value(&value, 1.0), 30);
 
-        #[derive(Clone)]
+        #[derive(Clone, Serialize)]
         struct Value2(u32, u64);
         impl DynEditableEasingValueMarker for Value2 {
             type Out = u64;
+            fn manager(&self) -> &dyn DynEditableEasingValueManager<Self::Out> {
+                todo!()
+            }
+
             fn get_raw_values_mut(&mut self) -> (&mut dyn NamedAny, &mut dyn NamedAny) {
                 let Value2(left, right) = self;
                 (left, right)
@@ -514,10 +771,14 @@ mod tests {
             })
         );
 
-        #[derive(Clone)]
+        #[derive(Clone, Serialize)]
         struct Value3(u64, u32);
         impl DynEditableEasingValueMarker for Value3 {
             type Out = u64;
+            fn manager(&self) -> &dyn DynEditableEasingValueManager<Self::Out> {
+                todo!()
+            }
+
             fn get_raw_values_mut(&mut self) -> (&mut dyn NamedAny, &mut dyn NamedAny) {
                 let Value3(left, right) = self;
                 (left, right)

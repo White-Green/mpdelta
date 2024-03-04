@@ -1,5 +1,6 @@
-use crate::component::class::ComponentClass;
+use crate::component::class::{ComponentClass, ComponentClassIdentifier};
 use crate::component::instance::ComponentInstanceHandle;
+use crate::component::parameter::value::{DynEditableEasingValueIdentifier, DynEditableEasingValueManager, DynEditableSingleValueIdentifier, DynEditableSingleValueManager, Easing, EasingIdentifier};
 use crate::component::parameter::ParameterValueType;
 use crate::edit::{InstanceEditCommand, InstanceEditEvent, RootComponentEditCommand, RootComponentEditEvent};
 use crate::project::{Project, ProjectHandle, ProjectHandleOwned, RootComponentClass, RootComponentClassHandle, RootComponentClassHandleOwned};
@@ -11,15 +12,18 @@ use std::borrow::Cow;
 use std::error::Error;
 use std::fmt::{Debug, Formatter};
 use std::future::Future;
+use std::io::{Read, Write};
 use std::ops::Deref;
 use std::path::Path;
+use std::pin::Pin;
 use std::sync::Arc;
 use thiserror::Error;
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
-pub struct MPDeltaCore<K: 'static, IdGenerator, ProjectLoader, ProjectWriter, ProjectMemory, RootComponentClassMemory, ComponentClassLoader, ComponentRendererBuilder, VideoEncoder, Editor, EditHistory> {
+pub struct MPDeltaCore<K: 'static, IdGenerator, ProjectSerializer, ProjectLoader, ProjectWriter, ProjectMemory, RootComponentClassMemory, ComponentClassLoader, ComponentRendererBuilder, VideoEncoder, Editor, EditHistory> {
     id_generator: Arc<IdGenerator>,
+    project_serializer: Arc<ProjectSerializer>,
     project_loader: Arc<ProjectLoader>,
     project_writer: Arc<ProjectWriter>,
     project_memory: Arc<ProjectMemory>,
@@ -32,12 +36,25 @@ pub struct MPDeltaCore<K: 'static, IdGenerator, ProjectLoader, ProjectWriter, Pr
     key: Arc<RwLock<TCellOwner<K>>>,
 }
 
-impl<K, IdGenerator: Debug, ProjectLoader: Debug, ProjectWriter: Debug, ProjectMemory: Debug, RootComponentClassMemory: Debug, ComponentClassLoader: Debug, ComponentRendererBuilder: Debug, VideoEncoder: Debug, Editor: Debug, EditHistory: Debug> Debug
-    for MPDeltaCore<K, IdGenerator, ProjectLoader, ProjectWriter, ProjectMemory, RootComponentClassMemory, ComponentClassLoader, ComponentRendererBuilder, VideoEncoder, Editor, EditHistory>
+impl<K, IdGenerator, ProjectSerializer, ProjectLoader, ProjectWriter, ProjectMemory, RootComponentClassMemory, ComponentClassLoader, ComponentRendererBuilder, VideoEncoder, Editor, EditHistory> Debug
+    for MPDeltaCore<K, IdGenerator, ProjectSerializer, ProjectLoader, ProjectWriter, ProjectMemory, RootComponentClassMemory, ComponentClassLoader, ComponentRendererBuilder, VideoEncoder, Editor, EditHistory>
+where
+    IdGenerator: Debug,
+    ProjectSerializer: Debug,
+    ProjectLoader: Debug,
+    ProjectWriter: Debug,
+    ProjectMemory: Debug,
+    RootComponentClassMemory: Debug,
+    ComponentClassLoader: Debug,
+    ComponentRendererBuilder: Debug,
+    VideoEncoder: Debug,
+    Editor: Debug,
+    EditHistory: Debug,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("MPDeltaCore")
             .field("id_generator", &self.id_generator)
+            .field("project_serializer", &self.project_serializer)
             .field("project_loader", &self.project_loader)
             .field("project_writer", &self.project_writer)
             .field("project_memory", &self.project_memory)
@@ -51,11 +68,12 @@ impl<K, IdGenerator: Debug, ProjectLoader: Debug, ProjectWriter: Debug, ProjectM
     }
 }
 
-impl<K, IdGenerator, ProjectLoader, ProjectWriter, ProjectMemory, RootComponentClassMemory, ComponentClassLoader, ComponentRendererBuilder, VideoEncoder, Editor, EditHistory>
-    MPDeltaCore<K, IdGenerator, ProjectLoader, ProjectWriter, ProjectMemory, RootComponentClassMemory, ComponentClassLoader, ComponentRendererBuilder, VideoEncoder, Editor, EditHistory>
+impl<K, IdGenerator, ProjectSerializer, ProjectLoader, ProjectWriter, ProjectMemory, RootComponentClassMemory, ComponentClassLoader, ComponentRendererBuilder, VideoEncoder, Editor, EditHistory>
+    MPDeltaCore<K, IdGenerator, ProjectSerializer, ProjectLoader, ProjectWriter, ProjectMemory, RootComponentClassMemory, ComponentClassLoader, ComponentRendererBuilder, VideoEncoder, Editor, EditHistory>
 {
     pub fn new(
         id_generator: Arc<IdGenerator>,
+        project_serializer: Arc<ProjectSerializer>,
         project_loader: Arc<ProjectLoader>,
         project_writer: Arc<ProjectWriter>,
         project_memory: Arc<ProjectMemory>,
@@ -66,9 +84,10 @@ impl<K, IdGenerator, ProjectLoader, ProjectWriter, ProjectMemory, RootComponentC
         editor: Arc<Editor>,
         edit_history: Arc<EditHistory>,
         key: Arc<RwLock<TCellOwner<K>>>,
-    ) -> MPDeltaCore<K, IdGenerator, ProjectLoader, ProjectWriter, ProjectMemory, RootComponentClassMemory, ComponentClassLoader, ComponentRendererBuilder, VideoEncoder, Editor, EditHistory> {
+    ) -> MPDeltaCore<K, IdGenerator, ProjectSerializer, ProjectLoader, ProjectWriter, ProjectMemory, RootComponentClassMemory, ComponentClassLoader, ComponentRendererBuilder, VideoEncoder, Editor, EditHistory> {
         MPDeltaCore {
             id_generator,
+            project_serializer,
             project_loader,
             project_writer,
             project_memory,
@@ -83,15 +102,35 @@ impl<K, IdGenerator, ProjectLoader, ProjectWriter, ProjectMemory, RootComponentC
     }
 }
 
-#[async_trait]
 pub trait IdGenerator: Send + Sync {
     fn generate_new(&self) -> Uuid;
 }
 
+impl<O> IdGenerator for O
+where
+    O: Deref + Send + Sync,
+    O::Target: IdGenerator,
+{
+    fn generate_new(&self) -> Uuid {
+        self.deref().generate_new()
+    }
+}
+
 #[async_trait]
-pub trait ProjectLoader<K, T: ParameterValueType>: Send + Sync {
+pub trait ProjectSerializer<K: 'static, T: ParameterValueType>: Send + Sync {
+    type SerializeError: Error + Send + 'static;
+    type DeserializeError: Error + Send + 'static;
+    async fn serialize_project(&self, project: &ProjectHandle<K, T>, out: impl Write + Send) -> Result<(), Self::SerializeError>;
+    async fn deserialize_project(&self, data: impl Read + Send) -> Result<(ProjectHandleOwned<K, T>, Vec<RootComponentClassHandleOwned<K, T>>), Self::DeserializeError>;
+}
+
+#[async_trait]
+pub trait ProjectLoader<K: 'static, T: ParameterValueType>: Send + Sync {
     type Err: Error + Send + 'static;
-    async fn load_project(&self, path: &Path) -> Result<ProjectHandleOwned<K, T>, Self::Err>;
+    type ProjectRead<'a>: Read + Send + 'a
+    where
+        Self: 'a;
+    async fn load_project<'a>(&'a self, path: &Path) -> Result<Self::ProjectRead<'a>, Self::Err>;
 }
 
 #[async_trait]
@@ -105,61 +144,76 @@ pub trait ProjectMemory<K: 'static, T: ParameterValueType>: Send + Sync {
 }
 
 #[derive(Debug, Error)]
-pub enum LoadProjectError<PLErr> {
+pub enum LoadProjectError<PLErr, PSErr> {
     #[error("error from ProjectLoader: {0}")]
-    ProjectLoaderError(#[from] PLErr),
+    ProjectLoaderError(PLErr),
+    #[error("error from ProjectSerializer: {0}")]
+    ProjectDeserializeError(PSErr),
 }
 
 #[async_trait]
-impl<K, T: ParameterValueType, T0, PL, T2, PM, T4, T5, T6, T7, T8, T9> LoadProjectUsecase<K, T> for MPDeltaCore<K, T0, PL, T2, PM, T4, T5, T6, T7, T8, T9>
+impl<K, T: ParameterValueType, T0, PS, PL, T3, PM, T5, T6, T7, T8, T9, T10> LoadProjectUsecase<K, T> for MPDeltaCore<K, T0, PS, PL, T3, PM, T5, T6, T7, T8, T9, T10>
 where
     Self: Send + Sync,
+    PS: ProjectSerializer<K, T>,
     PL: ProjectLoader<K, T>,
     PM: ProjectMemory<K, T>,
+    T5: RootComponentClassMemory<K, T>,
 {
-    type Err = LoadProjectError<PL::Err>;
+    type Err = LoadProjectError<PL::Err, PS::DeserializeError>;
 
     async fn load_project(&self, path: impl AsRef<Path> + Send + Sync) -> Result<ProjectHandle<K, T>, Self::Err> {
         let path = path.as_ref();
         match self.project_memory.get_loaded_project(path).await {
             Some(project) => Ok(project),
             None => {
-                let project = self.project_loader.load_project(path).await?;
-                let result = StaticPointerOwned::reference(&project).clone();
+                let project_load = self.project_loader.load_project(path).await.map_err(LoadProjectError::ProjectLoaderError)?;
+                let (project, children) = self.project_serializer.deserialize_project(project_load).await.map_err(LoadProjectError::ProjectDeserializeError)?;
+                let project_ref = StaticPointerOwned::reference(&project).clone();
                 self.project_memory.insert_new_project(Some(path), project).await;
-                Ok(result)
+                for child in children {
+                    self.root_component_class_memory.insert_new_root_component_class(Some(&project_ref), child).await;
+                }
+                Ok(project_ref)
             }
         }
     }
 }
 
 #[async_trait]
-pub trait ProjectWriter<K, T: ParameterValueType>: Send + Sync {
+pub trait ProjectWriter<K: 'static, T: ParameterValueType>: Send + Sync {
     type Err: Error + Send + 'static;
-    async fn write_project(&self, project: &ProjectHandle<K, T>, path: &Path) -> Result<(), Self::Err>;
+    type ProjectWrite<'a>: Write + Send + 'a
+    where
+        Self: 'a;
+    async fn write_project<'a>(&'a self, path: &Path) -> Result<Self::ProjectWrite<'a>, Self::Err>;
 }
 
 #[derive(Debug, Error)]
-pub enum WriteProjectError<PWErr> {
+pub enum WriteProjectError<PWErr, PSErr> {
     #[error("error from ProjectWriter: {0}")]
-    ProjectWriterError(#[from] PWErr),
+    ProjectWriterError(PWErr),
+    #[error("error from ProjectSerializer: {0}")]
+    ProjectSerializeError(PSErr),
 }
 
 #[async_trait]
-impl<K, T: ParameterValueType, T0, T1, PW, T3, T4, T5, T6, T7, T8, T9> WriteProjectUsecase<K, T> for MPDeltaCore<K, T0, T1, PW, T3, T4, T5, T6, T7, T8, T9>
+impl<K, T: ParameterValueType, T0, PS, T2, PW, T4, T5, T6, T7, T8, T9, T10> WriteProjectUsecase<K, T> for MPDeltaCore<K, T0, PS, T2, PW, T4, T5, T6, T7, T8, T9, T10>
 where
     Self: Send + Sync,
+    PS: ProjectSerializer<K, T>,
     PW: ProjectWriter<K, T>,
 {
-    type Err = WriteProjectError<PW::Err>;
+    type Err = WriteProjectError<PW::Err, PS::SerializeError>;
 
     async fn write_project(&self, project: &ProjectHandle<K, T>, path: impl AsRef<Path> + Send + Sync) -> Result<(), Self::Err> {
-        self.project_writer.write_project(project, path.as_ref()).await.map_err(Into::into)
+        let out = self.project_writer.write_project(path.as_ref()).await.map_err(WriteProjectError::ProjectWriterError)?;
+        self.project_serializer.serialize_project(project, out).await.map_err(WriteProjectError::ProjectSerializeError)
     }
 }
 
 #[async_trait]
-impl<K, T: ParameterValueType, ID, T1, T2, PM, T4, T5, T6, T7, T8, T9> NewProjectUsecase<K, T> for MPDeltaCore<K, ID, T1, T2, PM, T4, T5, T6, T7, T8, T9>
+impl<K, T: ParameterValueType, ID, T1, T2, T3, PM, T5, T6, T7, T8, T9, T10> NewProjectUsecase<K, T> for MPDeltaCore<K, ID, T1, T2, T3, PM, T5, T6, T7, T8, T9, T10>
 where
     Self: Send + Sync,
     ID: IdGenerator,
@@ -183,7 +237,7 @@ pub trait RootComponentClassMemory<K, T: ParameterValueType>: Send + Sync {
 }
 
 #[async_trait]
-impl<K, T: ParameterValueType, ID, T1, T2, T3, RM, T5, T6, T7, T8, T9> NewRootComponentClassUsecase<K, T> for MPDeltaCore<K, ID, T1, T2, T3, RM, T5, T6, T7, T8, T9>
+impl<K, T: ParameterValueType, ID, T1, T2, T3, T4, RM, T6, T7, T8, T9, T10> NewRootComponentClassUsecase<K, T> for MPDeltaCore<K, ID, T1, T2, T3, T4, RM, T6, T7, T8, T9, T10>
 where
     Self: Send + Sync,
     ID: IdGenerator,
@@ -198,18 +252,21 @@ where
 }
 
 #[async_trait]
-impl<K, T: ParameterValueType, T0, T1, T2, T3, RM, T5, T6, T7, T8, T9> SetOwnerForRootComponentClassUsecase<K, T> for MPDeltaCore<K, T0, T1, T2, T3, RM, T5, T6, T7, T8, T9>
+impl<K, T: ParameterValueType, T0, T1, T2, T3, T4, RM, T6, T7, T8, T9, T10> SetOwnerForRootComponentClassUsecase<K, T> for MPDeltaCore<K, T0, T1, T2, T3, T4, RM, T6, T7, T8, T9, T10>
 where
     Self: Send + Sync,
     RM: RootComponentClassMemory<K, T>,
 {
     async fn set_owner_for_root_component_class(&self, component: &RootComponentClassHandle<K, T>, owner: &ProjectHandle<K, T>) {
+        if let Some(project) = owner.upgrade() {
+            project.write().await.children_mut().insert(component.clone());
+        }
         self.root_component_class_memory.set_parent(component, Some(owner)).await;
     }
 }
 
 #[async_trait]
-impl<K, T: ParameterValueType, T0, T1, T2, PM, T4, T5, T6, T7, T8, T9> GetLoadedProjectsUsecase<K, T> for MPDeltaCore<K, T0, T1, T2, PM, T4, T5, T6, T7, T8, T9>
+impl<K, T: ParameterValueType, T0, T1, T2, T3, PM, T5, T6, T7, T8, T9, T10> GetLoadedProjectsUsecase<K, T> for MPDeltaCore<K, T0, T1, T2, T3, PM, T5, T6, T7, T8, T9, T10>
 where
     Self: Send + Sync,
     PM: ProjectMemory<K, T>,
@@ -220,7 +277,7 @@ where
 }
 
 #[async_trait]
-impl<K, T: ParameterValueType, T0, T1, T2, T3, RM, T5, T6, T7, T8, T9> GetRootComponentClassesUsecase<K, T> for MPDeltaCore<K, T0, T1, T2, T3, RM, T5, T6, T7, T8, T9>
+impl<K, T: ParameterValueType, T0, T1, T2, T3, T4, RM, T6, T7, T8, T9, T10> GetRootComponentClassesUsecase<K, T> for MPDeltaCore<K, T0, T1, T2, T3, T4, RM, T6, T7, T8, T9, T10>
 where
     Self: Send + Sync,
     RM: RootComponentClassMemory<K, T>,
@@ -233,10 +290,112 @@ where
 #[async_trait]
 pub trait ComponentClassLoader<K, T: ParameterValueType>: Send + Sync {
     async fn get_available_component_classes(&self) -> Cow<[StaticPointer<RwLock<dyn ComponentClass<K, T>>>]>;
+    async fn component_class_by_identifier(&self, identifier: ComponentClassIdentifier<'_>) -> Option<StaticPointer<RwLock<dyn ComponentClass<K, T>>>>;
+}
+
+impl<K, T, O> ComponentClassLoader<K, T> for O
+where
+    T: ParameterValueType,
+    O: Deref + Send + Sync,
+    O::Target: ComponentClassLoader<K, T>,
+{
+    fn get_available_component_classes<'life0, 'async_trait>(&'life0 self) -> Pin<Box<dyn Future<Output = Cow<[StaticPointer<RwLock<dyn ComponentClass<K, T>>>]>> + Send + 'async_trait>>
+    where
+        Self: 'async_trait,
+        'life0: 'async_trait,
+    {
+        self.deref().get_available_component_classes()
+    }
+
+    fn component_class_by_identifier<'life0, 'life1, 'async_trait>(&'life0 self, identifier: ComponentClassIdentifier<'life1>) -> Pin<Box<dyn Future<Output = Option<StaticPointer<RwLock<dyn ComponentClass<K, T>>>>> + Send + 'async_trait>>
+    where
+        Self: 'async_trait,
+        'life0: 'async_trait,
+        'life1: 'async_trait,
+    {
+        self.deref().component_class_by_identifier(identifier)
+    }
 }
 
 #[async_trait]
-impl<K, T: ParameterValueType, T0, T1, T2, T3, T4, CL, T6, T7, T8, T9> GetAvailableComponentClassesUsecase<K, T> for MPDeltaCore<K, T0, T1, T2, T3, T4, CL, T6, T7, T8, T9>
+pub trait ValueManagerLoader<T>: Send + Sync {
+    async fn get_available_single_value(&self) -> Cow<[Arc<dyn DynEditableSingleValueManager<T>>]>;
+    async fn single_value_by_identifier(&self, identifier: DynEditableSingleValueIdentifier<'_>) -> Option<Arc<dyn DynEditableSingleValueManager<T>>>;
+    async fn get_available_easing_value(&self) -> Cow<[Arc<dyn DynEditableEasingValueManager<T>>]>;
+    async fn easing_value_by_identifier(&self, identifier: DynEditableEasingValueIdentifier<'_>) -> Option<Arc<dyn DynEditableEasingValueManager<T>>>;
+}
+
+impl<T, O> ValueManagerLoader<T> for O
+where
+    O: Deref + Send + Sync,
+    O::Target: ValueManagerLoader<T>,
+{
+    fn get_available_single_value<'life0, 'async_trait>(&'life0 self) -> Pin<Box<dyn Future<Output = Cow<[Arc<dyn DynEditableSingleValueManager<T>>]>> + Send + 'async_trait>>
+    where
+        Self: 'async_trait,
+        'life0: 'async_trait,
+    {
+        self.deref().get_available_single_value()
+    }
+
+    fn single_value_by_identifier<'life0, 'life1, 'async_trait>(&'life0 self, identifier: DynEditableSingleValueIdentifier<'life1>) -> Pin<Box<dyn Future<Output = Option<Arc<dyn DynEditableSingleValueManager<T>>>> + Send + 'async_trait>>
+    where
+        Self: 'async_trait,
+        'life0: 'async_trait,
+        'life1: 'async_trait,
+    {
+        self.deref().single_value_by_identifier(identifier)
+    }
+
+    fn get_available_easing_value<'life0, 'async_trait>(&'life0 self) -> Pin<Box<dyn Future<Output = Cow<[Arc<dyn DynEditableEasingValueManager<T>>]>> + Send + 'async_trait>>
+    where
+        Self: 'async_trait,
+        'life0: 'async_trait,
+    {
+        self.deref().get_available_easing_value()
+    }
+
+    fn easing_value_by_identifier<'life0, 'life1, 'async_trait>(&'life0 self, identifier: DynEditableEasingValueIdentifier<'life1>) -> Pin<Box<dyn Future<Output = Option<Arc<dyn DynEditableEasingValueManager<T>>>> + Send + 'async_trait>>
+    where
+        Self: 'async_trait,
+        'life0: 'async_trait,
+        'life1: 'async_trait,
+    {
+        self.deref().easing_value_by_identifier(identifier)
+    }
+}
+
+#[async_trait]
+pub trait EasingLoader: Send + Sync {
+    async fn get_available_easing(&self) -> Cow<[Arc<dyn Easing>]>;
+    async fn easing_by_identifier(&self, identifier: EasingIdentifier<'_>) -> Option<Arc<dyn Easing>>;
+}
+
+impl<O> EasingLoader for O
+where
+    O: Deref + Send + Sync,
+    O::Target: EasingLoader,
+{
+    fn get_available_easing<'life0, 'async_trait>(&'life0 self) -> Pin<Box<dyn Future<Output = Cow<[Arc<dyn Easing>]>> + Send + 'async_trait>>
+    where
+        Self: 'async_trait,
+        'life0: 'async_trait,
+    {
+        self.deref().get_available_easing()
+    }
+
+    fn easing_by_identifier<'life0, 'life1, 'async_trait>(&'life0 self, identifier: EasingIdentifier<'life1>) -> Pin<Box<dyn Future<Output = Option<Arc<dyn Easing>>> + Send + 'async_trait>>
+    where
+        Self: 'async_trait,
+        'life0: 'async_trait,
+        'life1: 'async_trait,
+    {
+        self.deref().easing_by_identifier(identifier)
+    }
+}
+
+#[async_trait]
+impl<K, T: ParameterValueType, T0, T1, T2, T3, T4, T5, CL, T7, T8, T9, T10> GetAvailableComponentClassesUsecase<K, T> for MPDeltaCore<K, T0, T1, T2, T3, T4, T5, CL, T7, T8, T9, T10>
 where
     Self: Send + Sync,
     CL: ComponentClassLoader<K, T>,
@@ -254,7 +413,7 @@ pub trait ComponentRendererBuilder<K, T: ParameterValueType>: Send + Sync {
 }
 
 #[async_trait]
-impl<K, T: ParameterValueType, T0, T1, T2, T3, T4, T5, CR, T7, T8, T9> RealtimeRenderComponentUsecase<K, T> for MPDeltaCore<K, T0, T1, T2, T3, T4, T5, CR, T7, T8, T9>
+impl<K, T: ParameterValueType, T0, T1, T2, T3, T4, T5, T6, CR, T8, T9, T10> RealtimeRenderComponentUsecase<K, T> for MPDeltaCore<K, T0, T1, T2, T3, T4, T5, T6, CR, T8, T9, T10>
 where
     Self: Send + Sync,
     ComponentInstanceHandle<K, T>: Sync,
@@ -276,7 +435,7 @@ pub trait ComponentEncoder<K, T: ParameterValueType, Encoder>: Send + Sync {
         'life1: 'async_trait;
 }
 
-impl<K, T: ParameterValueType, T0, T1, T2, T3, T4, T5, T6, VE, T8, T9, Encoder> RenderWholeComponentUsecase<K, T, Encoder> for MPDeltaCore<K, T0, T1, T2, T3, T4, T5, T6, VE, T8, T9>
+impl<K, T: ParameterValueType, T0, T1, T2, T3, T4, T5, T6, T7, VE, T9, T10, Encoder> RenderWholeComponentUsecase<K, T, Encoder> for MPDeltaCore<K, T0, T1, T2, T3, T4, T5, T6, T7, VE, T9, T10>
 where
     Self: Send + Sync,
     VE: ComponentEncoder<K, T, Encoder>,
@@ -331,7 +490,7 @@ pub trait EditHistory<K, T: ParameterValueType, Log>: Send + Sync {
 }
 
 #[async_trait]
-impl<K, T: ParameterValueType, T0, T1, T2, T3, T4, T5, T6, T7, ED, HS> EditUsecase<K, T> for MPDeltaCore<K, T0, T1, T2, T3, T4, T5, T6, T7, ED, HS>
+impl<K, T: ParameterValueType, T0, T1, T2, T3, T4, T5, T6, T7, T8, ED, HS> EditUsecase<K, T> for MPDeltaCore<K, T0, T1, T2, T3, T4, T5, T6, T7, T8, ED, HS>
 where
     Self: Send + Sync,
     ComponentInstanceHandle<K, T>: Sync,
@@ -354,7 +513,7 @@ where
 }
 
 #[async_trait]
-impl<K, T: ParameterValueType, T0, T1, T2, T3, T4, T5, T6, T7, ED, T9> SubscribeEditEventUsecase<K, T> for MPDeltaCore<K, T0, T1, T2, T3, T4, T5, T6, T7, ED, T9>
+impl<K, T: ParameterValueType, T0, T1, T2, T3, T4, T5, T6, T7, T8, ED, T10> SubscribeEditEventUsecase<K, T> for MPDeltaCore<K, T0, T1, T2, T3, T4, T5, T6, T7, T8, ED, T10>
 where
     Self: Send + Sync,
     ComponentInstanceHandle<K, T>: Sync,
@@ -368,7 +527,7 @@ where
 }
 
 #[async_trait]
-impl<K, T: ParameterValueType, T0, T1, T2, T3, T4, T5, T6, T7, ED, HS> UndoUsecase<K, T> for MPDeltaCore<K, T0, T1, T2, T3, T4, T5, T6, T7, ED, HS>
+impl<K, T: ParameterValueType, T0, T1, T2, T3, T4, T5, T6, T7, T8, ED, HS> UndoUsecase<K, T> for MPDeltaCore<K, T0, T1, T2, T3, T4, T5, T6, T7, T8, ED, HS>
 where
     Self: Send + Sync,
     ComponentInstanceHandle<K, T>: Sync,
@@ -395,7 +554,7 @@ where
 }
 
 #[async_trait]
-impl<K, T: ParameterValueType, T0, T1, T2, T3, T4, T5, T6, T7, ED, HS> RedoUsecase<K, T> for MPDeltaCore<K, T0, T1, T2, T3, T4, T5, T6, T7, ED, HS>
+impl<K, T: ParameterValueType, T0, T1, T2, T3, T4, T5, T6, T7, T8, ED, HS> RedoUsecase<K, T> for MPDeltaCore<K, T0, T1, T2, T3, T4, T5, T6, T7, T8, ED, HS>
 where
     Self: Send + Sync,
     ComponentInstanceHandle<K, T>: Sync,

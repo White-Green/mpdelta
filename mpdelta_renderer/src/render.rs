@@ -5,8 +5,9 @@ use futures::{stream, StreamExt, TryStreamExt};
 use mpdelta_core::common::mixed_fraction::MixedFraction;
 use mpdelta_core::component::instance::ComponentInstanceHandle;
 use mpdelta_core::component::marker_pin::{MarkerPinHandle, MarkerPinHandleOwned, MarkerTime};
+use mpdelta_core::component::parameter::value::DynEditableSingleValueMarker;
 use mpdelta_core::component::parameter::{
-    AbstractFile, AudioRequiredParams, AudioRequiredParamsFixed, ImageRequiredParams, ImageRequiredParamsFixed, ImageRequiredParamsTransform, ImageRequiredParamsTransformFixed, Opacity, Parameter, ParameterType, ParameterValueFixed, ParameterValueType, VariableParameterValue,
+    AbstractFile, AudioRequiredParams, AudioRequiredParamsFixed, ImageRequiredParams, ImageRequiredParamsFixed, ImageRequiredParamsTransform, ImageRequiredParamsTransformFixed, Opacity, Parameter, ParameterType, ParameterValueRaw, ParameterValueType, VariableParameterValue,
 };
 use mpdelta_core::component::processor::{ComponentProcessorWrapper, ComponentsLinksPair};
 use mpdelta_core::ptr::StaticPointerOwned;
@@ -46,7 +47,7 @@ where
         }
     }
 
-    pub(crate) fn render(&self, at: usize, ty: ParameterType, key: Arc<impl Deref<Target = TCellOwner<K>> + Send + Sync + 'static>) -> impl Future<Output = Result<ParameterValueFixed<T::Image, T::Audio>, RenderError<K, T>>> + Send + 'static {
+    pub(crate) fn render(&self, at: usize, ty: ParameterType, key: Arc<impl Deref<Target = TCellOwner<K>> + Send + Sync + 'static>) -> impl Future<Output = Result<ParameterValueRaw<T::Image, T::Audio>, RenderError<K, T>>> + Send + 'static {
         let ctx = RenderContext {
             runtime: self.runtime.clone(),
             key,
@@ -106,48 +107,48 @@ where
     type Integer = i64;
     type RealNumber = f64;
     type Boolean = bool;
-    type Dictionary = HashMap<String, ParameterValueFixed<Image, Audio>>;
-    type Array = Vec<ParameterValueFixed<Image, Audio>>;
+    type Dictionary = HashMap<String, ParameterValueRaw<Image, Audio>>;
+    type Array = Vec<ParameterValueRaw<Image, Audio>>;
     type ComponentClass = ();
 }
 
-fn into_parameter_value_fixed<Image, Audio>(value: Parameter<RenderOutput<Image, Audio>>) -> ParameterValueFixed<Image, Audio>
+fn into_parameter_value_fixed<Image, Audio>(value: Parameter<RenderOutput<Image, Audio>>) -> ParameterValueRaw<Image, Audio>
 where
     Image: Send + Sync + Clone + 'static,
     Audio: Send + Sync + Clone + 'static,
 {
     match value {
-        Parameter::None => ParameterValueFixed::None,
-        Parameter::Image((value, _)) => ParameterValueFixed::Image(value),
-        Parameter::Audio((value, _)) => ParameterValueFixed::Audio(value),
-        Parameter::Binary(value) => ParameterValueFixed::Binary(value),
-        Parameter::String(value) => ParameterValueFixed::String(value),
-        Parameter::Integer(value) => ParameterValueFixed::Integer(value),
-        Parameter::RealNumber(value) => ParameterValueFixed::RealNumber(value),
-        Parameter::Boolean(value) => ParameterValueFixed::Boolean(value),
-        Parameter::Dictionary(value) => ParameterValueFixed::Dictionary(value),
-        Parameter::Array(value) => ParameterValueFixed::Array(value),
-        Parameter::ComponentClass(value) => ParameterValueFixed::ComponentClass(value),
+        Parameter::None => ParameterValueRaw::None,
+        Parameter::Image((value, _)) => ParameterValueRaw::Image(value),
+        Parameter::Audio((value, _)) => ParameterValueRaw::Audio(value),
+        Parameter::Binary(value) => ParameterValueRaw::Binary(value),
+        Parameter::String(value) => ParameterValueRaw::String(value),
+        Parameter::Integer(value) => ParameterValueRaw::Integer(value),
+        Parameter::RealNumber(value) => ParameterValueRaw::RealNumber(value),
+        Parameter::Boolean(value) => ParameterValueRaw::Boolean(value),
+        Parameter::Dictionary(value) => ParameterValueRaw::Dictionary(value),
+        Parameter::Array(value) => ParameterValueRaw::Array(value),
+        Parameter::ComponentClass(value) => ParameterValueRaw::ComponentClass(value),
     }
 }
 
-fn from_parameter_value_fixed<Image, Audio>(value: ParameterValueFixed<Image, Audio>) -> Parameter<RenderOutput<Image, Audio>>
+fn from_parameter_value_fixed<Image, Audio>(value: ParameterValueRaw<Image, Audio>) -> Parameter<RenderOutput<Image, Audio>>
 where
     Image: Send + Sync + Clone + 'static,
     Audio: Send + Sync + Clone + 'static,
 {
     match value {
-        ParameterValueFixed::None => Parameter::None,
-        ParameterValueFixed::Image(_) => unreachable!(),
-        ParameterValueFixed::Audio(_) => unreachable!(),
-        ParameterValueFixed::Binary(value) => Parameter::Binary(value),
-        ParameterValueFixed::String(value) => Parameter::String(value),
-        ParameterValueFixed::Integer(value) => Parameter::Integer(value),
-        ParameterValueFixed::RealNumber(value) => Parameter::RealNumber(value),
-        ParameterValueFixed::Boolean(value) => Parameter::Boolean(value),
-        ParameterValueFixed::Dictionary(value) => Parameter::Dictionary(value),
-        ParameterValueFixed::Array(value) => Parameter::Array(value),
-        ParameterValueFixed::ComponentClass(value) => Parameter::ComponentClass(value),
+        ParameterValueRaw::None => Parameter::None,
+        ParameterValueRaw::Image(_) => unreachable!(),
+        ParameterValueRaw::Audio(_) => unreachable!(),
+        ParameterValueRaw::Binary(value) => Parameter::Binary(value),
+        ParameterValueRaw::String(value) => Parameter::String(value),
+        ParameterValueRaw::Integer(value) => Parameter::Integer(value),
+        ParameterValueRaw::RealNumber(value) => Parameter::RealNumber(value),
+        ParameterValueRaw::Boolean(value) => Parameter::Boolean(value),
+        ParameterValueRaw::Dictionary(value) => Parameter::Dictionary(value),
+        ParameterValueRaw::Array(value) => Parameter::Array(value),
+        ParameterValueRaw::ComponentClass(value) => Parameter::ComponentClass(value),
     }
 }
 
@@ -170,7 +171,23 @@ where
             return Err(RenderError::InvalidComponent(component_handle.clone()));
         };
         let component = component.ro(&ctx.key);
-        let fixed_parameters = component.fixed_parameters();
+        let fixed_parameters = component
+            .fixed_parameters()
+            .iter()
+            .map(|value| match value {
+                Parameter::None => ParameterValueRaw::None,
+                Parameter::Image(value) => ParameterValueRaw::Image(value.get_value()),
+                Parameter::Audio(value) => ParameterValueRaw::Audio(value.get_value()),
+                Parameter::Binary(value) => ParameterValueRaw::Binary(value.get_value()),
+                Parameter::String(value) => ParameterValueRaw::String(value.get_value()),
+                Parameter::Integer(value) => ParameterValueRaw::Integer(value.get_value()),
+                Parameter::RealNumber(value) => ParameterValueRaw::RealNumber(value.get_value()),
+                Parameter::Boolean(value) => ParameterValueRaw::Boolean(value.get_value()),
+                Parameter::Dictionary(value) => ParameterValueRaw::Dictionary(value.get_value()),
+                Parameter::Array(value) => ParameterValueRaw::Array(value.get_value()),
+                Parameter::ComponentClass(_value) => ParameterValueRaw::ComponentClass(()),
+            })
+            .collect::<Vec<_>>();
         let variable_parameters = async {
             let cancellation_guard = CancellationGuard::new();
             let variable_parameters = ctx
@@ -338,14 +355,14 @@ where
                 if !processor.supports_output_type(ty.select()) {
                     return Err(RenderError::NotProvided);
                 }
-                match processor.process(fixed_parameters, &variable_parameters.await?, component.variable_parameters_type(), internal_at, ty.select()).await {
+                match processor.process(&fixed_parameters, &variable_parameters.await?, component.variable_parameters_type(), internal_at, ty.select()).await {
                     Parameter::Image(image) => Ok(Parameter::Image((image, image_required_params()?))),
                     Parameter::Audio(audio) => Ok(Parameter::Audio((audio, time_map.clone()))),
                     other => Ok(from_parameter_value_fixed(other)),
                 }
             }
             ComponentProcessorWrapper::Component(processor) => {
-                let ComponentsLinksPair(components, links) = processor.process(fixed_parameters, &[], &[/* TODO */], component.variable_parameters_type()).await;
+                let ComponentsLinksPair(components, links) = processor.process(&fixed_parameters, &[], &[/* TODO */], component.variable_parameters_type()).await;
                 mpdelta_differential::collect_cached_time(&components, &links, component.marker_left(), component.marker_right(), &ctx.key)?;
                 match ty {
                     ParameterType::None => Ok(Parameter::None),

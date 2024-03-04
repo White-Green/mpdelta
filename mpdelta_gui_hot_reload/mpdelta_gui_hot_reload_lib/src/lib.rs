@@ -1,7 +1,8 @@
 use crate::dyn_trait::AudioTypePlayerDyn;
 use async_trait::async_trait;
+use futures::{pin_mut, stream, FutureExt, StreamExt};
 use mpdelta_async_runtime::AsyncRuntimeDyn;
-use mpdelta_core::component::class::ComponentClass;
+use mpdelta_core::component::class::{ComponentClass, ComponentClassIdentifier};
 use mpdelta_core::component::parameter::ParameterValueType;
 use mpdelta_core::core::ComponentClassLoader;
 use mpdelta_core::ptr::{StaticPointer, StaticPointerOwned};
@@ -58,6 +59,12 @@ impl ComponentClassList {
 impl ComponentClassLoader<ProjectKey, ValueType> for ComponentClassList {
     async fn get_available_component_classes(&self) -> Cow<[StaticPointer<RwLock<dyn ComponentClass<ProjectKey, ValueType>>>]> {
         Cow::Borrowed(&self.1)
+    }
+
+    async fn component_class_by_identifier(&self, identifier: ComponentClassIdentifier<'_>) -> Option<StaticPointer<RwLock<dyn ComponentClass<ProjectKey, ValueType>>>> {
+        let map = stream::iter(self.0.iter()).filter(|&class| class.read().map(|class| class.identifier() == identifier)).map(|class| StaticPointerOwned::reference(class).clone());
+        pin_mut!(map);
+        map.next().await
     }
 }
 

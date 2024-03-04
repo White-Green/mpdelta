@@ -1,4 +1,5 @@
 use num::Integer;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::cmp::Ordering;
 use std::fmt::{Debug, Display, Formatter};
 use std::ops::{Add, BitAnd, ControlFlow, Div, Mul, Neg, Not, Sub};
@@ -20,6 +21,21 @@ pub mod atomic;
 /// ```
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct MixedFraction(i64);
+
+#[cfg(any(feature = "proptest", test))]
+const _: () = {
+    use proptest::prelude::*;
+    use std::ops::Range;
+    impl Arbitrary for MixedFraction {
+        type Parameters = ();
+
+        fn arbitrary_with(_: Self::Parameters) -> Self::Strategy {
+            (-0x800_0000i32..0x800_0000, 0u32..0x4_0000, 0u32..0x4_0000).prop_filter_map("two values are equal", |(i, n, d)| MixedFraction::new_checked(i, n.min(d), n.max(d)))
+        }
+
+        type Strategy = proptest::strategy::FilterMap<(Range<i32>, Range<u32>, Range<u32>), fn((i32, u32, u32)) -> Option<MixedFraction>>;
+    }
+};
 
 #[inline]
 fn validate_integer(integer: i32) -> Result<i32, ()> {
@@ -309,6 +325,25 @@ impl MixedFraction {
     }
 }
 
+impl Serialize for MixedFraction {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        self.deconstruct().serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for MixedFraction {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let (i, n, d) = Deserialize::deserialize(deserializer)?;
+        MixedFraction::new_checked(i, n, d).ok_or_else(|| serde::de::Error::custom("invalid MixedFraction"))
+    }
+}
+
 impl Add for MixedFraction {
     type Output = MixedFraction;
 
@@ -417,10 +452,6 @@ mod tests {
     use super::*;
     use proptest::prelude::*;
 
-    fn mixed_fraction() -> impl Strategy<Value = MixedFraction> {
-        (-0x800_0000i32..0x800_0000, 0u32..0x4_0000, 0u32..0x4_0000).prop_filter_map("two values are equal", |(i, n, d)| MixedFraction::new_checked(i, n, d))
-    }
-
     #[test]
     fn test_mixed_fraction_validate() {
         assert!(validate_integer(-0x800_0000 - 1).is_err());
@@ -522,34 +553,41 @@ mod tests {
 
         #[test]
         fn test_mixed_fraction_add_prop(
-            a in mixed_fraction(),
-            b in mixed_fraction(),
+            a in any::<MixedFraction>(),
+            b in any::<MixedFraction>(),
         ) {
             a.checked_add(b);
         }
 
         #[test]
         fn test_mixed_fraction_sub_prop(
-            a in mixed_fraction(),
-            b in mixed_fraction(),
+            a in any::<MixedFraction>(),
+            b in any::<MixedFraction>(),
         ) {
             a.checked_sub(b);
         }
 
         #[test]
         fn test_mixed_fraction_mul_prop(
-            a in mixed_fraction(),
-            b in mixed_fraction(),
+            a in any::<MixedFraction>(),
+            b in any::<MixedFraction>(),
         ) {
             a.checked_mul(b);
         }
 
         #[test]
         fn test_mixed_fraction_div_prop(
-            a in mixed_fraction(),
-            b in mixed_fraction(),
+            a in any::<MixedFraction>(),
+            b in any::<MixedFraction>(),
         ) {
             a.checked_div(b);
+        }
+
+        #[test]
+        fn test_mixed_fraction_serde(value in any::<MixedFraction>()) {
+            let serialized = serde_json::to_string(&value).unwrap();
+            let deserialized = serde_json::from_str(&serialized).unwrap();
+            assert_eq!(value, deserialized);
         }
     }
 }

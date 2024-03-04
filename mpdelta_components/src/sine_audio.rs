@@ -1,18 +1,18 @@
 use async_trait::async_trait;
 use mpdelta_core::common::mixed_fraction::MixedFraction;
-use mpdelta_core::component::class::ComponentClass;
+use mpdelta_core::component::class::{ComponentClass, ComponentClassIdentifier};
 use mpdelta_core::component::instance::ComponentInstance;
 use mpdelta_core::component::marker_pin::{MarkerPin, MarkerTime};
-use mpdelta_core::component::parameter::{ImageRequiredParams, Parameter, ParameterSelect, ParameterType, ParameterValueFixed, ParameterValueType};
-use mpdelta_core::component::processor::{ComponentProcessor, ComponentProcessorNative};
+use mpdelta_core::component::parameter::{ImageRequiredParams, Parameter, ParameterSelect, ParameterType, ParameterValueRaw, ParameterValueType};
+use mpdelta_core::component::processor::{ComponentProcessor, ComponentProcessorNative, ComponentProcessorWrapper};
 use mpdelta_core::ptr::{StaticPointer, StaticPointerCow, StaticPointerOwned};
 use mpdelta_core::time::TimelineTime;
 use mpdelta_core_audio::multi_channel_audio::{MultiChannelAudioMutOp, MultiChannelAudioOp, MultiChannelAudioSliceMut};
 use mpdelta_core_audio::{AudioProvider, AudioType};
 use qcell::TCell;
+use std::borrow::Cow;
 use std::f64::consts::TAU;
 use std::sync::Arc;
-use std::time::Duration;
 use tokio::sync::RwLock;
 
 #[derive(Debug, Clone, Default)]
@@ -26,32 +26,31 @@ impl SineAudio {
 
 #[async_trait]
 impl<K, T: ParameterValueType<Audio = AudioType>> ComponentClass<K, T> for SineAudio {
-    async fn generate_image(&self) -> bool {
-        false
+    fn identifier(&self) -> ComponentClassIdentifier {
+        ComponentClassIdentifier {
+            namespace: Cow::Borrowed("mpdelta"),
+            name: Cow::Borrowed("SineAudio"),
+            inner_identifier: Default::default(),
+        }
     }
 
-    async fn generate_audio(&self) -> bool {
-        true
-    }
-
-    async fn fixed_parameter_type(&self) -> &[(String, ParameterType)] {
-        &[]
-    }
-
-    async fn default_variable_parameter_type(&self) -> &[(String, ParameterType)] {
-        &[]
+    fn processor(&self) -> ComponentProcessorWrapper<K, T> {
+        ComponentProcessorWrapper::Native(Arc::new(SineAudio::new()))
     }
 
     async fn instantiate(&self, this: &StaticPointer<RwLock<dyn ComponentClass<K, T>>>) -> ComponentInstance<K, T> {
         let left = StaticPointerOwned::new(TCell::new(MarkerPin::new(TimelineTime::ZERO, MarkerTime::ZERO)));
         let right = StaticPointerOwned::new(TCell::new(MarkerPin::new(TimelineTime::new(MixedFraction::from_integer(1)), MarkerTime::new(MixedFraction::from_integer(1)).unwrap())));
         let image_required_params = ImageRequiredParams::new_default(StaticPointerOwned::reference(&left), StaticPointerOwned::reference(&right));
-        ComponentInstance::new_no_param(
+        ComponentInstance::new(
             this.clone(),
             StaticPointerCow::Owned(left),
             StaticPointerCow::Owned(right),
+            Vec::new(),
             Some(image_required_params),
             None,
+            Box::new([]),
+            Box::new([]),
             Arc::new(SineAudio::new()) as Arc<dyn ComponentProcessorNative<K, T>>,
         )
     }
@@ -59,10 +58,16 @@ impl<K, T: ParameterValueType<Audio = AudioType>> ComponentClass<K, T> for SineA
 
 #[async_trait]
 impl<K, T: ParameterValueType<Audio = AudioType>> ComponentProcessor<K, T> for SineAudio {
-    async fn update_variable_parameter(&self, _: &mut [ParameterValueFixed<T::Image, T::Audio>], _: &mut Vec<(String, ParameterType)>) {}
+    async fn fixed_parameter_types(&self) -> &[(String, ParameterType)] {
+        &[]
+    }
 
-    async fn natural_length(&self, _: &[ParameterValueFixed<T::Image, T::Audio>]) -> Duration {
-        Duration::from_secs(1)
+    async fn update_variable_parameter(&self, _: &[ParameterValueRaw<T::Image, T::Audio>], variable_parameters: &mut Vec<(String, ParameterType)>) {
+        variable_parameters.clear();
+    }
+
+    async fn natural_length(&self, _: &[ParameterValueRaw<T::Image, T::Audio>]) -> MarkerTime {
+        MarkerTime::new(MixedFraction::ONE).unwrap()
     }
 }
 
@@ -72,7 +77,7 @@ impl<K, T: ParameterValueType<Audio = AudioType>> ComponentProcessorNative<K, T>
         matches!(out, Parameter::Audio(_))
     }
 
-    async fn process(&self, _: &[ParameterValueFixed<T::Image, T::Audio>], _: &[ParameterValueFixed<T::Image, T::Audio>], _: &[(String, ParameterType)], _: TimelineTime, _: Parameter<ParameterSelect>) -> ParameterValueFixed<T::Image, T::Audio> {
+    async fn process(&self, _: &[ParameterValueRaw<T::Image, T::Audio>], _: &[ParameterValueRaw<T::Image, T::Audio>], _: &[(String, ParameterType)], _: TimelineTime, _: Parameter<ParameterSelect>) -> ParameterValueRaw<T::Image, T::Audio> {
         Parameter::Audio(AudioType::new(SineAudio::new()))
     }
 }

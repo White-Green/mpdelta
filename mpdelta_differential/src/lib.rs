@@ -5,9 +5,10 @@ use mpdelta_core::component::parameter::ParameterValueType;
 use mpdelta_core::time::TimelineTime;
 use qcell::TCellOwner;
 use std::collections::HashSet;
+use std::fmt::{Debug, Formatter};
 use thiserror::Error;
 
-#[derive(Debug, Clone, Error)]
+#[derive(Clone, Error)]
 pub enum CollectCachedTimeError<K> {
     #[error("invalid marker link {0:?}")]
     InvalidMarkerLink(MarkerLinkHandle<K>),
@@ -15,6 +16,16 @@ pub enum CollectCachedTimeError<K> {
     InvalidMarker(MarkerPinHandle<K>),
     #[error("invalid link graph")]
     InvalidLinkGraph,
+}
+
+impl<K> Debug for CollectCachedTimeError<K> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CollectCachedTimeError::InvalidMarkerLink(value) => f.debug_tuple("InvalidMarkerLink").field(value).finish(),
+            CollectCachedTimeError::InvalidMarker(value) => f.debug_tuple("InvalidMarker").field(value).finish(),
+            CollectCachedTimeError::InvalidLinkGraph => f.write_str("InvalidLinkGraph"),
+        }
+    }
 }
 
 pub fn collect_cached_time<K, T>(_components: &[impl AsRef<ComponentInstanceHandle<K, T>>], links: &[impl AsRef<MarkerLinkHandle<K>>], begin: &MarkerPinHandle<K>, end: &MarkerPinHandle<K>, key: &TCellOwner<K>) -> Result<(), CollectCachedTimeError<K>>

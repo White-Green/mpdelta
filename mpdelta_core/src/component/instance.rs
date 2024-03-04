@@ -54,23 +54,26 @@ where
 }
 
 impl<K, T: ParameterValueType> ComponentInstance<K, T> {
-    pub fn new_no_param(
+    pub fn new(
         component_class: StaticPointer<RwLock<dyn ComponentClass<K, T>>>,
         marker_left: MarkerPinHandleCow<K>,
         marker_right: MarkerPinHandleCow<K>,
+        markers: Vec<MarkerPinHandleOwned<K>>,
         image_required_params: Option<ImageRequiredParams<K, T>>,
         audio_required_params: Option<AudioRequiredParams<K, T>>,
+        fixed_parameters_type: Box<[(String, Parameter<Type>)]>,
+        fixed_parameters: Box<[ParameterValueFixed<T::Image, T::Audio>]>,
         processor: impl Into<ComponentProcessorWrapper<K, T>>,
     ) -> ComponentInstance<K, T> {
         ComponentInstance {
             component_class,
             marker_left,
             marker_right,
-            markers: Vec::new(),
+            markers,
             image_required_params,
             audio_required_params,
-            fixed_parameters_type: Vec::new().into_boxed_slice(),
-            fixed_parameters: Vec::new().into_boxed_slice(),
+            fixed_parameters_type,
+            fixed_parameters,
             variable_parameters_type: Vec::new(),
             variable_parameters: Vec::new(),
             processor: processor.into(),
@@ -102,6 +105,11 @@ impl<K, T: ParameterValueType> ComponentInstance<K, T> {
     pub fn audio_required_params(&self) -> Option<&AudioRequiredParams<K, T>> {
         self.audio_required_params.as_ref()
     }
+    pub fn set_audio_required_params(&mut self, params: AudioRequiredParams<K, T>) {
+        if let Some(current_params) = self.audio_required_params.as_mut() {
+            *current_params = params;
+        }
+    }
     pub fn fixed_parameters_type(&self) -> &[(String, Parameter<Type>)] {
         &self.fixed_parameters_type
     }
@@ -113,6 +121,9 @@ impl<K, T: ParameterValueType> ComponentInstance<K, T> {
     }
     pub fn variable_parameters(&self) -> &[VariableParameterValue<K, T, ParameterNullableValue<K, T>>] {
         &self.variable_parameters
+    }
+    pub fn variable_parameters_mut(&mut self) -> &mut Vec<VariableParameterValue<K, T, ParameterNullableValue<K, T>>> {
+        &mut self.variable_parameters
     }
     pub fn processor(&self) -> &ComponentProcessorWrapper<K, T> {
         &self.processor

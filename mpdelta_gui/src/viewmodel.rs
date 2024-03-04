@@ -420,6 +420,8 @@ pub struct RootComponentClassDataList<Handle> {
 
 pub trait MainWindowViewModel<K: 'static, T> {
     fn new_project(&self);
+    fn open_project(&self);
+    fn save_project(&self);
     type ProjectHandle: Clone + Hash;
     fn projects<R>(&self, f: impl FnOnce(&ProjectDataList<Self::ProjectHandle>) -> R) -> R;
     fn select_project(&self, handle: &Self::ProjectHandle);
@@ -446,6 +448,8 @@ pub enum Message<K: 'static, T: ParameterValueType> {
     NewRootComponentClass,
     SelectRootComponentClass(RootComponentClassHandle<K, T>),
     Encode,
+    OpenProject,
+    SaveProject,
 }
 
 impl<K, T> Clone for Message<K, T>
@@ -460,6 +464,8 @@ where
             Message::NewRootComponentClass => Message::NewRootComponentClass,
             Message::SelectRootComponentClass(value) => Message::SelectRootComponentClass(value.clone()),
             Message::Encode => Message::Encode,
+            Message::OpenProject => Message::OpenProject,
+            Message::SaveProject => Message::SaveProject,
         }
     }
 }
@@ -479,6 +485,8 @@ where
             (Message::NewRootComponentClass, Message::NewRootComponentClass) => true,
             (Message::SelectRootComponentClass(a), Message::SelectRootComponentClass(b)) => a == b,
             (Message::Encode, Message::Encode) => true,
+            (Message::OpenProject, Message::OpenProject) => true,
+            (Message::SaveProject, Message::SaveProject) => true,
             _ => unreachable!(),
         }
     }
@@ -662,6 +670,56 @@ where
                     }
                 })
             })
+            .handle(|handler| {
+                handler
+                    .filter(|message| *message == Message::OpenProject)
+                    .then({
+                        use_arc!(load_project = params.load_project(), get_loaded_projects = params.get_loaded_projects(), projects);
+                        move |_| {
+                            use_arc!(load_project, get_loaded_projects, projects);
+                            async move {
+                                let file = AsyncFileDialog::new().add_filter("mpdelta project file", &["mpdl"]).pick_file().await;
+                                let Some(file) = file else {
+                                    return;
+                                };
+                                let project = match load_project.load_project(file.inner()).await {
+                                    Err(error) => {
+                                        eprintln!("failed to load project by {error}");
+                                        return;
+                                    }
+                                    Ok(project) => project,
+                                };
+                                let new_projects: Vec<_> = match get_loaded_projects.get_loaded_projects().await {
+                                    Cow::Borrowed(slice) => slice.iter().cloned().map(ProjectData::new).collect(),
+                                    Cow::Owned(vec) => vec.into_iter().map(ProjectData::new).collect(),
+                                };
+                                let selected = new_projects.iter().enumerate().find_map(|(i, p)| (p.handle == project).then_some(i)).unwrap_or_else(|| new_projects.len().saturating_sub(1));
+                                *projects.write().await = ProjectDataList { list: new_projects, selected };
+                            }
+                        }
+                    })
+                    .handle_by(Arc::clone(&update_selected_project))
+            })
+            .handle(|handler| {
+                handler.filter(|message| *message == Message::SaveProject).handle_async_single({
+                    use_arc!(write_project = params.write_project(), projects);
+                    move |_| {
+                        use_arc!(write_project, projects);
+                        async move {
+                            let projects = projects.read().await;
+                            if let Some(ProjectData { handle, .. }) = projects.list.get(projects.selected) {
+                                let file = AsyncFileDialog::new().add_filter("mpdelta project file", &["mpdl"]).save_file().await;
+                                let Some(file) = file else {
+                                    return;
+                                };
+                                if let Err(error) = write_project.write_project(handle, file.inner()).await {
+                                    eprintln!("failed to write project by {error}");
+                                }
+                            }
+                        }
+                    }
+                })
+            })
             .build(params.runtime().clone());
         let arc = Arc::new(MainWindowViewModelImpl {
             projects,
@@ -685,6 +743,14 @@ where
 {
     fn new_project(&self) {
         self.message_router.handle(Message::NewProject);
+    }
+
+    fn open_project(&self) {
+        self.message_router.handle(Message::OpenProject);
+    }
+
+    fn save_project(&self) {
+        self.message_router.handle(Message::SaveProject);
     }
 
     type ProjectHandle = ProjectHandle<K, T>;

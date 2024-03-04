@@ -2,12 +2,14 @@ use crate::common::mixed_fraction::MixedFraction;
 use crate::ptr::{StaticPointer, StaticPointerCow, StaticPointerOwned};
 use crate::time::{AtomicTimelineTime, TimelineTime};
 use qcell::TCell;
+use serde::{Deserialize, Serialize};
 use std::hash::Hash;
 use std::sync::atomic;
 
 /// 固定マーカの位置のコンポーネントの長さに対する割合
 /// \[0.0, ∞)
-#[derive(Debug, Clone, Copy, Ord, PartialOrd, Eq, PartialEq, Hash)]
+#[derive(Debug, Clone, Copy, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize)]
+#[cfg_attr(any(feature = "proptest", test), derive(proptest_derive::Arbitrary))]
 pub struct MarkerTime(MixedFraction);
 
 #[derive(Debug, Clone)]

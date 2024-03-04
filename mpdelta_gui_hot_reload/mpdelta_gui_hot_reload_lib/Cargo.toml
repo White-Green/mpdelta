@@ -10,6 +10,7 @@ crate-type = ["rlib", "dylib"]
 [dependencies]
 async-trait = { workspace = true }
 egui = { workspace = true }
+futures = { workspace = true }
 mpdelta_async_runtime = { workspace = true }
 mpdelta_core = { workspace = true }
 mpdelta_core_audio = { workspace = true }

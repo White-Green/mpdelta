@@ -30,6 +30,16 @@ impl<T> StaticPointerOwned<T> {
     }
 }
 
+impl<T: ?Sized> StaticPointerOwned<tokio::sync::RwLock<T>> {
+    pub async fn read_owned(this: &Self) -> tokio::sync::OwnedRwLockReadGuard<T> {
+        Arc::clone(&this.0).read_owned().await
+    }
+
+    pub async fn write_owned(this: &Self) -> tokio::sync::OwnedRwLockWriteGuard<T> {
+        Arc::clone(&this.0).write_owned().await
+    }
+}
+
 impl<T: ?Sized> StaticPointerOwned<T> {
     pub fn reference(this: &Self) -> &StaticPointer<T> {
         &this.1

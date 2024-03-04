@@ -6,15 +6,17 @@ use crate::component::parameter::value::{DynEditableSelfEasingValue, DynEditable
 use crate::time::TimelineTime;
 use cgmath::{One, Quaternion, Vector3};
 use either::Either;
+use serde::{Deserialize, Serialize};
+use serde_repr::{Deserialize_repr, Serialize_repr};
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt::{Debug, Formatter};
 use std::hash::{Hash, Hasher};
-use std::io;
 use std::io::{IoSliceMut, Read, Seek, SeekFrom};
 use std::marker::PhantomData;
 use std::ops::Range;
 use std::sync::Arc;
+use std::{io, mem};
 
 pub mod placeholder;
 pub mod value;
@@ -32,17 +34,30 @@ pub trait ParameterValueType: 'static + Send + Sync {
     type ComponentClass: 'static + Clone + Send + Sync;
 }
 
+#[derive(Serialize, Deserialize)]
+#[cfg_attr(any(feature = "proptest", test), derive(proptest_derive::Arbitrary))]
 pub enum Parameter<Type: ParameterValueType> {
+    #[serde(rename = "n")]
     None,
+    #[serde(rename = "img")]
     Image(Type::Image),
+    #[serde(rename = "aud")]
     Audio(Type::Audio),
+    #[serde(rename = "bin")]
     Binary(Type::Binary),
+    #[serde(rename = "str")]
     String(Type::String),
+    #[serde(rename = "int")]
     Integer(Type::Integer),
+    #[serde(rename = "real")]
     RealNumber(Type::RealNumber),
+    #[serde(rename = "bool")]
     Boolean(Type::Boolean),
+    #[serde(rename = "dict")]
     Dictionary(Type::Dictionary),
+    #[serde(rename = "arr")]
     Array(Type::Array),
+    #[serde(rename = "cc")]
     ComponentClass(Type::ComponentClass),
 }
 
@@ -273,73 +288,85 @@ where
 {
 }
 
-#[macro_export]
-macro_rules! impl_for_parameter {
-    (impl PartialEq for Parameter<$t:ty> $(where $($bound:tt),+)?) => {
-        impl_for_parameter!{
-            impl<> PartialEq for Parameter<$t> $(where $($bound),+)?
+impl<Type: ParameterValueType> PartialEq for Parameter<Type>
+where
+    Type::Image: PartialEq,
+    Type::Audio: PartialEq,
+    Type::Binary: PartialEq,
+    Type::String: PartialEq,
+    Type::Integer: PartialEq,
+    Type::RealNumber: PartialEq,
+    Type::Boolean: PartialEq,
+    Type::Dictionary: PartialEq,
+    Type::Array: PartialEq,
+    Type::ComponentClass: PartialEq,
+{
+    fn eq(&self, other: &Self) -> bool {
+        if mem::discriminant(self) != mem::discriminant(other) {
+            return false;
         }
-    };
-    (impl<$($p:ty),*> PartialEq for Parameter<$t:ty> $(where $($bound:tt),+)?) => {
-        impl<$($p),*> ::core::cmp::PartialEq for Parameter<$t> $(where $($bound),+)? {
-            fn eq(&self, rhs: &Self) -> bool {
-                if ::core::mem::discriminant(self) != ::core::mem::discriminant(rhs) {
-                    return false;
-                }
-                match (self, rhs) {
-                    (Self::None, Self::None) => true,
-                    (Self::Image(value0), Self::Image(value1)) => value0 == value1,
-                    (Self::Audio(value0), Self::Audio(value1)) => value0 == value1,
-                    (Self::Binary(value0), Self::Binary(value1)) => value0 == value1,
-                    (Self::String(value0), Self::String(value1)) => value0 == value1,
-                    (Self::Integer(value0), Self::Integer(value1)) => value0 == value1,
-                    (Self::RealNumber(value0), Self::RealNumber(value1)) => value0 == value1,
-                    (Self::Boolean(value0), Self::Boolean(value1)) => value0 == value1,
-                    (Self::Dictionary(value0), Self::Dictionary(value1)) => value0 == value1,
-                    (Self::Array(value0), Self::Array(value1)) => value0 == value1,
-                    (Self::ComponentClass(value0), Self::ComponentClass(value1)) => value0 == value1,
-                    _ => unreachable!(),
-                }
-            }
+        match (self, other) {
+            (Self::None, Self::None) => true,
+            (Self::Image(value0), Self::Image(value1)) => value0 == value1,
+            (Self::Audio(value0), Self::Audio(value1)) => value0 == value1,
+            (Self::Binary(value0), Self::Binary(value1)) => value0 == value1,
+            (Self::String(value0), Self::String(value1)) => value0 == value1,
+            (Self::Integer(value0), Self::Integer(value1)) => value0 == value1,
+            (Self::RealNumber(value0), Self::RealNumber(value1)) => value0 == value1,
+            (Self::Boolean(value0), Self::Boolean(value1)) => value0 == value1,
+            (Self::Dictionary(value0), Self::Dictionary(value1)) => value0 == value1,
+            (Self::Array(value0), Self::Array(value1)) => value0 == value1,
+            (Self::ComponentClass(value0), Self::ComponentClass(value1)) => value0 == value1,
+            _ => unreachable!(),
         }
-    };
-    (impl Eq for Parameter<$t:ty> $(where $($bound:tt),+)?) => {
-        impl_for_parameter!{
-            impl<> Eq for Parameter<$t> $(where $($bound),+)?
-        }
-    };
-    (impl<$($p:ty),*> Eq for Parameter<$t:ty> $(where $($bound:tt),+)?) => {
-        impl<$($p),*> ::core::cmp::Eq for Parameter<$t> $(where $($bound),+)? {}
-    };
-    (impl Hash for Parameter<$t:ty> $(where $($bound:tt),+)?) => {
-        impl_for_parameter!{
-            impl<> Hash for Parameter<$t> $(where $($bound),+)?
-        }
-    };
-    (impl<$($p:ty),*> Hash for Parameter<$t:ty> $(where $($bound:tt),+)?) => {
-        impl<$($p),*> ::core::hash::Hash for Parameter<$t> $(where $($bound),+)? {
-            fn hash<H: ::core::hash::Hasher>(&self, state: &mut H) {
-                let tag = ::core::mem::discriminant(self);
-                tag.hash(state);
-                match self {
-                    Self::None => {}
-                    Self::Image(value) => value.hash(state),
-                    Self::Audio(value) => value.hash(state),
-                    Self::Binary(value) => value.hash(state),
-                    Self::String(value) => value.hash(state),
-                    Self::Integer(value) => value.hash(state),
-                    Self::RealNumber(value) => value.hash(state),
-                    Self::Boolean(value) => value.hash(state),
-                    Self::Dictionary(value) => value.hash(state),
-                    Self::Array(value) => value.hash(state),
-                    Self::ComponentClass(value) => value.hash(state),
-                }
-            }
-        }
-    };
+    }
 }
 
-pub use impl_for_parameter;
+impl<Type: ParameterValueType> Eq for Parameter<Type>
+where
+    Type::Image: Eq,
+    Type::Audio: Eq,
+    Type::Binary: Eq,
+    Type::String: Eq,
+    Type::Integer: Eq,
+    Type::RealNumber: Eq,
+    Type::Boolean: Eq,
+    Type::Dictionary: Eq,
+    Type::Array: Eq,
+    Type::ComponentClass: Eq,
+{
+}
+
+impl<Type: ParameterValueType> Hash for Parameter<Type>
+where
+    Type::Image: Hash,
+    Type::Audio: Hash,
+    Type::Binary: Hash,
+    Type::String: Hash,
+    Type::Integer: Hash,
+    Type::RealNumber: Hash,
+    Type::Boolean: Hash,
+    Type::Dictionary: Hash,
+    Type::Array: Hash,
+    Type::ComponentClass: Hash,
+{
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        mem::discriminant(self).hash(state);
+        match self {
+            Self::None => {}
+            Self::Image(value) => value.hash(state),
+            Self::Audio(value) => value.hash(state),
+            Self::Binary(value) => value.hash(state),
+            Self::String(value) => value.hash(state),
+            Self::Integer(value) => value.hash(state),
+            Self::RealNumber(value) => value.hash(state),
+            Self::Boolean(value) => value.hash(state),
+            Self::Dictionary(value) => value.hash(state),
+            Self::Array(value) => value.hash(state),
+            Self::ComponentClass(value) => value.hash(state),
+        }
+    }
+}
 
 impl<Type: ParameterValueType> Debug for Parameter<Type> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
@@ -487,7 +514,7 @@ where
     }
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum Never {}
 
 pub struct Type;
@@ -506,10 +533,6 @@ impl ParameterValueType for Type {
     type Array = Box<Parameter<Type>>;
     type ComponentClass = ();
 }
-
-impl_for_parameter!(impl PartialEq for Parameter<Type>);
-impl_for_parameter!(impl Eq for Parameter<Type>);
-impl_for_parameter!(impl Hash for Parameter<Type>);
 
 pub struct TypeExceptComponentClass;
 
@@ -705,6 +728,27 @@ impl<K: 'static> ParameterValueType for TypedValue<K> {
     type ComponentClass = ();
 }
 
+pub struct ValueRaw<Image, Audio>(PhantomData<(Image, Audio)>);
+
+unsafe impl<Image, Audio> Send for ValueRaw<Image, Audio> {}
+
+unsafe impl<Image, Audio> Sync for ValueRaw<Image, Audio> {}
+
+pub type ParameterValueRaw<Image, Audio> = Parameter<ValueRaw<Image, Audio>>;
+
+impl<Image: Send + Sync + Clone + 'static, Audio: Send + Sync + Clone + 'static> ParameterValueType for ValueRaw<Image, Audio> {
+    type Image = Image;
+    type Audio = Audio;
+    type Binary = AbstractFile;
+    type String = String;
+    type Integer = i64;
+    type RealNumber = f64;
+    type Boolean = bool;
+    type Dictionary = HashMap<String, ParameterValueRaw<Image, Audio>>;
+    type Array = Vec<ParameterValueRaw<Image, Audio>>;
+    type ComponentClass = ();
+}
+
 pub struct ValueFixed<Image, Audio>(PhantomData<(Image, Audio)>);
 
 unsafe impl<Image, Audio> Send for ValueFixed<Image, Audio> {}
@@ -714,15 +758,15 @@ unsafe impl<Image, Audio> Sync for ValueFixed<Image, Audio> {}
 pub type ParameterValueFixed<Image, Audio> = Parameter<ValueFixed<Image, Audio>>;
 
 impl<Image: Send + Sync + Clone + 'static, Audio: Send + Sync + Clone + 'static> ParameterValueType for ValueFixed<Image, Audio> {
-    type Image = Image;
-    type Audio = Audio;
-    type Binary = AbstractFile;
-    type String = String;
-    type Integer = i64;
-    type RealNumber = f64;
-    type Boolean = bool;
-    type Dictionary = HashMap<String, ParameterValueFixed<Image, Audio>>;
-    type Array = Vec<ParameterValueFixed<Image, Audio>>;
+    type Image = DynEditableSingleValue<Image>;
+    type Audio = DynEditableSingleValue<Audio>;
+    type Binary = DynEditableSingleValue<AbstractFile>;
+    type String = DynEditableSingleValue<String>;
+    type Integer = DynEditableSingleValue<i64>;
+    type RealNumber = DynEditableSingleValue<f64>;
+    type Boolean = DynEditableSingleValue<bool>;
+    type Dictionary = DynEditableSingleValue<HashMap<String, ParameterValueRaw<Image, Audio>>>;
+    type Array = DynEditableSingleValue<Vec<ParameterValueRaw<Image, Audio>>>;
     type ComponentClass = ();
 }
 
@@ -821,7 +865,8 @@ impl Default for Opacity {
 }
 
 // ref: https://www.w3.org/TR/compositing-1/
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize_repr, Deserialize_repr)]
+#[cfg_attr(any(feature = "proptest", test), derive(proptest_derive::Arbitrary))]
 #[repr(u8)]
 pub enum BlendMode {
     #[default]
@@ -844,7 +889,8 @@ pub enum BlendMode {
 }
 
 // ref: https://www.w3.org/TR/compositing-1/
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize_repr, Deserialize_repr)]
+#[cfg_attr(any(feature = "proptest", test), derive(proptest_derive::Arbitrary))]
 #[repr(u8)]
 pub enum CompositeOperation {
     Clear = 0,
@@ -863,9 +909,12 @@ pub enum CompositeOperation {
     Lighter = 12,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(any(feature = "proptest", test), derive(proptest_derive::Arbitrary))]
 pub enum VariableParameterPriority {
+    #[serde(rename = "m")]
     PrioritizeManually,
+    #[serde(rename = "c")]
     PrioritizeComponent,
 }
 

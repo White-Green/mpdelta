@@ -1,6 +1,7 @@
 use crate::common::mixed_fraction::atomic::AtomicMixedFraction;
 use crate::common::mixed_fraction::MixedFraction;
 use crate::component::marker_pin::MarkerTime;
+use serde::{Deserialize, Serialize};
 use std::fmt::{Debug, Formatter};
 use std::hash::Hash;
 use std::ops::{Add, Div, Neg, Sub};
@@ -8,7 +9,8 @@ use std::sync::atomic;
 
 /// タイムライン上での時間(秒)
 /// (-∞, ∞)
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[cfg_attr(any(feature = "proptest", test), derive(proptest_derive::Arbitrary))]
 pub struct TimelineTime(MixedFraction);
 
 impl TimelineTime {

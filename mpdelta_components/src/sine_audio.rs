@@ -3,7 +3,7 @@ use mpdelta_core::common::mixed_fraction::MixedFraction;
 use mpdelta_core::component::class::{ComponentClass, ComponentClassIdentifier};
 use mpdelta_core::component::instance::ComponentInstance;
 use mpdelta_core::component::marker_pin::{MarkerPin, MarkerTime};
-use mpdelta_core::component::parameter::{ImageRequiredParams, Parameter, ParameterSelect, ParameterType, ParameterValueRaw, ParameterValueType};
+use mpdelta_core::component::parameter::{AudioRequiredParams, ImageRequiredParams, Parameter, ParameterSelect, ParameterType, ParameterValueRaw, ParameterValueType};
 use mpdelta_core::component::processor::{ComponentProcessor, ComponentProcessorNative, ComponentProcessorWrapper};
 use mpdelta_core::ptr::{StaticPointer, StaticPointerCow, StaticPointerOwned};
 use mpdelta_core::time::TimelineTime;
@@ -41,14 +41,14 @@ impl<K, T: ParameterValueType<Audio = AudioType>> ComponentClass<K, T> for SineA
     async fn instantiate(&self, this: &StaticPointer<RwLock<dyn ComponentClass<K, T>>>) -> ComponentInstance<K, T> {
         let left = StaticPointerOwned::new(TCell::new(MarkerPin::new(TimelineTime::ZERO, MarkerTime::ZERO)));
         let right = StaticPointerOwned::new(TCell::new(MarkerPin::new(TimelineTime::new(MixedFraction::from_integer(1)), MarkerTime::new(MixedFraction::from_integer(1)).unwrap())));
-        let image_required_params = ImageRequiredParams::new_default(StaticPointerOwned::reference(&left), StaticPointerOwned::reference(&right));
+        let audio_required_params = AudioRequiredParams::new_default(StaticPointerOwned::reference(&left), StaticPointerOwned::reference(&right), 1);
         ComponentInstance::new(
             this.clone(),
             StaticPointerCow::Owned(left),
             StaticPointerCow::Owned(right),
             Vec::new(),
-            Some(image_required_params),
             None,
+            Some(audio_required_params),
             Box::new([]),
             Box::new([]),
             Arc::new(SineAudio::new()) as Arc<dyn ComponentProcessorNative<K, T>>,

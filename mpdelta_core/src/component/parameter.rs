@@ -1144,6 +1144,14 @@ pub struct AudioRequiredParams<K: 'static, T: ParameterValueType> {
     pub volume: Vec<VariableParameterValue<K, T, PinSplitValue<K, Option<EasingValue<f64>>>>>,
 }
 
+impl<K: 'static, T: ParameterValueType> AudioRequiredParams<K, T> {
+    pub fn new_default(left: &MarkerPinHandle<K>, right: &MarkerPinHandle<K>, channels: usize) -> AudioRequiredParams<K, T> {
+        let one = TimeSplitValue::new(left.clone(), Some(EasingValue::new(DynEditableSelfEasingValue(1., 1.), Arc::new(LinearEasing))), right.clone());
+        let one_value = VariableParameterValue::new(one);
+        AudioRequiredParams { volume: vec![one_value; channels] }
+    }
+}
+
 impl<K, T: ParameterValueType> Clone for AudioRequiredParams<K, T> {
     fn clone(&self) -> Self {
         let AudioRequiredParams { volume } = self;

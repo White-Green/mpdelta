@@ -1,7 +1,5 @@
 use crate::edit_funnel::EditFunnel;
 use crate::global_ui_state::{GlobalUIEvent, GlobalUIEventHandler, GlobalUIState};
-use crate::message_router::handler::{IntoAsyncFunctionHandler, IntoFunctionHandler, MessageHandlerBuilder};
-use crate::message_router::{MessageHandler, MessageRouter};
 use crate::view_model_util::use_arc;
 use crate::viewmodel::ViewModelParams;
 use arc_swap::ArcSwap;
@@ -20,6 +18,8 @@ use mpdelta_core::project::RootComponentClassHandle;
 use mpdelta_core::ptr::{StaticPointer, StaticPointerOwned};
 use mpdelta_core::time::TimelineTime;
 use mpdelta_core::usecase::{GetAvailableComponentClassesUsecase, SubscribeEditEventUsecase};
+use mpdelta_message_router::handler::{IntoAsyncFunctionHandler, IntoFunctionHandler, MessageHandlerBuilder};
+use mpdelta_message_router::{MessageHandler, MessageRouter};
 use qcell::{TCell, TCellOwner};
 use std::cell::Cell;
 use std::collections::HashMap;

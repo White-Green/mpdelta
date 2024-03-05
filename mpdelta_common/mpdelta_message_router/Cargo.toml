@@ -1,0 +1,16 @@
+[package]
+name = "mpdelta_message_router"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+futures = { workspace = true }
+mpdelta_async_runtime = { workspace = true }
+tokio = { workspace = true }
+
+[dev-dependencies]
+mpdelta_async_runtime = { workspace = true, features = ["tokio"] }
+tokio = { workspace = true, features = ["rt-multi-thread"] }

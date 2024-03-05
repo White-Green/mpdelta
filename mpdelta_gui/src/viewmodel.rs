@@ -1,6 +1,4 @@
 use crate::global_ui_state::{GlobalUIEvent, GlobalUIEventHandler, GlobalUIState};
-use crate::message_router::handler::{IntoAsyncFunctionHandler, IntoAsyncFunctionHandlerSingle, IntoDerefHandler, MessageHandlerBuilder};
-use crate::message_router::{handler, MessageHandler, MessageRouter};
 use crate::view_model_util::use_arc;
 use crate::AudioTypePlayer;
 use arc_swap::ArcSwapOption;
@@ -13,6 +11,8 @@ use mpdelta_core::usecase::{
     EditUsecase, GetAvailableComponentClassesUsecase, GetLoadedProjectsUsecase, GetRootComponentClassesUsecase, LoadProjectUsecase, NewProjectUsecase, NewRootComponentClassUsecase, RealtimeRenderComponentUsecase, RedoUsecase, RenderWholeComponentUsecase, SetOwnerForRootComponentClassUsecase,
     SubscribeEditEventUsecase, UndoUsecase, WriteProjectUsecase,
 };
+use mpdelta_message_router::handler::{IntoAsyncFunctionHandler, IntoAsyncFunctionHandlerSingle, IntoDerefHandler, MessageHandlerBuilder};
+use mpdelta_message_router::{handler, MessageHandler, MessageRouter};
 use mpdelta_multimedia::{AudioCodec, CodecImplement, FileFormat, VideoCodec};
 use qcell::{TCell, TCellOwner};
 use rfd::AsyncFileDialog;

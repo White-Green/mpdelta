@@ -2334,6 +2334,7 @@ dependencies = [
  "glam",
  "mpdelta_async_runtime",
  "mpdelta_core",
+ "mpdelta_message_router",
  "mpdelta_multimedia",
  "once_cell",
  "ordered-float",
@@ -2370,6 +2371,15 @@ dependencies = [
  "vulkano",
  "vulkano-util",
  "winit",
+]
+
+[[package]]
+name = "mpdelta_message_router"
+version = "0.1.0"
+dependencies = [
+ "futures",
+ "mpdelta_async_runtime",
+ "tokio",
 ]
 
 [[package]]

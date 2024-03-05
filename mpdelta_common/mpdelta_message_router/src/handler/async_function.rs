@@ -1,5 +1,5 @@
-use crate::message_router::static_cow::StaticCow;
-use crate::message_router::MessageHandler;
+use crate::static_cow::StaticCow;
+use crate::MessageHandler;
 use mpdelta_async_runtime::{AsyncRuntime, JoinHandleWrapper};
 use std::future::IntoFuture;
 use std::sync::mpsc::{Receiver, SyncSender};
@@ -58,9 +58,10 @@ impl<T> MessageReceiver<T> {
     }
 }
 
+type RunningTask<JoinHandle> = Option<JoinHandleWrapper<JoinHandle>>;
 pub struct AsyncFunctionHandlerSingle<Message, F, JoinHandle> {
     f: F,
-    handle: Mutex<(Option<JoinHandleWrapper<JoinHandle>>, Receiver<UnboundedReceiver<Message>>)>,
+    handle: Mutex<(RunningTask<JoinHandle>, Receiver<UnboundedReceiver<Message>>)>,
     receiver_return: SyncSender<UnboundedReceiver<Message>>,
     message_sender: UnboundedSender<Message>,
 }
@@ -91,12 +92,12 @@ where
         let message = message.into_owned();
         self.message_sender.send(message.clone()).ok().unwrap();
         let mut lock = self.handle.lock().unwrap_or_else(PoisonError::into_inner);
-        match &*lock {
-            (Some(handle), _) if !handle.is_finished() => drop(lock),
-            _ => {
-                if !lock.0.as_ref().is_some_and(|handle| !handle.is_finished()) {
-                    let future = (self.f)(MessageReceiver::new(lock.1.recv().unwrap(), self.receiver_return.clone()));
-                    lock.0 = Some(runtime.spawn(future.into_future()));
+        match &mut *lock {
+            (Some(running_task), _) if !running_task.is_finished() => drop(lock),
+            (running_task, message_receiver_return) => {
+                if !running_task.as_ref().is_some_and(|handle| !handle.is_finished()) {
+                    let future = (self.f)(MessageReceiver::new(message_receiver_return.recv().unwrap(), self.receiver_return.clone()));
+                    *running_task = Some(runtime.spawn(future.into_future()));
                 }
                 drop(lock);
             }

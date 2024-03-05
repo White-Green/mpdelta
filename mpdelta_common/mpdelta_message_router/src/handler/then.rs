@@ -1,5 +1,5 @@
-use crate::message_router::handler::{IntoMessageHandler, MessageHandler, MessageHandlerBuilder};
-use crate::message_router::static_cow::{Owned, StaticCow};
+use crate::handler::{IntoMessageHandler, MessageHandler, MessageHandlerBuilder};
+use crate::static_cow::{Owned, StaticCow};
 use futures::FutureExt;
 use mpdelta_async_runtime::AsyncRuntime;
 use std::future::IntoFuture;

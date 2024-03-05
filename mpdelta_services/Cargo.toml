@@ -15,3 +15,6 @@ thiserror = { workspace = true }
 time = { workspace = true }
 tokio = { workspace = true }
 uuid = { workspace = true, features = ["v1", "fast-rng"] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt"] }

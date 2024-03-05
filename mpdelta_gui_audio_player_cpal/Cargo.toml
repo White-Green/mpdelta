@@ -12,4 +12,4 @@ mpdelta_core_audio = { workspace = true }
 mpdelta_dsp = { workspace = true }
 mpdelta_gui = { workspace = true }
 thiserror = { workspace = true }
-tokio = { workspace = true }
+tokio = { workspace = true, features = ["rt"] }

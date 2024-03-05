@@ -26,8 +26,10 @@ impl InMemoryEasingLoader {
         self.all.push(Arc::clone(&easing));
         self.map.insert(identifier, easing);
     }
+}
 
-    pub fn from_iter(iter: impl IntoIterator<Item = Arc<dyn Easing>>) -> InMemoryEasingLoader {
+impl FromIterator<Arc<dyn Easing>> for InMemoryEasingLoader {
+    fn from_iter<T: IntoIterator<Item = Arc<dyn Easing>>>(iter: T) -> Self {
         let mut loader = InMemoryEasingLoader::new();
         for easing in iter {
             loader.add(easing);

@@ -64,34 +64,22 @@ pub enum EasingValueEditEvent {
     MoveValue { value_index: usize, side: Side, value: f64 },
 }
 
-pub struct EasingValueEditor<'a, F> {
-    id: Id,
-    time_range: Range<f64>,
-    times: &'a [f64],
-    value: &'a TimeSplitValue<usize, Option<EasingValue<f64>>>,
-    value_range: Range<f64>,
-    point_per_second: f64,
-    scroll_offset: &'a mut f32,
-    update: F,
+pub struct EasingValueEditor<'a, H, F> {
+    pub id: H,
+    pub time_range: Range<f64>,
+    pub times: &'a [f64],
+    pub value: &'a TimeSplitValue<usize, Option<EasingValue<f64>>>,
+    pub value_range: Range<f64>,
+    pub point_per_second: f64,
+    pub scroll_offset: &'a mut f32,
+    pub update: F,
 }
 
-impl<'a, F> EasingValueEditor<'a, F>
+impl<'a, H, F> EasingValueEditor<'a, H, F>
 where
+    H: Hash,
     F: FnMut(EasingValueEditEvent) + 'a,
 {
-    pub fn new(id: impl Hash, times: &'a [f64], time_range: Range<f64>, value: &'a TimeSplitValue<usize, Option<EasingValue<f64>>>, value_range: Range<f64>, point_per_second: f64, scroll_offset: &'a mut f32, update: F) -> EasingValueEditor<'a, F> {
-        EasingValueEditor {
-            id: Id::new(id),
-            time_range,
-            times,
-            value,
-            value_range,
-            point_per_second,
-            scroll_offset,
-            update,
-        }
-    }
-
     pub fn show(self, ui: &mut Ui) {
         let EasingValueEditor {
             id,
@@ -103,6 +91,7 @@ where
             scroll_offset,
             mut update,
         } = self;
+        let id = Id::new(id);
         let scroll_area_output = ScrollArea::horizontal().id_source(id).scroll_offset(Vec2::new(*scroll_offset, 0.)).scroll_bar_visibility(ScrollBarVisibility::AlwaysHidden).show(ui, |ui| {
             let id = ui.make_persistent_id(id);
             let mut state: InnerStateEdit = ui.data(|data| data.get_temp::<InnerState>(id).unwrap_or_default().into());
@@ -480,7 +469,16 @@ mod tests {
                     3,
                 );
                 let mut scroll_offset = 0.;
-                let $editor = EasingValueEditor::new("editor", &times, 1.0..4.0, &value, -0.5..1.5, 150., &mut scroll_offset, |_| {});
+                let $editor = EasingValueEditor {
+                    id: "editor",
+                    time_range: 1.0..4.0,
+                    times: &times,
+                    value: &value,
+                    value_range: -0.5..1.5,
+                    point_per_second: 150.,
+                    scroll_offset: &mut scroll_offset,
+                    update: |_| {},
+                };
             };
         }
         let width = 512;

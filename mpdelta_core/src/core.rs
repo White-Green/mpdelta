@@ -68,23 +68,46 @@ where
     }
 }
 
-impl<K, IdGenerator, ProjectSerializer, ProjectLoader, ProjectWriter, ProjectMemory, RootComponentClassMemory, ComponentClassLoader, ComponentRendererBuilder, VideoEncoder, Editor, EditHistory>
-    MPDeltaCore<K, IdGenerator, ProjectSerializer, ProjectLoader, ProjectWriter, ProjectMemory, RootComponentClassMemory, ComponentClassLoader, ComponentRendererBuilder, VideoEncoder, Editor, EditHistory>
+pub trait NewWithArgs {
+    type Args;
+    fn new(args: Self::Args) -> Self;
+}
+
+pub struct MPDeltaCoreArgs<K: 'static, IdGenerator, ProjectSerializer, ProjectLoader, ProjectWriter, ProjectMemory, RootComponentClassMemory, ComponentClassLoader, ComponentRendererBuilder, VideoEncoder, Editor, EditHistory> {
+    pub id_generator: Arc<IdGenerator>,
+    pub project_serializer: Arc<ProjectSerializer>,
+    pub project_loader: Arc<ProjectLoader>,
+    pub project_writer: Arc<ProjectWriter>,
+    pub project_memory: Arc<ProjectMemory>,
+    pub root_component_class_memory: Arc<RootComponentClassMemory>,
+    pub component_class_loader: Arc<ComponentClassLoader>,
+    pub component_renderer_builder: Arc<ComponentRendererBuilder>,
+    pub video_encoder: Arc<VideoEncoder>,
+    pub editor: Arc<Editor>,
+    pub edit_history: Arc<EditHistory>,
+    pub key: Arc<RwLock<TCellOwner<K>>>,
+}
+
+impl<K, IdGenerator, ProjectSerializer, ProjectLoader, ProjectWriter, ProjectMemory, RootComponentClassMemory, ComponentClassLoader, ComponentRendererBuilder, VideoEncoder, Editor, EditHistory> NewWithArgs
+    for MPDeltaCore<K, IdGenerator, ProjectSerializer, ProjectLoader, ProjectWriter, ProjectMemory, RootComponentClassMemory, ComponentClassLoader, ComponentRendererBuilder, VideoEncoder, Editor, EditHistory>
 {
-    pub fn new(
-        id_generator: Arc<IdGenerator>,
-        project_serializer: Arc<ProjectSerializer>,
-        project_loader: Arc<ProjectLoader>,
-        project_writer: Arc<ProjectWriter>,
-        project_memory: Arc<ProjectMemory>,
-        root_component_class_memory: Arc<RootComponentClassMemory>,
-        component_class_loader: Arc<ComponentClassLoader>,
-        component_renderer_builder: Arc<ComponentRendererBuilder>,
-        video_encoder: Arc<VideoEncoder>,
-        editor: Arc<Editor>,
-        edit_history: Arc<EditHistory>,
-        key: Arc<RwLock<TCellOwner<K>>>,
-    ) -> MPDeltaCore<K, IdGenerator, ProjectSerializer, ProjectLoader, ProjectWriter, ProjectMemory, RootComponentClassMemory, ComponentClassLoader, ComponentRendererBuilder, VideoEncoder, Editor, EditHistory> {
+    type Args = MPDeltaCoreArgs<K, IdGenerator, ProjectSerializer, ProjectLoader, ProjectWriter, ProjectMemory, RootComponentClassMemory, ComponentClassLoader, ComponentRendererBuilder, VideoEncoder, Editor, EditHistory>;
+    fn new(
+        MPDeltaCoreArgs {
+            id_generator,
+            project_serializer,
+            project_loader,
+            project_writer,
+            project_memory,
+            root_component_class_memory,
+            component_class_loader,
+            component_renderer_builder,
+            video_encoder,
+            editor,
+            edit_history,
+            key,
+        }: Self::Args,
+    ) -> Self {
         MPDeltaCore {
             id_generator,
             project_serializer,

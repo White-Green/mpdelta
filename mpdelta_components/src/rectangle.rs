@@ -76,17 +76,9 @@ impl<K, T: ParameterValueType<Image = ImageType>> ComponentClass<K, T> for Recta
         let left = StaticPointerOwned::new(TCell::new(MarkerPin::new(TimelineTime::ZERO, MarkerTime::ZERO)));
         let right = StaticPointerOwned::new(TCell::new(MarkerPin::new(TimelineTime::new(MixedFraction::from_integer(1)), MarkerTime::new(MixedFraction::from_integer(1)).unwrap())));
         let image_required_params = ImageRequiredParams::new_default(StaticPointerOwned::reference(&left), StaticPointerOwned::reference(&right));
-        ComponentInstance::new(
-            this.clone(),
-            StaticPointerCow::Owned(left),
-            StaticPointerCow::Owned(right),
-            Vec::new(),
-            Some(image_required_params),
-            None,
-            Box::new([]),
-            Box::new([]),
-            Arc::clone(&self.0) as Arc<dyn ComponentProcessorNative<K, T>>,
-        )
+        ComponentInstance::builder(this.clone(), StaticPointerCow::Owned(left), StaticPointerCow::Owned(right), Vec::new(), Arc::clone(&self.0) as Arc<dyn ComponentProcessorNative<K, T>>)
+            .image_required_params(image_required_params)
+            .build()
     }
 }
 

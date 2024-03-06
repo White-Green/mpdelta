@@ -90,19 +90,59 @@ impl<K: 'static, T: ParameterValueType, VM: PropertyWindowViewModel<K, T>> Prope
                         .show(ui, |ui| {
                             ui.label("position - X");
                             let mut edit_events = SmallVec::<[_; 1]>::new();
-                            EasingValueEditor::new("position - X", times.as_ref(), instance_range.clone(), tx, -3.0..3.0, point_per_second, &mut self.scroll_offset, extend_fn(&mut edit_events)).show(ui);
+                            EasingValueEditor {
+                                id: "position - X",
+                                time_range: instance_range.clone(),
+                                times: times.as_ref(),
+                                value: tx,
+                                value_range: -3.0..3.0,
+                                point_per_second,
+                                scroll_offset: &mut self.scroll_offset,
+                                update: extend_fn(&mut edit_events),
+                            }
+                            .show(ui);
                             edited |= edit_value_by_event(translate_x, tx, edit_events);
                             let mut edit_events = SmallVec::<[_; 1]>::new();
                             ui.label("position - Y");
-                            EasingValueEditor::new("position - Y", times.as_ref(), instance_range.clone(), ty, -3.0..3.0, point_per_second, &mut self.scroll_offset, extend_fn(&mut edit_events)).show(ui);
+                            EasingValueEditor {
+                                id: "position - Y",
+                                time_range: instance_range.clone(),
+                                times: times.as_ref(),
+                                value: ty,
+                                value_range: -3.0..3.0,
+                                point_per_second,
+                                scroll_offset: &mut self.scroll_offset,
+                                update: extend_fn(&mut edit_events),
+                            }
+                            .show(ui);
                             edited |= edit_value_by_event(translate_y, ty, edit_events);
                             let mut edit_events = SmallVec::<[_; 1]>::new();
                             ui.label("scale - X");
-                            EasingValueEditor::new("scale - X", times.as_ref(), instance_range.clone(), sx, 0.0..2.0, point_per_second, &mut self.scroll_offset, extend_fn(&mut edit_events)).show(ui);
+                            EasingValueEditor {
+                                id: "scale - X",
+                                time_range: instance_range.clone(),
+                                times: times.as_ref(),
+                                value: sx,
+                                value_range: 0.0..2.0,
+                                point_per_second,
+                                scroll_offset: &mut self.scroll_offset,
+                                update: extend_fn(&mut edit_events),
+                            }
+                            .show(ui);
                             edited |= edit_value_by_event(scale_x, sx, edit_events);
                             let mut edit_events = SmallVec::<[_; 1]>::new();
                             ui.label("scale - Y");
-                            EasingValueEditor::new("scale - Y", times.as_ref(), instance_range.clone(), sy, 0.0..2.0, point_per_second, &mut self.scroll_offset, extend_fn(&mut edit_events)).show(ui);
+                            EasingValueEditor {
+                                id: "scale - Y",
+                                time_range: instance_range.clone(),
+                                times: times.as_ref(),
+                                value: sy,
+                                value_range: 0.0..2.0,
+                                point_per_second,
+                                scroll_offset: &mut self.scroll_offset,
+                                update: extend_fn(&mut edit_events),
+                            }
+                            .show(ui);
                             edited |= edit_value_by_event(scale_y, sy, edit_events);
                         });
                     let old_scroll_style = mem::replace(&mut ui.style_mut().spacing.scroll, ScrollStyle::solid());

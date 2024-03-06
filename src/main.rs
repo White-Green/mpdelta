@@ -7,7 +7,7 @@ use mpdelta_components::sine_audio::SineAudio;
 use mpdelta_core::component::class::{ComponentClass, ComponentClassIdentifier};
 use mpdelta_core::component::parameter::value::{DynEditableSelfEasingValueManager, DynEditableSelfValueManager, LinearEasing};
 use mpdelta_core::component::parameter::{AbstractFile, ParameterAllValues, ParameterValueRaw, ParameterValueType};
-use mpdelta_core::core::{ComponentClassLoader, MPDeltaCore};
+use mpdelta_core::core::{ComponentClassLoader, MPDeltaCore, MPDeltaCoreArgs, NewWithArgs};
 use mpdelta_core::ptr::{StaticPointer, StaticPointerOwned};
 use mpdelta_core_audio::AudioType;
 use mpdelta_core_vulkano::ImageType;
@@ -147,22 +147,22 @@ fn main() {
         Arc::clone(&key),
         runtime.handle().clone(),
     ));
-    let project_editor = Arc::new(ProjectEditor::new(Arc::clone(&key)));
+    let editor = Arc::new(ProjectEditor::new(Arc::clone(&key)));
     let edit_history = Arc::new(InMemoryEditHistoryStore::new(100));
-    let core = Arc::new(MPDeltaCore::new(
+    let core = Arc::new(MPDeltaCore::new(MPDeltaCoreArgs {
         id_generator,
         project_serializer,
         project_loader,
         project_writer,
-        Arc::clone(&project_memory),
-        project_memory,
+        project_memory: Arc::clone(&project_memory),
+        root_component_class_memory: project_memory,
         component_class_loader,
-        Arc::clone(&component_renderer_builder),
-        component_renderer_builder,
-        project_editor,
+        component_renderer_builder: Arc::clone(&component_renderer_builder),
+        video_encoder: component_renderer_builder,
+        editor,
         edit_history,
-        Arc::clone(&key),
-    ));
+        key: Arc::clone(&key),
+    }));
     let audio_player = Arc::new(
         CpalAudioPlayer::new(
             || {
@@ -174,27 +174,27 @@ fn main() {
         .unwrap(),
     );
     let encoder_builder = Arc::new(FfmpegEncoderBuilder::new(Arc::clone(&context)));
-    let params = ViewModelParamsImpl::new(
-        runtime.handle().clone(),
-        Arc::clone(&core),
-        Arc::clone(&core),
-        Arc::clone(&core),
-        Arc::clone(&core),
-        Arc::clone(&core),
-        Arc::clone(&core),
-        Arc::clone(&core),
-        Arc::clone(&core),
-        Arc::clone(&core),
-        Arc::clone(&core),
-        Arc::clone(&core),
-        Arc::clone(&core),
-        Arc::clone(&core),
-        Arc::clone(&key),
+    let params = ViewModelParamsImpl {
+        runtime: runtime.handle().clone(),
+        edit: Arc::clone(&core),
+        subscribe_edit_event: Arc::clone(&core),
+        get_available_component_classes: Arc::clone(&core),
+        get_loaded_projects: Arc::clone(&core),
+        get_root_component_classes: Arc::clone(&core),
+        load_project: Arc::clone(&core),
+        new_project: Arc::clone(&core),
+        new_root_component_class: Arc::clone(&core),
+        realtime_render_component: Arc::clone(&core),
+        redo: Arc::clone(&core),
+        set_owner_for_root_component_class: Arc::clone(&core),
+        undo: Arc::clone(&core),
+        write_project: Arc::clone(&core),
+        key: Arc::clone(&key),
         audio_player,
-        encoder_builder.available_video_codec::<FfmpegEncodeSettings<File>>().into_iter().collect::<Vec<_>>().into(),
-        encoder_builder.available_audio_codec().into_iter().collect::<Vec<_>>().into(),
-        Arc::clone(&core),
-    );
+        available_video_codec: encoder_builder.available_video_codec::<FfmpegEncodeSettings<File>>().into_iter().collect::<Vec<_>>().into(),
+        available_audio_codec: encoder_builder.available_audio_codec().into_iter().collect::<Vec<_>>().into(),
+        encode: Arc::clone(&core),
+    };
     let gui = MPDeltaGUI::new(params);
     let gui = MPDeltaGUIVulkano::new(context, event_loop, windows, gui);
     gui.main();

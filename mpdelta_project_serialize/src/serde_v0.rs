@@ -796,17 +796,15 @@ impl<T: ParameterValueType> RootComponentClassForSerialize<T, De> {
                         .await?;
                     let image_required_params_slot = image_required_params.as_ref().map(|_| ImageRequiredParams::new_default(StaticPointerOwned::reference(&left), StaticPointerOwned::reference(&right)));
                     let audio_required_params_slot = audio_required_params.as_ref().map(|_| AudioRequiredParams { volume: vec![] });
-                    let instance_slot = StaticPointerOwned::new(TCell::new(ComponentInstance::new(
-                        class_ptr,
-                        StaticPointerCow::Owned(left),
-                        StaticPointerCow::Owned(right),
-                        markers,
-                        image_required_params_slot,
-                        audio_required_params_slot,
-                        fixed_parameter_types.into_boxed_slice(),
-                        fixed_parameters.into_boxed_slice(),
-                        processor,
-                    )));
+                    let mut instance = ComponentInstance::builder(class_ptr, StaticPointerCow::Owned(left), StaticPointerCow::Owned(right), markers, processor);
+                    if let Some(image_required_params) = image_required_params_slot {
+                        instance = instance.image_required_params(image_required_params);
+                    }
+                    if let Some(audio_required_params) = audio_required_params_slot {
+                        instance = instance.audio_required_params(audio_required_params);
+                    }
+                    let instance = instance.fixed_parameters(fixed_parameter_types.into_boxed_slice(), fixed_parameters.into_boxed_slice()).build();
+                    let instance_slot = StaticPointerOwned::new(TCell::new(instance));
                     Ok::<_, DeserializeError<K>>((instance_slot, (variable_parameters, image_required_params, audio_required_params)))
                 })
             })

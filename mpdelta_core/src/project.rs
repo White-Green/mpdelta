@@ -181,17 +181,10 @@ impl<K, T: ParameterValueType + 'static> ComponentClass<K, T> for RootComponentC
         };
         let audio_required_params = AudioRequiredParams { volume: vec![one_value.clone(), one_value] };
         let processor = Arc::new(self.item.clone()) as Arc<dyn ComponentProcessorComponent<K, T>>;
-        ComponentInstance::new(
-            this.clone(),
-            StaticPointerCow::Reference(marker_left),
-            StaticPointerCow::Reference(marker_right),
-            Vec::new(),
-            Some(image_required_params),
-            Some(audio_required_params),
-            Box::new([]),
-            Box::new([]),
-            processor,
-        )
+        ComponentInstance::builder(this.clone(), StaticPointerCow::Reference(marker_left), StaticPointerCow::Reference(marker_right), Vec::new(), processor)
+            .image_required_params(image_required_params)
+            .audio_required_params(audio_required_params)
+            .build()
     }
 }
 

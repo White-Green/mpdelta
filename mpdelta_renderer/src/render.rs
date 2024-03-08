@@ -1,5 +1,5 @@
 use crate::thread_cancel::{AutoCancellable, CancellationGuard};
-use crate::{AudioCombinerParam, AudioCombinerRequest, Combiner, CombinerBuilder, ImageCombinerParam, ImageCombinerRequest, ImageSizeRequest, RenderError};
+use crate::{AudioCombinerParam, AudioCombinerRequest, Combiner, CombinerBuilder, ImageCombinerParam, ImageCombinerRequest, ImageSizeRequest, RenderError, RenderResult};
 use cgmath::Vector3;
 use futures::{stream, StreamExt, TryStreamExt};
 use mpdelta_core::common::mixed_fraction::MixedFraction;
@@ -47,7 +47,7 @@ where
         }
     }
 
-    pub(crate) fn render(&self, at: usize, ty: ParameterType, key: Arc<impl Deref<Target = TCellOwner<K>> + Send + Sync + 'static>) -> impl Future<Output = Result<ParameterValueRaw<T::Image, T::Audio>, RenderError<K, T>>> + Send + 'static {
+    pub(crate) fn render(&self, at: usize, ty: ParameterType, key: Arc<impl Deref<Target = TCellOwner<K>> + Send + Sync + 'static>) -> impl Future<Output = RenderResult<ParameterValueRaw<T::Image, T::Audio>, K, T>> + Send + 'static {
         let ctx = RenderContext {
             runtime: self.runtime.clone(),
             key,
@@ -158,7 +158,7 @@ fn render_inner<'a, K, T, Key, ImageCombinerBuilder, AudioCombinerBuilder>(
     at: TimelineTime,
     ty: &'a ParameterType,
     ctx: &'a RenderContext<Key, T, ImageCombinerBuilder, AudioCombinerBuilder>,
-) -> impl Future<Output = Result<Parameter<RenderOutput<T::Image, T::Audio>>, RenderError<K, T>>> + Send + 'a
+) -> impl Future<Output = RenderResult<Parameter<RenderOutput<T::Image, T::Audio>>, K, T>> + Send + 'a
 where
     K: 'static,
     T: ParameterValueType,
@@ -482,7 +482,7 @@ pub struct TimeMap {
 }
 
 impl TimeMap {
-    fn new<K, T: ParameterValueType>(left: &MarkerPinHandle<K>, markers: &[MarkerPinHandleOwned<K>], right: &MarkerPinHandle<K>, key: &TCellOwner<K>) -> Result<TimeMap, RenderError<K, T>> {
+    fn new<K, T: ParameterValueType>(left: &MarkerPinHandle<K>, markers: &[MarkerPinHandleOwned<K>], right: &MarkerPinHandle<K>, key: &TCellOwner<K>) -> RenderResult<TimeMap, K, T> {
         let markers = iter::once(left)
             .chain(markers.iter().map(StaticPointerOwned::reference))
             .chain(iter::once(right))

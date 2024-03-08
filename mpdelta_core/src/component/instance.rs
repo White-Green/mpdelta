@@ -7,6 +7,89 @@ use qcell::TCell;
 use std::fmt::{Debug, Formatter};
 use tokio::sync::RwLock;
 
+pub struct ComponentInstanceBuilder<K: 'static, T: ParameterValueType> {
+    component_class: StaticPointer<RwLock<dyn ComponentClass<K, T>>>,
+    marker_left: MarkerPinHandleCow<K>,
+    marker_right: MarkerPinHandleCow<K>,
+    markers: Vec<MarkerPinHandleOwned<K>>,
+    image_required_params: Option<ImageRequiredParams<K, T>>,
+    audio_required_params: Option<AudioRequiredParams<K, T>>,
+    fixed_parameters_type: Box<[(String, Parameter<Type>)]>,
+    fixed_parameters: Box<[ParameterValueFixed<T::Image, T::Audio>]>,
+    variable_parameters_type: Vec<(String, Parameter<Type>)>,
+    variable_parameters: Vec<VariableParameterValue<K, T, ParameterNullableValue<K, T>>>,
+    processor: ComponentProcessorWrapper<K, T>,
+}
+
+impl<K: 'static, T: ParameterValueType> ComponentInstanceBuilder<K, T> {
+    pub fn new(component_class: StaticPointer<RwLock<dyn ComponentClass<K, T>>>, marker_left: MarkerPinHandleCow<K>, marker_right: MarkerPinHandleCow<K>, markers: Vec<MarkerPinHandleOwned<K>>, processor: impl Into<ComponentProcessorWrapper<K, T>>) -> ComponentInstanceBuilder<K, T> {
+        ComponentInstanceBuilder {
+            component_class,
+            marker_left,
+            marker_right,
+            markers,
+            image_required_params: None,
+            audio_required_params: None,
+            fixed_parameters_type: Box::new([]),
+            fixed_parameters: Box::new([]),
+            variable_parameters_type: Vec::new(),
+            variable_parameters: Vec::new(),
+            processor: processor.into(),
+        }
+    }
+
+    pub fn image_required_params(mut self, params: ImageRequiredParams<K, T>) -> Self {
+        self.image_required_params = Some(params);
+        self
+    }
+
+    pub fn audio_required_params(mut self, params: AudioRequiredParams<K, T>) -> Self {
+        self.audio_required_params = Some(params);
+        self
+    }
+
+    pub fn fixed_parameters(mut self, types: Box<[(String, Parameter<Type>)]>, values: Box<[ParameterValueFixed<T::Image, T::Audio>]>) -> Self {
+        self.fixed_parameters_type = types;
+        self.fixed_parameters = values;
+        self
+    }
+
+    pub fn variable_parameters(mut self, types: Vec<(String, Parameter<Type>)>, values: Vec<VariableParameterValue<K, T, ParameterNullableValue<K, T>>>) -> Self {
+        self.variable_parameters_type = types;
+        self.variable_parameters = values;
+        self
+    }
+
+    pub fn build(self) -> ComponentInstance<K, T> {
+        let ComponentInstanceBuilder {
+            component_class,
+            marker_left,
+            marker_right,
+            markers,
+            image_required_params,
+            audio_required_params,
+            fixed_parameters_type,
+            fixed_parameters,
+            variable_parameters_type,
+            variable_parameters,
+            processor,
+        } = self;
+        ComponentInstance {
+            component_class,
+            marker_left,
+            marker_right,
+            markers,
+            image_required_params,
+            audio_required_params,
+            fixed_parameters_type,
+            fixed_parameters,
+            variable_parameters_type,
+            variable_parameters,
+            processor,
+        }
+    }
+}
+
 pub struct ComponentInstance<K: 'static, T: ParameterValueType> {
     component_class: StaticPointer<RwLock<dyn ComponentClass<K, T>>>,
     marker_left: MarkerPinHandleCow<K>,
@@ -54,30 +137,8 @@ where
 }
 
 impl<K, T: ParameterValueType> ComponentInstance<K, T> {
-    pub fn new(
-        component_class: StaticPointer<RwLock<dyn ComponentClass<K, T>>>,
-        marker_left: MarkerPinHandleCow<K>,
-        marker_right: MarkerPinHandleCow<K>,
-        markers: Vec<MarkerPinHandleOwned<K>>,
-        image_required_params: Option<ImageRequiredParams<K, T>>,
-        audio_required_params: Option<AudioRequiredParams<K, T>>,
-        fixed_parameters_type: Box<[(String, Parameter<Type>)]>,
-        fixed_parameters: Box<[ParameterValueFixed<T::Image, T::Audio>]>,
-        processor: impl Into<ComponentProcessorWrapper<K, T>>,
-    ) -> ComponentInstance<K, T> {
-        ComponentInstance {
-            component_class,
-            marker_left,
-            marker_right,
-            markers,
-            image_required_params,
-            audio_required_params,
-            fixed_parameters_type,
-            fixed_parameters,
-            variable_parameters_type: Vec::new(),
-            variable_parameters: Vec::new(),
-            processor: processor.into(),
-        }
+    pub fn builder(component_class: StaticPointer<RwLock<dyn ComponentClass<K, T>>>, marker_left: MarkerPinHandleCow<K>, marker_right: MarkerPinHandleCow<K>, markers: Vec<MarkerPinHandleOwned<K>>, processor: impl Into<ComponentProcessorWrapper<K, T>>) -> ComponentInstanceBuilder<K, T> {
+        ComponentInstanceBuilder::new(component_class, marker_left, marker_right, markers, processor)
     }
     pub fn component_class(&self) -> &StaticPointer<RwLock<dyn ComponentClass<K, T>>> {
         &self.component_class

@@ -4,7 +4,6 @@ use std::ops::Deref;
 
 pub mod edit_funnel;
 pub mod global_ui_state;
-pub(crate) mod message_router;
 mod preview;
 mod property_window;
 mod timeline;

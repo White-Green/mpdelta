@@ -1,5 +1,5 @@
 use crate::property_window::view::widgets::editable_easing_value::{EasingValueEditEvent, EasingValueEditor, Side};
-use crate::property_window::viewmodel::{ImageRequiredParamsTransformForEdit, PropertyWindowViewModel};
+use crate::property_window::viewmodel::{ImageRequiredParamsEditSet, ImageRequiredParamsTransformForEdit, PropertyWindowViewModel, ValueWithEditCopy};
 use cgmath::Vector3;
 use egui::scroll_area::ScrollBarVisibility;
 use egui::style::ScrollStyle;
@@ -70,18 +70,32 @@ impl<K: 'static, T: ParameterValueType, VM: PropertyWindowViewModel<K, T>> Prope
             ui.label("Component Properties");
             let image_required_params = &mut *self.view_model.image_required_params();
             let mut edited = false;
-            if let Some((image_required_params, times)) = image_required_params {
+            if let Some(ImageRequiredParamsEditSet { params: image_required_params, pin_times }) = image_required_params {
                 if let ImageRequiredParamsTransformForEdit::Params {
-                    scale: Vector3 {
-                        x: (VariableParameterValue { params: scale_x, .. }, sx),
-                        y: (VariableParameterValue { params: scale_y, .. }, sy),
-                        ..
-                    },
-                    translate: Vector3 {
-                        x: (VariableParameterValue { params: translate_x, .. }, tx),
-                        y: (VariableParameterValue { params: translate_y, .. }, ty),
-                        ..
-                    },
+                    scale:
+                        Vector3 {
+                            x: ValueWithEditCopy {
+                                value: VariableParameterValue { params: scale_x, .. },
+                                edit_copy: sx,
+                            },
+                            y: ValueWithEditCopy {
+                                value: VariableParameterValue { params: scale_y, .. },
+                                edit_copy: sy,
+                            },
+                            ..
+                        },
+                    translate:
+                        Vector3 {
+                            x: ValueWithEditCopy {
+                                value: VariableParameterValue { params: translate_x, .. },
+                                edit_copy: tx,
+                            },
+                            y: ValueWithEditCopy {
+                                value: VariableParameterValue { params: translate_y, .. },
+                                edit_copy: ty,
+                            },
+                            ..
+                        },
                     ..
                 } = &mut image_required_params.transform
                 {
@@ -90,19 +104,59 @@ impl<K: 'static, T: ParameterValueType, VM: PropertyWindowViewModel<K, T>> Prope
                         .show(ui, |ui| {
                             ui.label("position - X");
                             let mut edit_events = SmallVec::<[_; 1]>::new();
-                            EasingValueEditor::new("position - X", times.as_ref(), instance_range.clone(), tx, -3.0..3.0, point_per_second, &mut self.scroll_offset, extend_fn(&mut edit_events)).show(ui);
+                            EasingValueEditor {
+                                id: "position - X",
+                                time_range: instance_range.clone(),
+                                times: pin_times.as_ref(),
+                                value: tx,
+                                value_range: -3.0..3.0,
+                                point_per_second,
+                                scroll_offset: &mut self.scroll_offset,
+                                update: extend_fn(&mut edit_events),
+                            }
+                            .show(ui);
                             edited |= edit_value_by_event(translate_x, tx, edit_events);
                             let mut edit_events = SmallVec::<[_; 1]>::new();
                             ui.label("position - Y");
-                            EasingValueEditor::new("position - Y", times.as_ref(), instance_range.clone(), ty, -3.0..3.0, point_per_second, &mut self.scroll_offset, extend_fn(&mut edit_events)).show(ui);
+                            EasingValueEditor {
+                                id: "position - Y",
+                                time_range: instance_range.clone(),
+                                times: pin_times.as_ref(),
+                                value: ty,
+                                value_range: -3.0..3.0,
+                                point_per_second,
+                                scroll_offset: &mut self.scroll_offset,
+                                update: extend_fn(&mut edit_events),
+                            }
+                            .show(ui);
                             edited |= edit_value_by_event(translate_y, ty, edit_events);
                             let mut edit_events = SmallVec::<[_; 1]>::new();
                             ui.label("scale - X");
-                            EasingValueEditor::new("scale - X", times.as_ref(), instance_range.clone(), sx, 0.0..2.0, point_per_second, &mut self.scroll_offset, extend_fn(&mut edit_events)).show(ui);
+                            EasingValueEditor {
+                                id: "scale - X",
+                                time_range: instance_range.clone(),
+                                times: pin_times.as_ref(),
+                                value: sx,
+                                value_range: 0.0..2.0,
+                                point_per_second,
+                                scroll_offset: &mut self.scroll_offset,
+                                update: extend_fn(&mut edit_events),
+                            }
+                            .show(ui);
                             edited |= edit_value_by_event(scale_x, sx, edit_events);
                             let mut edit_events = SmallVec::<[_; 1]>::new();
                             ui.label("scale - Y");
-                            EasingValueEditor::new("scale - Y", times.as_ref(), instance_range.clone(), sy, 0.0..2.0, point_per_second, &mut self.scroll_offset, extend_fn(&mut edit_events)).show(ui);
+                            EasingValueEditor {
+                                id: "scale - Y",
+                                time_range: instance_range.clone(),
+                                times: pin_times.as_ref(),
+                                value: sy,
+                                value_range: 0.0..2.0,
+                                point_per_second,
+                                scroll_offset: &mut self.scroll_offset,
+                                update: extend_fn(&mut edit_events),
+                            }
+                            .show(ui);
                             edited |= edit_value_by_event(scale_y, sy, edit_events);
                         });
                     let old_scroll_style = mem::replace(&mut ui.style_mut().spacing.scroll, ScrollStyle::solid());
@@ -116,7 +170,7 @@ impl<K: 'static, T: ParameterValueType, VM: PropertyWindowViewModel<K, T>> Prope
                 }
             }
             if edited {
-                self.view_model.updated_image_required_params(&image_required_params.as_ref().unwrap().0);
+                self.view_model.updated_image_required_params(&image_required_params.as_ref().unwrap().params);
             }
         });
     }
@@ -125,7 +179,7 @@ impl<K: 'static, T: ParameterValueType, VM: PropertyWindowViewModel<K, T>> Prope
 #[cfg(test)]
 mod tests {
     use crate::property_window::view::PropertyWindow;
-    use crate::property_window::viewmodel::{ImageRequiredParamsForEdit, PropertyWindowViewModel};
+    use crate::property_window::viewmodel::{ImageRequiredParamsEditSet, ImageRequiredParamsForEdit, PropertyWindowViewModel};
     use egui::Visuals;
     use egui_image_renderer::FileFormat;
     use mpdelta_core::component::marker_pin::{MarkerPin, MarkerPinHandleOwned, MarkerTime};
@@ -156,11 +210,11 @@ mod tests {
             type ComponentClass = ();
         }
         struct VM {
-            params: Mutex<Option<(ImageRequiredParamsForEdit<K, T>, Vec<f64>)>>,
+            params: Mutex<Option<ImageRequiredParamsEditSet<K, T, Vec<f64>>>>,
         }
         impl PropertyWindowViewModel<K, T> for VM {
             type Times = Vec<f64>;
-            type ImageRequiredParams<'a> = MutexGuard<'a, Option<(ImageRequiredParamsForEdit<K, T>, Self::Times)>>;
+            type ImageRequiredParams<'a> = MutexGuard<'a, Option<ImageRequiredParamsEditSet<K, T, Self::Times>>>;
 
             fn selected_instance_at(&self) -> Range<f64> {
                 0.0..1.0
@@ -175,8 +229,10 @@ mod tests {
         let owner = TCellOwner::new();
         let left = MarkerPinHandleOwned::new(TCell::new(MarkerPin::new(TimelineTime::new(mfrac!(0)), MarkerTime::new(mfrac!(0)).unwrap())));
         let right = MarkerPinHandleOwned::new(TCell::new(MarkerPin::new(TimelineTime::new(mfrac!(1)), MarkerTime::new(mfrac!(1)).unwrap())));
-        let (params, _, times) = ImageRequiredParamsForEdit::from_image_required_params(ImageRequiredParams::new_default(StaticPointerOwned::reference(&left), StaticPointerOwned::reference(&right)), iter::empty(), &owner);
-        let mut window = PropertyWindow::new(Arc::new(VM { params: Mutex::new(Some((params, times))) }));
+        let (params, pin_times) = ImageRequiredParamsForEdit::from_image_required_params(ImageRequiredParams::new_default(StaticPointerOwned::reference(&left), StaticPointerOwned::reference(&right)), iter::empty(), &owner);
+        let mut window = PropertyWindow::new(Arc::new(VM {
+            params: Mutex::new(Some(ImageRequiredParamsEditSet { params, pin_times })),
+        }));
         let mut output = Cursor::new(Vec::new());
         egui_image_renderer::render_into_file(
             |ctx| {

@@ -85,14 +85,11 @@ impl<K: 'static, T: ParameterValueType, VM: TimelineViewModel<K, T>> Timeline<K,
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::property_window::viewmodel::ImageRequiredParamsForEdit;
     use crate::timeline::viewmodel::{ComponentInstanceData, ComponentLinkDataList, MarkerPinData};
     use egui::{Pos2, Visuals};
     use egui_image_renderer::FileFormat;
-    use mpdelta_core::time::TimelineTime;
     use std::cell::Cell;
     use std::io::Cursor;
-    use std::sync::Mutex;
 
     #[tokio::test]
     async fn view_timeline() {
@@ -110,9 +107,7 @@ mod tests {
             type Array = ();
             type ComponentClass = ();
         }
-        struct VM {
-            params: Mutex<Option<(ImageRequiredParamsForEdit<K, T>, Vec<TimelineTime>)>>,
-        }
+        struct VM;
         impl TimelineViewModel<K, T> for VM {
             fn seek(&self) -> usize {
                 0
@@ -230,7 +225,7 @@ mod tests {
 
             fn add_component_instance(&self, _class: Self::ComponentClassHandle) {}
         }
-        let mut timeline = Timeline::new(Arc::new(VM { params: Mutex::new(None) }));
+        let mut timeline = Timeline::new(Arc::new(VM));
         let mut output = Cursor::new(Vec::new());
         egui_image_renderer::render_into_file(
             |ctx| {

@@ -14,6 +14,7 @@ members = [
     "mpdelta_common/mpdelta_async_runtime",
     "mpdelta_common/mpdelta_dsp",
     "mpdelta_common/mpdelta_ffmpeg",
+    "mpdelta_common/mpdelta_message_router",
     "mpdelta_components",
     "mpdelta_core",
     "mpdelta_core_audio",
@@ -39,6 +40,7 @@ default-members = [
     "mpdelta_common/mpdelta_async_runtime",
     "mpdelta_common/mpdelta_dsp",
     "mpdelta_common/mpdelta_ffmpeg",
+    "mpdelta_common/mpdelta_message_router",
     "mpdelta_components",
     "mpdelta_core",
     "mpdelta_core_audio",
@@ -95,6 +97,7 @@ mpdelta_ffmpeg = { path = "mpdelta_common/mpdelta_ffmpeg" }
 mpdelta_gui = { path = "mpdelta_gui" }
 mpdelta_gui_audio_player_cpal = { path = "mpdelta_gui_audio_player_cpal" }
 mpdelta_gui_vulkano = { path = "mpdelta_gui_vulkano" }
+mpdelta_message_router = { path = "mpdelta_common/mpdelta_message_router" }
 mpdelta_multimedia = { path = "mpdelta_multimedia" }
 mpdelta_multimedia_encoder_ffmpeg = { path = "mpdelta_multimedia_encoder_ffmpeg" }
 mpdelta_project_serialize = { path = "mpdelta_project_serialize" }

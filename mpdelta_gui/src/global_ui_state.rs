@@ -1,5 +1,3 @@
-use crate::message_router::handler::{IntoFunctionHandler, MessageHandlerBuilder};
-use crate::message_router::{MessageHandler, MessageRouter};
 use crate::view_model_util::use_arc;
 use crate::viewmodel::ViewModelParams;
 use mpdelta_async_runtime::AsyncRuntime;
@@ -7,6 +5,8 @@ use mpdelta_core::component::instance::ComponentInstanceHandle;
 use mpdelta_core::component::parameter::ParameterValueType;
 use mpdelta_core::project::{RootComponentClass, RootComponentClassHandle};
 use mpdelta_core::ptr::StaticPointer;
+use mpdelta_message_router::handler::{IntoFunctionHandler, MessageHandlerBuilder};
+use mpdelta_message_router::{MessageHandler, MessageRouter};
 use std::mem;
 use std::sync::atomic::{AtomicBool, AtomicUsize};
 use std::sync::{atomic, Arc, Mutex, RwLock as StdRwLock};

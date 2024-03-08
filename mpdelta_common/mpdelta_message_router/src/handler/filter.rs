@@ -1,5 +1,5 @@
-use crate::message_router::handler::{IntoMessageHandler, MessageHandler, MessageHandlerBuilder};
-use crate::message_router::static_cow::StaticCow;
+use crate::handler::{IntoMessageHandler, MessageHandler, MessageHandlerBuilder};
+use crate::static_cow::StaticCow;
 use mpdelta_async_runtime::AsyncRuntime;
 use std::marker::PhantomData;
 
@@ -15,7 +15,7 @@ pub struct FilterBuilder<P, F, Runtime> {
 }
 
 impl<P, F, Runtime> FilterBuilder<P, F, Runtime> {
-    pub(in crate::message_router::handler) fn new(prev: P, filter: F) -> Self {
+    pub(in crate::handler) fn new(prev: P, filter: F) -> Self {
         FilterBuilder { prev, filter, _phantom: PhantomData }
     }
 }

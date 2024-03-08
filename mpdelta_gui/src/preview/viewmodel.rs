@@ -26,9 +26,16 @@ pub trait PreviewViewModel<K: 'static, T: ParameterValueType> {
     fn set_seek(&self, seek: usize);
 }
 
+struct RealTimeRendererHandle<R, K: 'static, T: ParameterValueType> {
+    renderer: R,
+    #[allow(unused)] // Instanceの生存期間を保証するためのものなのでunusedでOK
+    render_target_instance: ComponentInstanceHandleOwned<K, T>,
+    render_target_component_class: RootComponentClassHandle<K, T>,
+}
+
 pub struct PreviewViewModelImpl<K: 'static, T: ParameterValueType, GlobalUIState, RealtimeRenderComponent, R, AudioPlayer, G, Runtime, JoinHandle> {
     renderer: Arc<RealtimeRenderComponent>,
-    real_time_renderer: Arc<ArcSwapOption<(R, ComponentInstanceHandleOwned<K, T>, RootComponentClassHandle<K, T>)>>,
+    real_time_renderer: Arc<ArcSwapOption<RealTimeRendererHandle<R, K, T>>>,
     audio_player: Arc<AudioPlayer>,
     global_ui_state: Arc<GlobalUIState>,
     create_renderer: Mutex<JoinHandleWrapper<JoinHandle>>,
@@ -71,24 +78,25 @@ where
 {
     fn on_edit(&self, _: &RootComponentClassHandle<K, T>, _: RootComponentEditEvent<K, T>) {
         let real_time_renderer = self.real_time_renderer.load();
-        let Some((_, _, component)) = real_time_renderer.as_deref() else {
+        let Some(RealTimeRendererHandle { render_target_component_class, .. }) = real_time_renderer.as_deref() else {
             return;
         };
 
-        self.create_real_time_renderer(component.clone());
+        self.create_real_time_renderer(render_target_component_class.clone());
     }
 
     fn on_edit_instance(&self, _: &RootComponentClassHandle<K, T>, _: &ComponentInstanceHandle<K, T>, _: InstanceEditEvent<K, T>) {
         let real_time_renderer = self.real_time_renderer.load();
-        let Some((_, _, component)) = real_time_renderer.as_deref() else {
+        let Some(RealTimeRendererHandle { render_target_component_class, .. }) = real_time_renderer.as_deref() else {
             return;
         };
 
-        self.create_real_time_renderer(component.clone());
+        self.create_real_time_renderer(render_target_component_class.clone());
     }
 }
 
 impl<K: Send + Sync + 'static, T: ParameterValueType> PreviewViewModelImpl<K, T, (), (), (), (), (), (), ()> {
+    #[allow(clippy::type_complexity)]
     pub fn new<S: GlobalUIState<K, T>, P: ViewModelParams<K, T>>(
         global_ui_state: &Arc<S>,
         params: &P,
@@ -145,7 +153,7 @@ where
         ));
     }
 
-    async fn create_real_time_renderer_inner(root_component_class: RootComponentClassHandle<K, T>, renderer: Arc<R>, real_time_renderer: Arc<ArcSwapOption<(R::Renderer, ComponentInstanceHandleOwned<K, T>, RootComponentClassHandle<K, T>)>>, audio_player: Arc<A>, current_time: TimelineTime) {
+    async fn create_real_time_renderer_inner(root_component_class: RootComponentClassHandle<K, T>, renderer: Arc<R>, real_time_renderer: Arc<ArcSwapOption<RealTimeRendererHandle<R::Renderer, K, T>>>, audio_player: Arc<A>, current_time: TimelineTime) {
         let new_renderer = 'renderer: {
             let Some(class) = root_component_class.upgrade() else {
                 break 'renderer None;
@@ -163,7 +171,11 @@ where
                     };
                     audio_player.set_audio(audio);
                     audio_player.seek(current_time);
-                    Some(Arc::new((renderer, instance, root_component_class.clone())))
+                    Some(Arc::new(RealTimeRendererHandle {
+                        renderer,
+                        render_target_instance: instance,
+                        render_target_component_class: root_component_class.clone(),
+                    }))
                 }
                 Err(err) => {
                     eprintln!("failed to create renderer by {err}");
@@ -185,7 +197,7 @@ where
     Runtime: AsyncRuntime<()> + Clone,
 {
     fn get_preview_image(&self) -> Option<T::Image> {
-        self.real_time_renderer.load().as_deref().and_then(|(renderer, _, _)| renderer.render_frame(self.seek()).ok())
+        self.real_time_renderer.load().as_deref().and_then(|RealTimeRendererHandle { renderer, .. }| renderer.render_frame(self.seek()).ok())
     }
 
     fn playing(&self) -> bool {

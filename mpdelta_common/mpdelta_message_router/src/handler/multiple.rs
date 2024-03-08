@@ -1,5 +1,5 @@
-use crate::message_router::handler::empty::{EmptyHandler, EmptyHandlerBuilder};
-use crate::message_router::handler::{IntoMessageHandler, MessageHandler, PairHandler};
+use crate::handler::empty::{EmptyHandler, EmptyHandlerBuilder};
+use crate::handler::{IntoMessageHandler, MessageHandler, PairHandler};
 use std::marker::PhantomData;
 
 pub struct MultipleBuilder<Message, Runtime, P, T> {

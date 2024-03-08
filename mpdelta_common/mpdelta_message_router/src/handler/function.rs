@@ -1,5 +1,5 @@
-use crate::message_router::static_cow::StaticCow;
-use crate::message_router::MessageHandler;
+use crate::static_cow::StaticCow;
+use crate::MessageHandler;
 use mpdelta_async_runtime::AsyncRuntime;
 
 pub struct FunctionHandler<F>(pub(super) F);

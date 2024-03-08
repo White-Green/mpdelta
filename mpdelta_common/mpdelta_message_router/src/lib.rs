@@ -1,7 +1,7 @@
-use crate::message_router::handler::empty::{EmptyHandler, EmptyHandlerBuilder};
-use crate::message_router::handler::PairHandler;
-use crate::message_router::static_cow::{Owned, StaticCow};
+use handler::empty::{EmptyHandler, EmptyHandlerBuilder};
+use handler::PairHandler;
 use mpdelta_async_runtime::AsyncRuntime;
+use static_cow::{Owned, StaticCow};
 use std::marker::PhantomData;
 
 pub mod handler;
@@ -41,6 +41,12 @@ impl<Message, Runtime> MessageRouterBuilder<Message, Runtime, EmptyHandler> {
     }
 }
 
+impl<Message, Runtime> Default for MessageRouterBuilder<Message, Runtime, EmptyHandler> {
+    fn default() -> MessageRouterBuilder<Message, Runtime, EmptyHandler> {
+        MessageRouterBuilder { handler: EmptyHandler, _phantom: PhantomData }
+    }
+}
+
 impl<Message, Runtime, Handler: MessageHandler<Message, Runtime>> MessageRouterBuilder<Message, Runtime, Handler> {
     pub fn handle<AdditionalHandler: MessageHandler<Message, Runtime>>(self, handler_builder: impl FnOnce(EmptyHandlerBuilder<Runtime>) -> AdditionalHandler) -> MessageRouterBuilder<Message, Runtime, PairHandler<AdditionalHandler, Handler>> {
         let MessageRouterBuilder { handler: current_handler, _phantom } = self;
@@ -64,7 +70,7 @@ pub trait MessageHandler<Message, Runtime> {
 mod tests {
     use super::handler::MessageHandlerBuilder;
     use super::*;
-    use crate::message_router::handler::{IntoAsyncFunctionHandler, IntoAsyncFunctionHandlerSingle, IntoFunctionHandler};
+    use crate::handler::{IntoAsyncFunctionHandler, IntoAsyncFunctionHandlerSingle, IntoFunctionHandler};
     use std::sync::atomic::AtomicUsize;
     use std::sync::{atomic, Arc};
     use std::time::Duration;

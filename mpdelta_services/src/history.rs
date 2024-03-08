@@ -41,7 +41,11 @@ impl<Key: Hash + Eq, Log> HistoryStore<Key, Log> {
     }
 }
 
-pub struct InMemoryEditHistoryStore<K: 'static, T: ParameterValueType, Log>(Mutex<HistoryStore<(RootComponentClassHandle<K, T>, Option<ComponentInstanceHandle<K, T>>), Arc<Log>>>);
+type HistoryKey<K, T> = (RootComponentClassHandle<K, T>, Option<ComponentInstanceHandle<K, T>>);
+
+pub struct InMemoryEditHistoryStore<K: 'static, T: ParameterValueType, Log> {
+    store: Mutex<HistoryStore<HistoryKey<K, T>, Arc<Log>>>,
+}
 
 impl<K, T, Log> InMemoryEditHistoryStore<K, T, Log>
 where
@@ -49,7 +53,7 @@ where
     T: ParameterValueType,
 {
     pub fn new(max_history: usize) -> InMemoryEditHistoryStore<K, T, Log> {
-        InMemoryEditHistoryStore(Mutex::new(HistoryStore::new(max_history)))
+        InMemoryEditHistoryStore { store: Mutex::new(HistoryStore::new(max_history)) }
     }
 }
 
@@ -61,15 +65,15 @@ where
     Log: Send + Sync,
 {
     async fn push_history(&self, root: &RootComponentClassHandle<K, T>, target: Option<&ComponentInstanceHandle<K, T>>, log: Log) {
-        self.0.lock().await.push_history((root.clone(), target.cloned()), Arc::new(log));
+        self.store.lock().await.push_history((root.clone(), target.cloned()), Arc::new(log));
     }
 
     async fn undo(&self, root: &RootComponentClassHandle<K, T>, target: Option<&ComponentInstanceHandle<K, T>>) -> Option<Arc<Log>> {
-        self.0.lock().await.pop_undo(&(root.clone(), target.cloned())).map(Arc::clone)
+        self.store.lock().await.pop_undo(&(root.clone(), target.cloned())).map(Arc::clone)
     }
 
     async fn redo(&self, root: &RootComponentClassHandle<K, T>, target: Option<&ComponentInstanceHandle<K, T>>) -> Option<Arc<Log>> {
-        self.0.lock().await.pop_redo(&(root.clone(), target.cloned())).map(Arc::clone)
+        self.store.lock().await.pop_redo(&(root.clone(), target.cloned())).map(Arc::clone)
     }
 }
 

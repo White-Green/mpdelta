@@ -49,10 +49,16 @@ pub enum ImageRequiredParamsTransformForEdit<K: 'static, T: ParameterValueType> 
     },
 }
 
-pub type Vector3ParamsForEdit<K, T> = Vector3<(VariableParameterValue<K, T, PinSplitValue<K, Option<EasingValue<f64>>>>, TimeSplitValue<usize, Option<EasingValue<f64>>>)>;
+#[derive(Debug)]
+pub struct ValueWithEditCopy<K: 'static, T: ParameterValueType> {
+    pub value: VariableParameterValue<K, T, PinSplitValue<K, Option<EasingValue<f64>>>>,
+    pub edit_copy: TimeSplitValue<usize, Option<EasingValue<f64>>>,
+}
+
+pub type Vector3ParamsForEdit<K, T> = Vector3<ValueWithEditCopy<K, T>>;
 
 impl<K: 'static, T: ParameterValueType> ImageRequiredParamsForEdit<K, T> {
-    pub fn from_image_required_params(value: ImageRequiredParams<K, T>, all_pins: impl IntoIterator<Item = MarkerPinHandle<K>>, key: &TCellOwner<K>) -> (ImageRequiredParamsForEdit<K, T>, HashMap<MarkerPinHandle<K>, usize>, Vec<f64>) {
+    pub fn from_image_required_params(value: ImageRequiredParams<K, T>, all_pins: impl IntoIterator<Item = MarkerPinHandle<K>>, key: &TCellOwner<K>) -> (ImageRequiredParamsForEdit<K, T>, Vec<f64>) {
         fn get_all_pins_iter<K, T>(values: &PinSplitValue<K, T>) -> impl Iterator<Item = MarkerPinHandle<K>> + '_ {
             (0..values.len_time()).map(|i| {
                 let (_, pin, _) = values.get_time(i).unwrap();
@@ -74,12 +80,9 @@ impl<K: 'static, T: ParameterValueType> ImageRequiredParamsForEdit<K, T> {
             pins.sort_unstable_by_key(|&(_, time)| time);
             pins.into_iter().enumerate().map(|(i, (pin, time))| ((pin, i), time.value().into_f64())).unzip()
         }
-        fn into_for_edit<K, T: ParameterValueType>(
-            value: VariableParameterValue<K, T, PinSplitValue<K, Option<EasingValue<f64>>>>,
-            pin_index: &HashMap<MarkerPinHandle<K>, usize>,
-        ) -> (VariableParameterValue<K, T, PinSplitValue<K, Option<EasingValue<f64>>>>, TimeSplitValue<usize, Option<EasingValue<f64>>>) {
+        fn into_for_edit<K, T: ParameterValueType>(value: VariableParameterValue<K, T, PinSplitValue<K, Option<EasingValue<f64>>>>, pin_index: &HashMap<MarkerPinHandle<K>, usize>) -> ValueWithEditCopy<K, T> {
             let index_based = value.params.map_time_value_ref(|pin| *pin_index.get(pin).unwrap(), Clone::clone);
-            (value, index_based)
+            ValueWithEditCopy { value, edit_copy: index_based }
         }
         let ImageRequiredParams {
             aspect_ratio,
@@ -97,7 +100,7 @@ impl<K: 'static, T: ParameterValueType> ImageRequiredParamsForEdit<K, T> {
             })
             .collect::<HashMap<_, _>>();
         let iter = get_all_pins_iter(&opacity).chain(get_all_pins_iter(&blend_mode)).chain(get_all_pins_iter(&composite_operation));
-        let (transform, pin_index, times) = match transform {
+        let (transform, times) = match transform {
             ImageRequiredParamsTransform::Params { scale, translate, rotate, scale_center, rotate_center } => {
                 let iter = iter
                     .chain(AsRef::<[_; 3]>::as_ref(&scale).iter().flat_map(|value| get_all_pins_iter(&value.params)))
@@ -114,7 +117,7 @@ impl<K: 'static, T: ParameterValueType> ImageRequiredParamsForEdit<K, T> {
                     scale_center: scale_center.map(|value| into_for_edit(value, &pin_index)),
                     rotate_center: rotate_center.map(|value| into_for_edit(value, &pin_index)),
                 };
-                (transform, pin_index, times)
+                (transform, times)
             }
             ImageRequiredParamsTransform::Free { left_top, right_top, left_bottom, right_bottom } => {
                 let iter = iter
@@ -130,7 +133,7 @@ impl<K: 'static, T: ParameterValueType> ImageRequiredParamsForEdit<K, T> {
                     left_bottom: left_bottom.map(|value| into_for_edit(value, &pin_index)),
                     right_bottom: right_bottom.map(|value| into_for_edit(value, &pin_index)),
                 };
-                (transform, pin_index, times)
+                (transform, times)
             }
         };
         let value = ImageRequiredParamsForEdit {
@@ -141,7 +144,7 @@ impl<K: 'static, T: ParameterValueType> ImageRequiredParamsForEdit<K, T> {
             blend_mode,
             composite_operation,
         };
-        (value, pin_index, times)
+        (value, times)
     }
 
     fn as_non_edit(&self) -> ImageRequiredParams<K, T> {
@@ -154,7 +157,11 @@ impl<K: 'static, T: ParameterValueType> ImageRequiredParamsForEdit<K, T> {
             ref composite_operation,
         } = self;
         fn transform_vec3<K, T: ParameterValueType>(value: &Vector3ParamsForEdit<K, T>) -> Vector3Params<K, T> {
-            let Vector3 { x: (x, _), y: (y, _), z: (z, _) } = value;
+            let Vector3 {
+                x: ValueWithEditCopy { value: x, .. },
+                y: ValueWithEditCopy { value: y, .. },
+                z: ValueWithEditCopy { value: z, .. },
+            } = value;
             Vector3::new(x.clone(), y.clone(), z.clone())
         }
         let transform = match transform {
@@ -183,9 +190,14 @@ impl<K: 'static, T: ParameterValueType> ImageRequiredParamsForEdit<K, T> {
     }
 }
 
+pub struct ImageRequiredParamsEditSet<K: 'static, T: ParameterValueType, Times> {
+    pub params: ImageRequiredParamsForEdit<K, T>,
+    pub pin_times: Times,
+}
+
 pub trait PropertyWindowViewModel<K: 'static, T: ParameterValueType> {
     type Times: AsRef<[f64]>;
-    type ImageRequiredParams<'a>: DerefMut<Target = Option<(ImageRequiredParamsForEdit<K, T>, Self::Times)>> + 'a
+    type ImageRequiredParams<'a>: DerefMut<Target = Option<ImageRequiredParamsEditSet<K, T, Self::Times>>> + 'a
     where
         Self: 'a;
     fn selected_instance_at(&self) -> Range<f64>;
@@ -193,22 +205,32 @@ pub trait PropertyWindowViewModel<K: 'static, T: ParameterValueType> {
     fn updated_image_required_params(&self, image_required_params: &ImageRequiredParamsForEdit<K, T>);
 }
 
-pub struct PropertyWindowViewModelImpl<K: 'static, T: ParameterValueType, GlobalUIState, Edit, Runtime, JoinHandle> {
-    global_ui_state: Arc<GlobalUIState>,
+struct SelectedItem<K: 'static, T: ParameterValueType> {
+    root: Option<RootComponentClassHandle<K, T>>,
+    instance: Option<ComponentInstanceHandle<K, T>>,
+}
+
+impl<K: 'static, T: ParameterValueType> Default for SelectedItem<K, T> {
+    fn default() -> Self {
+        SelectedItem { root: None, instance: None }
+    }
+}
+
+pub struct PropertyWindowViewModelImpl<K: 'static, T: ParameterValueType, Edit, Runtime, JoinHandle> {
     edit: Arc<Edit>,
-    selected: Arc<StdRwLock<(Option<RootComponentClassHandle<K, T>>, Option<ComponentInstanceHandle<K, T>>)>>,
+    selected: Arc<StdRwLock<SelectedItem<K, T>>>,
     selected_instance_at: Arc<ArcSwap<Range<f64>>>,
-    image_required_params: Arc<Mutex<Option<(ImageRequiredParamsForEdit<K, T>, Vec<f64>)>>>,
+    #[allow(clippy::type_complexity)]
+    image_required_params: Arc<Mutex<Option<ImageRequiredParamsEditSet<K, T, Vec<f64>>>>>,
     image_required_params_update_task: Mutex<JoinHandleWrapper<JoinHandle>>,
     runtime: Runtime,
     key: Arc<RwLock<TCellOwner<K>>>,
 }
 
-impl<K, T, S, Edit, Runtime> GlobalUIEventHandler<K, T> for PropertyWindowViewModelImpl<K, T, S, Edit, Runtime, Runtime::JoinHandle>
+impl<K, T, Edit, Runtime> GlobalUIEventHandler<K, T> for PropertyWindowViewModelImpl<K, T, Edit, Runtime, Runtime::JoinHandle>
 where
     K: 'static,
     T: ParameterValueType,
-    S: GlobalUIState<K, T>,
     Edit: EditFunnel<K, T>,
     Runtime: AsyncRuntime<()> + Clone,
 {
@@ -216,14 +238,14 @@ where
         match event {
             GlobalUIEvent::SelectRootComponentClass(target) => {
                 let mut selected = self.selected.write().unwrap();
-                if selected.0 != target {
-                    *selected = (target, None);
+                if selected.root != target {
+                    *selected = SelectedItem { root: target, instance: None };
                 }
             }
             GlobalUIEvent::SelectComponentInstance(instance) => {
                 let mut selected = self.selected.write().unwrap();
-                if selected.0.is_some() {
-                    selected.1 = instance.clone();
+                if selected.root.is_some() {
+                    selected.instance = instance.clone();
                 } else {
                     return;
                 }
@@ -242,8 +264,8 @@ where
                         }
                         instance.image_required_params().cloned().map(|value| {
                             let markers = iter::once(instance.marker_left()).chain(instance.markers().iter().map(StaticPointerOwned::reference)).chain(iter::once(instance.marker_right())).cloned();
-                            let (params, _, times) = ImageRequiredParamsForEdit::from_image_required_params(value, markers, &key);
-                            (params, times)
+                            let (params, pin_times) = ImageRequiredParamsForEdit::from_image_required_params(value, markers, &key);
+                            ImageRequiredParamsEditSet { params, pin_times }
                         })
                     } else {
                         None
@@ -255,13 +277,13 @@ where
     }
 }
 
-impl<K: 'static, T: ParameterValueType> PropertyWindowViewModelImpl<K, T, (), (), (), ()> {
-    pub fn new<S: GlobalUIState<K, T>, Edit: EditFunnel<K, T> + 'static, P: ViewModelParams<K, T>>(global_ui_state: &Arc<S>, edit: &Arc<Edit>, params: &P) -> Arc<PropertyWindowViewModelImpl<K, T, S, Edit, P::AsyncRuntime, <P::AsyncRuntime as AsyncRuntime<()>>::JoinHandle>> {
+impl<K: 'static, T: ParameterValueType> PropertyWindowViewModelImpl<K, T, (), (), ()> {
+    #[allow(clippy::type_complexity)]
+    pub fn new<S: GlobalUIState<K, T>, Edit: EditFunnel<K, T> + 'static, P: ViewModelParams<K, T>>(global_ui_state: &Arc<S>, edit: &Arc<Edit>, params: &P) -> Arc<PropertyWindowViewModelImpl<K, T, Edit, P::AsyncRuntime, <P::AsyncRuntime as AsyncRuntime<()>>::JoinHandle>> {
         let runtime = params.runtime().clone();
         let arc = Arc::new(PropertyWindowViewModelImpl {
-            global_ui_state: Arc::clone(global_ui_state),
             edit: Arc::clone(edit),
-            selected: Arc::new(StdRwLock::new((None, None))),
+            selected: Arc::new(StdRwLock::new(SelectedItem::default())),
             selected_instance_at: Arc::new(ArcSwap::new(Arc::new(0.0..0.0))),
             image_required_params: Arc::new(Mutex::new(None)),
             image_required_params_update_task: Mutex::new(runtime.spawn(future::ready(()))),
@@ -273,16 +295,15 @@ impl<K: 'static, T: ParameterValueType> PropertyWindowViewModelImpl<K, T, (), ()
     }
 }
 
-impl<K, T, S, Edit, Runtime> PropertyWindowViewModel<K, T> for PropertyWindowViewModelImpl<K, T, S, Edit, Runtime, Runtime::JoinHandle>
+impl<K, T, Edit, Runtime> PropertyWindowViewModel<K, T> for PropertyWindowViewModelImpl<K, T, Edit, Runtime, Runtime::JoinHandle>
 where
     K: 'static,
     T: ParameterValueType,
-    S: GlobalUIState<K, T>,
     Edit: EditFunnel<K, T>,
     Runtime: AsyncRuntime<()> + Clone,
 {
     type Times = Vec<f64>;
-    type ImageRequiredParams<'a> = MutexGuard<'a, Option<(ImageRequiredParamsForEdit<K, T>, Self::Times)>> where Self: 'a;
+    type ImageRequiredParams<'a> = MutexGuard<'a, Option<ImageRequiredParamsEditSet<K, T, Self::Times>>> where Self: 'a;
 
     fn selected_instance_at(&self) -> Range<f64> {
         (**self.selected_instance_at.load()).clone()
@@ -293,7 +314,11 @@ where
     }
 
     fn updated_image_required_params(&self, image_required_params: &ImageRequiredParamsForEdit<K, T>) {
-        let (Some(root_component_class), Some(component_instance)) = &*self.selected.read().unwrap() else {
+        let SelectedItem {
+            root: Some(root_component_class),
+            instance: Some(component_instance),
+        } = &*self.selected.read().unwrap()
+        else {
             return;
         };
         self.edit.edit_instance(root_component_class, component_instance, InstanceEditCommand::UpdateImageRequiredParams(image_required_params.as_non_edit()));

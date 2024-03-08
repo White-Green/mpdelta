@@ -16,7 +16,6 @@ use std::borrow::Cow;
 use std::collections::HashSet;
 use std::fmt::{Debug, Formatter};
 use std::hash::{Hash, Hasher};
-use std::mem;
 use std::ops::Deref;
 use std::sync::Arc;
 use tokio::sync::{OwnedRwLockReadGuard, OwnedRwLockWriteGuard, RwLock, RwLockReadGuard, RwLockWriteGuard};
@@ -28,9 +27,10 @@ pub struct Project<K: 'static, T: ParameterValueType> {
     children: HashSet<RootComponentClassHandle<K, T>>,
 }
 
-pub type ProjectHandle<K, T> = StaticPointer<RwLock<Project<K, T>>>;
-pub type ProjectHandleOwned<K, T> = StaticPointerOwned<RwLock<Project<K, T>>>;
-pub type ProjectHandleCow<K, T> = StaticPointerCow<RwLock<Project<K, T>>>;
+pub type ProjectWithLock<K, T> = RwLock<Project<K, T>>;
+pub type ProjectHandle<K, T> = StaticPointer<ProjectWithLock<K, T>>;
+pub type ProjectHandleOwned<K, T> = StaticPointerOwned<ProjectWithLock<K, T>>;
+pub type ProjectHandleCow<K, T> = StaticPointerCow<ProjectWithLock<K, T>>;
 
 impl<K, T: ParameterValueType> PartialEq for Project<K, T> {
     fn eq(&self, other: &Self) -> bool {
@@ -136,9 +136,10 @@ pub struct RootComponentClass<K: 'static, T: ParameterValueType> {
     item: RootComponentClassItemWrapper<K, T>,
 }
 
-pub type RootComponentClassHandle<K, T> = StaticPointer<RwLock<RootComponentClass<K, T>>>;
-pub type RootComponentClassHandleOwned<K, T> = StaticPointerOwned<RwLock<RootComponentClass<K, T>>>;
-pub type RootComponentClassHandleCow<K, T> = StaticPointerCow<RwLock<RootComponentClass<K, T>>>;
+pub type RootComponentClassWithLock<K, T> = RwLock<RootComponentClass<K, T>>;
+pub type RootComponentClassHandle<K, T> = StaticPointer<RootComponentClassWithLock<K, T>>;
+pub type RootComponentClassHandleOwned<K, T> = StaticPointerOwned<RootComponentClassWithLock<K, T>>;
+pub type RootComponentClassHandleCow<K, T> = StaticPointerCow<RootComponentClassWithLock<K, T>>;
 
 #[async_trait]
 impl<K, T: ParameterValueType + 'static> ComponentClass<K, T> for RootComponentClass<K, T> {
@@ -181,17 +182,10 @@ impl<K, T: ParameterValueType + 'static> ComponentClass<K, T> for RootComponentC
         };
         let audio_required_params = AudioRequiredParams { volume: vec![one_value.clone(), one_value] };
         let processor = Arc::new(self.item.clone()) as Arc<dyn ComponentProcessorComponent<K, T>>;
-        ComponentInstance::new(
-            this.clone(),
-            StaticPointerCow::Reference(marker_left),
-            StaticPointerCow::Reference(marker_right),
-            Vec::new(),
-            Some(image_required_params),
-            Some(audio_required_params),
-            Box::new([]),
-            Box::new([]),
-            processor,
-        )
+        ComponentInstance::builder(this.clone(), StaticPointerCow::Reference(marker_left), StaticPointerCow::Reference(marker_right), Vec::new(), processor)
+            .image_required_params(image_required_params)
+            .audio_required_params(audio_required_params)
+            .build()
     }
 }
 
@@ -270,25 +264,6 @@ impl<K, T: ParameterValueType> RootComponentClass<K, T> {
         }))
     }
 
-    pub(crate) async fn set_parent(this: &RootComponentClassHandle<K, T>, parent: Option<ProjectHandle<K, T>>) -> Option<ProjectHandle<K, T>> {
-        let this_strong_ref = this.upgrade()?;
-        let mut this_guard = this_strong_ref.write().await;
-        let parent_id = if let Some(parent) = &parent {
-            let parent = parent.upgrade()?;
-            let mut parent = parent.write().await;
-            parent.children.insert(this.clone());
-            parent.id
-        } else {
-            Uuid::nil()
-        };
-        let old_parent = mem::replace(&mut this_guard.parent, parent.map(|parent| (parent, parent_id)));
-        let old_parent = old_parent.map(|(parent, _)| parent);
-        if let Some(old_parent) = &old_parent.as_ref().and_then(StaticPointer::upgrade) {
-            old_parent.write().await.children.remove(this);
-        }
-        old_parent
-    }
-
     pub fn id(&self) -> Uuid {
         self.id
     }
@@ -323,73 +298,5 @@ impl<K, T: ParameterValueType> RootComponentClass<K, T> {
 
     pub async fn links(&self) -> impl Deref<Target = [impl AsRef<MarkerLinkHandle<K>>]> + '_ {
         RwLockReadGuard::map(self.item.0.read().await, |guard| guard.link.as_ref())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[derive(Debug)]
-    struct EmptyParameterValueType;
-
-    impl ParameterValueType for EmptyParameterValueType {
-        type Image = ();
-        type Audio = ();
-        type Binary = ();
-        type String = ();
-        type Integer = ();
-        type RealNumber = ();
-        type Boolean = ();
-        type Dictionary = ();
-        type Array = ();
-        type ComponentClass = ();
-    }
-
-    #[tokio::test]
-    async fn set_parent() {
-        let project0 = Project::<(), EmptyParameterValueType>::new_empty(Uuid::from_u128(0));
-        let project1 = Project::<(), EmptyParameterValueType>::new_empty(Uuid::from_u128(1));
-        assert!(project0.read().await.children.is_empty());
-        assert!(project1.read().await.children.is_empty());
-        let component0 = RootComponentClass::<(), EmptyParameterValueType>::new_empty(Uuid::from_u128(0));
-        let component1 = RootComponentClass::<(), EmptyParameterValueType>::new_empty(Uuid::from_u128(1));
-        assert!(component0.read().await.parent.is_none());
-        assert!(component1.read().await.parent.is_none());
-
-        assert!(RootComponentClass::set_parent(StaticPointerOwned::reference(&component0), Some(StaticPointerOwned::reference(&project0).clone())).await.is_none());
-        {
-            let project0 = project0.read().await;
-            assert_eq!(project0.children.len(), 1);
-            assert_eq!(project0.children.iter().collect::<Vec<_>>(), vec![StaticPointerOwned::reference(&component0)]);
-        }
-        assert_eq!(component0.read().await.parent, Some((StaticPointerOwned::reference(&project0).clone(), Uuid::from_u128(0))));
-        assert!(RootComponentClass::set_parent(StaticPointerOwned::reference(&component1), Some(StaticPointerOwned::reference(&project1).clone())).await.is_none());
-        {
-            let project1 = project1.read().await;
-            assert_eq!(project1.children.len(), 1);
-            assert_eq!(project1.children.iter().collect::<Vec<_>>(), vec![StaticPointerOwned::reference(&component1)]);
-        }
-        assert_eq!(component1.read().await.parent, Some((StaticPointerOwned::reference(&project1).clone(), Uuid::from_u128(1))));
-
-        assert_eq!(
-            RootComponentClass::set_parent(StaticPointerOwned::reference(&component0), Some(StaticPointerOwned::reference(&project1).clone())).await,
-            Some(StaticPointerOwned::reference(&project0).clone())
-        );
-        {
-            let project0 = project0.read().await;
-            assert!(project0.children.is_empty());
-            let project1 = project1.read().await;
-            assert_eq!(project1.children.len(), 2);
-            let children = project1.children.iter().collect::<Vec<_>>();
-            assert!(children == vec![StaticPointerOwned::reference(&component0), StaticPointerOwned::reference(&component1)] || children == vec![StaticPointerOwned::reference(&component1), StaticPointerOwned::reference(&component0)]);
-        }
-        assert_eq!(RootComponentClass::set_parent(StaticPointerOwned::reference(&component1), None).await, Some(StaticPointerOwned::reference(&project1).clone()));
-        {
-            let project1 = project1.read().await;
-            assert_eq!(project1.children.len(), 1);
-            assert_eq!(project1.children.iter().collect::<Vec<_>>(), vec![StaticPointerOwned::reference(&component0)]);
-        }
-        assert!(component1.read().await.parent.is_none());
     }
 }

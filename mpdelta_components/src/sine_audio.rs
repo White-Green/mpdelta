@@ -42,17 +42,9 @@ impl<K, T: ParameterValueType<Audio = AudioType>> ComponentClass<K, T> for SineA
         let left = StaticPointerOwned::new(TCell::new(MarkerPin::new(TimelineTime::ZERO, MarkerTime::ZERO)));
         let right = StaticPointerOwned::new(TCell::new(MarkerPin::new(TimelineTime::new(MixedFraction::from_integer(1)), MarkerTime::new(MixedFraction::from_integer(1)).unwrap())));
         let audio_required_params = AudioRequiredParams::new_default(StaticPointerOwned::reference(&left), StaticPointerOwned::reference(&right), 1);
-        ComponentInstance::new(
-            this.clone(),
-            StaticPointerCow::Owned(left),
-            StaticPointerCow::Owned(right),
-            Vec::new(),
-            None,
-            Some(audio_required_params),
-            Box::new([]),
-            Box::new([]),
-            Arc::new(SineAudio::new()) as Arc<dyn ComponentProcessorNative<K, T>>,
-        )
+        ComponentInstance::builder(this.clone(), StaticPointerCow::Owned(left), StaticPointerCow::Owned(right), Vec::new(), Arc::new(SineAudio::new()) as Arc<dyn ComponentProcessorNative<K, T>>)
+            .audio_required_params(audio_required_params)
+            .build()
     }
 }
 

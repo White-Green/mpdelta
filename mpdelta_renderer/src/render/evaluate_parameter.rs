@@ -1,6 +1,6 @@
 use crate::render::{RenderContext, RenderOutput};
 use crate::thread_cancel::CancellationToken;
-use crate::{render, AudioCombinerParam, AudioCombinerRequest, Combiner, CombinerBuilder, ImageCombinerParam, ImageCombinerRequest, ImageSizeRequest, RenderError};
+use crate::{render, AudioCombinerParam, AudioCombinerRequest, Combiner, CombinerBuilder, ImageCombinerParam, ImageCombinerRequest, ImageSizeRequest, RenderError, RenderResult};
 use futures::pin_mut;
 use mpdelta_core::common::time_split_value::TimeSplitValue;
 use mpdelta_core::component::instance::ComponentInstanceHandle;
@@ -13,12 +13,15 @@ use std::future::Future;
 use std::ops::Deref;
 use std::task::{Context, Poll};
 
+type F64Params<K, T> = VariableParameterValue<K, T, TimeSplitValue<MarkerPinHandle<K>, Option<EasingValue<f64>>>>;
+
+#[allow(clippy::type_complexity)]
 pub(super) fn evaluate_parameter_f64<'a, K, T, Key, ImageCombinerBuilder, AudioCombinerBuilder>(
-    param: &'a VariableParameterValue<K, T, TimeSplitValue<MarkerPinHandle<K>, Option<EasingValue<f64>>>>,
+    param: &'a F64Params<K, T>,
     at: TimelineTime,
     ctx: &'a RenderContext<Key, T, ImageCombinerBuilder, AudioCombinerBuilder>,
     cancellation_token: &CancellationToken,
-) -> Option<Result<ParameterValueRaw<T::Image, T::Audio>, RenderError<K, T>>>
+) -> Option<RenderResult<ParameterValueRaw<T::Image, T::Audio>, K, T>>
 where
     K: 'static,
     T: ParameterValueType,
@@ -33,13 +36,14 @@ where
     evaluate_parameter_inner(get_manually_param, component_param, priority, ty, ctx, cancellation_token)
 }
 
+#[allow(clippy::type_complexity)]
 pub(super) fn evaluate_parameter<'a, K, T, Key, ImageCombinerBuilder, AudioCombinerBuilder>(
     param: &'a VariableParameterValue<K, T, ParameterNullableValue<K, T>>,
     ty: &ParameterType,
     at: TimelineTime,
     ctx: &'a RenderContext<Key, T, ImageCombinerBuilder, AudioCombinerBuilder>,
     cancellation_token: &CancellationToken,
-) -> Option<Result<ParameterValueRaw<T::Image, T::Audio>, RenderError<K, T>>>
+) -> Option<RenderResult<ParameterValueRaw<T::Image, T::Audio>, K, T>>
 where
     K: 'static,
     T: ParameterValueType,
@@ -91,7 +95,7 @@ where
     ImageCombinerBuilder: CombinerBuilder<T::Image, Request = ImageCombinerRequest, Param = ImageCombinerParam> + 'static,
     AudioCombinerBuilder: CombinerBuilder<T::Audio, Request = AudioCombinerRequest, Param = AudioCombinerParam> + 'static,
 {
-    fn calc(self) -> Option<Result<impl Future<Output = Result<Parameter<RenderOutput<T::Image, T::Audio>>, RenderError<K, T>>> + 'a, RenderError<K, T>>> {
+    fn calc(self) -> Option<RenderResult<impl Future<Output = RenderResult<Parameter<RenderOutput<T::Image, T::Audio>>, K, T>> + 'a, K, T>> {
         let ComponentParamCalculator { components, ty, at, ctx } = self;
         let render_target_component = components.iter().rev().find_map(|component| {
             let (left, right) = {
@@ -122,14 +126,15 @@ where
     }
 }
 
+#[allow(clippy::type_complexity)]
 fn evaluate_parameter_inner<K, T, Key, ImageCombinerBuilder, AudioCombinerBuilder>(
-    get_manually_param: impl FnOnce() -> Option<Result<ParameterValueRaw<T::Image, T::Audio>, RenderError<K, T>>>,
+    get_manually_param: impl FnOnce() -> Option<RenderResult<ParameterValueRaw<T::Image, T::Audio>, K, T>>,
     component_param: ComponentParamCalculator<'_, K, T, Key, ImageCombinerBuilder, AudioCombinerBuilder>,
     priority: &VariableParameterPriority,
     ty: &ParameterType,
     ctx: &RenderContext<Key, T, ImageCombinerBuilder, AudioCombinerBuilder>,
     cancellation_token: &CancellationToken,
-) -> Option<Result<ParameterValueRaw<T::Image, T::Audio>, RenderError<K, T>>>
+) -> Option<RenderResult<ParameterValueRaw<T::Image, T::Audio>, K, T>>
 where
     K: 'static,
     T: ParameterValueType,
@@ -213,7 +218,7 @@ impl<T: Clone> MayBeEasingValue<T> for T {
     }
 }
 
-pub(super) fn evaluate_time_split_value_at<K, T: ParameterValueType, V: 'static>(value: &TimeSplitValue<MarkerPinHandle<K>, impl MayBeEasingValue<V>>, at: TimelineTime, key: &TCellOwner<K>) -> Option<Result<V, RenderError<K, T>>> {
+pub(super) fn evaluate_time_split_value_at<K, T: ParameterValueType, V: 'static>(value: &TimeSplitValue<MarkerPinHandle<K>, impl MayBeEasingValue<V>>, at: TimelineTime, key: &TCellOwner<K>) -> Option<RenderResult<V, K, T>> {
     let mut left = 0;
     let mut right = value.len_value();
     while left < right {

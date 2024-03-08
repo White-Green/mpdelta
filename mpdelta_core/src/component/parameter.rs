@@ -1139,9 +1139,11 @@ pub enum ImageRequiredParamsTransformFixed {
     },
 }
 
+pub type SingleChannelVolume<K, T> = VariableParameterValue<K, T, PinSplitValue<K, Option<EasingValue<f64>>>>;
+
 #[derive(Debug)]
 pub struct AudioRequiredParams<K: 'static, T: ParameterValueType> {
-    pub volume: Vec<VariableParameterValue<K, T, PinSplitValue<K, Option<EasingValue<f64>>>>>,
+    pub volume: Vec<SingleChannelVolume<K, T>>,
 }
 
 impl<K: 'static, T: ParameterValueType> AudioRequiredParams<K, T> {

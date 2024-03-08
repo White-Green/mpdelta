@@ -28,9 +28,10 @@ pub struct Project<K: 'static, T: ParameterValueType> {
     children: HashSet<RootComponentClassHandle<K, T>>,
 }
 
-pub type ProjectHandle<K, T> = StaticPointer<RwLock<Project<K, T>>>;
-pub type ProjectHandleOwned<K, T> = StaticPointerOwned<RwLock<Project<K, T>>>;
-pub type ProjectHandleCow<K, T> = StaticPointerCow<RwLock<Project<K, T>>>;
+pub type ProjectWithLock<K, T> = RwLock<Project<K, T>>;
+pub type ProjectHandle<K, T> = StaticPointer<ProjectWithLock<K, T>>;
+pub type ProjectHandleOwned<K, T> = StaticPointerOwned<ProjectWithLock<K, T>>;
+pub type ProjectHandleCow<K, T> = StaticPointerCow<ProjectWithLock<K, T>>;
 
 impl<K, T: ParameterValueType> PartialEq for Project<K, T> {
     fn eq(&self, other: &Self) -> bool {
@@ -136,9 +137,10 @@ pub struct RootComponentClass<K: 'static, T: ParameterValueType> {
     item: RootComponentClassItemWrapper<K, T>,
 }
 
-pub type RootComponentClassHandle<K, T> = StaticPointer<RwLock<RootComponentClass<K, T>>>;
-pub type RootComponentClassHandleOwned<K, T> = StaticPointerOwned<RwLock<RootComponentClass<K, T>>>;
-pub type RootComponentClassHandleCow<K, T> = StaticPointerCow<RwLock<RootComponentClass<K, T>>>;
+pub type RootComponentClassWithLock<K, T> = RwLock<RootComponentClass<K, T>>;
+pub type RootComponentClassHandle<K, T> = StaticPointer<RootComponentClassWithLock<K, T>>;
+pub type RootComponentClassHandleOwned<K, T> = StaticPointerOwned<RootComponentClassWithLock<K, T>>;
+pub type RootComponentClassHandleCow<K, T> = StaticPointerCow<RootComponentClassWithLock<K, T>>;
 
 #[async_trait]
 impl<K, T: ParameterValueType + 'static> ComponentClass<K, T> for RootComponentClass<K, T> {

@@ -355,14 +355,13 @@ pub struct ImageRequiredParamsForSerialize<S: SerDeSelect> {
     pub composite_operation: PinSplitValueForSerialize<CompositeOperation>,
 }
 
+pub type SingleChannelVolumeForSerialize<S> = VariableParameterValueForSerialize<PinSplitValueForSerialize<Option<EasingValueForSerialize<f64, S>>>>;
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(bound(
-    serialize = "Vec<VariableParameterValueForSerialize<PinSplitValueForSerialize<Option<EasingValueForSerialize<f64, S>>>>>: Serialize",
-    deserialize = "Vec<VariableParameterValueForSerialize<PinSplitValueForSerialize<Option<EasingValueForSerialize<f64, S>>>>>: Deserialize<'de>"
-))]
+#[serde(bound(serialize = "Vec<SingleChannelVolumeForSerialize<S>>: Serialize", deserialize = "Vec<SingleChannelVolumeForSerialize<S>>: Deserialize<'de>"))]
 pub struct AudioRequiredParamsForSerialize<S: SerDeSelect> {
     #[serde(rename = "v")]
-    pub volume: Vec<VariableParameterValueForSerialize<PinSplitValueForSerialize<Option<EasingValueForSerialize<f64, S>>>>>,
+    pub volume: Vec<SingleChannelVolumeForSerialize<S>>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]

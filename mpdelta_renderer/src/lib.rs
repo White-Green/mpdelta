@@ -262,8 +262,8 @@ where
 }
 
 enum RenderingMessage<K: 'static, T: ParameterValueType> {
-    RequestRenderFrame { frame: usize, ret: oneshot::Sender<Result<T::Image, RenderError<K, T>>> },
-    RequestConstructAudio { ret: oneshot::Sender<Result<T::Audio, RenderError<K, T>>> },
+    RequestRenderFrame { frame: usize, ret: oneshot::Sender<RenderResult<T::Image, K, T>> },
+    RequestConstructAudio { ret: oneshot::Sender<RenderResult<T::Audio, K, T>> },
 }
 
 struct RenderingCache<T> {
@@ -452,6 +452,8 @@ pub enum RenderError<K: 'static, T: ParameterValueType> {
     #[error("timeout")]
     Timeout,
 }
+
+pub type RenderResult<Ok, K, T> = Result<Ok, RenderError<K, T>>;
 
 impl<K, T: ParameterValueType> From<CollectCachedTimeError<K>> for RenderError<K, T> {
     fn from(value: CollectCachedTimeError<K>) -> Self {

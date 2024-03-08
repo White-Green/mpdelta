@@ -28,6 +28,7 @@ pub trait PreviewViewModel<K: 'static, T: ParameterValueType> {
 
 struct RealTimeRendererHandle<R, K: 'static, T: ParameterValueType> {
     renderer: R,
+    #[allow(unused)] // Instanceの生存期間を保証するためのものなのでunusedでOK
     render_target_instance: ComponentInstanceHandleOwned<K, T>,
     render_target_component_class: RootComponentClassHandle<K, T>,
 }

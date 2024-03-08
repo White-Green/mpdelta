@@ -61,8 +61,6 @@ impl CancellationGuard {
     pub(crate) fn token(&self) -> CancellationToken {
         CancellationToken { cancelled: Arc::clone(&self.cancelled) }
     }
-
-    pub(crate) fn cancel(self) {}
 }
 
 impl Drop for CancellationGuard {

@@ -6,7 +6,7 @@ use mpdelta_core::component::instance::ComponentInstanceHandle;
 use mpdelta_core::component::link::MarkerLinkHandle;
 use mpdelta_core::component::marker_pin::MarkerPinHandle;
 use mpdelta_core::component::parameter::{ImageRequiredParamsFixed, Parameter, ParameterSelect, ParameterType, ParameterValueType};
-use mpdelta_core::core::{ComponentEncoder, ComponentRendererBuilder, IdGenerator};
+use mpdelta_core::core::{ComponentEncoder, ComponentRendererBuilder};
 use mpdelta_core::time::TimelineTime;
 use mpdelta_core::usecase::RealtimeComponentRenderer;
 use mpdelta_differential::CollectCachedTimeError;
@@ -55,8 +55,7 @@ impl Error for DynError {
     }
 }
 
-pub struct MPDeltaRendererBuilder<K: 'static, Id, C, ImageCombinerBuilder, AudioCombinerBuilder> {
-    id: Arc<Id>,
+pub struct MPDeltaRendererBuilder<K: 'static, C, ImageCombinerBuilder, AudioCombinerBuilder> {
     controller_builder: Arc<C>,
     image_combiner_builder: Arc<ImageCombinerBuilder>,
     audio_combiner_builder: Arc<AudioCombinerBuilder>,
@@ -64,10 +63,9 @@ pub struct MPDeltaRendererBuilder<K: 'static, Id, C, ImageCombinerBuilder, Audio
     runtime: Handle,
 }
 
-impl<K, Id, C, ImageCombinerBuilder, AudioCombinerBuilder> MPDeltaRendererBuilder<K, Id, C, ImageCombinerBuilder, AudioCombinerBuilder> {
-    pub fn new(id: Arc<Id>, image_combiner_builder: Arc<ImageCombinerBuilder>, controller_builder: Arc<C>, audio_combiner_builder: Arc<AudioCombinerBuilder>, key: Arc<RwLock<TCellOwner<K>>>, runtime: Handle) -> MPDeltaRendererBuilder<K, Id, C, ImageCombinerBuilder, AudioCombinerBuilder> {
+impl<K, C, ImageCombinerBuilder, AudioCombinerBuilder> MPDeltaRendererBuilder<K, C, ImageCombinerBuilder, AudioCombinerBuilder> {
+    pub fn new(image_combiner_builder: Arc<ImageCombinerBuilder>, controller_builder: Arc<C>, audio_combiner_builder: Arc<AudioCombinerBuilder>, key: Arc<RwLock<TCellOwner<K>>>, runtime: Handle) -> MPDeltaRendererBuilder<K, C, ImageCombinerBuilder, AudioCombinerBuilder> {
         MPDeltaRendererBuilder {
-            id,
             controller_builder,
             image_combiner_builder,
             audio_combiner_builder,
@@ -78,14 +76,13 @@ impl<K, Id, C, ImageCombinerBuilder, AudioCombinerBuilder> MPDeltaRendererBuilde
 }
 
 #[async_trait]
-impl<K, T, C, ImageCombinerBuilder, AudioCombinerBuilder, Id> ComponentRendererBuilder<K, T> for MPDeltaRendererBuilder<K, Id, C, ImageCombinerBuilder, AudioCombinerBuilder>
+impl<K, T, C, ImageCombinerBuilder, AudioCombinerBuilder> ComponentRendererBuilder<K, T> for MPDeltaRendererBuilder<K, C, ImageCombinerBuilder, AudioCombinerBuilder>
 where
     K: Send + Sync + 'static,
     T: ParameterValueType + 'static,
     C: MPDeltaRenderingControllerBuilder + 'static,
     ImageCombinerBuilder: CombinerBuilder<T::Image, Request = ImageCombinerRequest, Param = ImageCombinerParam> + 'static,
     AudioCombinerBuilder: CombinerBuilder<T::Audio, Request = AudioCombinerRequest, Param = AudioCombinerParam> + 'static,
-    Id: IdGenerator + 'static,
 {
     type Err = Infallible;
     type Renderer = MPDeltaRenderer<K, T, C, ImageCombinerBuilder, AudioCombinerBuilder>;
@@ -128,14 +125,13 @@ where
     }
 }
 
-impl<K, T, C, ImageCombinerBuilder, AudioCombinerBuilder, Id, Encoder> ComponentEncoder<K, T, Encoder> for MPDeltaRendererBuilder<K, Id, C, ImageCombinerBuilder, AudioCombinerBuilder>
+impl<K, T, C, ImageCombinerBuilder, AudioCombinerBuilder, Encoder> ComponentEncoder<K, T, Encoder> for MPDeltaRendererBuilder<K, C, ImageCombinerBuilder, AudioCombinerBuilder>
 where
     K: Send + Sync + 'static,
     T: ParameterValueType + 'static,
     C: MPDeltaRenderingControllerBuilder + 'static,
     ImageCombinerBuilder: CombinerBuilder<T::Image, Request = ImageCombinerRequest, Param = ImageCombinerParam> + 'static,
     AudioCombinerBuilder: CombinerBuilder<T::Audio, Request = AudioCombinerRequest, Param = AudioCombinerParam> + 'static,
-    Id: IdGenerator + 'static,
     Encoder: VideoEncoderBuilder<T::Image, T::Audio> + 'static,
 {
     type Err = EncodeError<K, T, Encoder::Err>;
@@ -279,16 +275,6 @@ impl<T> Default for RenderingCache<T> {
 impl<T> RenderingCache<T> {
     fn new() -> RenderingCache<T> {
         RenderingCache { map: DashMap::new() }
-    }
-
-    async fn get_or_insert_with<'a, F1, Fut, F2, Ret>(&'a self, frame: usize, f: F1, ret: F2) -> Ret
-    where
-        F1: FnOnce() -> Fut + 'a,
-        Fut: Future<Output = T> + 'a,
-        F2: FnOnce(&T) -> Ret,
-    {
-        let cell = self.map.entry(frame).or_default().downgrade();
-        cell.get_or_init(f).map(ret).await
     }
 
     async fn get_or_try_insert_with<F1, Fut, F2, Ret, Err>(&self, frame: usize, f: F1, ret: F2) -> Ret

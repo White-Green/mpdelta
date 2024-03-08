@@ -140,7 +140,6 @@ fn main() {
     let easing_manager = Arc::new(InMemoryEasingLoader::from_iter([Arc::new(LinearEasing) as _]));
     let project_serializer = Arc::new(MPDeltaProjectSerializer::new(Arc::clone(&key), runtime.handle().clone(), Arc::clone(&component_class_loader), value_managers, quaternion_manager, easing_manager));
     let component_renderer_builder = Arc::new(MPDeltaRendererBuilder::new(
-        Arc::clone(&id_generator),
         Arc::new(ImageCombinerBuilder::new(Arc::clone(&context))),
         Arc::new(LRUCacheRenderingControllerBuilder::new()),
         Arc::new(MPDeltaAudioMixerBuilder::new()),
@@ -161,7 +160,6 @@ fn main() {
         video_encoder: component_renderer_builder,
         editor,
         edit_history,
-        key: Arc::clone(&key),
     }));
     let audio_player = Arc::new(
         CpalAudioPlayer::new(

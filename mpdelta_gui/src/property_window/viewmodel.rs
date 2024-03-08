@@ -216,8 +216,7 @@ impl<K: 'static, T: ParameterValueType> Default for SelectedItem<K, T> {
     }
 }
 
-pub struct PropertyWindowViewModelImpl<K: 'static, T: ParameterValueType, GlobalUIState, Edit, Runtime, JoinHandle> {
-    global_ui_state: Arc<GlobalUIState>,
+pub struct PropertyWindowViewModelImpl<K: 'static, T: ParameterValueType, Edit, Runtime, JoinHandle> {
     edit: Arc<Edit>,
     selected: Arc<StdRwLock<SelectedItem<K, T>>>,
     selected_instance_at: Arc<ArcSwap<Range<f64>>>,
@@ -228,11 +227,10 @@ pub struct PropertyWindowViewModelImpl<K: 'static, T: ParameterValueType, Global
     key: Arc<RwLock<TCellOwner<K>>>,
 }
 
-impl<K, T, S, Edit, Runtime> GlobalUIEventHandler<K, T> for PropertyWindowViewModelImpl<K, T, S, Edit, Runtime, Runtime::JoinHandle>
+impl<K, T, Edit, Runtime> GlobalUIEventHandler<K, T> for PropertyWindowViewModelImpl<K, T, Edit, Runtime, Runtime::JoinHandle>
 where
     K: 'static,
     T: ParameterValueType,
-    S: GlobalUIState<K, T>,
     Edit: EditFunnel<K, T>,
     Runtime: AsyncRuntime<()> + Clone,
 {
@@ -279,12 +277,11 @@ where
     }
 }
 
-impl<K: 'static, T: ParameterValueType> PropertyWindowViewModelImpl<K, T, (), (), (), ()> {
+impl<K: 'static, T: ParameterValueType> PropertyWindowViewModelImpl<K, T, (), (), ()> {
     #[allow(clippy::type_complexity)]
-    pub fn new<S: GlobalUIState<K, T>, Edit: EditFunnel<K, T> + 'static, P: ViewModelParams<K, T>>(global_ui_state: &Arc<S>, edit: &Arc<Edit>, params: &P) -> Arc<PropertyWindowViewModelImpl<K, T, S, Edit, P::AsyncRuntime, <P::AsyncRuntime as AsyncRuntime<()>>::JoinHandle>> {
+    pub fn new<S: GlobalUIState<K, T>, Edit: EditFunnel<K, T> + 'static, P: ViewModelParams<K, T>>(global_ui_state: &Arc<S>, edit: &Arc<Edit>, params: &P) -> Arc<PropertyWindowViewModelImpl<K, T, Edit, P::AsyncRuntime, <P::AsyncRuntime as AsyncRuntime<()>>::JoinHandle>> {
         let runtime = params.runtime().clone();
         let arc = Arc::new(PropertyWindowViewModelImpl {
-            global_ui_state: Arc::clone(global_ui_state),
             edit: Arc::clone(edit),
             selected: Arc::new(StdRwLock::new(SelectedItem::default())),
             selected_instance_at: Arc::new(ArcSwap::new(Arc::new(0.0..0.0))),
@@ -298,11 +295,10 @@ impl<K: 'static, T: ParameterValueType> PropertyWindowViewModelImpl<K, T, (), ()
     }
 }
 
-impl<K, T, S, Edit, Runtime> PropertyWindowViewModel<K, T> for PropertyWindowViewModelImpl<K, T, S, Edit, Runtime, Runtime::JoinHandle>
+impl<K, T, Edit, Runtime> PropertyWindowViewModel<K, T> for PropertyWindowViewModelImpl<K, T, Edit, Runtime, Runtime::JoinHandle>
 where
     K: 'static,
     T: ParameterValueType,
-    S: GlobalUIState<K, T>,
     Edit: EditFunnel<K, T>,
     Runtime: AsyncRuntime<()> + Clone,
 {

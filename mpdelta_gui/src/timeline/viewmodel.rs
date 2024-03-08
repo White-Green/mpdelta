@@ -220,7 +220,6 @@ pub struct TimelineViewModelImpl<K: 'static, T: ParameterValueType, GlobalUIStat
     component_classes: Arc<ArcSwap<DefaultComponentClassDataList<K, T>>>,
     component_instances: Arc<Mutex<DefaultComponentInstanceDataList<K, T>>>,
     component_links: Arc<RwLock<DefaultComponentLinkDataList<K, T>>>,
-    selected_components: Arc<RwLock<HashSet<ComponentInstanceHandle<K, T>>>>,
     selected_root_component_class: Arc<RwLock<Option<RootComponentClassHandle<K, T>>>>,
     message_router: MessageRouter<MessageHandler, Runtime>,
     runtime: Runtime,
@@ -235,7 +234,6 @@ pub enum Message<K: 'static, T: ParameterValueType> {
     DeleteComponentInstance(ComponentInstanceHandle<K, T>),
     MoveComponentInstance(ComponentInstanceHandle<K, T>, f64),
     MoveMarkerPin(ComponentInstanceHandle<K, T>, MarkerPinHandle<K>, f64),
-    DragComponentInstance(ComponentInstanceHandle<K, T>, f32, f32),
     EditMarkerLinkLength(MarkerLinkHandle<K>, f64),
 }
 
@@ -252,7 +250,6 @@ where
             Message::DeleteComponentInstance(value) => Message::DeleteComponentInstance(value.clone()),
             &Message::MoveComponentInstance(ref value, to) => Message::MoveComponentInstance(value.clone(), to),
             &Message::MoveMarkerPin(ref instance, ref pin, to) => Message::MoveMarkerPin(instance.clone(), pin.clone(), to),
-            &Message::DragComponentInstance(ref value, x, y) => Message::DragComponentInstance(value.clone(), x, y),
             &Message::EditMarkerLinkLength(ref value, length) => Message::EditMarkerLinkLength(value.clone(), length),
         }
     }
@@ -274,7 +271,6 @@ where
             (Message::DeleteComponentInstance(a), Message::DeleteComponentInstance(b)) => a == b,
             (Message::MoveComponentInstance(a, at), Message::MoveComponentInstance(b, bt)) => a == b && at == bt,
             (Message::MoveMarkerPin(ai, ap, at), Message::MoveMarkerPin(bi, bp, bt)) => ai == bi && ap == bp && at == bt,
-            (Message::DragComponentInstance(a, ax, ay), Message::DragComponentInstance(b, bx, by)) => a == b && ax == bx && ay == by,
             (Message::EditMarkerLinkLength(a, al), Message::EditMarkerLinkLength(b, bl)) => a == b && al == bl,
             _ => unreachable!(),
         }
@@ -437,7 +433,6 @@ impl<K: Send + Sync + 'static, T: ParameterValueType> TimelineViewModelImpl<K, T
             component_classes,
             component_instances,
             component_links,
-            selected_components,
             selected_root_component_class,
             message_router,
             runtime: params.runtime().clone(),

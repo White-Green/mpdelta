@@ -13,7 +13,6 @@ use async_trait::async_trait;
 use cgmath::{One, Quaternion, Vector3};
 use qcell::TCell;
 use std::borrow::Cow;
-use std::collections::HashSet;
 use std::fmt::{Debug, Formatter};
 use std::hash::{Hash, Hasher};
 use std::ops::Deref;
@@ -24,7 +23,7 @@ use uuid::Uuid;
 #[derive(Debug)]
 pub struct Project<K: 'static, T: ParameterValueType> {
     id: Uuid,
-    children: HashSet<RootComponentClassHandle<K, T>>,
+    children: Vec<RootComponentClassHandleOwned<K, T>>,
 }
 
 pub type ProjectWithLock<K, T> = RwLock<Project<K, T>>;
@@ -52,19 +51,38 @@ impl<K, T: ParameterValueType> Project<K, T> {
     }
 
     pub fn new_empty(id: Uuid) -> ProjectHandleOwned<K, T> {
-        StaticPointerOwned::new(RwLock::new(Project { id, children: HashSet::new() }))
+        StaticPointerOwned::new(RwLock::new(Project { id, children: Vec::new() }))
     }
 
-    pub fn with_children(id: Uuid, children: impl IntoIterator<Item = RootComponentClassHandle<K, T>>) -> ProjectHandleOwned<K, T> {
+    pub fn with_children(id: Uuid, children: impl IntoIterator<Item = RootComponentClassHandleOwned<K, T>>) -> ProjectHandleOwned<K, T> {
         StaticPointerOwned::new(RwLock::new(Project { id, children: children.into_iter().collect() }))
     }
 
-    pub fn children(&self) -> &HashSet<RootComponentClassHandle<K, T>> {
+    pub fn children(&self) -> &Vec<RootComponentClassHandleOwned<K, T>> {
         &self.children
     }
 
-    pub fn children_mut(&mut self) -> &mut HashSet<RootComponentClassHandle<K, T>> {
-        &mut self.children
+    pub async fn add_child(&mut self, this: &ProjectHandle<K, T>, child: RootComponentClassHandleOwned<K, T>) {
+        let mut child_guard = child.write().await;
+        child_guard.parent = this.clone();
+        child_guard.parent_id = self.id;
+        drop(child_guard);
+        self.children.push(child);
+    }
+
+    pub async fn add_children(&mut self, this: &ProjectHandle<K, T>, children: impl IntoIterator<Item = RootComponentClassHandleOwned<K, T>>) {
+        for child in children {
+            let mut child_guard = child.write().await;
+            child_guard.parent = this.clone();
+            child_guard.parent_id = self.id;
+            drop(child_guard);
+            self.children.push(child);
+        }
+    }
+
+    pub fn remove_child(&mut self, child: &RootComponentClassHandle<K, T>) -> Option<RootComponentClassHandleOwned<K, T>> {
+        let index = self.children.iter().position(|c| c == child)?;
+        Some(self.children.remove(index))
     }
 }
 
@@ -132,7 +150,8 @@ impl<K: 'static, T: ParameterValueType> Clone for RootComponentClassItemWrapper<
 #[derive(Debug)]
 pub struct RootComponentClass<K: 'static, T: ParameterValueType> {
     id: Uuid,
-    parent: Option<(ProjectHandle<K, T>, Uuid)>,
+    parent: ProjectHandle<K, T>,
+    parent_id: Uuid,
     item: RootComponentClassItemWrapper<K, T>,
 }
 
@@ -147,7 +166,7 @@ impl<K, T: ParameterValueType + 'static> ComponentClass<K, T> for RootComponentC
         ComponentClassIdentifier {
             namespace: Cow::Borrowed("mpdelta"),
             name: Cow::Borrowed("RootComponentClass"),
-            inner_identifier: [self.parent.as_ref().map(|&(_, id)| id).unwrap_or_else(Uuid::nil), self.id],
+            inner_identifier: [self.parent_id, self.id],
         }
     }
 
@@ -236,10 +255,11 @@ impl<K, T: ParameterValueType> Hash for RootComponentClass<K, T> {
 }
 
 impl<K, T: ParameterValueType> RootComponentClass<K, T> {
-    pub fn new_empty(id: Uuid) -> RootComponentClassHandleOwned<K, T> {
+    pub fn new_empty(id: Uuid, parent: ProjectHandle<K, T>, parent_id: Uuid) -> RootComponentClassHandleOwned<K, T> {
         StaticPointerOwned::new(RwLock::new(RootComponentClass {
             id,
-            parent: None,
+            parent,
+            parent_id,
             item: RootComponentClassItemWrapper(Arc::new(RwLock::new(RootComponentClassItem {
                 left: StaticPointerOwned::new(TCell::new(MarkerPin::new(TimelineTime::new(MixedFraction::ZERO), MarkerTime::new(MixedFraction::ZERO).unwrap()))),
                 right: StaticPointerOwned::new(TCell::new(MarkerPin::new(TimelineTime::new(MixedFraction::from_integer(10)), MarkerTime::new(MixedFraction::from_integer(10)).unwrap()))),
@@ -250,10 +270,11 @@ impl<K, T: ParameterValueType> RootComponentClass<K, T> {
         }))
     }
 
-    pub fn with_item(id: Uuid, component: Vec<ComponentInstanceHandleOwned<K, T>>, link: Vec<MarkerLinkHandleOwned<K>>) -> RootComponentClassHandleOwned<K, T> {
+    pub fn with_item(id: Uuid, parent: ProjectHandle<K, T>, parent_id: Uuid, component: Vec<ComponentInstanceHandleOwned<K, T>>, link: Vec<MarkerLinkHandleOwned<K>>) -> RootComponentClassHandleOwned<K, T> {
         StaticPointerOwned::new(RwLock::new(RootComponentClass {
             id,
-            parent: None,
+            parent,
+            parent_id,
             item: RootComponentClassItemWrapper(Arc::new(RwLock::new(RootComponentClassItem {
                 left: StaticPointerOwned::new(TCell::new(MarkerPin::new(TimelineTime::new(MixedFraction::ZERO), MarkerTime::new(MixedFraction::ZERO).unwrap()))),
                 right: StaticPointerOwned::new(TCell::new(MarkerPin::new(TimelineTime::new(MixedFraction::from_integer(10)), MarkerTime::new(MixedFraction::from_integer(10)).unwrap()))),
@@ -298,5 +319,9 @@ impl<K, T: ParameterValueType> RootComponentClass<K, T> {
 
     pub async fn links(&self) -> impl Deref<Target = [impl AsRef<MarkerLinkHandle<K>>]> + '_ {
         RwLockReadGuard::map(self.item.0.read().await, |guard| guard.link.as_ref())
+    }
+
+    pub fn parent(&self) -> &ProjectHandle<K, T> {
+        &self.parent
     }
 }

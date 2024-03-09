@@ -108,7 +108,7 @@ pub trait ProjectSerializer<K: 'static, T: ParameterValueType>: Send + Sync {
     type SerializeError: Error + Send + 'static;
     type DeserializeError: Error + Send + 'static;
     async fn serialize_project(&self, project: &ProjectHandle<K, T>, out: impl Write + Send) -> Result<(), Self::SerializeError>;
-    async fn deserialize_project(&self, data: impl Read + Send) -> Result<(ProjectHandleOwned<K, T>, Vec<RootComponentClassHandleOwned<K, T>>), Self::DeserializeError>;
+    async fn deserialize_project(&self, data: impl Read + Send) -> Result<ProjectHandleOwned<K, T>, Self::DeserializeError>;
 }
 
 #[async_trait]
@@ -122,6 +122,7 @@ pub trait ProjectLoader<K: 'static, T: ParameterValueType>: Send + Sync {
 
 #[async_trait]
 pub trait ProjectMemory<K: 'static, T: ParameterValueType>: Send + Sync {
+    fn default_project(&self) -> ProjectHandle<K, T>;
     async fn contains(&self, path: &Path) -> bool {
         self.get_loaded_project(path).await.is_some()
     }
@@ -156,12 +157,9 @@ where
             Some(project) => Ok(project),
             None => {
                 let project_load = self.project_loader.load_project(path).await.map_err(LoadProjectError::ProjectLoaderError)?;
-                let (project, children) = self.project_serializer.deserialize_project(project_load).await.map_err(LoadProjectError::ProjectDeserializeError)?;
+                let project = self.project_serializer.deserialize_project(project_load).await.map_err(LoadProjectError::ProjectDeserializeError)?;
                 let project_ref = StaticPointerOwned::reference(&project).clone();
                 self.project_memory.insert_new_project(Some(path), project).await;
-                for child in children {
-                    self.root_component_class_memory.insert_new_root_component_class(Some(&project_ref), child).await;
-                }
                 Ok(project_ref)
             }
         }
@@ -227,14 +225,18 @@ pub trait RootComponentClassMemory<K, T: ParameterValueType>: Send + Sync {
 }
 
 #[async_trait]
-impl<K, T: ParameterValueType, ID, T1, T2, T3, T4, RM, T6, T7, T8, T9, T10> NewRootComponentClassUsecase<K, T> for MPDeltaCore<ID, T1, T2, T3, T4, RM, T6, T7, T8, T9, T10>
+impl<K, T: ParameterValueType, ID, T1, T2, T3, PM, RM, T6, T7, T8, T9, T10> NewRootComponentClassUsecase<K, T> for MPDeltaCore<ID, T1, T2, T3, PM, RM, T6, T7, T8, T9, T10>
 where
     Self: Send + Sync,
+    K: 'static,
     ID: IdGenerator,
+    PM: ProjectMemory<K, T>,
     RM: RootComponentClassMemory<K, T>,
 {
     async fn new_root_component_class(&self) -> RootComponentClassHandle<K, T> {
-        let root_component_class = RootComponentClass::new_empty(self.id_generator.generate_new());
+        let project = self.project_memory.default_project();
+        let project_id = project.upgrade().unwrap().read().await.id();
+        let root_component_class = RootComponentClass::new_empty(self.id_generator.generate_new(), project.clone(), project_id);
         let pointer = StaticPointerOwned::reference(&root_component_class).clone();
         self.root_component_class_memory.insert_new_root_component_class(None, root_component_class).await;
         pointer
@@ -248,9 +250,6 @@ where
     RM: RootComponentClassMemory<K, T>,
 {
     async fn set_owner_for_root_component_class(&self, component: &RootComponentClassHandle<K, T>, owner: &ProjectHandle<K, T>) {
-        if let Some(project) = owner.upgrade() {
-            project.write().await.children_mut().insert(component.clone());
-        }
         self.root_component_class_memory.set_parent(component, Some(owner)).await;
     }
 }

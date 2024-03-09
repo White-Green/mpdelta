@@ -656,9 +656,6 @@ impl<T: ParameterValueType> RootComponentClassForSerialize<T, Ser> {
 }
 
 impl<T: ParameterValueType> RootComponentClassForSerialize<T, De> {
-    fn create_slot<K>(&self) -> RootComponentClassHandleOwned<K, T> {
-        RootComponentClass::new_empty(self.id)
-    }
     async fn into_core<K, C, P, Q, E>(self, class_loader: Arc<ComponentClassLoaderWrapper<K, T, C, P, Q, E>>, slot: OwnedRwLockReadGuard<RootComponentClass<K, T>>, runtime: Handle, key: Arc<RwLock<TCellOwner<K>>>) -> Result<(), DeserializeError<K>>
     where
         C: ComponentClassLoader<K, T> + 'static,
@@ -1022,7 +1019,9 @@ impl<T: ParameterValueType> ProjectForSerialize<T, Ser> {
         let id = project.id();
         let components = stream::iter(project.children())
             // convert::identityを入れないとコンパイルが通らない(ライフタイムの推論に失敗してる?) 謎
-            .map(convert::identity(|c: &RootComponentClassHandle<K, T>| runtime.spawn(RootComponentClassForSerialize::from_core(c.clone(), Arc::clone(key), runtime.clone()))))
+            .map(convert::identity(|c: &RootComponentClassHandleOwned<K, T>| {
+                runtime.spawn(RootComponentClassForSerialize::from_core(StaticPointerOwned::reference(c).clone(), Arc::clone(key), runtime.clone()))
+            }))
             .buffered(16)
             .map(Result::unwrap)
             .try_collect()
@@ -1032,7 +1031,7 @@ impl<T: ParameterValueType> ProjectForSerialize<T, Ser> {
 }
 
 impl<T: ParameterValueType> ProjectForSerialize<T, De> {
-    pub async fn into_core<K, C, P, Q, E>(self, class: C, runtime: &Handle, value_managers: ParameterAllValues<P>, quaternion_manager: Q, easing_manager: E, key: &Arc<RwLock<TCellOwner<K>>>) -> Result<(ProjectHandleOwned<K, T>, Vec<RootComponentClassHandleOwned<K, T>>), DeserializeError<K>>
+    pub async fn into_core<K, C, P, Q, E>(self, class: C, runtime: &Handle, value_managers: ParameterAllValues<P>, quaternion_manager: Q, easing_manager: E, key: &Arc<RwLock<TCellOwner<K>>>) -> Result<ProjectHandleOwned<K, T>, DeserializeError<K>>
     where
         K: 'static,
         C: ComponentClassLoader<K, T> + 'static,
@@ -1050,12 +1049,19 @@ impl<T: ParameterValueType> ProjectForSerialize<T, De> {
         Q: ValueManagerLoader<Quaternion<f64>> + 'static,
         E: EasingLoader + 'static,
     {
-        let ProjectForSerialize { id, components } = self;
-        let components_slot = components.iter().map(RootComponentClassForSerialize::create_slot).collect::<Vec<_>>();
+        let ProjectForSerialize { id: project_id, components } = self;
+        let project = Project::new_empty(project_id);
+        let components_slot = components
+            .iter()
+            .map(|&RootComponentClassForSerialize { id, .. }| RootComponentClass::new_empty(id, StaticPointerOwned::reference(&project).clone(), project_id))
+            .collect::<Vec<_>>();
+        let mut project_write = project.write().await;
+        project_write.add_children(StaticPointerOwned::reference(&project), components_slot).await;
+        let components_slot = project_write.children();
         let components_slot_read = stream::iter(components_slot.iter()).then(StaticPointerOwned::read_owned).collect::<Vec<_>>().await;
         let class = ComponentClassLoaderWrapper::new(
             class,
-            id,
+            project_id,
             components_slot_read.iter().zip(components_slot.iter()).map(|(slot, handle_owned)| (&**slot, StaticPointerOwned::reference(handle_owned).clone())),
             value_managers,
             quaternion_manager,
@@ -1068,7 +1074,8 @@ impl<T: ParameterValueType> ProjectForSerialize<T, De> {
             .map(Result::unwrap)
             .try_for_each(|_| future::ready(Ok(())))
             .await?;
-        Ok((Project::with_children(id, components_slot.iter().map(StaticPointerOwned::reference).cloned()), components_slot))
+        drop(project_write);
+        Ok(project)
     }
 }
 

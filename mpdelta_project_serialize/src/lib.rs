@@ -7,7 +7,7 @@ use mpdelta_core::component::marker_pin::MarkerPinHandle;
 use mpdelta_core::component::parameter::value::{DynEditableEasingValueIdentifier, DynEditableSingleValueIdentifier, EasingIdentifier};
 use mpdelta_core::component::parameter::{ParameterAllValues, ParameterValueType, ValueRaw};
 use mpdelta_core::core::{ComponentClassLoader, EasingLoader, ProjectSerializer, ValueManagerLoader};
-use mpdelta_core::project::{ProjectHandle, ProjectHandleOwned, RootComponentClassHandle, RootComponentClassHandleOwned};
+use mpdelta_core::project::{ProjectHandle, ProjectHandleOwned, RootComponentClassHandle};
 use mpdelta_core::ptr::{StaticPointer, StaticPointerOwned};
 use mpdelta_differential::CollectCachedTimeError;
 use qcell::TCellOwner;
@@ -196,11 +196,12 @@ where
         write_project(&core, out)
     }
 
-    async fn deserialize_project(&self, data: impl Read + Send) -> Result<(ProjectHandleOwned<K, T>, Vec<RootComponentClassHandleOwned<K, T>>), Self::DeserializeError> {
+    async fn deserialize_project(&self, data: impl Read + Send) -> Result<ProjectHandleOwned<K, T>, Self::DeserializeError> {
         let project = read_project(data)?;
-        let (project_handle, component_classes) = project.into_core(self.component_class_loader.clone(), &self.runtime, self.value_managers.clone(), self.quaternion_manager.clone(), self.easing_manager.clone(), &self.key).await?;
+        let project_handle = project.into_core(self.component_class_loader.clone(), &self.runtime, self.value_managers.clone(), self.quaternion_manager.clone(), self.easing_manager.clone(), &self.key).await?;
+        let project_read = project_handle.read().await;
         let key = Arc::new(Arc::clone(&self.key).read_owned().await);
-        stream::iter(component_classes.iter())
+        stream::iter(project_read.children().iter())
             .map(Ok)
             .try_for_each_concurrent(16, |component_class| async {
                 let component_class = component_class.read().await;
@@ -212,8 +213,8 @@ where
                     .await
             })
             .await?;
-
-        Ok((project_handle, component_classes))
+        drop(project_read);
+        Ok(project_handle)
     }
 }
 

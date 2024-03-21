@@ -249,10 +249,14 @@ mod tests {
     use std::io::Cursor;
     use std::iter;
     use std::ops::Range;
+    use std::path::Path;
     use std::sync::{Arc, Mutex, MutexGuard};
 
     #[tokio::test]
     async fn view_property_window() {
+        const TEST_OUTPUT_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../test_output/", env!("CARGO_PKG_NAME"));
+        let test_output_dir = Path::new(TEST_OUTPUT_DIR);
+        tokio::fs::create_dir_all(test_output_dir).await.unwrap();
         struct K;
         struct T;
         impl ParameterValueType for T {
@@ -268,6 +272,7 @@ mod tests {
             type ComponentClass = ();
         }
         struct VM {
+            #[allow(clippy::type_complexity)]
             fixed_params: Mutex<Option<Vec<(String, ParameterValueFixed<(), ()>)>>>,
             params: Mutex<Option<ImageRequiredParamsEditSet<K, T, Vec<f64>>>>,
         }
@@ -315,7 +320,7 @@ mod tests {
         )
         .await
         .unwrap();
-        tokio::fs::write("view_property_window_light.png", output.into_inner()).await.unwrap();
+        tokio::fs::write(test_output_dir.join("view_property_window_light.png"), output.into_inner()).await.unwrap();
         let mut output = Cursor::new(Vec::new());
         egui_image_renderer::render_into_file(
             |ctx| {
@@ -329,6 +334,6 @@ mod tests {
         )
         .await
         .unwrap();
-        tokio::fs::write("view_property_window_dark.png", output.into_inner()).await.unwrap();
+        tokio::fs::write(test_output_dir.join("view_property_window_dark.png"), output.into_inner()).await.unwrap();
     }
 }

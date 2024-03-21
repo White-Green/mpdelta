@@ -152,12 +152,12 @@ fn write_project<K, T: ParameterValueType>(project: &serde_v0::ProjectForSeriali
 fn read_project<K, T: ParameterValueType>(mut read: impl Read) -> Result<serde_v0::ProjectForSerialize<T, serde_v0::De>, DeserializeError<K>> {
     let mut header = [0u8; 32];
     read.read_exact(&mut header)?;
-    // TODO: 1.77でstabilizeするsplit_array系メソッドに書き替える
-    let Some(header) = header.strip_prefix(MAGIC_NUMBER) else {
-        return Err(DeserializeError::MismatchMagicNumber(*<&[_; 4]>::try_from(&header[..4]).unwrap()));
-    };
-    let (version, reserved) = header.split_at(4);
-    let version = u32::from_be_bytes(*<&[u8; 4]>::try_from(version).unwrap());
+    let (magic_number, header) = header.split_first_chunk().unwrap();
+    if magic_number != MAGIC_NUMBER {
+        return Err(DeserializeError::MismatchMagicNumber(*magic_number));
+    }
+    let (version, reserved) = header.split_first_chunk().unwrap();
+    let version = u32::from_be_bytes(*version);
     assert_eq!(reserved.len(), 24);
     match version {
         serde_v0::FORMAT_VERSION => ciborium::de::from_reader(read).map_err(DeserializeError::CiboriumError),

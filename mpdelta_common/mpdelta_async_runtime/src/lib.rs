@@ -184,7 +184,6 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Arc;
 
     fn assert_runtime<T: AsyncRuntime<()>>() {}
 

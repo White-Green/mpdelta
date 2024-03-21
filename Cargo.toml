@@ -87,6 +87,7 @@ ffmpeg-next = { version = "6.1.1", default-features = false, features = ["codec"
 ffmpeg-sys-next = { version = "6.1.0", default-features = false, features = ["avcodec", "avdevice", "avfilter", "avformat", "swresample", "swscale"] }
 futures = "0.3.30"
 glam = { version = "0.24", default-features = false, features = ["libm"] }
+image = "0.25.0"
 indexmap = "2.2.5"
 lru = "0.12.3"
 mpdelta_async_runtime = { path = "mpdelta_common/mpdelta_async_runtime" }

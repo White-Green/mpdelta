@@ -51,10 +51,7 @@ impl<T> Drop for MessageReceiver<T> {
 
 impl<T> MessageReceiver<T> {
     pub async fn get_message(&mut self) -> Option<T> {
-        let Some(receiver) = self.receiver.as_mut() else {
-            return None;
-        };
-        receiver.recv().await
+        self.receiver.as_mut()?.recv().await
     }
 }
 

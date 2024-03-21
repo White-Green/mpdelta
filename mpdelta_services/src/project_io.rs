@@ -33,6 +33,6 @@ where
     type ProjectWrite<'a> = File;
 
     async fn write_project<'a>(&'a self, path: &Path) -> Result<Self::ProjectWrite<'a>, Self::Err> {
-        OpenOptions::new().write(true).create(true).open(path)
+        OpenOptions::new().write(true).create(true).truncate(true).open(path)
     }
 }

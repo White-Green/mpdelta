@@ -544,7 +544,7 @@ impl TimeMap {
 mod tests {
     use super::*;
     use assert_matches::assert_matches;
-    use mpdelta_core::component::marker_pin::{MarkerPin, MarkerTime};
+    use mpdelta_core::component::marker_pin::MarkerPin;
     use mpdelta_core::mfrac;
     use qcell::TCell;
 

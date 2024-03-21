@@ -52,14 +52,14 @@ impl FileFormat {
 
     pub fn extension_c(self) -> &'static CStr {
         match self {
-            FileFormat::Mp4 => CStr::from_bytes_with_nul(b"mp4\0").unwrap(),
-            FileFormat::Webm => CStr::from_bytes_with_nul(b"webm\0").unwrap(),
-            FileFormat::Mp3 => CStr::from_bytes_with_nul(b"mp3\0").unwrap(),
-            FileFormat::Wav => CStr::from_bytes_with_nul(b"wav\0").unwrap(),
-            FileFormat::Flac => CStr::from_bytes_with_nul(b"flac\0").unwrap(),
-            FileFormat::Png => CStr::from_bytes_with_nul(b"png\0").unwrap(),
-            FileFormat::Jpeg => CStr::from_bytes_with_nul(b"jpeg\0").unwrap(),
-            FileFormat::Webp => CStr::from_bytes_with_nul(b"webp\0").unwrap(),
+            FileFormat::Mp4 => c"mp4",
+            FileFormat::Webm => c"webm",
+            FileFormat::Mp3 => c"mp3",
+            FileFormat::Wav => c"wav",
+            FileFormat::Flac => c"flac",
+            FileFormat::Png => c"png",
+            FileFormat::Jpeg => c"jpeg",
+            FileFormat::Webp => c"webp",
         }
     }
 }

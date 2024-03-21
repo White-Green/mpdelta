@@ -177,6 +177,9 @@ impl<K, T: ParameterValueType> ComponentInstance<K, T> {
     pub fn fixed_parameters(&self) -> &[ParameterValueFixed<T::Image, T::Audio>] {
         &self.fixed_parameters
     }
+    pub fn fixed_parameters_mut(&mut self) -> &mut [ParameterValueFixed<T::Image, T::Audio>] {
+        &mut self.fixed_parameters
+    }
     pub fn variable_parameters_type(&self) -> &[(String, Parameter<Type>)] {
         &self.variable_parameters_type
     }

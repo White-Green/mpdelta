@@ -217,15 +217,15 @@ impl<K, T: ParameterValueType> ComponentProcessor<K, T> for RootComponentClassIt
     async fn update_variable_parameter(&self, _: &[ParameterValueRaw<T::Image, T::Audio>], variable_parameters: &mut Vec<(String, ParameterType)>) {
         variable_parameters.clear();
     }
-
-    async fn natural_length(&self, _: &[ParameterValueRaw<T::Image, T::Audio>]) -> MarkerTime {
-        let guard = self.0.read().await;
-        guard.length
-    }
 }
 
 #[async_trait]
 impl<K, T: ParameterValueType> ComponentProcessorComponent<K, T> for RootComponentClassItemWrapper<K, T> {
+    async fn natural_length(&self, _: &[ParameterValueRaw<T::Image, T::Audio>]) -> MarkerTime {
+        let guard = self.0.read().await;
+        guard.length
+    }
+
     async fn process(
         &self,
         _fixed_parameters: &[ParameterValueRaw<T::Image, T::Audio>],

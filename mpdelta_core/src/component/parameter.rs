@@ -17,6 +17,7 @@ use std::marker::PhantomData;
 use std::ops::Range;
 use std::sync::Arc;
 use std::{io, mem};
+use uuid::Uuid;
 
 pub mod placeholder;
 pub mod value;
@@ -552,10 +553,17 @@ impl ParameterValueType for TypeExceptComponentClass {
 }
 
 pub trait FileAbstraction: Read + Seek + Send + Sync {
+    fn identifier(&self) -> Uuid;
     fn duplicate(&self) -> Box<dyn FileAbstraction>;
 }
 
 pub struct AbstractFile(Box<dyn FileAbstraction>);
+
+impl AbstractFile {
+    pub fn new(file: impl FileAbstraction + 'static) -> AbstractFile {
+        AbstractFile(Box::new(file))
+    }
+}
 
 impl Read for AbstractFile {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
@@ -594,6 +602,9 @@ impl Seek for AbstractFile {
 }
 
 impl FileAbstraction for AbstractFile {
+    fn identifier(&self) -> Uuid {
+        self.0.identifier()
+    }
     fn duplicate(&self) -> Box<dyn FileAbstraction> {
         self.0.duplicate()
     }
@@ -621,12 +632,21 @@ impl Default for AbstractFile {
         }
 
         impl FileAbstraction for AbstractEmptyFile {
+            fn identifier(&self) -> Uuid {
+                Uuid::nil()
+            }
             fn duplicate(&self) -> Box<dyn FileAbstraction> {
                 Box::new(AbstractEmptyFile)
             }
         }
 
         AbstractFile(Box::new(AbstractEmptyFile))
+    }
+}
+
+impl Hash for AbstractFile {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.0.identifier().hash(state);
     }
 }
 

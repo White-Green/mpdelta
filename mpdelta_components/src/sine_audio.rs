@@ -4,7 +4,7 @@ use mpdelta_core::component::class::{ComponentClass, ComponentClassIdentifier};
 use mpdelta_core::component::instance::ComponentInstance;
 use mpdelta_core::component::marker_pin::{MarkerPin, MarkerTime};
 use mpdelta_core::component::parameter::{AudioRequiredParams, Parameter, ParameterSelect, ParameterType, ParameterValueRaw, ParameterValueType};
-use mpdelta_core::component::processor::{ComponentProcessor, ComponentProcessorNative, ComponentProcessorWrapper};
+use mpdelta_core::component::processor::{ComponentProcessor, ComponentProcessorNative, ComponentProcessorNativeDyn, ComponentProcessorWrapper, NativeProcessorInput};
 use mpdelta_core::ptr::{StaticPointer, StaticPointerCow, StaticPointerOwned};
 use mpdelta_core::time::TimelineTime;
 use mpdelta_core_audio::multi_channel_audio::{MultiChannelAudioMutOp, MultiChannelAudioOp, MultiChannelAudioSliceMut};
@@ -42,7 +42,7 @@ impl<K, T: ParameterValueType<Audio = AudioType>> ComponentClass<K, T> for SineA
         let left = StaticPointerOwned::new(TCell::new(MarkerPin::new(TimelineTime::ZERO, MarkerTime::ZERO)));
         let right = StaticPointerOwned::new(TCell::new(MarkerPin::new(TimelineTime::new(MixedFraction::from_integer(1)), MarkerTime::new(MixedFraction::from_integer(1)).unwrap())));
         let audio_required_params = AudioRequiredParams::new_default(StaticPointerOwned::reference(&left), StaticPointerOwned::reference(&right), 1);
-        ComponentInstance::builder(this.clone(), StaticPointerCow::Owned(left), StaticPointerCow::Owned(right), Vec::new(), Arc::new(SineAudio::new()) as Arc<dyn ComponentProcessorNative<K, T>>)
+        ComponentInstance::builder(this.clone(), StaticPointerCow::Owned(left), StaticPointerCow::Owned(right), Vec::new(), Arc::new(SineAudio::new()) as Arc<dyn ComponentProcessorNativeDyn<K, T>>)
             .audio_required_params(audio_required_params)
             .build()
     }
@@ -57,19 +57,39 @@ impl<K, T: ParameterValueType<Audio = AudioType>> ComponentProcessor<K, T> for S
     async fn update_variable_parameter(&self, _: &[ParameterValueRaw<T::Image, T::Audio>], variable_parameters: &mut Vec<(String, ParameterType)>) {
         variable_parameters.clear();
     }
-
-    async fn natural_length(&self, _: &[ParameterValueRaw<T::Image, T::Audio>]) -> MarkerTime {
-        MarkerTime::new(MixedFraction::ONE).unwrap()
-    }
 }
 
 #[async_trait]
 impl<K, T: ParameterValueType<Audio = AudioType>> ComponentProcessorNative<K, T> for SineAudio {
-    fn supports_output_type(&self, out: Parameter<ParameterSelect>) -> bool {
+    type WholeComponentCacheKey = ();
+    type WholeComponentCacheValue = ();
+    type FramedCacheKey = ();
+    type FramedCacheValue = ();
+
+    fn whole_component_cache_key(&self, _fixed_parameters: &[ParameterValueRaw<T::Image, T::Audio>]) -> Option<Self::WholeComponentCacheKey> {
+        None
+    }
+
+    fn framed_cache_key(&self, _parameters: NativeProcessorInput<'_, T>, _time: TimelineTime, _output_type: Parameter<ParameterSelect>) -> Option<Self::FramedCacheKey> {
+        None
+    }
+
+    async fn natural_length(&self, _fixed_params: &[ParameterValueRaw<T::Image, T::Audio>], _cache: &mut Option<Arc<Self::WholeComponentCacheValue>>) -> Option<MarkerTime> {
+        None
+    }
+
+    async fn supports_output_type(&self, _fixed_params: &[ParameterValueRaw<T::Image, T::Audio>], out: Parameter<ParameterSelect>, _cache: &mut Option<Arc<Self::WholeComponentCacheValue>>) -> bool {
         matches!(out, Parameter::Audio(_))
     }
 
-    async fn process(&self, _: &[ParameterValueRaw<T::Image, T::Audio>], _: &[ParameterValueRaw<T::Image, T::Audio>], _: &[(String, ParameterType)], _: TimelineTime, _: Parameter<ParameterSelect>) -> ParameterValueRaw<T::Image, T::Audio> {
+    async fn process(
+        &self,
+        _parameters: NativeProcessorInput<'_, T>,
+        _time: TimelineTime,
+        _output_type: Parameter<ParameterSelect>,
+        _whole_component_cache: &mut Option<Arc<Self::WholeComponentCacheValue>>,
+        _framed_cache: &mut Option<Arc<Self::FramedCacheValue>>,
+    ) -> ParameterValueRaw<T::Image, T::Audio> {
         Parameter::Audio(AudioType::new(SineAudio::new()))
     }
 }

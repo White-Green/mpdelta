@@ -325,6 +325,7 @@ mod tests {
         assert_eq!(format!("{:#?}", strong_ref), format!("StaticPointerStrongRef: {}(\n    TestStruct {{\n        value: 42,\n    }},\n)", address));
 
         #[derive(Debug)]
+        #[allow(unused)]
         struct TestStructTuple(i32);
         let owned = StaticPointerOwned::new(TestStructTuple(42));
         let ptr = StaticPointerOwned::reference(&owned).clone();

@@ -7,6 +7,8 @@ authors = { workspace = true }
 [dependencies]
 async-trait = { workspace = true }
 cgmath = { workspace = true }
+dyn-eq = { workspace = true }
+dyn-hash = { workspace = true }
 either = { workspace = true }
 erased-serde = { workspace = true }
 futures = { workspace = true }

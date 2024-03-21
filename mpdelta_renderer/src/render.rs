@@ -9,7 +9,7 @@ use mpdelta_core::component::parameter::value::DynEditableSingleValueMarker;
 use mpdelta_core::component::parameter::{
     AbstractFile, AudioRequiredParams, AudioRequiredParamsFixed, ImageRequiredParams, ImageRequiredParamsFixed, ImageRequiredParamsTransform, ImageRequiredParamsTransformFixed, Opacity, Parameter, ParameterType, ParameterValueRaw, ParameterValueType, VariableParameterValue,
 };
-use mpdelta_core::component::processor::{ComponentProcessorWrapper, ComponentsLinksPair};
+use mpdelta_core::component::processor::{ComponentProcessorWrapper, ComponentsLinksPair, NativeProcessorInput};
 use mpdelta_core::ptr::StaticPointerOwned;
 use mpdelta_core::time::TimelineTime;
 use qcell::TCellOwner;
@@ -352,10 +352,15 @@ where
 
         match component.processor() {
             ComponentProcessorWrapper::Native(processor) => {
-                if !processor.supports_output_type(ty.select()) {
+                if !processor.supports_output_type(&fixed_parameters, ty.select(), &mut None).await {
                     return Err(RenderError::NotProvided);
                 }
-                match processor.process(&fixed_parameters, &variable_parameters.await?, component.variable_parameters_type(), internal_at, ty.select()).await {
+                let params = NativeProcessorInput {
+                    fixed_parameters: &fixed_parameters,
+                    variable_parameters: &variable_parameters.await?,
+                    variable_parameter_type: component.variable_parameters_type(),
+                };
+                match processor.process(params, internal_at, ty.select(), &mut None, &mut None).await {
                     Parameter::Image(image) => Ok(Parameter::Image((image, image_required_params()?))),
                     Parameter::Audio(audio) => Ok(Parameter::Audio((audio, time_map.clone()))),
                     other => Ok(from_parameter_value_fixed(other)),

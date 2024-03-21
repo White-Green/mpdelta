@@ -9,7 +9,7 @@ use mpdelta_core::common::time_split_value::TimeSplitValue;
 use mpdelta_core::component::instance::ComponentInstanceHandle;
 use mpdelta_core::component::marker_pin::MarkerPinHandle;
 use mpdelta_core::component::parameter::value::EasingValue;
-use mpdelta_core::component::parameter::{BlendMode, CompositeOperation, ImageRequiredParams, ImageRequiredParamsTransform, ParameterValueType, PinSplitValue, VariableParameterValue, Vector3Params};
+use mpdelta_core::component::parameter::{BlendMode, CompositeOperation, ImageRequiredParams, ImageRequiredParamsTransform, ParameterValueFixed, ParameterValueType, PinSplitValue, VariableParameterValue, Vector3Params};
 use mpdelta_core::edit::InstanceEditCommand;
 use mpdelta_core::project::RootComponentClassHandle;
 use mpdelta_core::ptr::{StaticPointer, StaticPointerOwned};
@@ -197,6 +197,12 @@ pub struct ImageRequiredParamsEditSet<K: 'static, T: ParameterValueType, Times> 
 
 pub trait PropertyWindowViewModel<K: 'static, T: ParameterValueType> {
     type Times: AsRef<[f64]>;
+    type FixedParams: AsMut<[(String, ParameterValueFixed<T::Image, T::Audio>)]>;
+    type FixedParamsLock<'a>: DerefMut<Target = Option<Self::FixedParams>> + 'a
+    where
+        Self: 'a;
+    fn fixed_params(&self) -> Self::FixedParamsLock<'_>;
+    fn updated_fixed_params(&self, fixed_params: &Self::FixedParams);
     type ImageRequiredParams<'a>: DerefMut<Target = Option<ImageRequiredParamsEditSet<K, T, Self::Times>>> + 'a
     where
         Self: 'a;
@@ -220,6 +226,8 @@ pub struct PropertyWindowViewModelImpl<K: 'static, T: ParameterValueType, Edit, 
     edit: Arc<Edit>,
     selected: Arc<StdRwLock<SelectedItem<K, T>>>,
     selected_instance_at: Arc<ArcSwap<Range<f64>>>,
+    #[allow(clippy::type_complexity)]
+    fixed_params: Arc<Mutex<Option<Box<[(String, ParameterValueFixed<T::Image, T::Audio>)]>>>>,
     #[allow(clippy::type_complexity)]
     image_required_params: Arc<Mutex<Option<ImageRequiredParamsEditSet<K, T, Vec<f64>>>>>,
     image_required_params_update_task: Mutex<JoinHandleWrapper<JoinHandle>>,
@@ -252,24 +260,30 @@ where
                 drop(selected);
                 let mut task = self.image_required_params_update_task.lock().unwrap();
                 task.abort();
-                use_arc!(image_required_params = self.image_required_params, key = self.key, selected_instance_at = self.selected_instance_at);
+                use_arc!(fixed_params = self.fixed_params, image_required_params = self.image_required_params, key = self.key, selected_instance_at = self.selected_instance_at);
                 *task = self.runtime.spawn(async move {
                     let key = key.read().await;
 
-                    let mut image_required_params = image_required_params.lock().unwrap();
-                    *image_required_params = if let Some(instance) = instance.as_ref().and_then(StaticPointer::upgrade) {
+                    if let Some(instance) = instance.as_ref().and_then(StaticPointer::upgrade) {
                         let instance = instance.ro(&key);
                         if let (Some(left), Some(right)) = (instance.marker_left().upgrade(), instance.marker_right().upgrade()) {
                             selected_instance_at.store(Arc::new(left.ro(&key).cached_timeline_time().value().into_f64()..right.ro(&key).cached_timeline_time().value().into_f64()));
                         }
-                        instance.image_required_params().cloned().map(|value| {
+                        let new_image_required_params = instance.image_required_params().cloned().map(|value| {
                             let markers = iter::once(instance.marker_left()).chain(instance.markers().iter().map(StaticPointerOwned::reference)).chain(iter::once(instance.marker_right())).cloned();
                             let (params, pin_times) = ImageRequiredParamsForEdit::from_image_required_params(value, markers, &key);
                             ImageRequiredParamsEditSet { params, pin_times }
-                        })
+                        });
+                        *image_required_params.lock().unwrap() = new_image_required_params;
+                        let new_fixed_params = instance.fixed_parameters();
+                        let fixed_params_type = instance.fixed_parameters_type();
+                        assert_eq!(new_fixed_params.len(), fixed_params_type.len());
+                        let new_fixed_params = new_fixed_params.iter().zip(fixed_params_type).map(|(value, (name, _))| (name.clone(), value.clone())).collect();
+                        *fixed_params.lock().unwrap() = Some(new_fixed_params);
                     } else {
-                        None
-                    };
+                        *image_required_params.lock().unwrap() = None;
+                        *fixed_params.lock().unwrap() = None;
+                    }
                 });
             }
             _ => {}
@@ -285,6 +299,7 @@ impl<K: 'static, T: ParameterValueType> PropertyWindowViewModelImpl<K, T, (), ()
             edit: Arc::clone(edit),
             selected: Arc::new(StdRwLock::new(SelectedItem::default())),
             selected_instance_at: Arc::new(ArcSwap::new(Arc::new(0.0..0.0))),
+            fixed_params: Arc::new(Mutex::new(None)),
             image_required_params: Arc::new(Mutex::new(None)),
             image_required_params_update_task: Mutex::new(runtime.spawn(future::ready(()))),
             runtime,
@@ -303,6 +318,24 @@ where
     Runtime: AsyncRuntime<()> + Clone,
 {
     type Times = Vec<f64>;
+    type FixedParams = Box<[(String, ParameterValueFixed<T::Image, T::Audio>)]>;
+    type FixedParamsLock<'a> = MutexGuard<'a, Option<Self::FixedParams>> where Self: 'a;
+
+    fn fixed_params(&self) -> Self::FixedParamsLock<'_> {
+        self.fixed_params.lock().unwrap()
+    }
+
+    fn updated_fixed_params(&self, fixed_params: &Self::FixedParams) {
+        let SelectedItem {
+            root: Some(root_component_class),
+            instance: Some(component_instance),
+        } = &*self.selected.read().unwrap()
+        else {
+            return;
+        };
+        self.edit.edit_instance(root_component_class, component_instance, InstanceEditCommand::UpdateFixedParams(fixed_params.iter().map(|(_, v)| v.clone()).collect()));
+    }
+
     type ImageRequiredParams<'a> = MutexGuard<'a, Option<ImageRequiredParamsEditSet<K, T, Self::Times>>> where Self: 'a;
 
     fn selected_instance_at(&self) -> Range<f64> {

@@ -3,9 +3,8 @@ use mpdelta_core::common::mixed_fraction::MixedFraction;
 use mpdelta_core::component::class::{ComponentClass, ComponentClassIdentifier};
 use mpdelta_core::component::instance::ComponentInstance;
 use mpdelta_core::component::marker_pin::{MarkerPin, MarkerTime};
-use mpdelta_core::component::parameter::{ImageRequiredParams, Parameter, ParameterSelect, ParameterType, ParameterTypeExceptComponentClass, ParameterValueRaw, ParameterValueType};
-use mpdelta_core::component::processor::{ComponentProcessor, ComponentProcessorNative, ComponentProcessorWrapper};
-use mpdelta_core::native::processor::{NativeProcessor, ParameterNativeProcessorInputFixed};
+use mpdelta_core::component::parameter::{ImageRequiredParams, Parameter, ParameterSelect, ParameterType, ParameterValueRaw, ParameterValueType};
+use mpdelta_core::component::processor::{ComponentProcessor, ComponentProcessorNative, ComponentProcessorNativeDyn, ComponentProcessorWrapper, NativeProcessorInput};
 use mpdelta_core::ptr::{StaticPointer, StaticPointerCow, StaticPointerOwned};
 use mpdelta_core::time::TimelineTime;
 use mpdelta_core_vulkano::ImageType;
@@ -69,14 +68,14 @@ impl<K, T: ParameterValueType<Image = ImageType>> ComponentClass<K, T> for Recta
     }
 
     fn processor(&self) -> ComponentProcessorWrapper<K, T> {
-        ComponentProcessorWrapper::Native(Arc::clone(&self.0) as Arc<dyn ComponentProcessorNative<K, T>>)
+        ComponentProcessorWrapper::Native(Arc::clone(&self.0) as Arc<dyn ComponentProcessorNativeDyn<K, T>>)
     }
 
     async fn instantiate(&self, this: &StaticPointer<RwLock<dyn ComponentClass<K, T>>>) -> ComponentInstance<K, T> {
         let left = StaticPointerOwned::new(TCell::new(MarkerPin::new(TimelineTime::ZERO, MarkerTime::ZERO)));
         let right = StaticPointerOwned::new(TCell::new(MarkerPin::new(TimelineTime::new(MixedFraction::from_integer(1)), MarkerTime::new(MixedFraction::from_integer(1)).unwrap())));
         let image_required_params = ImageRequiredParams::new_default(StaticPointerOwned::reference(&left), StaticPointerOwned::reference(&right));
-        ComponentInstance::builder(this.clone(), StaticPointerCow::Owned(left), StaticPointerCow::Owned(right), Vec::new(), Arc::clone(&self.0) as Arc<dyn ComponentProcessorNative<K, T>>)
+        ComponentInstance::builder(this.clone(), StaticPointerCow::Owned(left), StaticPointerCow::Owned(right), Vec::new(), Arc::clone(&self.0) as Arc<dyn ComponentProcessorNativeDyn<K, T>>)
             .image_required_params(image_required_params)
             .build()
     }
@@ -91,45 +90,39 @@ impl<K, T: ParameterValueType<Image = ImageType>> ComponentProcessor<K, T> for R
     async fn update_variable_parameter(&self, _: &[ParameterValueRaw<T::Image, T::Audio>], variable_parameters: &mut Vec<(String, ParameterType)>) {
         variable_parameters.clear();
     }
-
-    async fn natural_length(&self, _: &[ParameterValueRaw<T::Image, T::Audio>]) -> MarkerTime {
-        MarkerTime::new(MixedFraction::ONE).unwrap()
-    }
 }
 
 #[async_trait]
 impl<K, T: ParameterValueType<Image = ImageType>> ComponentProcessorNative<K, T> for Rectangle {
-    fn supports_output_type(&self, out: Parameter<ParameterSelect>) -> bool {
+    type WholeComponentCacheKey = ();
+    type WholeComponentCacheValue = ();
+    type FramedCacheKey = ();
+    type FramedCacheValue = ();
+
+    fn whole_component_cache_key(&self, _fixed_parameters: &[ParameterValueRaw<T::Image, T::Audio>]) -> Option<Self::WholeComponentCacheKey> {
+        None
+    }
+
+    fn framed_cache_key(&self, _: NativeProcessorInput<'_, T>, _: TimelineTime, _: Parameter<ParameterSelect>) -> Option<Self::WholeComponentCacheKey> {
+        None
+    }
+
+    async fn natural_length(&self, _: &[ParameterValueRaw<T::Image, T::Audio>], _cache: &mut Option<Arc<Self::WholeComponentCacheValue>>) -> Option<MarkerTime> {
+        None
+    }
+
+    async fn supports_output_type(&self, _fixed_params: &[ParameterValueRaw<T::Image, T::Audio>], out: Parameter<ParameterSelect>, _cache: &mut Option<Arc<Self::WholeComponentCacheValue>>) -> bool {
         matches!(out, Parameter::Image(_))
     }
 
     async fn process(
         &self,
-        _fixed_parameters: &[ParameterValueRaw<T::Image, T::Audio>],
-        _variable_parameters: &[ParameterValueRaw<T::Image, T::Audio>],
-        _variable_parameter_type: &[(String, ParameterType)],
+        _parameters: NativeProcessorInput<'_, T>,
         _time: TimelineTime,
         _output_type: Parameter<ParameterSelect>,
+        _whole_component_cache: &mut Option<Arc<Self::WholeComponentCacheValue>>,
+        _framed_cache: &mut Option<Arc<Self::FramedCacheValue>>,
     ) -> ParameterValueRaw<T::Image, T::Audio> {
         ParameterValueRaw::Image(ImageType(Arc::clone(&self.0)))
-    }
-}
-
-impl<T: ParameterValueType<Image = ImageType>> NativeProcessor<T> for Rectangle {
-    fn parameter_type(&self) -> &[ParameterTypeExceptComponentClass] {
-        &[]
-    }
-
-    fn return_type(&self) -> &ParameterTypeExceptComponentClass {
-        const TYPE: &ParameterTypeExceptComponentClass = &ParameterTypeExceptComponentClass::Image(());
-        TYPE
-    }
-
-    fn has_same_output(&self, _: TimelineTime, _: TimelineTime, _: &[ParameterNativeProcessorInputFixed<ImageType, T::Audio>]) -> bool {
-        true
-    }
-
-    fn process(&self, _: TimelineTime, _: &[ParameterNativeProcessorInputFixed<ImageType, T::Audio>]) -> ParameterNativeProcessorInputFixed<ImageType, T::Audio> {
-        ParameterNativeProcessorInputFixed::Image(ImageType(Arc::clone(&self.0)))
     }
 }

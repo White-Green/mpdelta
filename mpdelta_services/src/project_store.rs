@@ -92,10 +92,14 @@ where
                 let Some(current_parent) = current_parent.upgrade() else {
                     continue;
                 };
-                let Some(owned) = current_parent.write().await.remove_child(root_component_class) else {
+                let mut current_parent = current_parent.write().await;
+                let Some(owned) = current_parent.remove_child(root_component_class) else {
                     continue;
                 };
+                drop(current_parent);
+                drop(component_read_guard);
                 project.write().await.add_child(project_handle, owned).await;
+                break;
             }
         }
         if let Some(component_ref) = root_component_class.upgrade() {

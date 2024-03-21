@@ -5,6 +5,7 @@ edition.workspace = true
 authors.workspace = true
 
 [dependencies]
+bitflags = { workspace = true }
 ffmpeg-next = { workspace = true }
 ffmpeg-sys-next = { workspace = true }
 mpdelta_multimedia = { workspace = true }

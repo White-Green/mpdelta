@@ -460,18 +460,20 @@ mod tests {
         }
         macro_rules! create_editor {
             ($editor:ident) => {
-                let times = [1., 2., 3., 4.];
+                let times = [1., 2., 3., 4., 5.];
                 let value = time_split_value!(
                     0,
-                    /*Some(EasingValue::new(LinearEasingF64 { start: 0., end: 1. }, Arc::new(Easing1)))*/ None,
+                    Some(EasingValue::new(LinearEasingF64 { start: 0., end: 1. }, Arc::new(Easing1))),
                     1,
+                    None,
+                    2,
                     Some(EasingValue::new(LinearEasingF64 { start: 1., end: 0.5 }, Arc::new(Easing2))),
-                    3,
+                    4,
                 );
                 let mut scroll_offset = 0.;
                 let $editor = EasingValueEditor {
                     id: "editor",
-                    time_range: 1.0..4.0,
+                    time_range: 1.0..5.0,
                     times: &times,
                     value: &value,
                     value_range: -0.5..1.5,

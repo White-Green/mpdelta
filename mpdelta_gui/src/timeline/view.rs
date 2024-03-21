@@ -85,7 +85,7 @@ impl<K: 'static, T: ParameterValueType, VM: TimelineViewModel<K, T>> Timeline<K,
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::timeline::viewmodel::{ComponentInstanceData, ComponentLinkDataList, MarkerPinData};
+    use crate::timeline::viewmodel::{ComponentInstanceData, MarkerPinData};
     use egui::{Pos2, Visuals};
     use egui_image_renderer::FileFormat;
     use std::cell::Cell;

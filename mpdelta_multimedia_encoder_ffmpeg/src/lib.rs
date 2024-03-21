@@ -135,7 +135,7 @@ impl<Encoder: From<FfmpegEncodeSettings<File>>> MediaCodecImplementHandle<Encode
 
     fn create_encoder(&self, file_format: FileFormat, video: Option<(VideoCodec, CodecOptions<VideoCodec>)>, audio: Option<(AudioCodec, CodecOptions<AudioCodec>)>, output: &Path) -> Encoder {
         assert!(MediaCodecImplementHandle::<Encoder>::supports(self, file_format, video.as_ref().map(|&(codec, _)| codec), audio.as_ref().map(|&(codec, _)| codec)));
-        let output = OpenOptions::new().write(true).create(true).open(output).unwrap();
+        let output = OpenOptions::new().write(true).create(true).truncate(true).open(output).unwrap();
         output.set_len(0).unwrap();
         Encoder::from(FfmpegEncodeSettings {
             vulkano_context: Arc::clone(&self.vulkano_context),

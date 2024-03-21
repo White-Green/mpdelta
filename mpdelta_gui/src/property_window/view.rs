@@ -268,6 +268,7 @@ mod tests {
             type ComponentClass = ();
         }
         struct VM {
+            #[allow(clippy::type_complexity)]
             fixed_params: Mutex<Option<Vec<(String, ParameterValueFixed<(), ()>)>>>,
             params: Mutex<Option<ImageRequiredParamsEditSet<K, T, Vec<f64>>>>,
         }

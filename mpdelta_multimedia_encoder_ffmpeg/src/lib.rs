@@ -540,6 +540,9 @@ mod tests {
     #[test]
     fn test_encode_mp4_h264_aac() {
         ffmpeg_next::init().unwrap();
+        const TEST_OUTPUT_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../test_output/", env!("CARGO_PKG_NAME"));
+        let test_output_dir = Path::new(TEST_OUTPUT_DIR);
+        std::fs::create_dir_all(test_output_dir).unwrap();
         let vulkano_context = Arc::new(VulkanoContext::new(VulkanoConfig {
             instance_create_info: InstanceCreateInfo {
                 max_api_version: Some(Version::V1_2),
@@ -599,12 +602,15 @@ mod tests {
             encoder.push_frame(ImageType(Arc::clone(&images[f])));
         }
         encoder.finish();
-        std::fs::write("test_encode_mp4_h264_aac.mp4", output.lock().unwrap().get_ref()).unwrap();
+        std::fs::write(test_output_dir.join("test_encode_mp4_h264_aac.mp4"), output.lock().unwrap().get_ref()).unwrap();
     }
 
     #[test]
     fn test_encode_flac() {
         ffmpeg_next::init().unwrap();
+        const TEST_OUTPUT_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../test_output/", env!("CARGO_PKG_NAME"));
+        let test_output_dir = Path::new(TEST_OUTPUT_DIR);
+        std::fs::create_dir_all(test_output_dir).unwrap();
         let vulkano_context = Arc::new(VulkanoContext::new(VulkanoConfig {
             instance_create_info: InstanceCreateInfo {
                 max_api_version: Some(Version::V1_2),
@@ -629,6 +635,6 @@ mod tests {
         assert!(!encoder.requires_image());
         encoder.set_audio(AudioType::new(TestAudio));
         encoder.finish();
-        std::fs::write("test_encode_flac.flac", output.lock().unwrap().get_ref()).unwrap();
+        std::fs::write(test_output_dir.join("test_encode_flac.flac"), output.lock().unwrap().get_ref()).unwrap();
     }
 }

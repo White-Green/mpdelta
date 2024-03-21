@@ -412,10 +412,14 @@ mod tests {
     use mpdelta_core::time_split_value;
     use serde::Serialize;
     use std::io::Cursor;
+    use std::path::Path;
     use std::sync::Arc;
 
     #[tokio::test]
     async fn test_editable_easing_value_editor() {
+        const TEST_OUTPUT_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../test_output/", env!("CARGO_PKG_NAME"));
+        let test_output_dir = Path::new(TEST_OUTPUT_DIR);
+        tokio::fs::create_dir_all(test_output_dir).await.unwrap();
         #[derive(Clone, Serialize)]
         struct LinearEasingF64 {
             start: f64,
@@ -499,7 +503,7 @@ mod tests {
         )
         .await
         .unwrap();
-        tokio::fs::write("easing_value_editor_light.png", output.into_inner()).await.unwrap();
+        tokio::fs::write(test_output_dir.join("easing_value_editor_light.png"), output.into_inner()).await.unwrap();
 
         create_editor!(editor);
         let mut output = Cursor::new(Vec::new());
@@ -515,6 +519,6 @@ mod tests {
         )
         .await
         .unwrap();
-        tokio::fs::write("easing_value_editor_dark.png", output.into_inner()).await.unwrap();
+        tokio::fs::write(test_output_dir.join("easing_value_editor_dark.png"), output.into_inner()).await.unwrap();
     }
 }

@@ -90,9 +90,13 @@ mod tests {
     use egui_image_renderer::FileFormat;
     use std::cell::Cell;
     use std::io::Cursor;
+    use std::path::Path;
 
     #[tokio::test]
     async fn view_timeline() {
+        const TEST_OUTPUT_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../test_output/", env!("CARGO_PKG_NAME"));
+        let test_output_dir = Path::new(TEST_OUTPUT_DIR);
+        tokio::fs::create_dir_all(test_output_dir).await.unwrap();
         struct K;
         struct T;
         impl ParameterValueType for T {
@@ -239,7 +243,7 @@ mod tests {
         )
         .await
         .unwrap();
-        tokio::fs::write("timeline_light.png", output.into_inner()).await.unwrap();
+        tokio::fs::write(test_output_dir.join("timeline_light.png"), output.into_inner()).await.unwrap();
         let mut output = Cursor::new(Vec::new());
         egui_image_renderer::render_into_file(
             |ctx| {
@@ -253,6 +257,6 @@ mod tests {
         )
         .await
         .unwrap();
-        tokio::fs::write("timeline_dark.png", output.into_inner()).await.unwrap();
+        tokio::fs::write(test_output_dir.join("timeline_dark.png"), output.into_inner()).await.unwrap();
     }
 }

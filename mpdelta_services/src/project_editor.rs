@@ -56,6 +56,8 @@ pub enum ProjectEditError {
     MarkerPinNotFound,
     #[error("invalid marker pin add position")]
     InvalidMarkerPinAddPosition,
+    #[error("parameter type mismatch")]
+    ParameterTypeMismatch,
 }
 
 pub struct ProjectEditListenerGuard<K: 'static, T> {
@@ -229,6 +231,24 @@ where
     async fn edit_instance(&self, root_ref: &RootComponentClassHandle<K, T>, target_ref: &ComponentInstanceHandle<K, T>, command: InstanceEditCommand<K, T>) -> Result<Self::Log, Self::Err> {
         let target = target_ref.upgrade().ok_or(ProjectEditError::InvalidTarget)?;
         match command {
+            InstanceEditCommand::UpdateFixedParams(params) => {
+                {
+                    let mut key = self.key.write().await;
+                    let slot = target.rw(&mut key).fixed_parameters_mut();
+                    if slot.len() != params.len() {
+                        return Err(ProjectEditError::ParameterTypeMismatch);
+                    }
+                    for (slot, value) in slot.iter_mut().zip(params.iter()) {
+                        if slot.select() != value.select() {
+                            return Err(ProjectEditError::ParameterTypeMismatch);
+                        }
+                        *slot = value.clone();
+                    }
+                }
+
+                self.edit_event_listeners.iter().for_each(|listener| listener.on_edit_instance(root_ref, target_ref, InstanceEditEvent::UpdateFixedParams(&params)));
+                Ok(ProjectEditLog::Unimplemented)
+            }
             InstanceEditCommand::UpdateImageRequiredParams(params) => {
                 {
                     let mut key = self.key.write().await;

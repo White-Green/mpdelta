@@ -67,7 +67,10 @@ impl<'a> OutputBuilder<'a> {
         let output_ptr = ptr::from_mut(Box::leak(output));
         let io_context = unsafe { ff::avio_alloc_context(buffer.as_ptr().cast(), buffer_size, 1, output_ptr.cast(), None, Some(super::write::<T>), Some(super::seek::<T>)) };
         let Some(io_context) = NonNull::new(io_context) else {
-            unsafe { ff::av_free(buffer.as_ptr()) };
+            unsafe {
+                ff::av_free(buffer.as_ptr());
+                drop(Box::from_raw(output_ptr));
+            };
             return Err(FfmpegIoError::IOContextCreationError);
         };
 
@@ -77,6 +80,7 @@ impl<'a> OutputBuilder<'a> {
             unsafe {
                 ff::av_freep((*io_context.as_ptr()).buffer.cast());
                 ff::avio_context_free(&mut io_context.as_ptr());
+                drop(Box::from_raw(output_ptr));
             }
             return Err(ffmpeg_next::Error::from(ret).into());
         }

@@ -2,6 +2,8 @@ use async_trait::async_trait;
 use cpal::traits::HostTrait;
 use futures::{pin_mut, stream, FutureExt, StreamExt};
 use mpdelta_audio_mixer::MPDeltaAudioMixerBuilder;
+use mpdelta_components::multimedia_loader::FfmpegMultimediaLoaderClass;
+use mpdelta_components::parameter::file_reader::FileReaderParamManager;
 use mpdelta_components::rectangle::RectangleClass;
 use mpdelta_components::sine_audio::SineAudio;
 use mpdelta_core::component::class::{ComponentClass, ComponentClassIdentifier};
@@ -119,15 +121,16 @@ fn main() {
     let project_writer = Arc::new(LocalFSProjectWriter);
     let project_memory = Arc::new(InMemoryProjectStore::<ProjectKey, ValueType>::new());
     let mut component_class_loader = ComponentClassList::new();
-    let command_buffer_allocator = StandardCommandBufferAllocator::new(Arc::clone(context.device()), StandardCommandBufferAllocatorCreateInfo::default());
+    let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(Arc::clone(context.device()), StandardCommandBufferAllocatorCreateInfo::default()));
     component_class_loader.add(RectangleClass::new(Arc::clone(context.graphics_queue()), context.memory_allocator(), &command_buffer_allocator));
     component_class_loader.add(SineAudio::new());
+    component_class_loader.add(FfmpegMultimediaLoaderClass::new(context.graphics_queue(), context.memory_allocator(), &command_buffer_allocator));
     let component_class_loader = Arc::new(component_class_loader);
     let key = Arc::new(RwLock::new(TCellOwner::<ProjectKey>::new()));
     let value_managers = ParameterAllValues::<ValueManagerLoaderTypes> {
         image: Arc::new(InMemoryValueManagerLoader::from_iter([], [])),
         audio: Arc::new(InMemoryValueManagerLoader::from_iter([], [])),
-        binary: Arc::new(InMemoryValueManagerLoader::from_iter([], [])),
+        binary: Arc::new(InMemoryValueManagerLoader::from_iter([Arc::new(FileReaderParamManager) as _], [])),
         string: Arc::new(InMemoryValueManagerLoader::from_iter([Arc::new(DynEditableSelfValueManager::default()) as _], [])),
         integer: Arc::new(InMemoryValueManagerLoader::from_iter([Arc::new(DynEditableSelfValueManager::default()) as _], [])),
         real_number: Arc::new(InMemoryValueManagerLoader::from_iter([Arc::new(DynEditableSelfValueManager::default()) as _], [Arc::new(DynEditableSelfEasingValueManager::default()) as _])),

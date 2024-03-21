@@ -69,11 +69,11 @@ where
     }
 
     async fn undo(&self, root: &RootComponentClassHandle<K, T>, target: Option<&ComponentInstanceHandle<K, T>>) -> Option<Arc<Log>> {
-        self.store.lock().await.pop_undo(&(root.clone(), target.cloned())).map(Arc::clone)
+        self.store.lock().await.pop_undo(&(root.clone(), target.cloned())).cloned()
     }
 
     async fn redo(&self, root: &RootComponentClassHandle<K, T>, target: Option<&ComponentInstanceHandle<K, T>>) -> Option<Arc<Log>> {
-        self.store.lock().await.pop_redo(&(root.clone(), target.cloned())).map(Arc::clone)
+        self.store.lock().await.pop_redo(&(root.clone(), target.cloned())).cloned()
     }
 }
 

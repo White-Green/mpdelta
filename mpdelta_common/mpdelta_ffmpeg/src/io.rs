@@ -1,11 +1,13 @@
 use ffmpeg_sys_next as ff;
 use std::ffi::{c_int, c_void};
-use std::io::{Seek, SeekFrom, Write};
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::slice;
 use thiserror::Error;
 
+pub mod input;
 pub mod output;
 
+pub use input::Input;
 pub use output::Output;
 
 #[derive(Debug, Error)]
@@ -18,6 +20,16 @@ pub enum FfmpegIoError {
     GuessFormatError,
     #[error("{0}")]
     FfmpegError(#[from] ffmpeg_next::Error),
+}
+
+unsafe extern "C" fn read<T: Read>(opaque: *mut c_void, buf: *mut u8, buf_size: c_int) -> c_int {
+    let input = opaque.cast::<T>().as_mut().unwrap();
+    let buf = slice::from_raw_parts_mut(buf, buf_size as usize);
+    match input.read(buf) {
+        Ok(0) => ff::AVERROR_EOF,
+        Ok(len @ 1..) => len as c_int,
+        Err(_) => -1,
+    }
 }
 
 unsafe extern "C" fn write<T: Write>(opaque: *mut c_void, buffer: *mut u8, len: c_int) -> c_int {

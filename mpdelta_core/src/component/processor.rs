@@ -6,7 +6,11 @@ use crate::component::parameter::{Parameter, ParameterSelect, ParameterType, Par
 use crate::ptr::StaticPointer;
 use crate::time::TimelineTime;
 use async_trait::async_trait;
+use dyn_eq::DynEq;
+use dyn_hash::DynHash;
+use std::any::{Any, TypeId};
 use std::future::Future;
+use std::hash::Hash;
 use std::pin::Pin;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -15,7 +19,7 @@ pub struct ComponentsLinksPair<K: 'static, T: ParameterValueType>(pub Vec<Compon
 
 #[derive(Clone)]
 pub enum ComponentProcessorWrapper<K, T: ParameterValueType> {
-    Native(Arc<dyn ComponentProcessorNative<K, T>>),
+    Native(Arc<dyn ComponentProcessorNativeDyn<K, T>>),
     Component(Arc<dyn ComponentProcessorComponent<K, T>>),
     GatherNative(Arc<dyn ComponentProcessorGatherNative<K, T>>),
     GatherComponent(Arc<dyn ComponentProcessorGatherComponent<K, T>>),
@@ -49,27 +53,13 @@ impl<K, T: ParameterValueType> ComponentProcessor<K, T> for ComponentProcessorWr
             ComponentProcessorWrapper::GatherComponent(processor) => processor.update_variable_parameter(fixed_params, variable_parameters),
         }
     }
-
-    fn natural_length<'life0, 'life1, 'async_trait>(&'life0 self, fixed_params: &'life1 [ParameterValueRaw<T::Image, T::Audio>]) -> Pin<Box<dyn Future<Output = MarkerTime> + Send + 'async_trait>>
-    where
-        Self: 'async_trait,
-        'life0: 'async_trait,
-        'life1: 'async_trait,
-    {
-        match self {
-            ComponentProcessorWrapper::Native(processor) => processor.natural_length(fixed_params),
-            ComponentProcessorWrapper::Component(processor) => processor.natural_length(fixed_params),
-            ComponentProcessorWrapper::GatherNative(processor) => processor.natural_length(fixed_params),
-            ComponentProcessorWrapper::GatherComponent(processor) => processor.natural_length(fixed_params),
-        }
-    }
 }
 
-impl<K, T> From<Arc<dyn ComponentProcessorNative<K, T>>> for ComponentProcessorWrapper<K, T>
+impl<K, T> From<Arc<dyn ComponentProcessorNativeDyn<K, T>>> for ComponentProcessorWrapper<K, T>
 where
     T: ParameterValueType,
 {
-    fn from(value: Arc<dyn ComponentProcessorNative<K, T>>) -> ComponentProcessorWrapper<K, T> {
+    fn from(value: Arc<dyn ComponentProcessorNativeDyn<K, T>>) -> ComponentProcessorWrapper<K, T> {
         ComponentProcessorWrapper::Native(value)
     }
 }
@@ -101,28 +91,98 @@ where
     }
 }
 
+pub trait CacheKey: Send + Sync + DynEq + DynHash + 'static {}
+dyn_eq::eq_trait_object!(CacheKey);
+dyn_hash::hash_trait_object!(CacheKey);
+
+impl<T> CacheKey for T where T: Send + Sync + DynEq + DynHash + 'static {}
+
 #[async_trait]
 pub trait ComponentProcessor<K, T: ParameterValueType>: Send + Sync {
     async fn fixed_parameter_types(&self) -> &[(String, ParameterType)];
     async fn update_variable_parameter(&self, fixed_params: &[ParameterValueRaw<T::Image, T::Audio>], variable_parameters: &mut Vec<(String, ParameterType)>);
-    async fn natural_length(&self, fixed_params: &[ParameterValueRaw<T::Image, T::Audio>]) -> MarkerTime;
+}
+
+pub struct NativeProcessorInput<'a, T: ParameterValueType> {
+    pub fixed_parameters: &'a [ParameterValueRaw<T::Image, T::Audio>],
+    pub variable_parameters: &'a [ParameterValueRaw<T::Image, T::Audio>],
+    pub variable_parameter_type: &'a [(String, ParameterType)],
 }
 
 #[async_trait]
 pub trait ComponentProcessorNative<K, T: ParameterValueType>: ComponentProcessor<K, T> {
-    fn supports_output_type(&self, out: Parameter<ParameterSelect>) -> bool;
-    async fn process(
-        &self,
-        fixed_parameters: &[ParameterValueRaw<T::Image, T::Audio>],
-        variable_parameters: &[ParameterValueRaw<T::Image, T::Audio>],
-        variable_parameter_type: &[(String, ParameterType)],
-        time: TimelineTime,
-        output_type: Parameter<ParameterSelect>,
-    ) -> ParameterValueRaw<T::Image, T::Audio>;
+    type WholeComponentCacheKey: Send + Sync + Eq + Hash + 'static;
+    type WholeComponentCacheValue: Send + Sync + 'static;
+    type FramedCacheKey: Send + Sync + Eq + Hash + 'static;
+    type FramedCacheValue: Send + Sync + 'static;
+    fn whole_component_cache_key(&self, fixed_parameters: &[ParameterValueRaw<T::Image, T::Audio>]) -> Option<Self::WholeComponentCacheKey>;
+    fn framed_cache_key(&self, parameters: NativeProcessorInput<'_, T>, time: TimelineTime, output_type: Parameter<ParameterSelect>) -> Option<Self::FramedCacheKey>;
+    async fn natural_length(&self, fixed_params: &[ParameterValueRaw<T::Image, T::Audio>], cache: &mut Option<Arc<Self::WholeComponentCacheValue>>) -> Option<MarkerTime>;
+    async fn supports_output_type(&self, fixed_params: &[ParameterValueRaw<T::Image, T::Audio>], out: Parameter<ParameterSelect>, cache: &mut Option<Arc<Self::WholeComponentCacheValue>>) -> bool;
+    async fn process(&self, parameters: NativeProcessorInput<'_, T>, time: TimelineTime, output_type: Parameter<ParameterSelect>, whole_component_cache: &mut Option<Arc<Self::WholeComponentCacheValue>>, framed_cache: &mut Option<Arc<Self::FramedCacheValue>>)
+        -> ParameterValueRaw<T::Image, T::Audio>;
+}
+
+#[async_trait]
+pub trait ComponentProcessorNativeDyn<K, T: ParameterValueType>: ComponentProcessor<K, T> {
+    fn whole_component_cache_key(&self, fixed_parameters: &[ParameterValueRaw<T::Image, T::Audio>]) -> Option<Box<dyn CacheKey>>;
+    fn framed_cache_key(&self, parameters: NativeProcessorInput<'_, T>, time: TimelineTime, output_type: Parameter<ParameterSelect>) -> Option<Box<dyn CacheKey>>;
+    async fn natural_length(&self, fixed_params: &[ParameterValueRaw<T::Image, T::Audio>], cache: &mut Option<Arc<dyn Any + Send + Sync>>) -> Option<MarkerTime>;
+    async fn supports_output_type(&self, fixed_params: &[ParameterValueRaw<T::Image, T::Audio>], out: Parameter<ParameterSelect>, cache: &mut Option<Arc<dyn Any + Send + Sync>>) -> bool;
+    async fn process(&self, parameters: NativeProcessorInput<'_, T>, time: TimelineTime, output_type: Parameter<ParameterSelect>, whole_component_cache: &mut Option<Arc<dyn Any + Send + Sync>>, framed_cache: &mut Option<Arc<dyn Any + Send + Sync>>) -> ParameterValueRaw<T::Image, T::Audio>;
+}
+
+#[async_trait]
+impl<K, T, P> ComponentProcessorNativeDyn<K, T> for P
+where
+    T: ParameterValueType,
+    P: ComponentProcessorNative<K, T> + 'static,
+{
+    fn whole_component_cache_key(&self, fixed_parameters: &[ParameterValueRaw<T::Image, T::Audio>]) -> Option<Box<dyn CacheKey>> {
+        let key = P::whole_component_cache_key(self, fixed_parameters)?;
+        Some(Box::new((TypeId::of::<P>(), true, TypeId::of::<P::WholeComponentCacheValue>(), key)))
+    }
+
+    fn framed_cache_key(&self, parameters: NativeProcessorInput<'_, T>, time: TimelineTime, output_type: Parameter<ParameterSelect>) -> Option<Box<dyn CacheKey>> {
+        let key = P::framed_cache_key(self, parameters, time, output_type)?;
+        Some(Box::new((TypeId::of::<P>(), false, TypeId::of::<P::FramedCacheValue>(), key)))
+    }
+
+    async fn natural_length(&self, fixed_params: &[ParameterValueRaw<T::Image, T::Audio>], cache: &mut Option<Arc<dyn Any + Send + Sync>>) -> Option<MarkerTime> {
+        let mut c = cache.take().and_then(|cache| Arc::downcast(cache).ok());
+        let result = P::natural_length(self, fixed_params, &mut c).await;
+        if let Some(c) = c {
+            *cache = Some(c);
+        }
+        result
+    }
+
+    async fn supports_output_type(&self, fixed_params: &[ParameterValueRaw<T::Image, T::Audio>], out: Parameter<ParameterSelect>, cache: &mut Option<Arc<dyn Any + Send + Sync>>) -> bool {
+        let mut c = cache.take().and_then(|cache| Arc::downcast(cache).ok());
+        let result = P::supports_output_type(self, fixed_params, out, &mut c).await;
+        if let Some(c) = c {
+            *cache = Some(c);
+        }
+        result
+    }
+
+    async fn process(&self, parameters: NativeProcessorInput<'_, T>, time: TimelineTime, output_type: Parameter<ParameterSelect>, whole_component_cache: &mut Option<Arc<dyn Any + Send + Sync>>, framed_cache: &mut Option<Arc<dyn Any + Send + Sync>>) -> ParameterValueRaw<T::Image, T::Audio> {
+        let mut wc = whole_component_cache.take().and_then(|cache| Arc::downcast(cache).ok());
+        let mut fc = framed_cache.take().and_then(|cache| Arc::downcast(cache).ok());
+        let result = P::process(self, parameters, time, output_type, &mut wc, &mut fc).await;
+        if let Some(c) = wc {
+            *whole_component_cache = Some(c);
+        }
+        if let Some(c) = fc {
+            *framed_cache = Some(c);
+        }
+        result
+    }
 }
 
 #[async_trait]
 pub trait ComponentProcessorComponent<K, T: ParameterValueType>: ComponentProcessor<K, T> {
+    async fn natural_length(&self, fixed_params: &[ParameterValueRaw<T::Image, T::Audio>]) -> MarkerTime;
     async fn process(
         &self,
         fixed_parameters: &[ParameterValueRaw<T::Image, T::Audio>],

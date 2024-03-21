@@ -297,6 +297,26 @@ impl MixedFraction {
         Some(MixedFraction::new_inner(i, n as u32, d as u32))
     }
 
+    pub fn div_floor(self, rhs: MixedFraction) -> Option<i64> {
+        let (i1, n1, d1) = self.deconstruct();
+        let (i2, n2, d2) = rhs.deconstruct();
+        let (i1, n1, d1) = (i1 as i128, n1 as i128, d1 as i128);
+        let (i2, n2, d2) = (i2 as i128, n2 as i128, d2 as i128);
+        let n = (d1 * i1 + n1) * d2;
+        let d = (i2 * d2 + n2) * d1;
+        let (n, d) = match d.cmp(&0) {
+            Ordering::Less => (-n, -d),
+            Ordering::Equal => return None,
+            Ordering::Greater => (n, d),
+        };
+        let gcd = n.gcd(&d);
+        let n = n / gcd;
+        let d = d / gcd;
+        let (div, rem) = n.div_rem(&d);
+        let i = if rem < 0 { div - 1 } else { div };
+        i64::try_from(i).ok()
+    }
+
     pub fn saturating_div(self, rhs: MixedFraction) -> MixedFraction {
         self.checked_div(rhs).unwrap_or_else(|| if self.signum() * rhs.signum() >= 0 { MixedFraction::MAX } else { MixedFraction::MIN })
     }
@@ -506,6 +526,13 @@ mod tests {
         assert_eq!(MixedFraction::ONE / MixedFraction::ONE, MixedFraction::ONE);
         assert_eq!(MixedFraction::ONE / MixedFraction::new(0, 1, 2), MixedFraction::new(2, 0, 1));
         assert_eq!(MixedFraction::new(0, 1, 2) / MixedFraction::new(0, 1, 3), MixedFraction::new(1, 1, 2));
+    }
+
+    #[test]
+    fn test_mixed_fraction_div_floor() {
+        assert_eq!(MixedFraction::MAX.div_floor(MixedFraction::ONE).unwrap(), MixedFraction::MAX.deconstruct().0 as i64);
+        assert!(MixedFraction::MAX.div_floor(MixedFraction::new(0, 1, FRAC_VALUE_MASK)).is_some());
+        assert!(MixedFraction::MAX.div_floor(MixedFraction::new(0, 0, FRAC_VALUE_MASK)).is_none());
     }
 
     #[test]

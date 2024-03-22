@@ -67,13 +67,13 @@ authors = ["White-Green"]
 arc-swap = "1.7.0"
 arrayvec = "0.7.4"
 assert_matches = "1.5.0"
-async-trait = "0.1.77"
-bitflags = "2.4.2"
-bytemuck = "1.14.3"
-bytemuck_derive = "1.5.0"
+async-trait = "0.1.78"
+bitflags = "2.5.0"
+bytemuck = "1.15.0"
+bytemuck_derive = "1.6.0"
 cgmath = { version = "0.18.0", features = ["serde"] }
 ciborium = "0.2.2"
-cpal = "0.15.2"
+cpal = "0.15.3"
 crossbeam-queue = "0.3.11"
 dashmap = "5.5.3"
 dyn-eq = "0.1.3"
@@ -82,7 +82,7 @@ egui = "0.24.1"
 egui_image_renderer = { git = "https://github.com/White-Green/egui_image_renderer", rev = "9e4a24b689029863f39c48a53a4aba3bae948ecd" }
 egui_winit_vulkano = "0.27.0"
 either = "1.10.0"
-erased-serde = "0.4.3"
+erased-serde = "0.4.4"
 ffmpeg-next = { version = "6.1.1", default-features = false, features = ["codec", "format", "software-scaling", "software-resampling"] }
 ffmpeg-sys-next = { version = "6.1.0", default-features = false, features = ["avcodec", "avdevice", "avfilter", "avformat", "swresample", "swscale"] }
 futures = "0.3.30"
@@ -118,7 +118,7 @@ proptest-derive = "0.4.0"
 qcell = "0.5.4"
 rayon = "1.9.0"
 regex = "1.10.3"
-rfd = { version = "0.14.0", features = ["file-handle-inner"] }
+rfd = { version = "0.14.1", features = ["file-handle-inner"] }
 serde = { version = "1.0.197", features = ["derive"] }
 serde_repr = "0.1.18"
 serde_json = "1.0.114"
@@ -126,10 +126,10 @@ shader_builder = { path = "mpdelta_build_utils/shader_builder" }
 smallvec = "1.13"
 spirv-builder = "0.9.0"
 spirv-std = "0.9.0"
-thiserror = "1.0.57"
+thiserror = "1.0.58"
 time = { version = "0.3.34", features = ["std"] }
 tokio = { version = "1.36.0", features = ["fs", "macros", "sync", "time"] }
-uuid = "1.7.0"
+uuid = "1.8.0"
 vulkano = "0.34.1"
 vulkano-util = "0.34.1"
 vulkano-win = "0.34.0"

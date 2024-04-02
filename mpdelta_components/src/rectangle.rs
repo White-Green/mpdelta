@@ -5,7 +5,7 @@ use mpdelta_core::component::instance::ComponentInstance;
 use mpdelta_core::component::marker_pin::{MarkerPin, MarkerTime};
 use mpdelta_core::component::parameter::{ImageRequiredParams, Parameter, ParameterSelect, ParameterType, ParameterValueRaw, ParameterValueType};
 use mpdelta_core::component::processor::{ComponentProcessor, ComponentProcessorNative, ComponentProcessorNativeDyn, ComponentProcessorWrapper, NativeProcessorInput, NativeProcessorRequest};
-use mpdelta_core::ptr::{StaticPointer, StaticPointerCow, StaticPointerOwned};
+use mpdelta_core::ptr::{StaticPointer, StaticPointerOwned};
 use mpdelta_core::time::TimelineTime;
 use mpdelta_core_vulkano::ImageType;
 use qcell::TCell;
@@ -75,7 +75,7 @@ impl<K, T: ParameterValueType<Image = ImageType>> ComponentClass<K, T> for Recta
         let left = StaticPointerOwned::new(TCell::new(MarkerPin::new(TimelineTime::ZERO, MarkerTime::ZERO)));
         let right = StaticPointerOwned::new(TCell::new(MarkerPin::new(TimelineTime::new(MixedFraction::from_integer(1)), MarkerTime::new(MixedFraction::from_integer(1)).unwrap())));
         let image_required_params = ImageRequiredParams::new_default(StaticPointerOwned::reference(&left), StaticPointerOwned::reference(&right));
-        ComponentInstance::builder(this.clone(), StaticPointerCow::Owned(left), StaticPointerCow::Owned(right), Vec::new(), Arc::clone(&self.0) as Arc<dyn ComponentProcessorNativeDyn<K, T>>)
+        ComponentInstance::builder(this.clone(), left, right, Vec::new(), Arc::clone(&self.0) as Arc<dyn ComponentProcessorNativeDyn<K, T>>)
             .image_required_params(image_required_params)
             .build()
     }

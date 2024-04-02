@@ -9,7 +9,7 @@ use mpdelta_core::component::marker_pin::{MarkerPin, MarkerTime};
 use mpdelta_core::component::parameter::value::DynEditableSingleValue;
 use mpdelta_core::component::parameter::{AbstractFile, AudioRequiredParams, FileAbstraction, ImageRequiredParams, Parameter, ParameterSelect, ParameterType, ParameterValueRaw, ParameterValueType};
 use mpdelta_core::component::processor::{ComponentProcessor, ComponentProcessorNative, ComponentProcessorNativeDyn, ComponentProcessorWrapper, NativeProcessorInput, NativeProcessorRequest};
-use mpdelta_core::ptr::{StaticPointer, StaticPointerCow, StaticPointerOwned};
+use mpdelta_core::ptr::{StaticPointer, StaticPointerOwned};
 use mpdelta_core::time::TimelineTime;
 use mpdelta_core_audio::AudioType;
 use mpdelta_core_vulkano::ImageType;
@@ -79,7 +79,7 @@ where
         // TODO: Imageを含むかどうかや音声のチャンネル数はFixedParameterが決まらないと取得できないので良い感じにする
         let image_required_params = ImageRequiredParams::new_default(StaticPointerOwned::reference(&left), StaticPointerOwned::reference(&right));
         let audio_required_params = AudioRequiredParams::new_default(StaticPointerOwned::reference(&left), StaticPointerOwned::reference(&right), 2);
-        ComponentInstance::builder(this.clone(), StaticPointerCow::Owned(left), StaticPointerCow::Owned(right), Vec::new(), Arc::clone(&self.processor) as Arc<dyn ComponentProcessorNativeDyn<K, T>>)
+        ComponentInstance::builder(this.clone(), left, right, Vec::new(), Arc::clone(&self.processor) as Arc<dyn ComponentProcessorNativeDyn<K, T>>)
             .image_required_params(image_required_params)
             .audio_required_params(audio_required_params)
             .fixed_parameters(self.processor.parameter_type.clone(), Box::new([Parameter::Binary(DynEditableSingleValue::new(FileReaderParam::new(PathBuf::new())))]))

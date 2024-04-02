@@ -391,8 +391,8 @@ where
                 }
             }
             ComponentProcessorWrapper::Component(processor) => {
-                let ComponentsLinksPair(components, links) = processor.process(&fixed_parameters, &[], &[/* TODO */], component.variable_parameters_type()).await;
-                mpdelta_differential::collect_cached_time(&components, &links, component.marker_left(), component.marker_right(), &ctx.key)?;
+                let ComponentsLinksPair { components, links, left, right } = processor.process(&fixed_parameters, &[], &[/* TODO */], component.variable_parameters_type()).await;
+                mpdelta_differential::collect_cached_time(&components, &links, &left, &right, &ctx.key)?;
                 match ty {
                     ParameterType::None => Ok(Parameter::None),
                     ParameterType::Image(_) => {

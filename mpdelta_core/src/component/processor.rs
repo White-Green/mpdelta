@@ -1,7 +1,7 @@
 use crate::component::class::ComponentClass;
 use crate::component::instance::ComponentInstanceHandleCow;
 use crate::component::link::MarkerLinkHandleCow;
-use crate::component::marker_pin::MarkerTime;
+use crate::component::marker_pin::{MarkerPinHandleCow, MarkerTime};
 use crate::component::parameter::{Parameter, ParameterSelect, ParameterType, ParameterValueRaw, ParameterValueType};
 use crate::ptr::StaticPointer;
 use crate::time::TimelineTime;
@@ -15,7 +15,12 @@ use std::pin::Pin;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-pub struct ComponentsLinksPair<K: 'static, T: ParameterValueType>(pub Vec<ComponentInstanceHandleCow<K, T>>, pub Vec<MarkerLinkHandleCow<K>>);
+pub struct ComponentsLinksPair<K: 'static, T: ParameterValueType> {
+    pub components: Vec<ComponentInstanceHandleCow<K, T>>,
+    pub links: Vec<MarkerLinkHandleCow<K>>,
+    pub left: MarkerPinHandleCow<K>,
+    pub right: MarkerPinHandleCow<K>,
+}
 
 pub enum ComponentProcessorWrapper<K, T: ParameterValueType> {
     Native(Arc<dyn ComponentProcessorNativeDyn<K, T>>),

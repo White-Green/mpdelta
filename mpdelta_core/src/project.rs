@@ -256,7 +256,9 @@ impl<K, T: ParameterValueType> ComponentProcessorComponent<K, T> for RootCompone
         let guard = self.0.read().await;
         let components = guard.component.iter().map(Into::into).collect::<Vec<_>>();
         let links = guard.link.iter().map(Into::into).collect::<Vec<_>>();
-        ComponentsLinksPair(components, links)
+        let left = StaticPointerCow::Reference(StaticPointerOwned::reference(&guard.left).clone());
+        let right = StaticPointerCow::Reference(StaticPointerOwned::reference(&guard.right).clone());
+        ComponentsLinksPair { components, links, left, right }
     }
 }
 

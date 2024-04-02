@@ -17,12 +17,25 @@ use tokio::sync::RwLock;
 
 pub struct ComponentsLinksPair<K: 'static, T: ParameterValueType>(pub Vec<ComponentInstanceHandleCow<K, T>>, pub Vec<MarkerLinkHandleCow<K>>);
 
-#[derive(Clone)]
 pub enum ComponentProcessorWrapper<K, T: ParameterValueType> {
     Native(Arc<dyn ComponentProcessorNativeDyn<K, T>>),
     Component(Arc<dyn ComponentProcessorComponent<K, T>>),
     GatherNative(Arc<dyn ComponentProcessorGatherNative<K, T>>),
     GatherComponent(Arc<dyn ComponentProcessorGatherComponent<K, T>>),
+}
+
+impl<K, T> Clone for ComponentProcessorWrapper<K, T>
+where
+    T: ParameterValueType,
+{
+    fn clone(&self) -> Self {
+        match self {
+            ComponentProcessorWrapper::Native(processor) => ComponentProcessorWrapper::Native(Arc::clone(processor)),
+            ComponentProcessorWrapper::Component(processor) => ComponentProcessorWrapper::Component(Arc::clone(processor)),
+            ComponentProcessorWrapper::GatherNative(processor) => ComponentProcessorWrapper::GatherNative(Arc::clone(processor)),
+            ComponentProcessorWrapper::GatherComponent(processor) => ComponentProcessorWrapper::GatherComponent(Arc::clone(processor)),
+        }
+    }
 }
 
 impl<K, T: ParameterValueType> ComponentProcessor<K, T> for ComponentProcessorWrapper<K, T> {
@@ -109,6 +122,21 @@ pub struct NativeProcessorInput<'a, T: ParameterValueType> {
     pub variable_parameter_type: &'a [(String, ParameterType)],
 }
 
+pub struct NativeProcessorRequest;
+
+impl ParameterValueType for NativeProcessorRequest {
+    type Image = (u32, u32);
+    type Audio = ();
+    type Binary = ();
+    type String = ();
+    type Integer = ();
+    type RealNumber = ();
+    type Boolean = ();
+    type Dictionary = ();
+    type Array = ();
+    type ComponentClass = ();
+}
+
 #[async_trait]
 pub trait ComponentProcessorNative<K, T: ParameterValueType>: ComponentProcessor<K, T> {
     type WholeComponentCacheKey: Send + Sync + Eq + Hash + 'static;
@@ -119,8 +147,14 @@ pub trait ComponentProcessorNative<K, T: ParameterValueType>: ComponentProcessor
     fn framed_cache_key(&self, parameters: NativeProcessorInput<'_, T>, time: TimelineTime, output_type: Parameter<ParameterSelect>) -> Option<Self::FramedCacheKey>;
     async fn natural_length(&self, fixed_params: &[ParameterValueRaw<T::Image, T::Audio>], cache: &mut Option<Arc<Self::WholeComponentCacheValue>>) -> Option<MarkerTime>;
     async fn supports_output_type(&self, fixed_params: &[ParameterValueRaw<T::Image, T::Audio>], out: Parameter<ParameterSelect>, cache: &mut Option<Arc<Self::WholeComponentCacheValue>>) -> bool;
-    async fn process(&self, parameters: NativeProcessorInput<'_, T>, time: TimelineTime, output_type: Parameter<ParameterSelect>, whole_component_cache: &mut Option<Arc<Self::WholeComponentCacheValue>>, framed_cache: &mut Option<Arc<Self::FramedCacheValue>>)
-        -> ParameterValueRaw<T::Image, T::Audio>;
+    async fn process(
+        &self,
+        parameters: NativeProcessorInput<'_, T>,
+        time: TimelineTime,
+        output_type: Parameter<NativeProcessorRequest>,
+        whole_component_cache: &mut Option<Arc<Self::WholeComponentCacheValue>>,
+        framed_cache: &mut Option<Arc<Self::FramedCacheValue>>,
+    ) -> ParameterValueRaw<T::Image, T::Audio>;
 }
 
 #[async_trait]
@@ -129,7 +163,7 @@ pub trait ComponentProcessorNativeDyn<K, T: ParameterValueType>: ComponentProces
     fn framed_cache_key(&self, parameters: NativeProcessorInput<'_, T>, time: TimelineTime, output_type: Parameter<ParameterSelect>) -> Option<Box<dyn CacheKey>>;
     async fn natural_length(&self, fixed_params: &[ParameterValueRaw<T::Image, T::Audio>], cache: &mut Option<Arc<dyn Any + Send + Sync>>) -> Option<MarkerTime>;
     async fn supports_output_type(&self, fixed_params: &[ParameterValueRaw<T::Image, T::Audio>], out: Parameter<ParameterSelect>, cache: &mut Option<Arc<dyn Any + Send + Sync>>) -> bool;
-    async fn process(&self, parameters: NativeProcessorInput<'_, T>, time: TimelineTime, output_type: Parameter<ParameterSelect>, whole_component_cache: &mut Option<Arc<dyn Any + Send + Sync>>, framed_cache: &mut Option<Arc<dyn Any + Send + Sync>>) -> ParameterValueRaw<T::Image, T::Audio>;
+    async fn process(&self, parameters: NativeProcessorInput<'_, T>, time: TimelineTime, output_type: Parameter<NativeProcessorRequest>, whole_component_cache: &mut Option<Arc<dyn Any + Send + Sync>>, framed_cache: &mut Option<Arc<dyn Any + Send + Sync>>) -> ParameterValueRaw<T::Image, T::Audio>;
 }
 
 #[async_trait]
@@ -166,7 +200,7 @@ where
         result
     }
 
-    async fn process(&self, parameters: NativeProcessorInput<'_, T>, time: TimelineTime, output_type: Parameter<ParameterSelect>, whole_component_cache: &mut Option<Arc<dyn Any + Send + Sync>>, framed_cache: &mut Option<Arc<dyn Any + Send + Sync>>) -> ParameterValueRaw<T::Image, T::Audio> {
+    async fn process(&self, parameters: NativeProcessorInput<'_, T>, time: TimelineTime, output_type: Parameter<NativeProcessorRequest>, whole_component_cache: &mut Option<Arc<dyn Any + Send + Sync>>, framed_cache: &mut Option<Arc<dyn Any + Send + Sync>>) -> ParameterValueRaw<T::Image, T::Audio> {
         let mut wc = whole_component_cache.take().and_then(|cache| Arc::downcast(cache).ok());
         let mut fc = framed_cache.take().and_then(|cache| Arc::downcast(cache).ok());
         let result = P::process(self, parameters, time, output_type, &mut wc, &mut fc).await;

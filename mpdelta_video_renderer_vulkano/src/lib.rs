@@ -270,14 +270,21 @@ impl Combiner<ImageType> for ImageCombiner {
         )
         .unwrap();
         for (ImageType(image), image_param) in buffer {
-            let image_native_size = match (image_width * image_param.aspect_ratio.1).cmp(&(image_height * image_param.aspect_ratio.0)) {
-                Ordering::Greater => (div_ceil(image_param.aspect_ratio.0 * image_height, image_param.aspect_ratio.1), image_height),
-                Ordering::Equal => (image_width, image_height),
-                Ordering::Less => (image_width, div_ceil(image_param.aspect_ratio.1 * image_width, image_param.aspect_ratio.0)),
-            };
             let transform_mat = match image_param.transform {
-                ImageRequiredParamsTransformFixed::Params { scale, translate, rotate, scale_center, rotate_center } => {
-                    scale_mat(Vector3::new(image_native_size.0 as f64 / image_size_request.width as f64, image_native_size.1 as f64 / image_size_request.height as f64, 1.))
+                ImageRequiredParamsTransformFixed::Params {
+                    size,
+                    scale,
+                    translate,
+                    rotate,
+                    scale_center,
+                    rotate_center,
+                } => {
+                    let image_native_size = match (image_width as f64 * size.x * image.extent()[1] as f64).partial_cmp(&(image_height as f64 * size.y * image.extent()[0] as f64)).unwrap() {
+                        Ordering::Greater => (image_height as f64 * size.y * image.extent()[0] as f64 / image.extent()[1] as f64, image_height as f64 * size.y),
+                        Ordering::Equal => (image_width as f64 * size.x, image_height as f64 * size.y),
+                        Ordering::Less => (image_width as f64 * size.x, image_width as f64 * size.x * image.extent()[1] as f64 / image.extent()[0] as f64),
+                    };
+                    scale_mat(Vector3::new(image_native_size.0 / image_size_request.width as f64, image_native_size.1 / image_size_request.height as f64, 1.))
                         * move_mat(-scale_center)
                         * scale_mat(scale)
                         * move_mat(scale_center)
@@ -457,8 +464,8 @@ mod tests {
         image_combiner.add(
             ImageType(get_image([1., 0., 0., 1.])),
             ImageRequiredParamsFixed {
-                aspect_ratio: (1, 1),
                 transform: ImageRequiredParamsTransformFixed::Params {
+                    size: Vector3::new(1., 1., 1.),
                     scale: Vector3::new(1. / 3., 1. / 3., 1.),
                     translate: Vector3::new(0., 0., 0.),
                     rotate: Quaternion::zero(),
@@ -474,8 +481,8 @@ mod tests {
         image_combiner.add(
             ImageType(get_image([0., 1., 0., 1.])),
             ImageRequiredParamsFixed {
-                aspect_ratio: (1, 1),
                 transform: ImageRequiredParamsTransformFixed::Params {
+                    size: Vector3::new(1., 1., 1.),
                     scale: Vector3::new(1. / 3., 1. / 3., 1.),
                     translate: Vector3::new(0., 0., 0.),
                     rotate: Quaternion::zero(),

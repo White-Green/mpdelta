@@ -238,7 +238,6 @@ mod tests {
 
     fn image_required_params_into(params: ImageRequiredParamsForSerialize<Ser>) -> ImageRequiredParamsForSerialize<De> {
         let ImageRequiredParamsForSerialize {
-            aspect_ratio,
             transform,
             background_color,
             opacity,
@@ -246,22 +245,29 @@ mod tests {
             composite_operation,
         } = params;
         let transform = match transform {
-            ImageRequiredParamsTransformForSerialize::Params { scale, translate, rotate, scale_center, rotate_center } => ImageRequiredParamsTransformForSerialize::Params {
-                scale: vector3_params_into(scale),
-                translate: vector3_params_into(translate),
-                rotate: rotate.map_value(easing_value_into),
-                scale_center: vector3_params_into(scale_center),
-                rotate_center: vector3_params_into(rotate_center),
+            ImageRequiredParamsTransformForSerialize::Params {
+                size,
+                scale,
+                translate,
+                rotate,
+                scale_center,
+                rotate_center,
+            } => ImageRequiredParamsTransformForSerialize::Params {
+                size: Box::new(vector3_params_into(*size)),
+                scale: Box::new(vector3_params_into(*scale)),
+                translate: Box::new(vector3_params_into(*translate)),
+                rotate: Box::new(rotate.map_value(easing_value_into)),
+                scale_center: Box::new(vector3_params_into(*scale_center)),
+                rotate_center: Box::new(vector3_params_into(*rotate_center)),
             },
             ImageRequiredParamsTransformForSerialize::Free { left_top, right_top, left_bottom, right_bottom } => ImageRequiredParamsTransformForSerialize::Free {
-                left_top: vector3_params_into(left_top),
-                right_top: vector3_params_into(right_top),
-                left_bottom: vector3_params_into(left_bottom),
-                right_bottom: vector3_params_into(right_bottom),
+                left_top: Box::new(vector3_params_into(*left_top)),
+                right_top: Box::new(vector3_params_into(*right_top)),
+                left_bottom: Box::new(vector3_params_into(*left_bottom)),
+                right_bottom: Box::new(vector3_params_into(*right_bottom)),
             },
         };
         ImageRequiredParamsForSerialize {
-            aspect_ratio,
             transform,
             background_color,
             opacity: opacity.map_value(easing_value_into),

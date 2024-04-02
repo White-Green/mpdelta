@@ -4,7 +4,7 @@ use mpdelta_core::component::class::{ComponentClass, ComponentClassIdentifier};
 use mpdelta_core::component::instance::ComponentInstance;
 use mpdelta_core::component::marker_pin::{MarkerPin, MarkerTime};
 use mpdelta_core::component::parameter::{ImageRequiredParams, Parameter, ParameterSelect, ParameterType, ParameterValueRaw, ParameterValueType};
-use mpdelta_core::component::processor::{ComponentProcessor, ComponentProcessorNative, ComponentProcessorNativeDyn, ComponentProcessorWrapper, NativeProcessorInput};
+use mpdelta_core::component::processor::{ComponentProcessor, ComponentProcessorNative, ComponentProcessorNativeDyn, ComponentProcessorWrapper, NativeProcessorInput, NativeProcessorRequest};
 use mpdelta_core::ptr::{StaticPointer, StaticPointerCow, StaticPointerOwned};
 use mpdelta_core::time::TimelineTime;
 use mpdelta_core_vulkano::ImageType;
@@ -119,7 +119,7 @@ impl<K, T: ParameterValueType<Image = ImageType>> ComponentProcessorNative<K, T>
         &self,
         _parameters: NativeProcessorInput<'_, T>,
         _time: TimelineTime,
-        _output_type: Parameter<ParameterSelect>,
+        _output_type: Parameter<NativeProcessorRequest>,
         _whole_component_cache: &mut Option<Arc<Self::WholeComponentCacheValue>>,
         _framed_cache: &mut Option<Arc<Self::FramedCacheValue>>,
     ) -> ParameterValueRaw<T::Image, T::Audio> {

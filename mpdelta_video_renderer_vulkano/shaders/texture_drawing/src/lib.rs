@@ -37,13 +37,13 @@ pub mod shader {
         #[inline(always)]
         fn inner(vert_id: u32, constant: &TextureDrawingConstant) -> VSOut {
             let (x, u) = match vert_id & 1 {
-                0 => (1., 0.),
-                1 => (-1., 1.),
+                0 => (-1., 0.),
+                1 => (1., 1.),
                 _ => unsafe { unreachable_unchecked() },
             };
             let (y, v) = match (vert_id >> 1) & 1 {
-                0 => (-1., 1.),
-                1 => (1., 0.),
+                0 => (1., 1.),
+                1 => (-1., 0.),
                 _ => unsafe { unreachable_unchecked() },
             };
             VSOut {

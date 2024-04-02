@@ -37,33 +37,39 @@ pub fn image_required_params_transform() -> impl Strategy<Value = ImageRequiredP
         (
             1,
             Arc::new(
-                (vector3_param(), vector3_param(), TimeSplitValue::strategy_from(any::<MarkerPinHandleForSerialize>(), easing_value(), 1..10), vector3_param(), vector3_param()).prop_map(|(scale, translate, rotate, scale_center, rotate_center)| ImageRequiredParamsTransformForSerialize::Params {
-                    scale,
-                    translate,
-                    rotate,
-                    scale_center,
-                    rotate_center,
+                (vector3_param(), vector3_param(), vector3_param(), TimeSplitValue::strategy_from(any::<MarkerPinHandleForSerialize>(), easing_value(), 1..10), vector3_param(), vector3_param()).prop_map(|(size, scale, translate, rotate, scale_center, rotate_center)| {
+                    ImageRequiredParamsTransformForSerialize::Params {
+                        size: Box::new(size),
+                        scale: Box::new(scale),
+                        translate: Box::new(translate),
+                        rotate: Box::new(rotate),
+                        scale_center: Box::new(scale_center),
+                        rotate_center: Box::new(rotate_center),
+                    }
                 }),
             ),
         ),
         (
             1,
-            Arc::new((vector3_param(), vector3_param(), vector3_param(), vector3_param()).prop_map(|(left_top, right_top, left_bottom, right_bottom)| ImageRequiredParamsTransformForSerialize::Free { left_top, right_top, left_bottom, right_bottom })),
+            Arc::new((vector3_param(), vector3_param(), vector3_param(), vector3_param()).prop_map(|(left_top, right_top, left_bottom, right_bottom)| ImageRequiredParamsTransformForSerialize::Free {
+                left_top: Box::new(left_top),
+                right_top: Box::new(right_top),
+                left_bottom: Box::new(left_bottom),
+                right_bottom: Box::new(right_bottom),
+            })),
         ),
     ))
 }
 
 pub fn image_required_params() -> impl Strategy<Value = ImageRequiredParamsForSerialize<Ser>> {
     (
-        (1u32.., 1u32..),
         image_required_params_transform(),
         uniform4(any::<u8>()),
         TimeSplitValue::strategy_from(any::<MarkerPinHandleForSerialize>(), easing_value(), 1..10),
         TimeSplitValue::strategy_from(any::<MarkerPinHandleForSerialize>(), any::<BlendMode>(), 1..10),
         TimeSplitValue::strategy_from(any::<MarkerPinHandleForSerialize>(), any::<CompositeOperation>(), 1..10),
     )
-        .prop_map(|(aspect_ratio, transform, background_color, opacity, blend_mode, composite_operation)| ImageRequiredParamsForSerialize {
-            aspect_ratio,
+        .prop_map(|(transform, background_color, opacity, blend_mode, composite_operation)| ImageRequiredParamsForSerialize {
             transform,
             background_color,
             opacity,
@@ -132,7 +138,7 @@ macro_rules! impl_easing_value {
                 &$manager(PhantomData)
             }
 
-            fn get_raw_values_mut(&mut self) -> (&mut dyn NamedAny, &mut dyn NamedAny) {
+            fn get_raw_value_mut(&mut self) -> &mut dyn NamedAny {
                 unimplemented!()
             }
 

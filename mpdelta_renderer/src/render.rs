@@ -237,7 +237,6 @@ where
         };
         let image_required_params = || {
             let &ImageRequiredParams {
-                aspect_ratio,
                 ref transform,
                 background_color,
                 ref opacity,
@@ -249,6 +248,7 @@ where
             let eval_at = |value: &VariableParameterValue<_, _, _>| evaluate_parameter::evaluate_parameter_f64(value, at, ctx, &cancellation_token).unwrap().map(|result| result.into_real_number().unwrap());
             let transform = match transform {
                 ImageRequiredParamsTransform::Params {
+                    size: Vector3 { x: size_x, y: size_y, z: size_z },
                     scale: Vector3 { x: scale_x, y: scale_y, z: scale_z },
                     translate: Vector3 { x: translate_x, y: translate_y, z: translate_z },
                     rotate,
@@ -263,6 +263,11 @@ where
                         z: rotate_center_z,
                     },
                 } => ImageRequiredParamsTransformFixed::Params {
+                    size: Vector3 {
+                        x: eval_at(size_x)?,
+                        y: eval_at(size_y)?,
+                        z: eval_at(size_z)?,
+                    },
                     scale: Vector3 {
                         x: eval_at(scale_x)?,
                         y: eval_at(scale_y)?,
@@ -318,7 +323,6 @@ where
                 },
             };
             Ok::<_, RenderError<K, T>>(ImageRequiredParamsFixed {
-                aspect_ratio,
                 transform,
                 background_color,
                 opacity: Opacity::new(evaluate_parameter::evaluate_time_split_value_at(opacity, at, &ctx.key).unwrap()?).unwrap_or(Opacity::OPAQUE),
@@ -360,8 +364,28 @@ where
                     variable_parameters: &variable_parameters.await?,
                     variable_parameter_type: component.variable_parameters_type(),
                 };
-                match processor.process(params, internal_at, ty.select(), &mut None, &mut None).await {
-                    Parameter::Image(image) => Ok(Parameter::Image((image, image_required_params()?))),
+                let mut image_params = None;
+                let request = match ty.select() {
+                    Parameter::None => Parameter::None,
+                    Parameter::Image(()) => {
+                        let p = image_required_params()?;
+                        let ImageRequiredParamsTransformFixed::Params { size, .. } = image_params.get_or_insert(p).transform else {
+                            panic!();
+                        };
+                        Parameter::Image(((1920. * size.x).abs().ceil() as u32, (1080. * size.y).abs().ceil() as u32))
+                    }
+                    Parameter::Audio(()) => Parameter::Audio(()),
+                    Parameter::Binary(()) => Parameter::Binary(()),
+                    Parameter::String(()) => Parameter::String(()),
+                    Parameter::Integer(()) => Parameter::Integer(()),
+                    Parameter::RealNumber(()) => Parameter::RealNumber(()),
+                    Parameter::Boolean(()) => Parameter::Boolean(()),
+                    Parameter::Dictionary(()) => Parameter::Dictionary(()),
+                    Parameter::Array(()) => Parameter::Array(()),
+                    Parameter::ComponentClass(()) => Parameter::ComponentClass(()),
+                };
+                match processor.process(params, internal_at, request, &mut None, &mut None).await {
+                    Parameter::Image(image) => Ok(Parameter::Image((image, image_params.unwrap()))),
                     Parameter::Audio(audio) => Ok(Parameter::Audio((audio, time_map.clone()))),
                     other => Ok(from_parameter_value_fixed(other)),
                 }

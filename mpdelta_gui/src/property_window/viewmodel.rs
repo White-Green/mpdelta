@@ -9,22 +9,125 @@ use mpdelta_core::common::time_split_value::TimeSplitValue;
 use mpdelta_core::component::instance::ComponentInstanceHandle;
 use mpdelta_core::component::marker_pin::MarkerPinHandle;
 use mpdelta_core::component::parameter::value::EasingValue;
-use mpdelta_core::component::parameter::{BlendMode, CompositeOperation, ImageRequiredParams, ImageRequiredParamsTransform, ParameterValueFixed, ParameterValueType, PinSplitValue, VariableParameterValue, Vector3Params};
+use mpdelta_core::component::parameter::{AbstractFile, BlendMode, CompositeOperation, ImageRequiredParams, ImageRequiredParamsTransform, Never, Parameter, ParameterNullableValue, ParameterValueFixed, ParameterValueType, PinSplitValue, VariableParameterValue, Vector3Params};
 use mpdelta_core::edit::InstanceEditCommand;
 use mpdelta_core::project::RootComponentClassHandle;
-use mpdelta_core::ptr::{StaticPointer, StaticPointerOwned};
+use mpdelta_core::ptr::StaticPointer;
 use mpdelta_core::time::TimelineTime;
 use qcell::TCellOwner;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
+use std::future;
+use std::marker::PhantomData;
 use std::ops::{DerefMut, Range};
 use std::sync::{Arc, Mutex, MutexGuard, RwLock as StdRwLock};
-use std::{future, iter};
 use tokio::sync::RwLock;
+
+pub struct MarkerPinTimeMap<K> {
+    pin_index_map: HashMap<MarkerPinHandle<K>, usize>,
+    pub times: Vec<f64>,
+}
+
+impl<K> MarkerPinTimeMap<K> {
+    pub fn builder(key: &TCellOwner<K>) -> MarkerPinTimeMapBuilder<K> {
+        MarkerPinTimeMapBuilder { pin_index_map: HashMap::new(), key }
+    }
+}
+
+pub struct MarkerPinTimeMapBuilder<'a, K: 'static> {
+    pin_index_map: HashMap<MarkerPinHandle<K>, TimelineTime>,
+    key: &'a TCellOwner<K>,
+}
+
+impl<'a, K> MarkerPinTimeMapBuilder<'a, K> {
+    fn insert_inner<T>(&mut self, value: &PinSplitValue<K, T>) {
+        for i in 0..value.len_time() {
+            let (_, pin, _) = value.get_time(i).unwrap();
+            if let Entry::Vacant(entry) = self.pin_index_map.entry(pin.clone()) {
+                if let Some(pin) = pin.upgrade() {
+                    let time = pin.ro(self.key).cached_timeline_time();
+                    entry.insert(time);
+                }
+            }
+        }
+    }
+
+    pub fn insert_by_image_required_params<T>(&mut self, image_required_params: &ImageRequiredParams<K, T>)
+    where
+        T: ParameterValueType,
+    {
+        let ImageRequiredParams {
+            transform,
+            background_color: _,
+            opacity,
+            blend_mode,
+            composite_operation,
+        } = image_required_params;
+        self.insert_inner(opacity);
+        self.insert_inner(blend_mode);
+        self.insert_inner(composite_operation);
+        match transform {
+            ImageRequiredParamsTransform::Params {
+                size,
+                scale,
+                translate,
+                rotate,
+                scale_center,
+                rotate_center,
+            } => {
+                AsRef::<[_; 3]>::as_ref(size).iter().for_each(|value| self.insert_inner(&value.params));
+                AsRef::<[_; 3]>::as_ref(scale).iter().for_each(|value| self.insert_inner(&value.params));
+                AsRef::<[_; 3]>::as_ref(translate).iter().for_each(|value| self.insert_inner(&value.params));
+                self.insert_inner(rotate);
+                AsRef::<[_; 3]>::as_ref(scale_center).iter().for_each(|value| self.insert_inner(&value.params));
+                AsRef::<[_; 3]>::as_ref(rotate_center).iter().for_each(|value| self.insert_inner(&value.params));
+            }
+            ImageRequiredParamsTransform::Free { left_top, right_top, left_bottom, right_bottom } => {
+                AsRef::<[_; 3]>::as_ref(left_top).iter().for_each(|value| self.insert_inner(&value.params));
+                AsRef::<[_; 3]>::as_ref(right_top).iter().for_each(|value| self.insert_inner(&value.params));
+                AsRef::<[_; 3]>::as_ref(left_bottom).iter().for_each(|value| self.insert_inner(&value.params));
+                AsRef::<[_; 3]>::as_ref(right_bottom).iter().for_each(|value| self.insert_inner(&value.params));
+            }
+        }
+    }
+
+    pub fn insert_variable_parameters<T>(&mut self, variable_params: &[VariableParameterValue<K, T, ParameterNullableValue<K, T>>])
+    where
+        T: ParameterValueType,
+    {
+        for value in variable_params {
+            match &value.params {
+                Parameter::None => {}
+                Parameter::Image(value) => self.insert_inner(value),
+                Parameter::Audio(value) => self.insert_inner(value),
+                Parameter::Binary(value) => self.insert_inner(value),
+                Parameter::String(value) => self.insert_inner(value),
+                Parameter::Integer(value) => self.insert_inner(value),
+                Parameter::RealNumber(value) => self.insert_inner(value),
+                Parameter::Boolean(value) => self.insert_inner(value),
+                Parameter::Dictionary(value) => {
+                    let _: &Never = value;
+                }
+                Parameter::Array(value) => {
+                    let _: &Never = value;
+                }
+                Parameter::ComponentClass(value) => {
+                    let _: &Option<()> = value;
+                }
+            }
+        }
+    }
+
+    pub fn build(self) -> MarkerPinTimeMap<K> {
+        let mut pins = self.pin_index_map.into_iter().collect::<Vec<_>>();
+        pins.sort_unstable_by_key(|&(_, time)| time);
+        let (pin_index_map, times) = pins.into_iter().enumerate().map(|(i, (pin, time))| ((pin, i), time.value().into_f64())).unzip();
+        MarkerPinTimeMap { pin_index_map, times }
+    }
+}
 
 #[derive(Debug)]
 pub struct ImageRequiredParamsForEdit<K: 'static, T: ParameterValueType> {
-    pub aspect_ratio: (u32, u32),
     pub transform: ImageRequiredParamsTransformForEdit<K, T>,
     pub background_color: [u8; 4],
     pub opacity: PinSplitValue<K, EasingValue<f64>>,
@@ -35,6 +138,7 @@ pub struct ImageRequiredParamsForEdit<K: 'static, T: ParameterValueType> {
 #[derive(Debug)]
 pub enum ImageRequiredParamsTransformForEdit<K: 'static, T: ParameterValueType> {
     Params {
+        size: Vector3ParamsForEdit<K, T>,
         scale: Vector3ParamsForEdit<K, T>,
         translate: Vector3ParamsForEdit<K, T>,
         rotate: TimeSplitValue<MarkerPinHandle<K>, EasingValue<Quaternion<f64>>>,
@@ -58,98 +162,53 @@ pub struct ValueWithEditCopy<K: 'static, T: ParameterValueType> {
 pub type Vector3ParamsForEdit<K, T> = Vector3<ValueWithEditCopy<K, T>>;
 
 impl<K: 'static, T: ParameterValueType> ImageRequiredParamsForEdit<K, T> {
-    pub fn from_image_required_params(value: ImageRequiredParams<K, T>, all_pins: impl IntoIterator<Item = MarkerPinHandle<K>>, key: &TCellOwner<K>) -> (ImageRequiredParamsForEdit<K, T>, Vec<f64>) {
-        fn get_all_pins_iter<K, T>(values: &PinSplitValue<K, T>) -> impl Iterator<Item = MarkerPinHandle<K>> + '_ {
-            (0..values.len_time()).map(|i| {
-                let (_, pin, _) = values.get_time(i).unwrap();
-                pin.clone()
-            })
-        }
-        fn collect_into_pins_map<K>(pins_map: &mut HashMap<MarkerPinHandle<K>, TimelineTime>, iter: impl IntoIterator<Item = MarkerPinHandle<K>>, key: &TCellOwner<K>) {
-            for pin in iter {
-                if let Entry::Vacant(entry) = pins_map.entry(pin) {
-                    if let Some(pin) = entry.key().upgrade() {
-                        let time = pin.ro(key).cached_timeline_time();
-                        entry.insert(time);
-                    }
-                }
-            }
-        }
-        fn pins_map_into_required_structures<K>(pins_map: HashMap<MarkerPinHandle<K>, TimelineTime>) -> (HashMap<MarkerPinHandle<K>, usize>, Vec<f64>) {
-            let mut pins = pins_map.into_iter().collect::<Vec<_>>();
-            pins.sort_unstable_by_key(|&(_, time)| time);
-            pins.into_iter().enumerate().map(|(i, (pin, time))| ((pin, i), time.value().into_f64())).unzip()
-        }
+    pub fn from_image_required_params(value: ImageRequiredParams<K, T>, pin_time_map: &MarkerPinTimeMap<K>) -> ImageRequiredParamsForEdit<K, T> {
         fn into_for_edit<K, T: ParameterValueType>(value: VariableParameterValue<K, T, PinSplitValue<K, Option<EasingValue<f64>>>>, pin_index: &HashMap<MarkerPinHandle<K>, usize>) -> ValueWithEditCopy<K, T> {
             let index_based = value.params.map_time_value_ref(|pin| *pin_index.get(pin).unwrap(), Clone::clone);
             ValueWithEditCopy { value, edit_copy: index_based }
         }
         let ImageRequiredParams {
-            aspect_ratio,
             transform,
             background_color,
             opacity,
             blend_mode,
             composite_operation,
         } = value;
-        let mut pins_map = all_pins
-            .into_iter()
-            .filter_map(|pin| {
-                let time = pin.upgrade()?.ro(key).cached_timeline_time();
-                Some((pin, time))
-            })
-            .collect::<HashMap<_, _>>();
-        let iter = get_all_pins_iter(&opacity).chain(get_all_pins_iter(&blend_mode)).chain(get_all_pins_iter(&composite_operation));
-        let (transform, times) = match transform {
-            ImageRequiredParamsTransform::Params { scale, translate, rotate, scale_center, rotate_center } => {
-                let iter = iter
-                    .chain(AsRef::<[_; 3]>::as_ref(&scale).iter().flat_map(|value| get_all_pins_iter(&value.params)))
-                    .chain(AsRef::<[_; 3]>::as_ref(&translate).iter().flat_map(|value| get_all_pins_iter(&value.params)))
-                    .chain(get_all_pins_iter(&rotate))
-                    .chain(AsRef::<[_; 3]>::as_ref(&scale_center).iter().flat_map(|value| get_all_pins_iter(&value.params)))
-                    .chain(AsRef::<[_; 3]>::as_ref(&rotate_center).iter().flat_map(|value| get_all_pins_iter(&value.params)));
-                collect_into_pins_map(&mut pins_map, iter, key);
-                let (pin_index, times) = pins_map_into_required_structures(pins_map);
-                let transform = ImageRequiredParamsTransformForEdit::Params {
-                    scale: scale.map(|value| into_for_edit(value, &pin_index)),
-                    translate: translate.map(|value| into_for_edit(value, &pin_index)),
-                    rotate,
-                    scale_center: scale_center.map(|value| into_for_edit(value, &pin_index)),
-                    rotate_center: rotate_center.map(|value| into_for_edit(value, &pin_index)),
-                };
-                (transform, times)
-            }
-            ImageRequiredParamsTransform::Free { left_top, right_top, left_bottom, right_bottom } => {
-                let iter = iter
-                    .chain(AsRef::<[_; 3]>::as_ref(&left_top).iter().flat_map(|value| get_all_pins_iter(&value.params)))
-                    .chain(AsRef::<[_; 3]>::as_ref(&right_top).iter().flat_map(|value| get_all_pins_iter(&value.params)))
-                    .chain(AsRef::<[_; 3]>::as_ref(&left_bottom).iter().flat_map(|value| get_all_pins_iter(&value.params)))
-                    .chain(AsRef::<[_; 3]>::as_ref(&right_bottom).iter().flat_map(|value| get_all_pins_iter(&value.params)));
-                collect_into_pins_map(&mut pins_map, iter, key);
-                let (pin_index, times) = pins_map_into_required_structures(pins_map);
-                let transform = ImageRequiredParamsTransformForEdit::Free {
-                    left_top: left_top.map(|value| into_for_edit(value, &pin_index)),
-                    right_top: right_top.map(|value| into_for_edit(value, &pin_index)),
-                    left_bottom: left_bottom.map(|value| into_for_edit(value, &pin_index)),
-                    right_bottom: right_bottom.map(|value| into_for_edit(value, &pin_index)),
-                };
-                (transform, times)
-            }
+        let transform = match transform {
+            ImageRequiredParamsTransform::Params {
+                size,
+                scale,
+                translate,
+                rotate,
+                scale_center,
+                rotate_center,
+            } => ImageRequiredParamsTransformForEdit::Params {
+                size: size.map(|value| into_for_edit(value, &pin_time_map.pin_index_map)),
+                scale: scale.map(|value| into_for_edit(value, &pin_time_map.pin_index_map)),
+                translate: translate.map(|value| into_for_edit(value, &pin_time_map.pin_index_map)),
+                rotate,
+                scale_center: scale_center.map(|value| into_for_edit(value, &pin_time_map.pin_index_map)),
+                rotate_center: rotate_center.map(|value| into_for_edit(value, &pin_time_map.pin_index_map)),
+            },
+            ImageRequiredParamsTransform::Free { left_top, right_top, left_bottom, right_bottom } => ImageRequiredParamsTransformForEdit::Free {
+                left_top: left_top.map(|value| into_for_edit(value, &pin_time_map.pin_index_map)),
+                right_top: right_top.map(|value| into_for_edit(value, &pin_time_map.pin_index_map)),
+                left_bottom: left_bottom.map(|value| into_for_edit(value, &pin_time_map.pin_index_map)),
+                right_bottom: right_bottom.map(|value| into_for_edit(value, &pin_time_map.pin_index_map)),
+            },
         };
-        let value = ImageRequiredParamsForEdit {
-            aspect_ratio,
+
+        ImageRequiredParamsForEdit {
             transform,
             background_color,
             opacity,
             blend_mode,
             composite_operation,
-        };
-        (value, times)
+        }
     }
 
     fn as_non_edit(&self) -> ImageRequiredParams<K, T> {
         let &ImageRequiredParamsForEdit {
-            aspect_ratio,
             ref transform,
             background_color,
             ref opacity,
@@ -165,7 +224,15 @@ impl<K: 'static, T: ParameterValueType> ImageRequiredParamsForEdit<K, T> {
             Vector3::new(x.clone(), y.clone(), z.clone())
         }
         let transform = match transform {
-            ImageRequiredParamsTransformForEdit::Params { scale, translate, rotate, scale_center, rotate_center } => ImageRequiredParamsTransform::Params {
+            ImageRequiredParamsTransformForEdit::Params {
+                size,
+                scale,
+                translate,
+                rotate,
+                scale_center,
+                rotate_center,
+            } => ImageRequiredParamsTransform::Params {
+                size: transform_vec3(size),
                 scale: transform_vec3(scale),
                 translate: transform_vec3(translate),
                 rotate: rotate.clone(),
@@ -180,7 +247,6 @@ impl<K: 'static, T: ParameterValueType> ImageRequiredParamsForEdit<K, T> {
             },
         };
         ImageRequiredParams {
-            aspect_ratio,
             transform,
             background_color,
             opacity: opacity.clone(),
@@ -190,25 +256,131 @@ impl<K: 'static, T: ParameterValueType> ImageRequiredParamsForEdit<K, T> {
     }
 }
 
-pub struct ImageRequiredParamsEditSet<K: 'static, T: ParameterValueType, Times> {
-    pub params: ImageRequiredParamsForEdit<K, T>,
-    pub pin_times: Times,
+pub struct TimeSplitValueEditCopy<K, T, V>
+where
+    K: 'static,
+    T: ParameterValueType,
+{
+    pub value: VariableParameterValue<K, T, ParameterNullableValue<K, T>>,
+    pub edit_copy: TimeSplitValue<usize, V>,
+}
+
+impl<K, T, V> Clone for TimeSplitValueEditCopy<K, T, V>
+where
+    T: ParameterValueType,
+    V: Clone,
+{
+    fn clone(&self) -> Self {
+        let TimeSplitValueEditCopy { value, edit_copy } = self;
+        TimeSplitValueEditCopy { value: value.clone(), edit_copy: edit_copy.clone() }
+    }
+}
+
+pub struct NullableValueForEdit<K, T>(PhantomData<(K, T)>);
+
+unsafe impl<K, T> Send for NullableValueForEdit<K, T> {}
+
+unsafe impl<K, T> Sync for NullableValueForEdit<K, T> {}
+
+impl<K, T> ParameterValueType for NullableValueForEdit<K, T>
+where
+    K: 'static,
+    T: ParameterValueType,
+{
+    type Image = TimeSplitValueEditCopy<K, T, Option<EasingValue<T::Image>>>;
+    type Audio = TimeSplitValueEditCopy<K, T, Option<EasingValue<T::Audio>>>;
+    type Binary = TimeSplitValueEditCopy<K, T, Option<EasingValue<AbstractFile>>>;
+    type String = TimeSplitValueEditCopy<K, T, Option<EasingValue<String>>>;
+    type Integer = TimeSplitValueEditCopy<K, T, Option<EasingValue<i64>>>;
+    type RealNumber = TimeSplitValueEditCopy<K, T, Option<EasingValue<f64>>>;
+    type Boolean = TimeSplitValueEditCopy<K, T, Option<EasingValue<bool>>>;
+    type Dictionary = Never;
+    type Array = Never;
+    type ComponentClass = Option<()>;
+}
+
+impl<K, T> NullableValueForEdit<K, T>
+where
+    K: 'static,
+    T: ParameterValueType,
+{
+    pub fn from_variable_parameter_value(value: VariableParameterValue<K, T, ParameterNullableValue<K, T>>, pin_time_map: &MarkerPinTimeMap<K>) -> Parameter<NullableValueForEdit<K, T>> {
+        let pin_index = &pin_time_map.pin_index_map;
+        match &value.params {
+            Parameter::None => Parameter::None,
+            Parameter::Image(value_inner) => {
+                let edit_copy = value_inner.map_time_value_ref(|pin| pin_index[pin], Clone::clone);
+                Parameter::Image(TimeSplitValueEditCopy { value, edit_copy })
+            }
+            Parameter::Audio(value_inner) => {
+                let edit_copy = value_inner.map_time_value_ref(|pin| pin_index[pin], Clone::clone);
+                Parameter::Audio(TimeSplitValueEditCopy { value, edit_copy })
+            }
+            Parameter::Binary(value_inner) => {
+                let edit_copy = value_inner.map_time_value_ref(|pin| pin_index[pin], Clone::clone);
+                Parameter::Binary(TimeSplitValueEditCopy { value, edit_copy })
+            }
+            Parameter::String(value_inner) => {
+                let edit_copy = value_inner.map_time_value_ref(|pin| pin_index[pin], Clone::clone);
+                Parameter::String(TimeSplitValueEditCopy { value, edit_copy })
+            }
+            Parameter::Integer(value_inner) => {
+                let edit_copy = value_inner.map_time_value_ref(|pin| pin_index[pin], Clone::clone);
+                Parameter::Integer(TimeSplitValueEditCopy { value, edit_copy })
+            }
+            Parameter::RealNumber(value_inner) => {
+                let edit_copy = value_inner.map_time_value_ref(|pin| pin_index[pin], Clone::clone);
+                Parameter::RealNumber(TimeSplitValueEditCopy { value, edit_copy })
+            }
+            Parameter::Boolean(value_inner) => {
+                let edit_copy = value_inner.map_time_value_ref(|pin| pin_index[pin], Clone::clone);
+                Parameter::Boolean(TimeSplitValueEditCopy { value, edit_copy })
+            }
+            Parameter::Dictionary(value_inner) => {
+                let _: &Never = value_inner;
+                unreachable!()
+            }
+            Parameter::Array(value_inner) => {
+                let _: &Never = value_inner;
+                unreachable!()
+            }
+            Parameter::ComponentClass(value_inner) => {
+                let _: &Option<()> = value_inner;
+                unreachable!()
+            }
+        }
+    }
+}
+
+pub struct WithName<T> {
+    pub name: String,
+    pub value: T,
+}
+
+impl<T> WithName<T> {
+    pub fn new(name: String, value: T) -> WithName<T> {
+        WithName { name, value }
+    }
+}
+
+pub struct ParametersEditSet<K: 'static, T: ParameterValueType> {
+    pub image_required_params: Option<ImageRequiredParamsForEdit<K, T>>,
+    #[allow(clippy::type_complexity)]
+    pub fixed_params: Box<[WithName<ParameterValueFixed<T::Image, T::Audio>>]>,
+    #[allow(clippy::type_complexity)]
+    pub variable_params: Box<[WithName<Parameter<NullableValueForEdit<K, T>>>]>,
+    pub pin_times: Box<[f64]>,
 }
 
 pub trait PropertyWindowViewModel<K: 'static, T: ParameterValueType> {
-    type Times: AsRef<[f64]>;
-    type FixedParams: AsMut<[(String, ParameterValueFixed<T::Image, T::Audio>)]>;
-    type FixedParamsLock<'a>: DerefMut<Target = Option<Self::FixedParams>> + 'a
-    where
-        Self: 'a;
-    fn fixed_params(&self) -> Self::FixedParamsLock<'_>;
-    fn updated_fixed_params(&self, fixed_params: &Self::FixedParams);
-    type ImageRequiredParams<'a>: DerefMut<Target = Option<ImageRequiredParamsEditSet<K, T, Self::Times>>> + 'a
+    type Parameters<'a>: DerefMut<Target = Option<ParametersEditSet<K, T>>> + 'a
     where
         Self: 'a;
     fn selected_instance_at(&self) -> Range<f64>;
-    fn image_required_params(&self) -> Self::ImageRequiredParams<'_>;
+    fn parameters(&self) -> Self::Parameters<'_>;
     fn updated_image_required_params(&self, image_required_params: &ImageRequiredParamsForEdit<K, T>);
+    fn updated_fixed_params(&self, fixed_params: &[WithName<ParameterValueFixed<T::Image, T::Audio>>]);
+    fn updated_variable_params(&self, variable_params: &[WithName<Parameter<NullableValueForEdit<K, T>>>]);
 }
 
 struct SelectedItem<K: 'static, T: ParameterValueType> {
@@ -226,10 +398,7 @@ pub struct PropertyWindowViewModelImpl<K: 'static, T: ParameterValueType, Edit, 
     edit: Arc<Edit>,
     selected: Arc<StdRwLock<SelectedItem<K, T>>>,
     selected_instance_at: Arc<ArcSwap<Range<f64>>>,
-    #[allow(clippy::type_complexity)]
-    fixed_params: Arc<Mutex<Option<Box<[(String, ParameterValueFixed<T::Image, T::Audio>)]>>>>,
-    #[allow(clippy::type_complexity)]
-    image_required_params: Arc<Mutex<Option<ImageRequiredParamsEditSet<K, T, Vec<f64>>>>>,
+    parameters: Arc<Mutex<Option<ParametersEditSet<K, T>>>>,
     image_required_params_update_task: Mutex<JoinHandleWrapper<JoinHandle>>,
     runtime: Runtime,
     key: Arc<RwLock<TCellOwner<K>>>,
@@ -260,7 +429,7 @@ where
                 drop(selected);
                 let mut task = self.image_required_params_update_task.lock().unwrap();
                 task.abort();
-                use_arc!(fixed_params = self.fixed_params, image_required_params = self.image_required_params, key = self.key, selected_instance_at = self.selected_instance_at);
+                use_arc!(parameters = self.parameters, key = self.key, selected_instance_at = self.selected_instance_at);
                 *task = self.runtime.spawn(async move {
                     let key = key.read().await;
 
@@ -269,20 +438,33 @@ where
                         if let (Some(left), Some(right)) = (instance.marker_left().upgrade(), instance.marker_right().upgrade()) {
                             selected_instance_at.store(Arc::new(left.ro(&key).cached_timeline_time().value().into_f64()..right.ro(&key).cached_timeline_time().value().into_f64()));
                         }
-                        let new_image_required_params = instance.image_required_params().cloned().map(|value| {
-                            let markers = iter::once(instance.marker_left()).chain(instance.markers().iter().map(StaticPointerOwned::reference)).chain(iter::once(instance.marker_right())).cloned();
-                            let (params, pin_times) = ImageRequiredParamsForEdit::from_image_required_params(value, markers, &key);
-                            ImageRequiredParamsEditSet { params, pin_times }
-                        });
-                        *image_required_params.lock().unwrap() = new_image_required_params;
+                        let mut pin_time_map = MarkerPinTimeMap::builder(&key);
+                        if let Some(params) = instance.image_required_params() {
+                            pin_time_map.insert_by_image_required_params(params);
+                        }
+                        let variable_params = instance.variable_parameters();
+                        pin_time_map.insert_variable_parameters(variable_params);
+                        let pin_time_map = pin_time_map.build();
+                        let image_required_params = instance.image_required_params().cloned().map(|value| ImageRequiredParamsForEdit::from_image_required_params(value, &pin_time_map));
                         let new_fixed_params = instance.fixed_parameters();
                         let fixed_params_type = instance.fixed_parameters_type();
                         assert_eq!(new_fixed_params.len(), fixed_params_type.len());
-                        let new_fixed_params = new_fixed_params.iter().zip(fixed_params_type).map(|(value, (name, _))| (name.clone(), value.clone())).collect();
-                        *fixed_params.lock().unwrap() = Some(new_fixed_params);
+                        let fixed_params = new_fixed_params.iter().zip(fixed_params_type).map(|(value, (name, _))| WithName::new(name.clone(), value.clone())).collect();
+                        let variable_params_type = instance.variable_parameters_type();
+                        assert_eq!(variable_params.len(), variable_params_type.len());
+                        let variable_params = variable_params
+                            .iter()
+                            .zip(variable_params_type)
+                            .map(|(value, (name, _))| WithName::new(name.clone(), NullableValueForEdit::from_variable_parameter_value(value.clone(), &pin_time_map)))
+                            .collect();
+                        *parameters.lock().unwrap() = Some(ParametersEditSet {
+                            image_required_params,
+                            fixed_params,
+                            variable_params,
+                            pin_times: pin_time_map.times.into_boxed_slice(),
+                        });
                     } else {
-                        *image_required_params.lock().unwrap() = None;
-                        *fixed_params.lock().unwrap() = None;
+                        *parameters.lock().unwrap() = None;
                     }
                 });
             }
@@ -299,8 +481,7 @@ impl<K: 'static, T: ParameterValueType> PropertyWindowViewModelImpl<K, T, (), ()
             edit: Arc::clone(edit),
             selected: Arc::new(StdRwLock::new(SelectedItem::default())),
             selected_instance_at: Arc::new(ArcSwap::new(Arc::new(0.0..0.0))),
-            fixed_params: Arc::new(Mutex::new(None)),
-            image_required_params: Arc::new(Mutex::new(None)),
+            parameters: Arc::new(Mutex::new(None)),
             image_required_params_update_task: Mutex::new(runtime.spawn(future::ready(()))),
             runtime,
             key: Arc::clone(params.key()),
@@ -317,33 +498,14 @@ where
     Edit: EditFunnel<K, T>,
     Runtime: AsyncRuntime<()> + Clone,
 {
-    type Times = Vec<f64>;
-    type FixedParams = Box<[(String, ParameterValueFixed<T::Image, T::Audio>)]>;
-    type FixedParamsLock<'a> = MutexGuard<'a, Option<Self::FixedParams>> where Self: 'a;
-
-    fn fixed_params(&self) -> Self::FixedParamsLock<'_> {
-        self.fixed_params.lock().unwrap()
-    }
-
-    fn updated_fixed_params(&self, fixed_params: &Self::FixedParams) {
-        let SelectedItem {
-            root: Some(root_component_class),
-            instance: Some(component_instance),
-        } = &*self.selected.read().unwrap()
-        else {
-            return;
-        };
-        self.edit.edit_instance(root_component_class, component_instance, InstanceEditCommand::UpdateFixedParams(fixed_params.iter().map(|(_, v)| v.clone()).collect()));
-    }
-
-    type ImageRequiredParams<'a> = MutexGuard<'a, Option<ImageRequiredParamsEditSet<K, T, Self::Times>>> where Self: 'a;
+    type Parameters<'a> = MutexGuard<'a, Option<ParametersEditSet<K, T>>> where Self: 'a;
 
     fn selected_instance_at(&self) -> Range<f64> {
         (**self.selected_instance_at.load()).clone()
     }
 
-    fn image_required_params(&self) -> Self::ImageRequiredParams<'_> {
-        self.image_required_params.lock().unwrap()
+    fn parameters(&self) -> Self::Parameters<'_> {
+        self.parameters.lock().unwrap()
     }
 
     fn updated_image_required_params(&self, image_required_params: &ImageRequiredParamsForEdit<K, T>) {
@@ -355,5 +517,57 @@ where
             return;
         };
         self.edit.edit_instance(root_component_class, component_instance, InstanceEditCommand::UpdateImageRequiredParams(image_required_params.as_non_edit()));
+    }
+
+    fn updated_fixed_params(&self, fixed_params: &[WithName<ParameterValueFixed<T::Image, T::Audio>>]) {
+        let SelectedItem {
+            root: Some(root_component_class),
+            instance: Some(component_instance),
+        } = &*self.selected.read().unwrap()
+        else {
+            return;
+        };
+        self.edit.edit_instance(root_component_class, component_instance, InstanceEditCommand::UpdateFixedParams(fixed_params.iter().map(|WithName { value, .. }| value.clone()).collect()));
+    }
+
+    fn updated_variable_params(&self, variable_params: &[WithName<Parameter<NullableValueForEdit<K, T>>>]) {
+        let SelectedItem {
+            root: Some(root_component_class),
+            instance: Some(component_instance),
+        } = &*self.selected.read().unwrap()
+        else {
+            return;
+        };
+        self.edit.edit_instance(
+            root_component_class,
+            component_instance,
+            InstanceEditCommand::UpdateVariableParams(
+                variable_params
+                    .iter()
+                    .map(|WithName { value, .. }| match value {
+                        Parameter::None => VariableParameterValue::new(Parameter::None),
+                        Parameter::Image(value) => value.value.clone(),
+                        Parameter::Audio(value) => value.value.clone(),
+                        Parameter::Binary(value) => value.value.clone(),
+                        Parameter::String(value) => value.value.clone(),
+                        Parameter::Integer(value) => value.value.clone(),
+                        Parameter::RealNumber(value) => value.value.clone(),
+                        Parameter::Boolean(value) => value.value.clone(),
+                        Parameter::Dictionary(value) => {
+                            let _: &Never = value;
+                            unreachable!()
+                        }
+                        Parameter::Array(value) => {
+                            let _: &Never = value;
+                            unreachable!()
+                        }
+                        Parameter::ComponentClass(value) => {
+                            let _: &Option<()> = value;
+                            unreachable!()
+                        }
+                    })
+                    .collect(),
+            ),
+        );
     }
 }

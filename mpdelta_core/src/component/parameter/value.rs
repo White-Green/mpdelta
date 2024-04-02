@@ -1,15 +1,11 @@
-use crate::time::TimelineTime;
 use cgmath::Quaternion;
 use erased_serde::Error;
-use futures::prelude::stream::{self, StreamExt};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize, Serializer};
 use std::any::Any;
 use std::borrow::Cow;
 use std::cmp::Ordering;
-use std::collections::BTreeMap;
 use std::fmt::{Debug, Formatter};
-use std::future::Future;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use std::{any, fmt, ptr};
@@ -301,22 +297,22 @@ impl<T: 'static> Clone for DynEditableSingleValue<T> {
 
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[error("expected {expected}, but got {actual}")]
-pub struct DowncastErrorSingle {
+pub struct DowncastError {
     pub expected: &'static str,
     pub actual: &'static str,
 }
 
 pub trait SingleValueEdit {
-    fn edit_value<T: 'static, R>(&mut self, f: impl FnOnce(&mut T) -> R) -> Result<R, DowncastErrorSingle>;
+    fn edit_value<T: 'static, R>(&mut self, f: impl FnOnce(&mut T) -> R) -> Result<R, DowncastError>;
 }
 
 impl<V> SingleValueEdit for V
 where
     V: DynEditableSingleValueMarker + ?Sized,
 {
-    fn edit_value<T: 'static, R>(&mut self, f: impl FnOnce(&mut T) -> R) -> Result<R, DowncastErrorSingle> {
+    fn edit_value<T: 'static, R>(&mut self, f: impl FnOnce(&mut T) -> R) -> Result<R, DowncastError> {
         let raw_value = V::get_raw_value_mut(self);
-        downcast_mut::<dyn NamedAny, T>(raw_value).map(f).ok_or_else(|| DowncastErrorSingle {
+        downcast_mut::<dyn NamedAny, T>(raw_value).map(f).ok_or_else(|| DowncastError {
             expected: any::type_name::<T>(),
             actual: <dyn NamedAny>::type_name(raw_value),
         })
@@ -372,12 +368,49 @@ pub trait DynEditableEasingValueManager<T>: Send + Sync {
 pub trait DynEditableEasingValueMarker: NamedAny + erased_serde::Serialize {
     type Out: 'static;
     fn manager(&self) -> &dyn DynEditableEasingValueManager<Self::Out>;
-    fn get_raw_values_mut(&mut self) -> (&mut dyn NamedAny, &mut dyn NamedAny);
+    fn get_raw_value_mut(&mut self) -> &mut dyn NamedAny;
     fn get_value(&self, easing: f64) -> Self::Out;
 }
 
+impl<T> DynEditableEasingValueMarker for DynEditableSelfValue<T>
+where
+    T: Clone + Send + Sync + Serialize + DeserializeOwned + 'static,
+{
+    type Out = T;
+
+    fn manager(&self) -> &dyn DynEditableEasingValueManager<Self::Out> {
+        &DynEditableSelfValueManager(PhantomData)
+    }
+
+    fn get_raw_value_mut(&mut self) -> &mut dyn NamedAny {
+        &mut self.0
+    }
+
+    fn get_value(&self, _: f64) -> Self::Out {
+        self.0.clone()
+    }
+}
+
+impl<T> DynEditableEasingValueManager<T> for DynEditableSelfValueManager<T>
+where
+    Self: Send + Sync,
+    DynEditableSelfValue<T>: Send + Sync + DynEditableEasingValueMarkerCloneable<Out = T> + DeserializeOwned + 'static,
+{
+    fn identifier(&self) -> DynEditableEasingValueIdentifier {
+        DynEditableEasingValueIdentifier {
+            namespace: Cow::Borrowed("mpdelta"),
+            name: Cow::Borrowed("SingleEasingValue"),
+        }
+    }
+
+    fn deserialize(&self, deserializer: &mut dyn erased_serde::Deserializer) -> Result<DynEditableEasingValue<T>, Error> {
+        let value: DynEditableSelfValue<T> = erased_serde::deserialize(deserializer)?;
+        Ok(DynEditableEasingValue::new(value))
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DynEditableSelfEasingValue<T>(pub T, pub T);
+pub struct DynEditableLerpEasingValue<T>(pub (T, T));
 
 pub trait Lerp {
     fn lerp(&self, other: &Self, easing: f64) -> Self;
@@ -396,47 +429,47 @@ impl Lerp for Quaternion<f64> {
 }
 
 #[derive(Debug)]
-pub struct DynEditableSelfEasingValueManager<T>(PhantomData<T>);
+pub struct DynEditableLerpEasingValueManager<T>(PhantomData<T>);
 
-impl<T> Default for DynEditableSelfEasingValueManager<T> {
+impl<T> Default for DynEditableLerpEasingValueManager<T> {
     fn default() -> Self {
-        DynEditableSelfEasingValueManager(PhantomData)
+        DynEditableLerpEasingValueManager(PhantomData)
     }
 }
 
-impl<T> DynEditableEasingValueManager<T> for DynEditableSelfEasingValueManager<T>
+impl<T> DynEditableEasingValueManager<T> for DynEditableLerpEasingValueManager<T>
 where
     Self: Send + Sync,
-    DynEditableSelfEasingValue<T>: Send + Sync + DynEditableEasingValueMarkerCloneable<Out = T> + DeserializeOwned + 'static,
+    DynEditableLerpEasingValue<T>: Send + Sync + DynEditableEasingValueMarkerCloneable<Out = T> + DeserializeOwned + 'static,
 {
     fn identifier(&self) -> DynEditableEasingValueIdentifier {
         DynEditableEasingValueIdentifier {
             namespace: Cow::Borrowed("mpdelta"),
-            name: Cow::Borrowed("SelfEasingValue"),
+            name: Cow::Borrowed("LerpEasingValue"),
         }
     }
 
     fn deserialize(&self, deserializer: &mut dyn erased_serde::Deserializer) -> Result<DynEditableEasingValue<T>, erased_serde::Error> {
-        let value: DynEditableSelfEasingValue<T> = erased_serde::deserialize(deserializer)?;
+        let value: DynEditableLerpEasingValue<T> = erased_serde::deserialize(deserializer)?;
         Ok(DynEditableEasingValue::new(value))
     }
 }
 
-impl<T> DynEditableEasingValueMarker for DynEditableSelfEasingValue<T>
+impl<T> DynEditableEasingValueMarker for DynEditableLerpEasingValue<T>
 where
     T: Clone + Send + Sync + Lerp + Serialize + DeserializeOwned + 'static,
 {
     type Out = T;
     fn manager(&self) -> &dyn DynEditableEasingValueManager<Self::Out> {
-        &DynEditableSelfEasingValueManager(PhantomData)
+        &DynEditableLerpEasingValueManager(PhantomData)
     }
 
-    fn get_raw_values_mut(&mut self) -> (&mut dyn NamedAny, &mut dyn NamedAny) {
-        (&mut self.0, &mut self.1)
+    fn get_raw_value_mut(&mut self) -> &mut dyn NamedAny {
+        &mut self.0
     }
 
     fn get_value(&self, easing: f64) -> Self::Out {
-        let DynEditableSelfEasingValue(left, right) = self;
+        let DynEditableLerpEasingValue((left, right)) = self;
         left.lerp(right, easing)
     }
 }
@@ -482,8 +515,8 @@ impl<T: 'static> DynEditableEasingValueMarker for DynEditableEasingValue<T> {
     fn manager(&self) -> &dyn DynEditableEasingValueManager<Self::Out> {
         self.0.manager()
     }
-    fn get_raw_values_mut(&mut self) -> (&mut dyn NamedAny, &mut dyn NamedAny) {
-        <dyn DynEditableEasingValueMarkerCloneable<Out = T>>::get_raw_values_mut(&mut *self.0)
+    fn get_raw_value_mut(&mut self) -> &mut dyn NamedAny {
+        <dyn DynEditableEasingValueMarkerCloneable<Out = T>>::get_raw_value_mut(&mut *self.0)
     }
 
     fn get_value(&self, easing: f64) -> Self::Out {
@@ -497,40 +530,21 @@ impl<T: 'static> Clone for DynEditableEasingValue<T> {
     }
 }
 
-#[derive(Debug, Error, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub enum DowncastErrorEasing {
-    #[error("expected {expected}, but got {actual} in left value")]
-    Left { expected: &'static str, actual: &'static str },
-    #[error("expected {expected}, but got {actual} in right value")]
-    Right { expected: &'static str, actual: &'static str },
-    #[error("expected {expected}, but got {actual_left} and {actual_right}")]
-    Both { expected: &'static str, actual_left: &'static str, actual_right: &'static str },
-}
-
 pub trait EasingValueEdit {
-    fn edit_value<T: 'static, R>(&mut self, f: impl FnOnce(&mut T, &mut T) -> R) -> Result<R, DowncastErrorEasing>;
+    fn edit_value<T: 'static, R>(&mut self, f: impl FnOnce(&mut T) -> R) -> Result<R, DowncastError>;
 }
 
 impl<V> EasingValueEdit for V
 where
     V: DynEditableEasingValueMarker + ?Sized,
 {
-    fn edit_value<T: 'static, R>(&mut self, f: impl FnOnce(&mut T, &mut T) -> R) -> Result<R, DowncastErrorEasing> {
-        let (raw_left, raw_right) = V::get_raw_values_mut(self);
-        match (downcast_mut::<dyn NamedAny, T>(raw_left), downcast_mut::<dyn NamedAny, T>(raw_right)) {
-            (Some(left), Some(right)) => Ok(f(left, right)),
-            (Some(_), None) => Err(DowncastErrorEasing::Right {
+    fn edit_value<T: 'static, R>(&mut self, f: impl FnOnce(&mut T) -> R) -> Result<R, DowncastError> {
+        let raw = V::get_raw_value_mut(self);
+        match downcast_mut::<dyn NamedAny, T>(raw) {
+            Some(value) => Ok(f(value)),
+            None => Err(DowncastError {
                 expected: any::type_name::<T>(),
-                actual: <dyn NamedAny>::type_name(raw_right),
-            }),
-            (None, Some(_)) => Err(DowncastErrorEasing::Left {
-                expected: any::type_name::<T>(),
-                actual: <dyn NamedAny>::type_name(raw_left),
-            }),
-            (None, None) => Err(DowncastErrorEasing::Both {
-                expected: any::type_name::<T>(),
-                actual_left: <dyn NamedAny>::type_name(raw_left),
-                actual_right: <dyn NamedAny>::type_name(raw_right),
+                actual: <dyn NamedAny>::type_name(raw),
             }),
         }
     }
@@ -561,69 +575,6 @@ impl<T: 'static> EasingValue<T> {
 impl<Value: Debug> Debug for EasingValue<Value> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.debug_struct(format!("EasingValue<{}>", any::type_name::<Value>()).as_str()).finish_non_exhaustive()
-    }
-}
-
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct FrameVariableValue<Value> {
-    values: BTreeMap<TimelineTime, Value>,
-}
-
-impl<Value> FrameVariableValue<Value> {
-    pub fn new() -> FrameVariableValue<Value> {
-        FrameVariableValue { values: BTreeMap::new() }
-    }
-
-    pub fn get(&self, time: TimelineTime) -> Option<&Value> {
-        match (self.values.range(..time).next_back(), self.values.range(time..).next()) {
-            (Some((time1, value1)), Some((time2, value2))) => Some(if time.value() - time1.value() < time2.value() - time.value() { value1 } else { value2 }),
-            (Some((_, value1)), _) => Some(value1),
-            (_, Some((_, value2))) => Some(value2),
-            (_, _) => None,
-        }
-    }
-
-    pub fn insert(&mut self, key: TimelineTime, value: Value) {
-        self.values.insert(key, value);
-    }
-
-    pub fn map<T>(self, mut map: impl FnMut(Value) -> T) -> FrameVariableValue<T> {
-        FrameVariableValue {
-            values: self.values.into_iter().map(|(k, v)| (k, map(v))).collect(),
-        }
-    }
-
-    pub async fn map_async<T, F: Future<Output = T>>(self, map: impl Fn(Value) -> F) -> FrameVariableValue<T> {
-        let map = &map;
-        FrameVariableValue {
-            values: stream::iter(self.values).then(|(k, v)| async move { (k, map(v).await) }).collect().await,
-        }
-    }
-
-    pub fn map_ref<T>(&self, mut map: impl FnMut(&Value) -> T) -> FrameVariableValue<T> {
-        FrameVariableValue {
-            values: self.values.iter().map(|(&k, v)| (k, map(v))).collect(),
-        }
-    }
-
-    pub fn map_time(self, mut map: impl FnMut(TimelineTime) -> TimelineTime) -> FrameVariableValue<Value> {
-        FrameVariableValue {
-            values: self.values.into_iter().map(|(k, v)| (map(k), v)).collect(),
-        }
-    }
-
-    pub fn first_time(&self) -> Option<TimelineTime> {
-        self.values.iter().next().map(|v| *v.0)
-    }
-
-    pub fn last_time(&self) -> Option<TimelineTime> {
-        self.values.iter().next_back().map(|v| *v.0)
-    }
-}
-
-impl<T> From<BTreeMap<TimelineTime, T>> for FrameVariableValue<T> {
-    fn from(values: BTreeMap<TimelineTime, T>) -> Self {
-        FrameVariableValue { values }
     }
 }
 
@@ -686,7 +637,7 @@ mod tests {
                 *value = 30;
                 *value
             }),
-            Err(DowncastErrorSingle {
+            Err(DowncastError {
                 expected: any::type_name::<u64>(),
                 actual: any::type_name::<u32>(),
             })
@@ -703,9 +654,8 @@ mod tests {
             fn manager(&self) -> &dyn DynEditableEasingValueManager<Self::Out> {
                 todo!()
             }
-            fn get_raw_values_mut(&mut self) -> (&mut dyn NamedAny, &mut dyn NamedAny) {
-                let Value1(left, right) = self;
-                (left, right)
+            fn get_raw_value_mut(&mut self) -> &mut dyn NamedAny {
+                self
             }
 
             fn get_value(&self, easing: f64) -> u64 {
@@ -723,7 +673,7 @@ mod tests {
         assert_eq!(DynEditableEasingValueMarker::get_value(&value, 0.5), 15);
         assert_eq!(DynEditableEasingValueMarker::get_value(&value, 1.0), 20);
         assert_eq!(
-            EasingValueEdit::edit_value::<u32, _>(&mut value, |value1, value2| {
+            EasingValueEdit::edit_value::<Value1, _>(&mut value, |Value1(value1, value2)| {
                 *value1 = 20;
                 *value2 = 30;
                 (*value1, *value2)
@@ -734,75 +684,17 @@ mod tests {
         assert_eq!(DynEditableEasingValueMarker::get_value(&value, 0.5), 25);
         assert_eq!(DynEditableEasingValueMarker::get_value(&value, 1.0), 30);
         assert_eq!(
-            EasingValueEdit::edit_value::<u64, _>(&mut value, |value1, value2| {
+            EasingValueEdit::edit_value::<u64, _>(&mut value, |value1| {
                 *value1 = 30;
-                *value2 = 40;
-                (*value1, *value2)
+                *value1
             }),
-            Err(DowncastErrorEasing::Both {
+            Err(DowncastError {
                 expected: any::type_name::<u64>(),
-                actual_left: any::type_name::<u32>(),
-                actual_right: any::type_name::<u32>(),
+                actual: any::type_name::<Value1>(),
             })
         );
         assert_eq!(DynEditableEasingValueMarker::get_value(&value, 0.0), 20);
         assert_eq!(DynEditableEasingValueMarker::get_value(&value, 0.5), 25);
         assert_eq!(DynEditableEasingValueMarker::get_value(&value, 1.0), 30);
-
-        #[derive(Clone, Serialize)]
-        struct Value2(u32, u64);
-        impl DynEditableEasingValueMarker for Value2 {
-            type Out = u64;
-            fn manager(&self) -> &dyn DynEditableEasingValueManager<Self::Out> {
-                todo!()
-            }
-
-            fn get_raw_values_mut(&mut self) -> (&mut dyn NamedAny, &mut dyn NamedAny) {
-                let Value2(left, right) = self;
-                (left, right)
-            }
-
-            fn get_value(&self, easing: f64) -> u64 {
-                let Value2(left, right) = *self;
-                (left as f64 * (1.0 - easing) + right as f64 * easing).round() as u64
-            }
-        }
-        let value = Value2(10, 20);
-        let mut value = DynEditableEasingValueMarkerCloneable::clone_dyn(&value);
-        assert_eq!(
-            EasingValueEdit::edit_value::<u32, _>(&mut value, |_, _| unreachable!()),
-            Err(DowncastErrorEasing::Right {
-                expected: any::type_name::<u32>(),
-                actual: any::type_name::<u64>(),
-            })
-        );
-
-        #[derive(Clone, Serialize)]
-        struct Value3(u64, u32);
-        impl DynEditableEasingValueMarker for Value3 {
-            type Out = u64;
-            fn manager(&self) -> &dyn DynEditableEasingValueManager<Self::Out> {
-                todo!()
-            }
-
-            fn get_raw_values_mut(&mut self) -> (&mut dyn NamedAny, &mut dyn NamedAny) {
-                let Value3(left, right) = self;
-                (left, right)
-            }
-
-            fn get_value(&self, easing: f64) -> u64 {
-                let Value3(left, right) = *self;
-                (left as f64 * (1.0 - easing) + right as f64 * easing).round() as u64
-            }
-        }
-        let value = Value3(10, 20);
-        let mut value = DynEditableEasingValueMarkerCloneable::clone_dyn(&value);
-        assert_eq!(
-            EasingValueEdit::edit_value::<u32, _>(&mut value, |_, _| unreachable!()),
-            Err(DowncastErrorEasing::Left {
-                expected: any::type_name::<u32>(),
-                actual: any::type_name::<u64>(),
-            })
-        );
     }
 }

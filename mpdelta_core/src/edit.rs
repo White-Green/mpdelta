@@ -1,7 +1,7 @@
 use crate::component::instance::{ComponentInstanceHandle, ComponentInstanceHandleOwned};
 use crate::component::link::MarkerLinkHandle;
 use crate::component::marker_pin::MarkerPinHandle;
-use crate::component::parameter::{ImageRequiredParams, ParameterValueFixed, ParameterValueType};
+use crate::component::parameter::{ImageRequiredParams, ParameterNullableValue, ParameterValueFixed, ParameterValueType, VariableParameterValue};
 use crate::time::TimelineTime;
 
 pub enum RootComponentEditCommand<K: 'static, T: ParameterValueType> {
@@ -13,6 +13,7 @@ pub enum RootComponentEditCommand<K: 'static, T: ParameterValueType> {
 
 pub enum InstanceEditCommand<K: 'static, T: ParameterValueType> {
     UpdateFixedParams(Box<[ParameterValueFixed<T::Image, T::Audio>]>),
+    UpdateVariableParams(Vec<VariableParameterValue<K, T, ParameterNullableValue<K, T>>>),
     UpdateImageRequiredParams(ImageRequiredParams<K, T>),
     MoveComponentInstance(TimelineTime),
     MoveMarkerPin(MarkerPinHandle<K>, TimelineTime),
@@ -31,6 +32,7 @@ pub enum RootComponentEditEvent<'a, K: 'static, T: ParameterValueType> {
 
 pub enum InstanceEditEvent<'a, K: 'static, T: ParameterValueType> {
     UpdateFixedParams(&'a [ParameterValueFixed<T::Image, T::Audio>]),
+    UpdateVariableParams(&'a [VariableParameterValue<K, T, ParameterNullableValue<K, T>>]),
     UpdateImageRequiredParams(&'a ImageRequiredParams<K, T>),
     MoveComponentInstance(TimelineTime),
     MoveMarkerPin(&'a MarkerPinHandle<K>, TimelineTime),

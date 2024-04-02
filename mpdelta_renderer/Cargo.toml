@@ -8,7 +8,6 @@ authors = { workspace = true }
 async-trait = { workspace = true }
 cgmath = { workspace = true }
 dashmap = { workspace = true }
-either = { workspace = true }
 futures = { workspace = true }
 mpdelta_core = { workspace = true }
 mpdelta_differential = { workspace = true }

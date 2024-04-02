@@ -2,10 +2,8 @@ use crate::common::time_split_value::TimeSplitValue;
 use crate::component::instance::ComponentInstanceHandle;
 use crate::component::marker_pin::MarkerPinHandle;
 use crate::component::parameter::placeholder::{Placeholder, TagAudio, TagImage};
-use crate::component::parameter::value::{DynEditableSelfEasingValue, DynEditableSingleValue, EasingValue, FrameVariableValue, LinearEasing};
-use crate::time::TimelineTime;
+use crate::component::parameter::value::{DynEditableLerpEasingValue, DynEditableSingleValue, EasingValue, LinearEasing};
 use cgmath::{One, Quaternion, Vector3};
-use either::Either;
 use serde::{Deserialize, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
 use std::cmp::Ordering;
@@ -671,41 +669,6 @@ impl<K: 'static> ParameterValueType for Value<K> {
     type ComponentClass = ();
 }
 
-#[derive(Clone)]
-pub struct ComponentProcessorInput;
-
-pub type ComponentProcessorInputValue = Parameter<ComponentProcessorInput>;
-
-impl ParameterValueType for ComponentProcessorInput {
-    type Image = Placeholder<TagImage>;
-    type Audio = Placeholder<TagAudio>;
-    type Binary = TimeSplitValue<TimelineTime, Option<Either<EasingValue<AbstractFile>, FrameVariableValue<AbstractFile>>>>;
-    type String = TimeSplitValue<TimelineTime, Option<Either<EasingValue<String>, FrameVariableValue<String>>>>;
-    type Integer = TimeSplitValue<TimelineTime, Option<Either<EasingValue<i64>, FrameVariableValue<i64>>>>;
-    type RealNumber = TimeSplitValue<TimelineTime, Option<Either<EasingValue<f64>, FrameVariableValue<f64>>>>;
-    type Boolean = TimeSplitValue<TimelineTime, Option<Either<EasingValue<bool>, FrameVariableValue<bool>>>>;
-    type Dictionary = Never;
-    type Array = Never;
-    type ComponentClass = ();
-}
-
-pub struct FrameVariable;
-
-pub type ParameterFrameVariableValue = Parameter<FrameVariable>;
-
-impl ParameterValueType for FrameVariable {
-    type Image = Placeholder<TagImage>;
-    type Audio = Placeholder<TagAudio>;
-    type Binary = FrameVariableValue<AbstractFile>;
-    type String = FrameVariableValue<String>;
-    type Integer = FrameVariableValue<i64>;
-    type RealNumber = FrameVariableValue<f64>;
-    type Boolean = FrameVariableValue<bool>;
-    type Dictionary = Never;
-    type Array = Never;
-    type ComponentClass = Never;
-}
-
 pub struct NullableValue<K, T>(PhantomData<(K, T)>);
 
 unsafe impl<K, T> Send for NullableValue<K, T> {}
@@ -970,7 +933,6 @@ impl<K: 'static, T: ParameterValueType, Nullable> VariableParameterValue<K, T, N
 
 #[derive(Debug)]
 pub struct ImageRequiredParams<K: 'static, T: ParameterValueType> {
-    pub aspect_ratio: (u32, u32),
     pub transform: ImageRequiredParamsTransform<K, T>,
     pub background_color: [u8; 4],
     pub opacity: PinSplitValue<K, EasingValue<f64>>,
@@ -980,24 +942,28 @@ pub struct ImageRequiredParams<K: 'static, T: ParameterValueType> {
 
 impl<K, T: ParameterValueType> ImageRequiredParams<K, T> {
     pub fn new_default(marker_left: &MarkerPinHandle<K>, marker_right: &MarkerPinHandle<K>) -> ImageRequiredParams<K, T> {
-        let one = TimeSplitValue::new(marker_left.clone(), Some(EasingValue::new(DynEditableSelfEasingValue(1., 1.), Arc::new(LinearEasing))), marker_right.clone());
+        let one = TimeSplitValue::new(marker_left.clone(), Some(EasingValue::new(DynEditableLerpEasingValue((1., 1.)), Arc::new(LinearEasing))), marker_right.clone());
         let one_value = VariableParameterValue::new(one);
-        let zero = VariableParameterValue::new(TimeSplitValue::new(marker_left.clone(), Some(EasingValue::new(DynEditableSelfEasingValue(0., 0.), Arc::new(LinearEasing))), marker_right.clone()));
+        let zero = VariableParameterValue::new(TimeSplitValue::new(marker_left.clone(), Some(EasingValue::new(DynEditableLerpEasingValue((0., 0.)), Arc::new(LinearEasing))), marker_right.clone()));
         ImageRequiredParams {
-            aspect_ratio: (1, 1),
             transform: ImageRequiredParamsTransform::Params {
+                size: Vector3 {
+                    x: one_value.clone(),
+                    y: one_value.clone(),
+                    z: one_value.clone(),
+                },
                 scale: Vector3 {
                     x: one_value.clone(),
                     y: one_value.clone(),
                     z: one_value,
                 },
                 translate: Vector3 { x: zero.clone(), y: zero.clone(), z: zero.clone() },
-                rotate: TimeSplitValue::new(marker_left.clone(), EasingValue::new(DynEditableSelfEasingValue(Quaternion::one(), Quaternion::one()), Arc::new(LinearEasing)), marker_right.clone()),
+                rotate: TimeSplitValue::new(marker_left.clone(), EasingValue::new(DynEditableLerpEasingValue((Quaternion::one(), Quaternion::one())), Arc::new(LinearEasing)), marker_right.clone()),
                 scale_center: Vector3 { x: zero.clone(), y: zero.clone(), z: zero.clone() },
                 rotate_center: Vector3 { x: zero.clone(), y: zero.clone(), z: zero },
             },
             background_color: [0; 4],
-            opacity: TimeSplitValue::new(marker_left.clone(), EasingValue::new(DynEditableSelfEasingValue(1., 1.), Arc::new(LinearEasing)), marker_right.clone()),
+            opacity: TimeSplitValue::new(marker_left.clone(), EasingValue::new(DynEditableLerpEasingValue((1., 1.)), Arc::new(LinearEasing)), marker_right.clone()),
             blend_mode: TimeSplitValue::new(marker_left.clone(), Default::default(), marker_right.clone()),
             composite_operation: TimeSplitValue::new(marker_left.clone(), Default::default(), marker_right.clone()),
         }
@@ -1007,7 +973,6 @@ impl<K, T: ParameterValueType> ImageRequiredParams<K, T> {
 impl<K, T: ParameterValueType> Clone for ImageRequiredParams<K, T> {
     fn clone(&self) -> Self {
         let ImageRequiredParams {
-            aspect_ratio,
             transform,
             background_color,
             opacity,
@@ -1015,7 +980,6 @@ impl<K, T: ParameterValueType> Clone for ImageRequiredParams<K, T> {
             composite_operation,
         } = self;
         ImageRequiredParams {
-            aspect_ratio: *aspect_ratio,
             transform: transform.clone(),
             background_color: *background_color,
             opacity: opacity.clone(),
@@ -1030,6 +994,7 @@ pub type Vector3Params<K, T> = Vector3<VariableParameterValue<K, T, PinSplitValu
 #[derive(Debug)]
 pub enum ImageRequiredParamsTransform<K: 'static, T: ParameterValueType> {
     Params {
+        size: Vector3Params<K, T>,
         scale: Vector3Params<K, T>,
         translate: Vector3Params<K, T>,
         rotate: TimeSplitValue<MarkerPinHandle<K>, EasingValue<Quaternion<f64>>>,
@@ -1047,7 +1012,15 @@ pub enum ImageRequiredParamsTransform<K: 'static, T: ParameterValueType> {
 impl<K, T: ParameterValueType> Clone for ImageRequiredParamsTransform<K, T> {
     fn clone(&self) -> Self {
         match self {
-            ImageRequiredParamsTransform::Params { scale, translate, rotate, scale_center, rotate_center } => ImageRequiredParamsTransform::Params {
+            ImageRequiredParamsTransform::Params {
+                size,
+                scale,
+                translate,
+                rotate,
+                scale_center,
+                rotate_center,
+            } => ImageRequiredParamsTransform::Params {
+                size: size.clone(),
                 scale: scale.clone(),
                 translate: translate.clone(),
                 rotate: rotate.clone(),
@@ -1065,76 +1038,7 @@ impl<K, T: ParameterValueType> Clone for ImageRequiredParamsTransform<K, T> {
 }
 
 #[derive(Debug, Clone)]
-pub struct ImageRequiredParamsFrameVariable {
-    pub aspect_ratio: (u32, u32),
-    pub transform: ImageRequiredParamsTransformFrameVariable,
-    pub background_color: [u8; 4],
-    pub opacity: FrameVariableValue<Opacity>,
-    pub blend_mode: FrameVariableValue<BlendMode>,
-    pub composite_operation: FrameVariableValue<CompositeOperation>,
-}
-
-impl ImageRequiredParamsFrameVariable {
-    pub fn get(&self, at: TimelineTime) -> ImageRequiredParamsFixed {
-        let ImageRequiredParamsFrameVariable {
-            aspect_ratio,
-            transform,
-            background_color,
-            opacity,
-            blend_mode,
-            composite_operation,
-        } = self;
-        ImageRequiredParamsFixed {
-            aspect_ratio: *aspect_ratio,
-            transform: transform.get(at),
-            background_color: *background_color,
-            opacity: *opacity.get(at).unwrap(),
-            blend_mode: *blend_mode.get(at).unwrap(),
-            composite_operation: *composite_operation.get(at).unwrap(),
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub enum ImageRequiredParamsTransformFrameVariable {
-    Params {
-        scale: FrameVariableValue<Vector3<f64>>,
-        translate: FrameVariableValue<Vector3<f64>>,
-        rotate: FrameVariableValue<Quaternion<f64>>,
-        scale_center: FrameVariableValue<Vector3<f64>>,
-        rotate_center: FrameVariableValue<Vector3<f64>>,
-    },
-    Free {
-        left_top: FrameVariableValue<Vector3<f64>>,
-        right_top: FrameVariableValue<Vector3<f64>>,
-        left_bottom: FrameVariableValue<Vector3<f64>>,
-        right_bottom: FrameVariableValue<Vector3<f64>>,
-    },
-}
-
-impl ImageRequiredParamsTransformFrameVariable {
-    pub fn get(&self, at: TimelineTime) -> ImageRequiredParamsTransformFixed {
-        match self {
-            ImageRequiredParamsTransformFrameVariable::Params { scale, translate, rotate, scale_center, rotate_center } => ImageRequiredParamsTransformFixed::Params {
-                scale: *scale.get(at).unwrap(),
-                translate: *translate.get(at).unwrap(),
-                rotate: *rotate.get(at).unwrap(),
-                scale_center: *scale_center.get(at).unwrap(),
-                rotate_center: *rotate_center.get(at).unwrap(),
-            },
-            ImageRequiredParamsTransformFrameVariable::Free { left_top, right_top, left_bottom, right_bottom } => ImageRequiredParamsTransformFixed::Free {
-                left_top: *left_top.get(at).unwrap(),
-                right_top: *right_top.get(at).unwrap(),
-                left_bottom: *left_bottom.get(at).unwrap(),
-                right_bottom: *right_bottom.get(at).unwrap(),
-            },
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
 pub struct ImageRequiredParamsFixed {
-    pub aspect_ratio: (u32, u32),
     pub transform: ImageRequiredParamsTransformFixed,
     pub background_color: [u8; 4],
     pub opacity: Opacity,
@@ -1145,6 +1049,7 @@ pub struct ImageRequiredParamsFixed {
 #[derive(Debug, Clone)]
 pub enum ImageRequiredParamsTransformFixed {
     Params {
+        size: Vector3<f64>,
         scale: Vector3<f64>,
         translate: Vector3<f64>,
         rotate: Quaternion<f64>,
@@ -1168,7 +1073,7 @@ pub struct AudioRequiredParams<K: 'static, T: ParameterValueType> {
 
 impl<K: 'static, T: ParameterValueType> AudioRequiredParams<K, T> {
     pub fn new_default(left: &MarkerPinHandle<K>, right: &MarkerPinHandle<K>, channels: usize) -> AudioRequiredParams<K, T> {
-        let one = TimeSplitValue::new(left.clone(), Some(EasingValue::new(DynEditableSelfEasingValue(1., 1.), Arc::new(LinearEasing))), right.clone());
+        let one = TimeSplitValue::new(left.clone(), Some(EasingValue::new(DynEditableLerpEasingValue((1., 1.)), Arc::new(LinearEasing))), right.clone());
         let one_value = VariableParameterValue::new(one);
         AudioRequiredParams { volume: vec![one_value; channels] }
     }
@@ -1180,12 +1085,6 @@ impl<K, T: ParameterValueType> Clone for AudioRequiredParams<K, T> {
         AudioRequiredParams { volume: volume.clone() }
     }
 }
-
-#[derive(Debug, Clone)]
-pub struct AudioRequiredParamsFrameVariable {
-    pub volume: Vec<FrameVariableValue<f64>>,
-}
-
 #[derive(Debug, Clone)]
 pub struct AudioRequiredParamsFixed {
     pub volume: Vec<f64>,

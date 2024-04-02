@@ -282,8 +282,8 @@ mod tests {
                 todo!()
             }
 
-            fn get_raw_values_mut(&mut self) -> (&mut dyn NamedAny, &mut dyn NamedAny) {
-                (&mut self.0, &mut self.1)
+            fn get_raw_value_mut(&mut self) -> &mut dyn NamedAny {
+                unimplemented!()
             }
             fn get_value(&self, p: f64) -> f64 {
                 self.0 + (self.1 - self.0) * p

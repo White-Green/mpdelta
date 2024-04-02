@@ -249,6 +249,24 @@ where
                 self.edit_event_listeners.iter().for_each(|listener| listener.on_edit_instance(root_ref, target_ref, InstanceEditEvent::UpdateFixedParams(&params)));
                 Ok(ProjectEditLog::Unimplemented)
             }
+            InstanceEditCommand::UpdateVariableParams(params) => {
+                {
+                    let mut key = self.key.write().await;
+                    let slot = target.rw(&mut key).variable_parameters_mut();
+                    if slot.len() != params.len() {
+                        return Err(ProjectEditError::ParameterTypeMismatch);
+                    }
+                    for (slot, value) in slot.iter_mut().zip(params.iter()) {
+                        if slot.params.select() != value.params.select() {
+                            return Err(ProjectEditError::ParameterTypeMismatch);
+                        }
+                        *slot = value.clone();
+                    }
+                }
+
+                self.edit_event_listeners.iter().for_each(|listener| listener.on_edit_instance(root_ref, target_ref, InstanceEditEvent::UpdateVariableParams(&params)));
+                Ok(ProjectEditLog::Unimplemented)
+            }
             InstanceEditCommand::UpdateImageRequiredParams(params) => {
                 {
                     let mut key = self.key.write().await;

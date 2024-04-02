@@ -4,7 +4,7 @@ use crate::component::class::{ComponentClass, ComponentClassIdentifier};
 use crate::component::instance::{ComponentInstance, ComponentInstanceHandle, ComponentInstanceHandleOwned};
 use crate::component::link::{MarkerLinkHandle, MarkerLinkHandleOwned};
 use crate::component::marker_pin::{MarkerPin, MarkerPinHandle, MarkerPinHandleOwned, MarkerTime};
-use crate::component::parameter::value::{DynEditableSelfEasingValue, EasingValue, LinearEasing};
+use crate::component::parameter::value::{DynEditableLerpEasingValue, EasingValue, LinearEasing};
 use crate::component::parameter::{AudioRequiredParams, ImageRequiredParams, ImageRequiredParamsTransform, ParameterType, ParameterValueRaw, ParameterValueType, VariableParameterValue};
 use crate::component::processor::{ComponentProcessor, ComponentProcessorComponent, ComponentProcessorWrapper, ComponentsLinksPair};
 use crate::ptr::{StaticPointer, StaticPointerCow, StaticPointerOwned};
@@ -178,24 +178,28 @@ impl<K, T: ParameterValueType + 'static> ComponentClass<K, T> for RootComponentC
         let guard = self.item.0.read().await;
         let marker_left = StaticPointerOwned::reference(&guard.left).clone();
         let marker_right = StaticPointerOwned::reference(&guard.right).clone();
-        let one = TimeSplitValue::new(marker_left.clone(), Some(EasingValue::new(DynEditableSelfEasingValue(1., 1.), Arc::new(LinearEasing))), marker_right.clone());
+        let one = TimeSplitValue::new(marker_left.clone(), Some(EasingValue::new(DynEditableLerpEasingValue((1., 1.)), Arc::new(LinearEasing))), marker_right.clone());
         let one_value = VariableParameterValue::new(one);
-        let zero = VariableParameterValue::new(TimeSplitValue::new(marker_left.clone(), Some(EasingValue::new(DynEditableSelfEasingValue(0., 0.), Arc::new(LinearEasing))), marker_right.clone()));
+        let zero = VariableParameterValue::new(TimeSplitValue::new(marker_left.clone(), Some(EasingValue::new(DynEditableLerpEasingValue((0., 0.)), Arc::new(LinearEasing))), marker_right.clone()));
         let image_required_params = ImageRequiredParams {
-            aspect_ratio: (16, 9),
             transform: ImageRequiredParamsTransform::Params {
+                size: Vector3 {
+                    x: one_value.clone(),
+                    y: one_value.clone(),
+                    z: one_value.clone(),
+                },
                 scale: Vector3 {
                     x: one_value.clone(),
                     y: one_value.clone(),
                     z: one_value.clone(),
                 },
                 translate: Vector3 { x: zero.clone(), y: zero.clone(), z: zero.clone() },
-                rotate: TimeSplitValue::new(marker_left.clone(), EasingValue::new(DynEditableSelfEasingValue(Quaternion::one(), Quaternion::one()), Arc::new(LinearEasing)), marker_right.clone()),
+                rotate: TimeSplitValue::new(marker_left.clone(), EasingValue::new(DynEditableLerpEasingValue((Quaternion::one(), Quaternion::one())), Arc::new(LinearEasing)), marker_right.clone()),
                 scale_center: Vector3 { x: zero.clone(), y: zero.clone(), z: zero.clone() },
                 rotate_center: Vector3 { x: zero.clone(), y: zero.clone(), z: zero },
             },
             background_color: [0; 4],
-            opacity: TimeSplitValue::new(marker_left.clone(), EasingValue::new(DynEditableSelfEasingValue(1., 1.), Arc::new(LinearEasing)), marker_right.clone()),
+            opacity: TimeSplitValue::new(marker_left.clone(), EasingValue::new(DynEditableLerpEasingValue((1., 1.)), Arc::new(LinearEasing)), marker_right.clone()),
             blend_mode: TimeSplitValue::new(marker_left.clone(), Default::default(), marker_right.clone()),
             composite_operation: TimeSplitValue::new(marker_left.clone(), Default::default(), marker_right.clone()),
         };

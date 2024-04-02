@@ -1,0 +1,20 @@
+[package]
+name = "shader_font_rendering"
+version = { workspace = true }
+edition = { workspace = true }
+authors = { workspace = true }
+
+[lib]
+crate-type = ["rlib", "dylib"]
+
+[dependencies]
+bytemuck = { workspace = true }
+bytemuck_derive = { workspace = true }
+glam = { workspace = true, features = ["bytemuck"] }
+spirv-std = { workspace = true, optional = true }
+vulkano = { workspace = true, optional = true }
+
+[features]
+shader = ["dep:spirv-std"]
+vulkano = ["dep:vulkano"]
+default = ["shader"]

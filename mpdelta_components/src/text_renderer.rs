@@ -18,7 +18,7 @@ use mpdelta_core::component::marker_pin::{MarkerPin, MarkerTime};
 use mpdelta_core::component::parameter::value::{DynEditableSelfValue, EasingValue, LinearEasing};
 use mpdelta_core::component::parameter::{ImageRequiredParams, Parameter, ParameterNullableValue, ParameterSelect, ParameterType, ParameterValueRaw, ParameterValueType, VariableParameterPriority, VariableParameterValue};
 use mpdelta_core::component::processor::{ComponentProcessor, ComponentProcessorNative, ComponentProcessorWrapper, NativeProcessorInput, NativeProcessorRequest};
-use mpdelta_core::ptr::{StaticPointer, StaticPointerCow, StaticPointerOwned};
+use mpdelta_core::ptr::{StaticPointer, StaticPointerOwned};
 use mpdelta_core::time::TimelineTime;
 use mpdelta_core::time_split_value;
 use mpdelta_core_vulkano::ImageType;
@@ -102,7 +102,7 @@ where
         let right = StaticPointerOwned::new(TCell::new(MarkerPin::new_unlocked(TimelineTime::new(MixedFraction::from_integer(1)))));
         let image_required_params = ImageRequiredParams::new_default(StaticPointerOwned::reference(&left), StaticPointerOwned::reference(&right));
         let string_param = time_split_value![StaticPointerOwned::reference(&left).clone(), Some(EasingValue::new(DynEditableSelfValue(String::new()), Arc::new(LinearEasing))), StaticPointerOwned::reference(&right).clone()];
-        ComponentInstance::builder(this.clone(), StaticPointerCow::Owned(left), StaticPointerCow::Owned(right), Vec::new(), self.processor.clone())
+        ComponentInstance::builder(this.clone(), left, right, Vec::new(), self.processor.clone())
             .image_required_params(image_required_params)
             .variable_parameters(
                 vec![("text".to_owned(), Parameter::String(()))],

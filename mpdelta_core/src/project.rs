@@ -175,12 +175,20 @@ impl<K, T: ParameterValueType + 'static> ComponentClass<K, T> for RootComponentC
     }
 
     async fn instantiate(&self, this: &StaticPointer<RwLock<dyn ComponentClass<K, T>>>) -> ComponentInstance<K, T> {
-        let guard = self.item.0.read().await;
-        let marker_left = StaticPointerOwned::reference(&guard.left).clone();
-        let marker_right = StaticPointerOwned::reference(&guard.right).clone();
-        let one = TimeSplitValue::new(marker_left.clone(), Some(EasingValue::new(DynEditableLerpEasingValue((1., 1.)), Arc::new(LinearEasing))), marker_right.clone());
+        let _guard = self.item.0.read().await;
+        let marker_left = StaticPointerOwned::new(TCell::new(MarkerPin::new(TimelineTime::ZERO, MarkerTime::ZERO)));
+        let marker_right = StaticPointerOwned::new(TCell::new(MarkerPin::new(TimelineTime::new(MixedFraction::from_integer(10)), MarkerTime::new(MixedFraction::from_integer(10)).unwrap())));
+        let one = TimeSplitValue::new(
+            StaticPointerOwned::reference(&marker_left).clone(),
+            Some(EasingValue::new(DynEditableLerpEasingValue((1., 1.)), Arc::new(LinearEasing))),
+            StaticPointerOwned::reference(&marker_right).clone(),
+        );
         let one_value = VariableParameterValue::new(one);
-        let zero = VariableParameterValue::new(TimeSplitValue::new(marker_left.clone(), Some(EasingValue::new(DynEditableLerpEasingValue((0., 0.)), Arc::new(LinearEasing))), marker_right.clone()));
+        let zero = VariableParameterValue::new(TimeSplitValue::new(
+            StaticPointerOwned::reference(&marker_left).clone(),
+            Some(EasingValue::new(DynEditableLerpEasingValue((0., 0.)), Arc::new(LinearEasing))),
+            StaticPointerOwned::reference(&marker_right).clone(),
+        ));
         let image_required_params = ImageRequiredParams {
             transform: ImageRequiredParamsTransform::Params {
                 size: Vector3 {
@@ -194,18 +202,26 @@ impl<K, T: ParameterValueType + 'static> ComponentClass<K, T> for RootComponentC
                     z: one_value.clone(),
                 },
                 translate: Vector3 { x: zero.clone(), y: zero.clone(), z: zero.clone() },
-                rotate: TimeSplitValue::new(marker_left.clone(), EasingValue::new(DynEditableLerpEasingValue((Quaternion::one(), Quaternion::one())), Arc::new(LinearEasing)), marker_right.clone()),
+                rotate: TimeSplitValue::new(
+                    StaticPointerOwned::reference(&marker_left).clone(),
+                    EasingValue::new(DynEditableLerpEasingValue((Quaternion::one(), Quaternion::one())), Arc::new(LinearEasing)),
+                    StaticPointerOwned::reference(&marker_right).clone(),
+                ),
                 scale_center: Vector3 { x: zero.clone(), y: zero.clone(), z: zero.clone() },
                 rotate_center: Vector3 { x: zero.clone(), y: zero.clone(), z: zero },
             },
             background_color: [0; 4],
-            opacity: TimeSplitValue::new(marker_left.clone(), EasingValue::new(DynEditableLerpEasingValue((1., 1.)), Arc::new(LinearEasing)), marker_right.clone()),
-            blend_mode: TimeSplitValue::new(marker_left.clone(), Default::default(), marker_right.clone()),
-            composite_operation: TimeSplitValue::new(marker_left.clone(), Default::default(), marker_right.clone()),
+            opacity: TimeSplitValue::new(
+                StaticPointerOwned::reference(&marker_left).clone(),
+                EasingValue::new(DynEditableLerpEasingValue((1., 1.)), Arc::new(LinearEasing)),
+                StaticPointerOwned::reference(&marker_right).clone(),
+            ),
+            blend_mode: TimeSplitValue::new(StaticPointerOwned::reference(&marker_left).clone(), Default::default(), StaticPointerOwned::reference(&marker_right).clone()),
+            composite_operation: TimeSplitValue::new(StaticPointerOwned::reference(&marker_left).clone(), Default::default(), StaticPointerOwned::reference(&marker_right).clone()),
         };
         let audio_required_params = AudioRequiredParams { volume: vec![one_value.clone(), one_value] };
         let processor = Arc::new(self.item.clone()) as Arc<dyn ComponentProcessorComponent<K, T>>;
-        ComponentInstance::builder(this.clone(), StaticPointerCow::Reference(marker_left), StaticPointerCow::Reference(marker_right), Vec::new(), processor)
+        ComponentInstance::builder(this.clone(), marker_left, marker_right, Vec::new(), processor)
             .image_required_params(image_required_params)
             .audio_required_params(audio_required_params)
             .build()

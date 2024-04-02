@@ -1,5 +1,5 @@
 use crate::component::class::ComponentClass;
-use crate::component::marker_pin::{MarkerPinHandle, MarkerPinHandleCow, MarkerPinHandleOwned};
+use crate::component::marker_pin::{MarkerPinHandle, MarkerPinHandleOwned};
 use crate::component::parameter::{AudioRequiredParams, ImageRequiredParams, Parameter, ParameterNullableValue, ParameterValueFixed, ParameterValueType, Type, VariableParameterValue};
 use crate::component::processor::ComponentProcessorWrapper;
 use crate::ptr::{StaticPointer, StaticPointerCow, StaticPointerOwned};
@@ -9,8 +9,8 @@ use tokio::sync::RwLock;
 
 pub struct ComponentInstanceBuilder<K: 'static, T: ParameterValueType> {
     component_class: StaticPointer<RwLock<dyn ComponentClass<K, T>>>,
-    marker_left: MarkerPinHandleCow<K>,
-    marker_right: MarkerPinHandleCow<K>,
+    marker_left: MarkerPinHandleOwned<K>,
+    marker_right: MarkerPinHandleOwned<K>,
     markers: Vec<MarkerPinHandleOwned<K>>,
     image_required_params: Option<ImageRequiredParams<K, T>>,
     audio_required_params: Option<AudioRequiredParams<K, T>>,
@@ -22,7 +22,7 @@ pub struct ComponentInstanceBuilder<K: 'static, T: ParameterValueType> {
 }
 
 impl<K: 'static, T: ParameterValueType> ComponentInstanceBuilder<K, T> {
-    pub fn new(component_class: StaticPointer<RwLock<dyn ComponentClass<K, T>>>, marker_left: MarkerPinHandleCow<K>, marker_right: MarkerPinHandleCow<K>, markers: Vec<MarkerPinHandleOwned<K>>, processor: impl Into<ComponentProcessorWrapper<K, T>>) -> ComponentInstanceBuilder<K, T> {
+    pub fn new(component_class: StaticPointer<RwLock<dyn ComponentClass<K, T>>>, marker_left: MarkerPinHandleOwned<K>, marker_right: MarkerPinHandleOwned<K>, markers: Vec<MarkerPinHandleOwned<K>>, processor: impl Into<ComponentProcessorWrapper<K, T>>) -> ComponentInstanceBuilder<K, T> {
         ComponentInstanceBuilder {
             component_class,
             marker_left,
@@ -92,8 +92,8 @@ impl<K: 'static, T: ParameterValueType> ComponentInstanceBuilder<K, T> {
 
 pub struct ComponentInstance<K: 'static, T: ParameterValueType> {
     component_class: StaticPointer<RwLock<dyn ComponentClass<K, T>>>,
-    marker_left: MarkerPinHandleCow<K>,
-    marker_right: MarkerPinHandleCow<K>,
+    marker_left: MarkerPinHandleOwned<K>,
+    marker_right: MarkerPinHandleOwned<K>,
     markers: Vec<MarkerPinHandleOwned<K>>,
     image_required_params: Option<ImageRequiredParams<K, T>>,
     audio_required_params: Option<AudioRequiredParams<K, T>>,
@@ -123,8 +123,8 @@ where
         }
         f.debug_struct("ComponentInstance")
             .field("component_class", &self.component_class)
-            .field("marker_left", self.marker_left.ptr())
-            .field("marker_right", self.marker_right.ptr())
+            .field("marker_left", StaticPointerOwned::reference(&self.marker_left))
+            .field("marker_right", StaticPointerOwned::reference(&self.marker_right))
             .field("markers", &DebugFn(|f: &mut Formatter<'_>| f.debug_list().entries(self.markers.iter().map(StaticPointerOwned::reference)).finish()))
             .field("image_required_params", &self.image_required_params)
             .field("audio_required_params", &self.audio_required_params)
@@ -137,17 +137,17 @@ where
 }
 
 impl<K, T: ParameterValueType> ComponentInstance<K, T> {
-    pub fn builder(component_class: StaticPointer<RwLock<dyn ComponentClass<K, T>>>, marker_left: MarkerPinHandleCow<K>, marker_right: MarkerPinHandleCow<K>, markers: Vec<MarkerPinHandleOwned<K>>, processor: impl Into<ComponentProcessorWrapper<K, T>>) -> ComponentInstanceBuilder<K, T> {
+    pub fn builder(component_class: StaticPointer<RwLock<dyn ComponentClass<K, T>>>, marker_left: MarkerPinHandleOwned<K>, marker_right: MarkerPinHandleOwned<K>, markers: Vec<MarkerPinHandleOwned<K>>, processor: impl Into<ComponentProcessorWrapper<K, T>>) -> ComponentInstanceBuilder<K, T> {
         ComponentInstanceBuilder::new(component_class, marker_left, marker_right, markers, processor)
     }
     pub fn component_class(&self) -> &StaticPointer<RwLock<dyn ComponentClass<K, T>>> {
         &self.component_class
     }
     pub fn marker_left(&self) -> &MarkerPinHandle<K> {
-        self.marker_left.ptr()
+        StaticPointerOwned::reference(&self.marker_left)
     }
     pub fn marker_right(&self) -> &MarkerPinHandle<K> {
-        self.marker_right.ptr()
+        StaticPointerOwned::reference(&self.marker_right)
     }
     pub fn markers(&self) -> &[MarkerPinHandleOwned<K>] {
         &self.markers

@@ -5,7 +5,7 @@ use mpdelta_core::component::instance::ComponentInstance;
 use mpdelta_core::component::marker_pin::{MarkerPin, MarkerTime};
 use mpdelta_core::component::parameter::{AudioRequiredParams, Parameter, ParameterSelect, ParameterType, ParameterValueRaw, ParameterValueType};
 use mpdelta_core::component::processor::{ComponentProcessor, ComponentProcessorNative, ComponentProcessorNativeDyn, ComponentProcessorWrapper, NativeProcessorInput, NativeProcessorRequest};
-use mpdelta_core::ptr::{StaticPointer, StaticPointerCow, StaticPointerOwned};
+use mpdelta_core::ptr::{StaticPointer, StaticPointerOwned};
 use mpdelta_core::time::TimelineTime;
 use mpdelta_core_audio::multi_channel_audio::{MultiChannelAudioMutOp, MultiChannelAudioOp, MultiChannelAudioSliceMut};
 use mpdelta_core_audio::{AudioProvider, AudioType};
@@ -42,7 +42,7 @@ impl<K, T: ParameterValueType<Audio = AudioType>> ComponentClass<K, T> for SineA
         let left = StaticPointerOwned::new(TCell::new(MarkerPin::new(TimelineTime::ZERO, MarkerTime::ZERO)));
         let right = StaticPointerOwned::new(TCell::new(MarkerPin::new(TimelineTime::new(MixedFraction::from_integer(1)), MarkerTime::new(MixedFraction::from_integer(1)).unwrap())));
         let audio_required_params = AudioRequiredParams::new_default(StaticPointerOwned::reference(&left), StaticPointerOwned::reference(&right), 1);
-        ComponentInstance::builder(this.clone(), StaticPointerCow::Owned(left), StaticPointerCow::Owned(right), Vec::new(), Arc::new(SineAudio::new()) as Arc<dyn ComponentProcessorNativeDyn<K, T>>)
+        ComponentInstance::builder(this.clone(), left, right, Vec::new(), Arc::new(SineAudio::new()) as Arc<dyn ComponentProcessorNativeDyn<K, T>>)
             .audio_required_params(audio_required_params)
             .build()
     }

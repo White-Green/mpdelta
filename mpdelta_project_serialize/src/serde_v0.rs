@@ -15,7 +15,7 @@ use mpdelta_core::component::parameter::{
 use mpdelta_core::component::processor::ComponentProcessor;
 use mpdelta_core::core::{ComponentClassLoader, EasingLoader, ValueManagerLoader};
 use mpdelta_core::project::{Project, ProjectHandleOwned, RootComponentClass, RootComponentClassHandle, RootComponentClassHandleOwned};
-use mpdelta_core::ptr::{StaticPointer, StaticPointerCow, StaticPointerOwned};
+use mpdelta_core::ptr::{StaticPointer, StaticPointerOwned};
 use mpdelta_core::time::TimelineTime;
 use qcell::{TCell, TCellOwner};
 use rayon::prelude::{IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
@@ -798,7 +798,7 @@ impl<T: ParameterValueType> RootComponentClassForSerialize<T, De> {
                         .await?;
                     let image_required_params_slot = image_required_params.as_ref().map(|_| ImageRequiredParams::new_default(StaticPointerOwned::reference(&left), StaticPointerOwned::reference(&right)));
                     let audio_required_params_slot = audio_required_params.as_ref().map(|_| AudioRequiredParams { volume: vec![] });
-                    let mut instance = ComponentInstance::builder(class_ptr, StaticPointerCow::Owned(left), StaticPointerCow::Owned(right), markers, processor);
+                    let mut instance = ComponentInstance::builder(class_ptr, left, right, markers, processor);
                     if let Some(image_required_params) = image_required_params_slot {
                         instance = instance.image_required_params(image_required_params);
                     }

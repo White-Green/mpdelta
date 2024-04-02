@@ -8,7 +8,7 @@ use mpdelta_core::component::instance::ComponentInstance;
 use mpdelta_core::component::marker_pin::{MarkerPin, MarkerTime};
 use mpdelta_core::component::parameter::value::DynEditableSingleValue;
 use mpdelta_core::component::parameter::{AbstractFile, AudioRequiredParams, FileAbstraction, ImageRequiredParams, Parameter, ParameterSelect, ParameterType, ParameterValueRaw, ParameterValueType};
-use mpdelta_core::component::processor::{ComponentProcessor, ComponentProcessorNative, ComponentProcessorNativeDyn, ComponentProcessorWrapper, NativeProcessorInput};
+use mpdelta_core::component::processor::{ComponentProcessor, ComponentProcessorNative, ComponentProcessorNativeDyn, ComponentProcessorWrapper, NativeProcessorInput, NativeProcessorRequest};
 use mpdelta_core::ptr::{StaticPointer, StaticPointerCow, StaticPointerOwned};
 use mpdelta_core::time::TimelineTime;
 use mpdelta_core_audio::AudioType;
@@ -149,14 +149,14 @@ where
         &self,
         parameters: NativeProcessorInput<'_, T>,
         time: TimelineTime,
-        output_type: Parameter<ParameterSelect>,
+        output_type: Parameter<NativeProcessorRequest>,
         whole_component_cache: &mut Option<Arc<Self::WholeComponentCacheValue>>,
         _framed_cache: &mut Option<Arc<Self::FramedCacheValue>>,
     ) -> ParameterValueRaw<T::Image, T::Audio> {
         let NativeProcessorInput { fixed_parameters: [Parameter::Binary(file)], .. } = parameters else { panic!() };
         let cache = setup_cache(whole_component_cache, file);
         match output_type {
-            Parameter::Image(()) => {
+            Parameter::Image((_, _)) => {
                 let mut guard = cache.video_reader.as_ref().unwrap().lock().await;
                 let image = guard.read_image_at(time);
                 drop(guard);
@@ -188,7 +188,8 @@ where
                     .unwrap();
                     buffer.write().unwrap()
                 };
-                buffer_lock[..buffer_len as usize].copy_from_slice(&image);
+                let flat_samples = image.as_flat_samples();
+                buffer_lock[..buffer_len as usize].copy_from_slice(&flat_samples.samples[..buffer_len as usize]);
                 drop(buffer_lock);
                 let gpu_image = Image::new(
                     Arc::clone(&self.gpu_memory_allocator) as Arc<_>,

@@ -105,7 +105,15 @@ where
                         start_pts = Some(decoded.pts().unwrap());
                     }
                     scaler.run(&decoded, &mut rgb_frame).unwrap();
-                    let image = RgbaImage::from_vec(rgb_frame.width(), rgb_frame.height(), rgb_frame.data(0).to_vec()).unwrap();
+                    let image = if rgb_frame.stride(0) == rgb_frame.width() as usize * 4 {
+                        RgbaImage::from_vec(rgb_frame.width(), rgb_frame.height(), rgb_frame.data(0)[..rgb_frame.width() as usize * rgb_frame.height() as usize * 4].to_vec()).unwrap()
+                    } else {
+                        let mut image = RgbaImage::new(rgb_frame.width(), rgb_frame.height());
+                        for (dst, src) in image.chunks_mut(rgb_frame.width() as usize * 4).zip(rgb_frame.data(0).chunks(rgb_frame.stride(0))) {
+                            dst.copy_from_slice(&src[..dst.len()]);
+                        }
+                        image
+                    };
                     images.push((decoded.pts().unwrap(), Arc::new(image)));
                 }
                 ControlFlow::Continue(())

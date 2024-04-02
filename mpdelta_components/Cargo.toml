@@ -11,18 +11,31 @@ crossbeam-queue = { workspace = true }
 erased-serde = { workspace = true }
 ffmpeg-next = { workspace = true }
 ffmpeg-sys-next = { workspace = true }
+font-kit = { workspace = true }
+glam = { workspace = true }
+icu_properties = { workspace = true }
+icu_segmenter = { workspace = true }
 image = { workspace = true }
+lyon_tessellation = { workspace = true }
 mpdelta_core = { workspace = true }
 mpdelta_core_audio = { workspace = true }
 mpdelta_core_vulkano = { workspace = true }
 mpdelta_ffmpeg = { workspace = true }
 num = { workspace = true }
+phf = { workspace = true }
 qcell = { workspace = true }
 serde = { workspace = true }
+shader_font_rendering = { path = "shaders/font_rendering", features = ["vulkano"] }
 smallvec = { workspace = true }
+swash = { workspace = true }
 tokio = { workspace = true }
 uuid = { workspace = true, features = ["v5"] }
 vulkano = { workspace = true }
 
+[build-dependencies]
+shader_builder = { workspace = true }
+
 [dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread"] }
+vulkano-util = { workspace = true }
 wav = { workspace = true }

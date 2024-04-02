@@ -58,13 +58,13 @@ pub enum Side {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
-pub enum EasingValueEditEvent {
+pub enum EasingValueF64EditEvent {
     FlipPin(usize),
     MoveValueTemporary { value_index: usize, side: Side, value: f64 },
     MoveValue { value_index: usize, side: Side, value: f64 },
 }
 
-pub struct EasingValueEditor<'a, H, F> {
+pub struct EasingValueEditorF64<'a, H, F> {
     pub id: H,
     pub time_range: Range<f64>,
     pub times: &'a [f64],
@@ -75,13 +75,13 @@ pub struct EasingValueEditor<'a, H, F> {
     pub update: F,
 }
 
-impl<'a, H, F> EasingValueEditor<'a, H, F>
+impl<'a, H, F> EasingValueEditorF64<'a, H, F>
 where
     H: Hash,
-    F: FnMut(EasingValueEditEvent) + 'a,
+    F: FnMut(EasingValueF64EditEvent) + 'a,
 {
     pub fn show(self, ui: &mut Ui) {
-        let EasingValueEditor {
+        let EasingValueEditorF64 {
             id,
             time_range,
             times,
@@ -112,13 +112,13 @@ where
                 let left_position = glam::Vec2::new(left as f32, 1.).dot(time_map);
                 let response = ui.interact(Rect::from_x_y_ranges(left_position..=left_position + slider_width * 2., whole_rect.top()..=whole_rect.top() + slider_width * 3.), id.with(("pin_head", 0usize)), Sense::click());
                 if response.clicked() {
-                    update(EasingValueEditEvent::FlipPin(0));
+                    update(EasingValueF64EditEvent::FlipPin(0));
                 }
                 for (i, &time) in center.iter().enumerate() {
                     let x = glam::Vec2::new(time as f32, 1.).dot(time_map);
                     let response = ui.interact(Rect::from_x_y_ranges(x - slider_width * 2.0..=x + slider_width * 2., whole_rect.top()..=whole_rect.top() + slider_width * 3.), id.with(("pin_head", i + 1)), Sense::click());
                     if response.clicked() {
-                        update(EasingValueEditEvent::FlipPin(i + 1));
+                        update(EasingValueF64EditEvent::FlipPin(i + 1));
                     }
                 }
                 let right_position = glam::Vec2::new(right as f32, 1.).dot(time_map);
@@ -128,7 +128,7 @@ where
                     Sense::click(),
                 );
                 if response.clicked() {
-                    update(EasingValueEditEvent::FlipPin(center.len() + 1));
+                    update(EasingValueF64EditEvent::FlipPin(center.len() + 1));
                 }
             }
             {
@@ -158,7 +158,7 @@ where
                     if response.clicked_by(PointerButton::Primary) || response.drag_released_by(PointerButton::Primary) {
                         assert!(update_state
                             .replace((
-                                EasingValueEditEvent::MoveValue {
+                                EasingValueF64EditEvent::MoveValue {
                                     value_index: i,
                                     side: Side::Left,
                                     value: update_value.unwrap(),
@@ -169,7 +169,7 @@ where
                     } else if response.dragged_by(PointerButton::Primary) {
                         assert!(update_state
                             .replace((
-                                EasingValueEditEvent::MoveValueTemporary {
+                                EasingValueF64EditEvent::MoveValueTemporary {
                                     value_index: i,
                                     side: Side::Left,
                                     value: update_value.unwrap(),
@@ -185,7 +185,7 @@ where
                     if response.clicked_by(PointerButton::Primary) || response.drag_released_by(PointerButton::Primary) {
                         assert!(update_state
                             .replace((
-                                EasingValueEditEvent::MoveValue {
+                                EasingValueF64EditEvent::MoveValue {
                                     value_index: i,
                                     side: Side::Right,
                                     value: update_value.unwrap(),
@@ -196,7 +196,7 @@ where
                     } else if response.dragged_by(PointerButton::Primary) {
                         assert!(update_state
                             .replace((
-                                EasingValueEditEvent::MoveValueTemporary {
+                                EasingValueF64EditEvent::MoveValueTemporary {
                                     value_index: i,
                                     side: Side::Right,
                                     value: update_value.unwrap(),
@@ -252,8 +252,8 @@ where
                 let base_time_pixel = glam::Vec2::new(times[time] as f32, 1.).dot(time_map);
                 let (moving_segment_left, moving_segment_right, override_pos) = update_state
                     .map(|(update_state, pos)| match update_state {
-                        EasingValueEditEvent::MoveValueTemporary { value_index, side: Side::Left, .. } | EasingValueEditEvent::MoveValue { value_index, side: Side::Left, .. } => (value_index == i, false, pos),
-                        EasingValueEditEvent::MoveValueTemporary { value_index, side: Side::Right, .. } | EasingValueEditEvent::MoveValue { value_index, side: Side::Right, .. } => (false, value_index + 1 == i, pos),
+                        EasingValueF64EditEvent::MoveValueTemporary { value_index, side: Side::Left, .. } | EasingValueF64EditEvent::MoveValue { value_index, side: Side::Left, .. } => (value_index == i, false, pos),
+                        EasingValueF64EditEvent::MoveValueTemporary { value_index, side: Side::Right, .. } | EasingValueF64EditEvent::MoveValue { value_index, side: Side::Right, .. } => (false, value_index + 1 == i, pos),
                         _ => unreachable!(),
                     })
                     .unwrap_or_default();
@@ -431,9 +431,8 @@ mod tests {
                 todo!()
             }
 
-            fn get_raw_values_mut(&mut self) -> (&mut dyn NamedAny, &mut dyn NamedAny) {
-                let LinearEasingF64 { start, end } = self;
-                (start, end)
+            fn get_raw_value_mut(&mut self) -> &mut dyn NamedAny {
+                unimplemented!()
             }
 
             fn get_value(&self, easing: f64) -> Self::Out {
@@ -475,7 +474,7 @@ mod tests {
                     4,
                 );
                 let mut scroll_offset = 0.;
-                let $editor = EasingValueEditor {
+                let $editor = EasingValueEditorF64 {
                     id: "editor",
                     time_range: 1.0..5.0,
                     times: &times,

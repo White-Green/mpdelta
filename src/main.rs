@@ -6,8 +6,9 @@ use mpdelta_components::multimedia_loader::FfmpegMultimediaLoaderClass;
 use mpdelta_components::parameter::file_reader::FileReaderParamManager;
 use mpdelta_components::rectangle::RectangleClass;
 use mpdelta_components::sine_audio::SineAudio;
+use mpdelta_components::text_renderer::TextRendererClass;
 use mpdelta_core::component::class::{ComponentClass, ComponentClassIdentifier};
-use mpdelta_core::component::parameter::value::{DynEditableSelfEasingValueManager, DynEditableSelfValueManager, LinearEasing};
+use mpdelta_core::component::parameter::value::{DynEditableLerpEasingValueManager, DynEditableSelfValueManager, LinearEasing};
 use mpdelta_core::component::parameter::{AbstractFile, ParameterAllValues, ParameterValueRaw, ParameterValueType};
 use mpdelta_core::core::{ComponentClassLoader, MPDeltaCore, MPDeltaCoreArgs, NewWithArgs};
 use mpdelta_core::ptr::{StaticPointer, StaticPointerOwned};
@@ -125,21 +126,28 @@ fn main() {
     component_class_loader.add(RectangleClass::new(Arc::clone(context.graphics_queue()), context.memory_allocator(), &command_buffer_allocator));
     component_class_loader.add(SineAudio::new());
     component_class_loader.add(FfmpegMultimediaLoaderClass::new(context.graphics_queue(), context.memory_allocator(), &command_buffer_allocator));
+    component_class_loader.add(TextRendererClass::new(context.device(), context.graphics_queue(), context.memory_allocator()));
     let component_class_loader = Arc::new(component_class_loader);
     let key = Arc::new(RwLock::new(TCellOwner::<ProjectKey>::new()));
     let value_managers = ParameterAllValues::<ValueManagerLoaderTypes> {
         image: Arc::new(InMemoryValueManagerLoader::from_iter([], [])),
         audio: Arc::new(InMemoryValueManagerLoader::from_iter([], [])),
         binary: Arc::new(InMemoryValueManagerLoader::from_iter([Arc::new(FileReaderParamManager) as _], [])),
-        string: Arc::new(InMemoryValueManagerLoader::from_iter([Arc::new(DynEditableSelfValueManager::default()) as _], [])),
-        integer: Arc::new(InMemoryValueManagerLoader::from_iter([Arc::new(DynEditableSelfValueManager::default()) as _], [])),
-        real_number: Arc::new(InMemoryValueManagerLoader::from_iter([Arc::new(DynEditableSelfValueManager::default()) as _], [Arc::new(DynEditableSelfEasingValueManager::default()) as _])),
-        boolean: Arc::new(InMemoryValueManagerLoader::from_iter([Arc::new(DynEditableSelfValueManager::default()) as _], [])),
+        string: Arc::new(InMemoryValueManagerLoader::from_iter([Arc::new(DynEditableSelfValueManager::default()) as _], [Arc::new(DynEditableSelfValueManager::default()) as _])),
+        integer: Arc::new(InMemoryValueManagerLoader::from_iter([Arc::new(DynEditableSelfValueManager::default()) as _], [Arc::new(DynEditableSelfValueManager::default()) as _])),
+        real_number: Arc::new(InMemoryValueManagerLoader::from_iter(
+            [Arc::new(DynEditableSelfValueManager::default()) as _],
+            [Arc::new(DynEditableSelfValueManager::default()) as _, Arc::new(DynEditableLerpEasingValueManager::default()) as _],
+        )),
+        boolean: Arc::new(InMemoryValueManagerLoader::from_iter([Arc::new(DynEditableSelfValueManager::default()) as _], [Arc::new(DynEditableSelfValueManager::default()) as _])),
         dictionary: Arc::new(InMemoryValueManagerLoader::from_iter([], [])),
         array: Arc::new(InMemoryValueManagerLoader::from_iter([], [])),
         component_class: Arc::new(InMemoryValueManagerLoader::from_iter([], [])),
     };
-    let quaternion_manager = Arc::new(InMemoryValueManagerLoader::from_iter([Arc::new(DynEditableSelfValueManager::default()) as _], [Arc::new(DynEditableSelfEasingValueManager::default()) as _]));
+    let quaternion_manager = Arc::new(InMemoryValueManagerLoader::from_iter(
+        [Arc::new(DynEditableSelfValueManager::default()) as _],
+        [Arc::new(DynEditableSelfValueManager::default()) as _, Arc::new(DynEditableLerpEasingValueManager::default()) as _],
+    ));
     let easing_manager = Arc::new(InMemoryEasingLoader::from_iter([Arc::new(LinearEasing) as _]));
     let project_serializer = Arc::new(MPDeltaProjectSerializer::new(Arc::clone(&key), runtime.handle().clone(), Arc::clone(&component_class_loader), value_managers, quaternion_manager, easing_manager));
     let component_renderer_builder = Arc::new(MPDeltaRendererBuilder::new(

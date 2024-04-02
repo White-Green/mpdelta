@@ -176,27 +176,29 @@ pub struct VariableParameterValueForSerialize<Nullable> {
 pub enum ImageRequiredParamsTransformForSerialize<S: SerDeSelect> {
     #[serde(rename = "p")]
     Params {
+        #[serde(rename = "z")]
+        size: Box<Vector3ParamsForSerialize<S>>,
         #[serde(rename = "s")]
-        scale: Vector3ParamsForSerialize<S>,
+        scale: Box<Vector3ParamsForSerialize<S>>,
         #[serde(rename = "t")]
-        translate: Vector3ParamsForSerialize<S>,
+        translate: Box<Vector3ParamsForSerialize<S>>,
         #[serde(rename = "r")]
-        rotate: TimeSplitValue<MarkerPinHandleForSerialize, EasingValueForSerialize<Quaternion<f64>, S>>,
+        rotate: Box<TimeSplitValue<MarkerPinHandleForSerialize, EasingValueForSerialize<Quaternion<f64>, S>>>,
         #[serde(rename = "sc")]
-        scale_center: Vector3ParamsForSerialize<S>,
+        scale_center: Box<Vector3ParamsForSerialize<S>>,
         #[serde(rename = "rc")]
-        rotate_center: Vector3ParamsForSerialize<S>,
+        rotate_center: Box<Vector3ParamsForSerialize<S>>,
     },
     #[serde(rename = "f")]
     Free {
         #[serde(rename = "lt")]
-        left_top: Vector3ParamsForSerialize<S>,
+        left_top: Box<Vector3ParamsForSerialize<S>>,
         #[serde(rename = "rt")]
-        right_top: Vector3ParamsForSerialize<S>,
+        right_top: Box<Vector3ParamsForSerialize<S>>,
         #[serde(rename = "lb")]
-        left_bottom: Vector3ParamsForSerialize<S>,
+        left_bottom: Box<Vector3ParamsForSerialize<S>>,
         #[serde(rename = "rb")]
-        right_bottom: Vector3ParamsForSerialize<S>,
+        right_bottom: Box<Vector3ParamsForSerialize<S>>,
     },
 }
 
@@ -341,8 +343,6 @@ impl<'a, Value> From<&'a EasingValue<Value>> for EasingValueForSerialize<Value, 
     deserialize = "ImageRequiredParamsTransformForSerialize<S>: Deserialize<'de>, PinSplitValueForSerialize<EasingValueForSerialize<f64, S>>: Deserialize<'de>"
 ))]
 pub struct ImageRequiredParamsForSerialize<S: SerDeSelect> {
-    #[serde(rename = "a")]
-    pub aspect_ratio: (u32, u32),
     #[serde(rename = "t")]
     pub transform: ImageRequiredParamsTransformForSerialize<S>,
     #[serde(rename = "bg")]
@@ -556,7 +556,6 @@ impl<T: ParameterValueType> RootComponentClassForSerialize<T, Ser> {
                                 component.markers().par_iter().map(|p| MarkerPinForSerialize(p.ro(&key).locked_component_time())).collect_into_vec(&mut markers);
                                 let image_required_params = component.image_required_params().map(|image_required_params| {
                                     let &ImageRequiredParams {
-                                        aspect_ratio,
                                         ref transform,
                                         background_color,
                                         ref opacity,
@@ -564,23 +563,30 @@ impl<T: ParameterValueType> RootComponentClassForSerialize<T, Ser> {
                                         ref composite_operation,
                                     } = image_required_params;
                                     let transform = match transform {
-                                        ImageRequiredParamsTransform::Params { scale, translate, rotate, scale_center, rotate_center } => ImageRequiredParamsTransformForSerialize::Params {
-                                            scale: serialize_vector3_params(scale, &pin_map, &component_map),
-                                            translate: serialize_vector3_params(translate, &pin_map, &component_map),
-                                            rotate: rotate.map_time_value_ref(|pin| pin_map[pin], EasingValueForSerialize::from),
-                                            scale_center: serialize_vector3_params(scale_center, &pin_map, &component_map),
-                                            rotate_center: serialize_vector3_params(rotate_center, &pin_map, &component_map),
+                                        ImageRequiredParamsTransform::Params {
+                                            size,
+                                            scale,
+                                            translate,
+                                            rotate,
+                                            scale_center,
+                                            rotate_center,
+                                        } => ImageRequiredParamsTransformForSerialize::Params {
+                                            size: Box::new(serialize_vector3_params(size, &pin_map, &component_map)),
+                                            scale: Box::new(serialize_vector3_params(scale, &pin_map, &component_map)),
+                                            translate: Box::new(serialize_vector3_params(translate, &pin_map, &component_map)),
+                                            rotate: Box::new(rotate.map_time_value_ref(|pin| pin_map[pin], EasingValueForSerialize::from)),
+                                            scale_center: Box::new(serialize_vector3_params(scale_center, &pin_map, &component_map)),
+                                            rotate_center: Box::new(serialize_vector3_params(rotate_center, &pin_map, &component_map)),
                                         },
                                         ImageRequiredParamsTransform::Free { left_top, right_top, left_bottom, right_bottom } => ImageRequiredParamsTransformForSerialize::Free {
-                                            left_top: serialize_vector3_params(left_top, &pin_map, &component_map),
-                                            right_top: serialize_vector3_params(right_top, &pin_map, &component_map),
-                                            left_bottom: serialize_vector3_params(left_bottom, &pin_map, &component_map),
-                                            right_bottom: serialize_vector3_params(right_bottom, &pin_map, &component_map),
+                                            left_top: Box::new(serialize_vector3_params(left_top, &pin_map, &component_map)),
+                                            right_top: Box::new(serialize_vector3_params(right_top, &pin_map, &component_map)),
+                                            left_bottom: Box::new(serialize_vector3_params(left_bottom, &pin_map, &component_map)),
+                                            right_bottom: Box::new(serialize_vector3_params(right_bottom, &pin_map, &component_map)),
                                         },
                                     };
 
                                     ImageRequiredParamsForSerialize {
-                                        aspect_ratio,
                                         transform,
                                         background_color,
                                         opacity: opacity.map_time_value_ref(|pin| pin_map[pin], EasingValueForSerialize::from),
@@ -799,7 +805,7 @@ impl<T: ParameterValueType> RootComponentClassForSerialize<T, De> {
                     if let Some(audio_required_params) = audio_required_params_slot {
                         instance = instance.audio_required_params(audio_required_params);
                     }
-                    let instance = instance.fixed_parameters(fixed_parameter_types.into_boxed_slice(), fixed_parameters.into_boxed_slice()).build();
+                    let instance = instance.fixed_parameters(fixed_parameter_types.into_boxed_slice(), fixed_parameters.into_boxed_slice()).variable_parameters(variable_parameter_types, Vec::new()).build();
                     let instance_slot = StaticPointerOwned::new(TCell::new(instance));
                     Ok::<_, DeserializeError<K>>((instance_slot, (variable_parameters, image_required_params, audio_required_params)))
                 })
@@ -842,7 +848,6 @@ impl<T: ParameterValueType> RootComponentClassForSerialize<T, De> {
                         .collect::<Result<_, _>>()?;
                     let image_required_params = if let Some(image_required_params) = image_required_params {
                         let ImageRequiredParamsForSerialize {
-                            aspect_ratio,
                             transform,
                             background_color,
                             opacity,
@@ -850,14 +855,23 @@ impl<T: ParameterValueType> RootComponentClassForSerialize<T, De> {
                             composite_operation,
                         } = image_required_params;
                         let transform = match transform {
-                            ImageRequiredParamsTransformForSerialize::Params { scale, translate, rotate, scale_center, rotate_center } => {
-                                let (scale, translate, scale_center, rotate_center) = tokio::try_join!(
-                                    deserialize_vector3_params(scale, class_loader, component_instance_map, pins_map),
-                                    deserialize_vector3_params(translate, class_loader, component_instance_map, pins_map),
-                                    deserialize_vector3_params(scale_center, class_loader, component_instance_map, pins_map),
-                                    deserialize_vector3_params(rotate_center, class_loader, component_instance_map, pins_map),
+                            ImageRequiredParamsTransformForSerialize::Params {
+                                size,
+                                scale,
+                                translate,
+                                rotate,
+                                scale_center,
+                                rotate_center,
+                            } => {
+                                let (size, scale, translate, scale_center, rotate_center) = tokio::try_join!(
+                                    deserialize_vector3_params(*size, class_loader, component_instance_map, pins_map),
+                                    deserialize_vector3_params(*scale, class_loader, component_instance_map, pins_map),
+                                    deserialize_vector3_params(*translate, class_loader, component_instance_map, pins_map),
+                                    deserialize_vector3_params(*scale_center, class_loader, component_instance_map, pins_map),
+                                    deserialize_vector3_params(*rotate_center, class_loader, component_instance_map, pins_map),
                                 )?;
                                 ImageRequiredParamsTransform::Params {
+                                    size,
                                     scale,
                                     translate,
                                     rotate: rotate
@@ -884,10 +898,10 @@ impl<T: ParameterValueType> RootComponentClassForSerialize<T, De> {
                             }
                             ImageRequiredParamsTransformForSerialize::Free { left_top, right_top, left_bottom, right_bottom } => {
                                 let (left_top, right_top, left_bottom, right_bottom) = tokio::try_join!(
-                                    deserialize_vector3_params(left_top, class_loader, component_instance_map, pins_map),
-                                    deserialize_vector3_params(right_top, class_loader, component_instance_map, pins_map),
-                                    deserialize_vector3_params(left_bottom, class_loader, component_instance_map, pins_map),
-                                    deserialize_vector3_params(right_bottom, class_loader, component_instance_map, pins_map),
+                                    deserialize_vector3_params(*left_top, class_loader, component_instance_map, pins_map),
+                                    deserialize_vector3_params(*right_top, class_loader, component_instance_map, pins_map),
+                                    deserialize_vector3_params(*left_bottom, class_loader, component_instance_map, pins_map),
+                                    deserialize_vector3_params(*right_bottom, class_loader, component_instance_map, pins_map),
                                 )?;
                                 ImageRequiredParamsTransform::Free { left_top, right_top, left_bottom, right_bottom }
                             }
@@ -904,7 +918,6 @@ impl<T: ParameterValueType> RootComponentClassForSerialize<T, De> {
                         let blend_mode = blend_mode.try_map_time_value(|time| pins_map.get(&time).cloned().ok_or(DeserializeError::UnknownPin(time)), Ok)?;
                         let composite_operation = composite_operation.try_map_time_value(|time| pins_map.get(&time).cloned().ok_or(DeserializeError::UnknownPin(time)), Ok)?;
                         let image_required_params = ImageRequiredParams {
-                            aspect_ratio,
                             transform,
                             background_color,
                             opacity,

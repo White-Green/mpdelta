@@ -5,6 +5,7 @@ use crate::viewmodel::ViewModelParams;
 use arc_swap::ArcSwap;
 use egui::epaint::ahash::{HashSet, HashSetExt};
 use egui::Pos2;
+use futures::FutureExt;
 use mpdelta_async_runtime::{AsyncRuntime, JoinHandleWrapper};
 use mpdelta_core::common::mixed_fraction::MixedFraction;
 use mpdelta_core::component::class::ComponentClass;
@@ -24,8 +25,8 @@ use qcell::{TCell, TCellOwner};
 use std::cell::Cell;
 use std::collections::HashMap;
 use std::hash::Hash;
+use std::mem;
 use std::sync::{Arc, Mutex as StdMutex, OnceLock};
-use std::{future, mem};
 use tokio::sync::{Mutex, RwLock};
 
 #[derive(Clone)]
@@ -223,7 +224,7 @@ pub struct TimelineViewModelImpl<K: 'static, T: ParameterValueType, GlobalUIStat
     selected_root_component_class: Arc<RwLock<Option<RootComponentClassHandle<K, T>>>>,
     message_router: MessageRouter<MessageHandler, Runtime>,
     runtime: Runtime,
-    load_timeline_task: Arc<StdMutex<JoinHandleWrapper<JoinHandle>>>,
+    load_timeline_task: Arc<StdMutex<Option<JoinHandleWrapper<JoinHandle>>>>,
     guard: OnceLock<G>,
 }
 
@@ -310,15 +311,25 @@ where
     fn on_edit(&self, _: &RootComponentClassHandle<K, T>, _: RootComponentEditEvent<K, T>) {
         use_arc!(key = self.key, component_instances = self.component_instances, component_links = self.component_links, selected_root_component_class = self.selected_root_component_class);
         let mut task = self.load_timeline_task.lock().unwrap();
-        task.abort();
-        *task = self.runtime.spawn(TimelineViewModelImpl::load_timeline_by_current_root_component_class(key, component_instances, component_links, selected_root_component_class));
+        let future = TimelineViewModelImpl::load_timeline_by_current_root_component_class(key, component_instances, component_links, selected_root_component_class);
+        if let Some(handle) = task.take() {
+            handle.abort();
+            *task = Some(self.runtime.spawn(handle.then(|_| future)));
+        } else {
+            *task = Some(self.runtime.spawn(future));
+        }
     }
 
     fn on_edit_instance(&self, _: &RootComponentClassHandle<K, T>, _: &ComponentInstanceHandle<K, T>, _: InstanceEditEvent<K, T>) {
         use_arc!(key = self.key, component_instances = self.component_instances, component_links = self.component_links, selected_root_component_class = self.selected_root_component_class);
         let mut task = self.load_timeline_task.lock().unwrap();
-        task.abort();
-        *task = self.runtime.spawn(TimelineViewModelImpl::load_timeline_by_current_root_component_class(key, component_instances, component_links, selected_root_component_class));
+        let future = TimelineViewModelImpl::load_timeline_by_current_root_component_class(key, component_instances, component_links, selected_root_component_class);
+        if let Some(handle) = task.take() {
+            handle.abort();
+            *task = Some(self.runtime.spawn(handle.then(|_| future)));
+        } else {
+            *task = Some(self.runtime.spawn(future));
+        }
     }
 }
 
@@ -334,7 +345,7 @@ impl<K: Send + Sync + 'static, T: ParameterValueType> TimelineViewModelImpl<K, T
         let component_links = Arc::new(RwLock::new(ComponentLinkDataList { list: Vec::new() }));
         let component_instances = Arc::new(Mutex::new(ComponentInstanceDataList { list: Vec::new() }));
         let selected_root_component_class = Arc::new(RwLock::new(None));
-        let load_timeline_task = Arc::new(StdMutex::new(params.runtime().spawn(future::ready(()))));
+        let load_timeline_task = Arc::new(StdMutex::new(None::<JoinHandleWrapper<<P::AsyncRuntime as AsyncRuntime<()>>::JoinHandle>>));
         let message_router = MessageRouter::builder()
             .handle(|handler| {
                 handler
@@ -347,8 +358,13 @@ impl<K: Send + Sync + 'static, T: ParameterValueType> TimelineViewModelImpl<K, T
                             move |root_component_class| {
                                 use_arc!(key, selected_root_component_class, component_instances, component_links);
                                 let mut task = load_timeline_task.lock().unwrap();
-                                task.abort();
-                                *task = runtime.spawn(Self::load_timeline_by_new_root_component_class(key, root_component_class, component_instances, component_links, selected_root_component_class));
+                                let future = Self::load_timeline_by_new_root_component_class(key, root_component_class, component_instances, component_links, selected_root_component_class);
+                                if let Some(handle) = task.take() {
+                                    handle.abort();
+                                    *task = Some(runtime.spawn(handle.then(|_| future)));
+                                } else {
+                                    *task = Some(runtime.spawn(future));
+                                }
                             }
                         })
                     })

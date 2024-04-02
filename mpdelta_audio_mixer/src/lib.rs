@@ -96,7 +96,7 @@ impl AudioProvider for MixedAudio {
             (_, 1) => compute_audio_inner(mixed_audio, self.sample_rate, begin, end, dst.slice_mut(..).unwrap(), |a, b| a[..2].iter_mut().for_each(|a| *a += b[0])),
             (_, _) => compute_audio_inner(mixed_audio, self.sample_rate, begin, end, dst.slice_mut(..).unwrap(), |a, b| a.iter_mut().zip(b).for_each(|(a, b)| *a += *b)),
         }
-        (((self.length - begin).value() * MixedFraction::from_integer(96000)).deconstruct().0.max(0) as usize).min(dst.len())
+        (((self.length - begin).value() * MixedFraction::from_integer(self.sample_rate as i32)).deconstruct().0.max(0) as usize).min(dst.len())
     }
 }
 

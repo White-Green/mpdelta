@@ -86,7 +86,7 @@ impl AudioProvider for MixedAudio {
     }
 
     fn compute_audio(&mut self, begin: TimelineTime, mut dst: MultiChannelAudioSliceMut<f32>) -> usize {
-        let end = begin + TimelineTime::new(MixedFraction::from_fraction(dst.len() as i64, 96000));
+        let end = begin + TimelineTime::new(MixedFraction::from_fraction(dst.len() as i64, self.sample_rate));
         // copy on write
         let mixed_audio = Arc::make_mut(&mut self.inner);
         match (dst.channels(), mixed_audio.buffer.channels()) {

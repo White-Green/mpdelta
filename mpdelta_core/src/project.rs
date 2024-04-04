@@ -175,9 +175,9 @@ impl<K, T: ParameterValueType + 'static> ComponentClass<K, T> for RootComponentC
     }
 
     async fn instantiate(&self, this: &StaticPointer<RwLock<dyn ComponentClass<K, T>>>) -> ComponentInstance<K, T> {
-        let _guard = self.item.0.read().await;
+        let guard = self.item.0.read().await;
         let marker_left = StaticPointerOwned::new(TCell::new(MarkerPin::new(TimelineTime::ZERO, MarkerTime::ZERO)));
-        let marker_right = StaticPointerOwned::new(TCell::new(MarkerPin::new(TimelineTime::new(MixedFraction::from_integer(10)), MarkerTime::new(MixedFraction::from_integer(10)).unwrap())));
+        let marker_right = StaticPointerOwned::new(TCell::new(MarkerPin::new(TimelineTime::new(guard.length.value()), guard.length)));
         let one = TimeSplitValue::new(
             StaticPointerOwned::reference(&marker_left).clone(),
             Some(EasingValue::new(DynEditableLerpEasingValue((1., 1.)), Arc::new(LinearEasing))),

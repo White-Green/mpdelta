@@ -11,7 +11,7 @@ use mpdelta_core::common::mixed_fraction::MixedFraction;
 use mpdelta_core::component::class::ComponentClass;
 use mpdelta_core::component::instance::ComponentInstanceHandle;
 use mpdelta_core::component::link::MarkerLinkHandle;
-use mpdelta_core::component::marker_pin::MarkerPinHandle;
+use mpdelta_core::component::marker_pin::{MarkerPinHandle, MarkerTime};
 use mpdelta_core::component::parameter::ParameterValueType;
 use mpdelta_core::core::EditEventListener;
 use mpdelta_core::edit::{InstanceEditCommand, InstanceEditEvent, RootComponentEditCommand, RootComponentEditEvent};
@@ -198,8 +198,10 @@ pub struct ComponentClassDataList<Handle> {
 pub type DefaultComponentClassDataList<K, T> = ComponentClassDataList<StaticPointer<RwLock<dyn ComponentClass<K, T>>>>;
 
 pub trait TimelineViewModel<K: 'static, T: ParameterValueType> {
-    fn seek(&self) -> usize;
-    fn set_seek(&self, seek: usize);
+    fn component_length(&self) -> Option<MarkerTime>;
+    fn seek(&self) -> MarkerTime;
+    fn set_seek(&self, seek: MarkerTime);
+    fn edit_component_length(&self, length: MarkerTime);
     type ComponentInstanceHandle: Clone + Eq + Hash;
     type MarkerPinHandle: Clone + Eq + Hash;
     fn component_instances<R>(&self, f: impl FnOnce(&ComponentInstanceDataList<Self::ComponentInstanceHandle, Self::MarkerPinHandle>) -> R) -> R;
@@ -236,6 +238,7 @@ pub enum Message<K: 'static, T: ParameterValueType> {
     MoveComponentInstance(ComponentInstanceHandle<K, T>, f64),
     MoveMarkerPin(ComponentInstanceHandle<K, T>, MarkerPinHandle<K>, f64),
     EditMarkerLinkLength(MarkerLinkHandle<K>, f64),
+    EditComponentLength(MarkerTime),
 }
 
 impl<K, T> Clone for Message<K, T>
@@ -252,6 +255,7 @@ where
             &Message::MoveComponentInstance(ref value, to) => Message::MoveComponentInstance(value.clone(), to),
             &Message::MoveMarkerPin(ref instance, ref pin, to) => Message::MoveMarkerPin(instance.clone(), pin.clone(), to),
             &Message::EditMarkerLinkLength(ref value, length) => Message::EditMarkerLinkLength(value.clone(), length),
+            &Message::EditComponentLength(value) => Message::EditComponentLength(value),
         }
     }
 }
@@ -273,6 +277,7 @@ where
             (Message::MoveComponentInstance(a, at), Message::MoveComponentInstance(b, bt)) => a == b && at == bt,
             (Message::MoveMarkerPin(ai, ap, at), Message::MoveMarkerPin(bi, bp, bt)) => ai == bi && ap == bp && at == bt,
             (Message::EditMarkerLinkLength(a, al), Message::EditMarkerLinkLength(b, bl)) => a == b && al == bl,
+            (Message::EditComponentLength(a), Message::EditComponentLength(b)) => a == b,
             _ => unreachable!(),
         }
     }
@@ -371,31 +376,34 @@ impl<K: Send + Sync + 'static, T: ParameterValueType> TimelineViewModelImpl<K, T
                     .build()
             })
             .handle(|handler| {
-                handler.filter(|message| matches!(message, Message::AddComponentInstance(_) | Message::DeleteComponentInstance(_) | Message::EditMarkerLinkLength(_, _))).handle_async({
-                    use_arc!(selected_root_component_class, edit);
-                    move |message| {
+                handler
+                    .filter(|message| matches!(message, Message::EditComponentLength(_) | Message::AddComponentInstance(_) | Message::DeleteComponentInstance(_) | Message::EditMarkerLinkLength(_, _)))
+                    .handle_async({
                         use_arc!(selected_root_component_class, edit);
-                        async move {
-                            let selected_root_component_class = selected_root_component_class.read().await;
-                            let Some(target) = selected_root_component_class.clone() else {
-                                return;
-                            };
-                            drop(selected_root_component_class);
-                            let command = match message {
-                                Message::AddComponentInstance(pointer) => {
-                                    let class = pointer.upgrade().unwrap();
-                                    let instance = class.read().await.instantiate(&pointer).await;
-                                    let instance = StaticPointerOwned::new(TCell::new(instance));
-                                    RootComponentEditCommand::AddComponentInstance(instance)
-                                }
-                                Message::DeleteComponentInstance(handle) => RootComponentEditCommand::DeleteComponentInstance(handle),
-                                Message::EditMarkerLinkLength(target, len) => RootComponentEditCommand::EditMarkerLinkLength(target, TimelineTime::new(MixedFraction::from_f64(len))),
-                                _ => unreachable!(),
-                            };
-                            edit.edit(&target, command);
+                        move |message| {
+                            use_arc!(selected_root_component_class, edit);
+                            async move {
+                                let selected_root_component_class = selected_root_component_class.read().await;
+                                let Some(target) = selected_root_component_class.clone() else {
+                                    return;
+                                };
+                                drop(selected_root_component_class);
+                                let command = match message {
+                                    Message::AddComponentInstance(pointer) => {
+                                        let class = pointer.upgrade().unwrap();
+                                        let instance = class.read().await.instantiate(&pointer).await;
+                                        let instance = StaticPointerOwned::new(TCell::new(instance));
+                                        RootComponentEditCommand::AddComponentInstance(instance)
+                                    }
+                                    Message::DeleteComponentInstance(handle) => RootComponentEditCommand::DeleteComponentInstance(handle),
+                                    Message::EditMarkerLinkLength(target, len) => RootComponentEditCommand::EditMarkerLinkLength(target, TimelineTime::new(MixedFraction::from_f64(len))),
+                                    Message::EditComponentLength(len) => RootComponentEditCommand::EditComponentLength(len),
+                                    _ => unreachable!(),
+                                };
+                                edit.edit(&target, command);
+                            }
                         }
-                    }
-                })
+                    })
             })
             .handle(|handler| {
                 handler.filter_map(|message| if let Message::ClickComponentInstance(value) = message { Some(value) } else { None }).handle_async({
@@ -510,12 +518,24 @@ where
     M: MessageHandler<Message<K, T>, Runtime>,
     Runtime: AsyncRuntime<()> + Clone,
 {
-    fn seek(&self) -> usize {
+    fn component_length(&self) -> Option<MarkerTime> {
+        self.global_ui_state.component_length()
+    }
+    fn seek(&self) -> MarkerTime {
         self.global_ui_state.seek()
     }
-    fn set_seek(&self, seek: usize) {
+    fn set_seek(&self, seek: MarkerTime) {
         if !self.global_ui_state.playing() {
-            self.global_ui_state.set_seek(seek);
+            self.global_ui_state.set_seek(seek.min(self.global_ui_state.component_length().unwrap_or_else(|| MarkerTime::new(MixedFraction::from_integer(10)).unwrap())));
+        }
+    }
+
+    fn edit_component_length(&self, length: MarkerTime) {
+        if !self.global_ui_state.playing() {
+            if self.global_ui_state.seek() > length {
+                self.set_seek(length);
+            }
+            self.message_router.handle(Message::EditComponentLength(length));
         }
     }
 

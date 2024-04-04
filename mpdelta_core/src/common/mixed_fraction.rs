@@ -2,7 +2,7 @@ use num::Integer;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::cmp::Ordering;
 use std::fmt::{Debug, Display, Formatter};
-use std::ops::{Add, BitAnd, ControlFlow, Div, Mul, Neg, Not, Sub};
+use std::ops::{Add, BitAnd, ControlFlow, Div, Mul, Neg, Not, Rem, Sub};
 use std::{fmt, iter};
 
 pub mod atomic;
@@ -321,6 +321,21 @@ impl MixedFraction {
         self.checked_div(rhs).unwrap_or_else(|| if self.signum() * rhs.signum() >= 0 { MixedFraction::MAX } else { MixedFraction::MIN })
     }
 
+    pub fn checked_rem(self, rhs: MixedFraction) -> Option<MixedFraction> {
+        let (i1, n1, d1) = self.deconstruct();
+        let (i2, n2, d2) = rhs.deconstruct();
+        let (i1, n1, d1) = (i1 as i128, n1 as i128, d1 as i128);
+        let (i2, n2, d2) = (i2 as i128, n2 as i128, d2 as i128);
+        let n = (d1 * i1 + n1) * d2;
+        let d = (i2 * d2 + n2) * d1;
+        let x = n.checked_div(d)?;
+        let i3 = i2 * x;
+        let n3 = n2 * x;
+        let (i3, n3) = (i3 + n3 / d2, n3 % d2);
+        let (i3, n3) = if n3 < 0 { (i3 + 1, n3 + d2) } else { (i3, n3) };
+        Some(self - MixedFraction::new(i32::try_from(i3).unwrap(), u32::try_from(n3).unwrap(), u32::try_from(d2).unwrap()))
+    }
+
     pub fn checked_neg(self) -> Option<MixedFraction> {
         MixedFraction::ZERO.checked_sub(self)
     }
@@ -401,6 +416,16 @@ impl Div for MixedFraction {
     #[track_caller]
     fn div(self, rhs: Self) -> Self::Output {
         self.checked_div(rhs).expect("divide by zero or attempt to divide with overflow")
+    }
+}
+
+impl Rem for MixedFraction {
+    type Output = MixedFraction;
+
+    #[inline]
+    #[track_caller]
+    fn rem(self, rhs: Self) -> Self::Output {
+        self.checked_rem(rhs).expect("divide by zero")
     }
 }
 
@@ -529,6 +554,14 @@ mod tests {
     }
 
     #[test]
+    fn test_mixed_fraction_rem() {
+        assert_eq!(MixedFraction::ONE % MixedFraction::ONE, MixedFraction::ZERO);
+        assert_eq!(MixedFraction::ZERO % MixedFraction::ONE, MixedFraction::ZERO);
+        assert_eq!(MixedFraction::ONE % MixedFraction::new(0, 1, 2), MixedFraction::ZERO);
+        assert_eq!(MixedFraction::new(0, 1, 2) % MixedFraction::new(0, 1, 3), MixedFraction::new(0, 1, 6));
+    }
+
+    #[test]
     fn test_mixed_fraction_div_floor() {
         assert_eq!(MixedFraction::MAX.div_floor(MixedFraction::ONE).unwrap(), MixedFraction::MAX.deconstruct().0 as i64);
         assert!(MixedFraction::MAX.div_floor(MixedFraction::new(0, 1, FRAC_VALUE_MASK)).is_some());
@@ -608,6 +641,14 @@ mod tests {
             b in any::<MixedFraction>(),
         ) {
             a.checked_div(b);
+        }
+
+        #[test]
+        fn test_mixed_fraction_rem_prop(
+            a in any::<MixedFraction>(),
+            b in any::<MixedFraction>(),
+        ) {
+            a.checked_rem(b);
         }
 
         #[test]

@@ -1,6 +1,6 @@
 use crate::component::instance::{ComponentInstanceHandle, ComponentInstanceHandleOwned};
 use crate::component::link::MarkerLinkHandle;
-use crate::component::marker_pin::MarkerPinHandle;
+use crate::component::marker_pin::{MarkerPinHandle, MarkerTime};
 use crate::component::parameter::{ImageRequiredParams, ParameterNullableValue, ParameterValueFixed, ParameterValueType, VariableParameterValue};
 use crate::time::TimelineTime;
 
@@ -9,6 +9,7 @@ pub enum RootComponentEditCommand<K: 'static, T: ParameterValueType> {
     RemoveMarkerLink(MarkerLinkHandle<K>),
     EditMarkerLinkLength(MarkerLinkHandle<K>, TimelineTime),
     DeleteComponentInstance(ComponentInstanceHandle<K, T>),
+    EditComponentLength(MarkerTime),
 }
 
 pub enum InstanceEditCommand<K: 'static, T: ParameterValueType> {
@@ -28,6 +29,7 @@ pub enum RootComponentEditEvent<'a, K: 'static, T: ParameterValueType> {
     RemoveMarkerLink(&'a MarkerLinkHandle<K>),
     EditMarkerLinkLength(&'a MarkerLinkHandle<K>, TimelineTime),
     DeleteComponentInstance(&'a ComponentInstanceHandle<K, T>),
+    EditComponentLength(MarkerTime),
 }
 
 pub enum InstanceEditEvent<'a, K: 'static, T: ParameterValueType> {

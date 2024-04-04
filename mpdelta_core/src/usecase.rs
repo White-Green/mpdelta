@@ -1,5 +1,6 @@
 use crate::component::class::ComponentClass;
 use crate::component::instance::ComponentInstanceHandle;
+use crate::component::marker_pin::MarkerTime;
 use crate::component::parameter::{Parameter, ParameterSelect, ParameterValueType};
 use crate::core::EditEventListener;
 use crate::edit::{InstanceEditCommand, RootComponentEditCommand};
@@ -157,7 +158,7 @@ where
 
 pub trait RealtimeComponentRenderer<T: ParameterValueType>: Send + Sync {
     type Err: Error + Send + 'static;
-    fn get_frame_count(&self) -> usize;
+    fn get_component_length(&self) -> Option<MarkerTime>;
     fn render_frame(&self, frame: usize) -> Result<T::Image, Self::Err>;
     fn sampling_rate(&self) -> u32;
     fn mix_audio(&self, offset: usize, length: usize) -> impl Future<Output = Result<T::Audio, Self::Err>> + Send + '_;
@@ -173,8 +174,8 @@ where
 {
     type Err = <O::Target as RealtimeComponentRenderer<T>>::Err;
 
-    fn get_frame_count(&self) -> usize {
-        self.deref().get_frame_count()
+    fn get_component_length(&self) -> Option<MarkerTime> {
+        self.deref().get_component_length()
     }
 
     fn render_frame(&self, frame: usize) -> Result<T::Image, Self::Err> {

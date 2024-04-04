@@ -2,6 +2,8 @@ use crate::preview::viewmodel::PreviewViewModel;
 use crate::ImageRegister;
 use egui::load::SizedTexture;
 use egui::{Color32, Rect, Rounding, Slider, Stroke, TextureId, Ui, Vec2};
+use mpdelta_core::common::mixed_fraction::MixedFraction;
+use mpdelta_core::component::marker_pin::MarkerTime;
 use mpdelta_core::component::parameter::ParameterValueType;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -51,12 +53,12 @@ impl<K: 'static, T: ParameterValueType, VM: PreviewViewModel<K, T>> Preview<K, T
                     ui.style_mut().spacing.slider_width = image_width - button_width;
                     ui.add_enabled(
                         !self.view_model.playing(),
-                        Slider::from_get_set(0.0..=599., |value| {
-                            if let Some(value) = value.map(|value| value.round() as usize) {
-                                self.view_model.set_seek(value);
-                                value as f64
+                        Slider::from_get_set(0.0..=self.view_model.component_length().map_or(10., |time| time.value().into_f64()), |value| {
+                            if let Some(value) = value {
+                                self.view_model.set_seek(MarkerTime::new(MixedFraction::from_f64(value)).unwrap());
+                                value
                             } else {
-                                self.view_model.seek() as f64
+                                self.view_model.seek().value().into_f64()
                             }
                         })
                         .show_value(false),

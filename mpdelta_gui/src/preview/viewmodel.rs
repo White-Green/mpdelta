@@ -6,6 +6,7 @@ use mpdelta_async_runtime::{AsyncRuntime, JoinHandleWrapper};
 use mpdelta_core::common::mixed_fraction::MixedFraction;
 use mpdelta_core::component::class::ComponentClass;
 use mpdelta_core::component::instance::{ComponentInstanceHandle, ComponentInstanceHandleOwned};
+use mpdelta_core::component::marker_pin::MarkerTime;
 use mpdelta_core::component::parameter::ParameterValueType;
 use mpdelta_core::core::EditEventListener;
 use mpdelta_core::edit::{InstanceEditEvent, RootComponentEditEvent};
@@ -22,8 +23,9 @@ pub trait PreviewViewModel<K: 'static, T: ParameterValueType> {
     fn playing(&self) -> bool;
     fn play(&self);
     fn pause(&self);
-    fn seek(&self) -> usize;
-    fn set_seek(&self, seek: usize);
+    fn component_length(&self) -> Option<MarkerTime>;
+    fn seek(&self) -> MarkerTime;
+    fn set_seek(&self, seek: MarkerTime);
 }
 
 struct RealTimeRendererHandle<R, K: 'static, T: ParameterValueType> {
@@ -149,7 +151,7 @@ where
             Arc::clone(&self.renderer),
             Arc::clone(&self.real_time_renderer),
             Arc::clone(&self.audio_player),
-            TimelineTime::new(MixedFraction::from_fraction(self.global_ui_state.seek() as i64, 60)),
+            TimelineTime::new(self.global_ui_state.seek().value()),
         ));
     }
 
@@ -197,7 +199,19 @@ where
     Runtime: AsyncRuntime<()> + Clone,
 {
     fn get_preview_image(&self) -> Option<T::Image> {
-        self.real_time_renderer.load().as_deref().and_then(|RealTimeRendererHandle { renderer, .. }| renderer.render_frame(self.seek()).ok())
+        let option = self.real_time_renderer.load().as_deref().and_then(|RealTimeRendererHandle { renderer, .. }| {
+            let len = renderer.get_component_length();
+            if self.global_ui_state.component_length() != len {
+                if let Some(len) = len {
+                    self.global_ui_state.set_component_length(len);
+                }
+            }
+            let seek = self.seek();
+            let (i, n) = seek.value().deconstruct_with_round(60);
+            let seek = i as usize * 60 + n as usize;
+            renderer.render_frame(seek).ok()
+        });
+        option
     }
 
     fn playing(&self) -> bool {
@@ -212,15 +226,20 @@ where
     fn pause(&self) {
         self.global_ui_state.pause();
         self.audio_player.pause();
-        self.audio_player.seek(TimelineTime::new(MixedFraction::from_fraction(self.global_ui_state.seek() as i64, 60)));
+        self.audio_player.seek(TimelineTime::new(self.global_ui_state.seek().value()));
     }
 
-    fn seek(&self) -> usize {
+    fn component_length(&self) -> Option<MarkerTime> {
+        self.global_ui_state.component_length()
+    }
+
+    fn seek(&self) -> MarkerTime {
         self.global_ui_state.seek()
     }
 
-    fn set_seek(&self, seek: usize) {
+    fn set_seek(&self, seek: MarkerTime) {
+        let seek = seek.min(self.global_ui_state.component_length().unwrap_or_else(|| MarkerTime::new(MixedFraction::from_integer(10)).unwrap()));
         self.global_ui_state.set_seek(seek);
-        self.audio_player.seek(TimelineTime::new(MixedFraction::from_fraction(seek as i64, 60)));
+        self.audio_player.seek(TimelineTime::new(seek.value()));
     }
 }

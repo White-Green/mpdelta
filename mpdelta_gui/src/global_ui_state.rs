@@ -1,14 +1,18 @@
 use crate::view_model_util::use_arc;
 use crate::viewmodel::ViewModelParams;
+use crossbeam_utils::atomic::AtomicCell;
 use mpdelta_async_runtime::AsyncRuntime;
+use mpdelta_core::common::mixed_fraction::atomic::AtomicMixedFraction;
+use mpdelta_core::common::mixed_fraction::MixedFraction;
 use mpdelta_core::component::instance::ComponentInstanceHandle;
+use mpdelta_core::component::marker_pin::MarkerTime;
 use mpdelta_core::component::parameter::ParameterValueType;
 use mpdelta_core::project::{RootComponentClass, RootComponentClassHandle};
 use mpdelta_core::ptr::StaticPointer;
 use mpdelta_message_router::handler::{IntoFunctionHandler, MessageHandlerBuilder};
 use mpdelta_message_router::{MessageHandler, MessageRouter};
 use std::mem;
-use std::sync::atomic::{AtomicBool, AtomicUsize};
+use std::sync::atomic::AtomicBool;
 use std::sync::{atomic, Arc, Mutex, RwLock as StdRwLock};
 use std::time::Instant;
 
@@ -78,8 +82,10 @@ pub trait GlobalUIState<K: 'static, T: ParameterValueType>: Send + Sync + 'stati
     fn playing(&self) -> bool;
     fn play(&self);
     fn pause(&self);
-    fn seek(&self) -> usize;
-    fn set_seek(&self, _seek: usize);
+    fn component_length(&self) -> Option<MarkerTime>;
+    fn set_component_length(&self, length: MarkerTime);
+    fn seek(&self) -> MarkerTime;
+    fn set_seek(&self, seek: MarkerTime);
     fn select_root_component_class(&self, target: &RootComponentClassHandle<K, T>);
     fn unselect_root_component_class(&self);
     fn select_component_instance(&self, target: &ComponentInstanceHandle<K, T>);
@@ -88,7 +94,8 @@ pub trait GlobalUIState<K: 'static, T: ParameterValueType>: Send + Sync + 'stati
 pub struct GlobalUIStateImpl<K: 'static, T, H, Runtime> {
     request_play: Arc<AtomicBool>,
     playing: Arc<AtomicBool>,
-    seek: Arc<AtomicUsize>,
+    component_length: Arc<AtomicCell<Option<MarkerTime>>>,
+    seek: Arc<AtomicMixedFraction>,
     handlers: StdRwLock<Vec<Arc<dyn GlobalUIEventHandler<K, T> + Send + Sync>>>,
     message_router: MessageRouter<H, Runtime>,
 }
@@ -97,13 +104,14 @@ impl<K: 'static, T: ParameterValueType> GlobalUIStateImpl<K, T, (), ()> {
     pub fn new<P: ViewModelParams<K, T>>(params: &P) -> GlobalUIStateImpl<K, T, impl MessageHandler<Message, P::AsyncRuntime> + Send + Sync, P::AsyncRuntime> {
         let request_play = Arc::new(AtomicBool::new(false));
         let playing = Arc::new(AtomicBool::new(false));
-        let seek = Arc::new(AtomicUsize::new(0));
-        let play_start_seek = AtomicUsize::new(0);
+        let component_length = Arc::new(AtomicCell::new(None::<MarkerTime>));
+        let seek = Arc::new(AtomicMixedFraction::new(MixedFraction::ZERO));
+        let play_start_seek = AtomicMixedFraction::new(MixedFraction::ZERO);
         let play_start_at = Mutex::new(Instant::now());
         let message_router = MessageRouter::builder()
             .handle(|handler| {
                 handler.filter(|message| *message == Message::BeginRenderFrame).handle({
-                    use_arc!(request_play, playing, seek);
+                    use_arc!(request_play, playing, component_length, seek);
                     move |_| {
                         let now = Instant::now();
                         let mut lock = play_start_at.lock().unwrap();
@@ -112,7 +120,10 @@ impl<K: 'static, T: ParameterValueType> GlobalUIStateImpl<K, T, (), ()> {
                             play_start_seek.store(seek.load(atomic::Ordering::Acquire), atomic::Ordering::Release);
                         }
                         if playing.load(atomic::Ordering::Acquire) {
-                            seek.store((((now - *lock).as_secs_f64() * 60.) as usize + play_start_seek.load(atomic::Ordering::Acquire)) % 600, atomic::Ordering::Release);
+                            seek.store(
+                                (MixedFraction::from_f64((now - *lock).as_secs_f64()) + play_start_seek.load(atomic::Ordering::Acquire)) % component_length.load().map_or(MixedFraction::from_integer(10), |time| time.value()),
+                                atomic::Ordering::Release,
+                            );
                         }
                     }
                 })
@@ -121,6 +132,7 @@ impl<K: 'static, T: ParameterValueType> GlobalUIStateImpl<K, T, (), ()> {
         GlobalUIStateImpl {
             request_play,
             playing,
+            component_length,
             seek,
             handlers: StdRwLock::new(Vec::new()),
             message_router,
@@ -173,12 +185,20 @@ where
         self.playing.store(false, atomic::Ordering::Release);
     }
 
-    fn seek(&self) -> usize {
-        self.seek.load(atomic::Ordering::Acquire)
+    fn component_length(&self) -> Option<MarkerTime> {
+        self.component_length.load()
     }
 
-    fn set_seek(&self, seek: usize) {
-        self.seek.store(seek, atomic::Ordering::Release);
+    fn set_component_length(&self, length: MarkerTime) {
+        self.component_length.store(Some(length));
+    }
+
+    fn seek(&self) -> MarkerTime {
+        MarkerTime::new(self.seek.load(atomic::Ordering::Acquire)).unwrap()
+    }
+
+    fn set_seek(&self, seek: MarkerTime) {
+        self.seek.store(seek.value(), atomic::Ordering::Release);
     }
 
     fn select_root_component_class(&self, target: &StaticPointer<tokio::sync::RwLock<RootComponentClass<K, T>>>) {

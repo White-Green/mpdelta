@@ -225,6 +225,44 @@ where
                 self.edit_event_listeners.iter().for_each(|listener| listener.on_edit(target_ref, RootComponentEditEvent::DeleteComponentInstance(&instance)));
                 Ok(ProjectEditLog::Unimplemented)
             }
+            RootComponentEditCommand::EditComponentLength(length) => {
+                {
+                    let mut key = self.key.write().await;
+                    let mut item = target.get_mut().await;
+                    let left_pin = StaticPointerOwned::reference(item.left()).clone();
+                    let right = item.right();
+                    let right_pin = StaticPointerOwned::reference(right).clone();
+                    let right = right.rw(&mut key);
+                    right.set_locked_component_time(Some(length));
+                    right.cache_timeline_time(TimelineTime::new(length.value()));
+                    let diff = TimelineTime::new(length.value() - item.length().value());
+                    item.set_length(length);
+
+                    let mut pin_union_find = UnionFind::new();
+                    item.link().iter().for_each(|link| {
+                        let link = link.ro(&key);
+                        if link.from != right_pin && link.to != right_pin {
+                            pin_union_find.union(link.from.clone(), link.to.clone());
+                        }
+                    });
+                    let left_root = pin_union_find.get_root(left_pin);
+                    for link in item.link() {
+                        let link = link.rw(&mut key);
+                        if link.to == right_pin && pin_union_find.get_root(link.from.clone()) == left_root {
+                            link.len = link.len + diff;
+                        } else if link.from == right_pin && pin_union_find.get_root(link.to.clone()) == left_root {
+                            link.len = link.len - diff;
+                        }
+                    }
+
+                    if let Err(err) = mpdelta_differential::collect_cached_time(item.component(), item.link(), item.left().as_ref(), item.right().as_ref(), &key) {
+                        eprintln!("{err}");
+                    }
+                }
+
+                self.edit_event_listeners.iter().for_each(|listener| listener.on_edit(target_ref, RootComponentEditEvent::EditComponentLength(length)));
+                Ok(ProjectEditLog::Unimplemented)
+            }
         }
     }
 

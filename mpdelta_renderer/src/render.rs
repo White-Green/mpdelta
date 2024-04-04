@@ -60,6 +60,39 @@ where
             render_inner(&component, TimelineTime::new(MixedFraction::from_fraction(at as i64, 60)) /* TODO: */, &ty, &ctx).await.map(into_parameter_value_fixed)
         }
     }
+
+    pub(crate) fn calc_natural_length<'a>(&self, key: impl Deref<Target = TCellOwner<K>> + Send + 'a) -> impl Future<Output = Result<Option<MarkerTime>, RenderError<K, T>>> + Send + 'a {
+        let component = self.component.clone();
+        async move {
+            let Some(component) = component.upgrade() else {
+                return Err(RenderError::InvalidComponent(component.clone()));
+            };
+            let component = component.ro(&key);
+            let fixed_parameters = component
+                .fixed_parameters()
+                .iter()
+                .map(|value| match value {
+                    Parameter::None => ParameterValueRaw::None,
+                    Parameter::Image(value) => ParameterValueRaw::Image(value.get_value()),
+                    Parameter::Audio(value) => ParameterValueRaw::Audio(value.get_value()),
+                    Parameter::Binary(value) => ParameterValueRaw::Binary(value.get_value()),
+                    Parameter::String(value) => ParameterValueRaw::String(value.get_value()),
+                    Parameter::Integer(value) => ParameterValueRaw::Integer(value.get_value()),
+                    Parameter::RealNumber(value) => ParameterValueRaw::RealNumber(value.get_value()),
+                    Parameter::Boolean(value) => ParameterValueRaw::Boolean(value.get_value()),
+                    Parameter::Dictionary(value) => ParameterValueRaw::Dictionary(value.get_value()),
+                    Parameter::Array(value) => ParameterValueRaw::Array(value.get_value()),
+                    Parameter::ComponentClass(_value) => ParameterValueRaw::ComponentClass(()),
+                })
+                .collect::<Vec<_>>();
+            match component.processor() {
+                ComponentProcessorWrapper::Native(processor) => Ok(processor.natural_length(&fixed_parameters, &mut None).await),
+                ComponentProcessorWrapper::Component(processor) => Ok(Some(processor.natural_length(&fixed_parameters).await)),
+                ComponentProcessorWrapper::GatherNative(_) => unimplemented!(),
+                ComponentProcessorWrapper::GatherComponent(_) => unimplemented!(),
+            }
+        }
+    }
 }
 
 struct RenderContext<Key, T, ImageCombinerBuilder, AudioCombinerBuilder> {

@@ -2821,6 +2821,7 @@ version = "0.1.0"
 dependencies = [
  "arc-swap",
  "cgmath",
+ "crossbeam-utils",
  "egui",
  "egui_image_renderer",
  "futures",
@@ -2932,6 +2933,7 @@ dependencies = [
  "assert_matches",
  "async-trait",
  "cgmath",
+ "crossbeam-utils",
  "dashmap",
  "futures",
  "mpdelta_core",

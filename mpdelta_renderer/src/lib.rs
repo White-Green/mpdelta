@@ -1,10 +1,11 @@
 use crate::render::Renderer;
 use async_trait::async_trait;
+use crossbeam_utils::atomic::AtomicCell;
 use dashmap::DashMap;
 use futures::FutureExt;
 use mpdelta_core::component::instance::ComponentInstanceHandle;
 use mpdelta_core::component::link::MarkerLinkHandle;
-use mpdelta_core::component::marker_pin::MarkerPinHandle;
+use mpdelta_core::component::marker_pin::{MarkerPinHandle, MarkerTime};
 use mpdelta_core::component::parameter::{ImageRequiredParamsFixed, Parameter, ParameterSelect, ParameterType, ParameterValueType};
 use mpdelta_core::core::{ComponentEncoder, ComponentRendererBuilder};
 use mpdelta_core::time::TimelineTime;
@@ -88,11 +89,21 @@ where
     type Renderer = MPDeltaRenderer<K, T, C, ImageCombinerBuilder, AudioCombinerBuilder>;
 
     async fn create_renderer(&self, component: &ComponentInstanceHandle<K, T>) -> Result<Self::Renderer, Self::Err> {
-        let (sender, future) = rendering_loop(Arc::clone(&self.key), component.clone(), &*self.controller_builder, Arc::clone(&self.image_combiner_builder), Arc::clone(&self.audio_combiner_builder), Handle::current());
+        let component_natural_length = Arc::new(AtomicCell::new(None));
+        let (sender, future) = rendering_loop(
+            Arc::clone(&self.key),
+            component.clone(),
+            Arc::clone(&component_natural_length),
+            &*self.controller_builder,
+            Arc::clone(&self.image_combiner_builder),
+            Arc::clone(&self.audio_combiner_builder),
+            Handle::current(),
+        );
         self.runtime.spawn(future);
         Ok(MPDeltaRenderer {
             key: Arc::clone(&self.key),
             component: component.clone(),
+            component_natural_length,
             controller_builder: Arc::clone(&self.controller_builder),
             image_combiner_builder: Arc::clone(&self.image_combiner_builder),
             audio_combiner_builder: Arc::clone(&self.audio_combiner_builder),
@@ -144,6 +155,7 @@ where
         let mut encoder = encoder.build().map_err(EncodeError::EncoderError)?;
         let renderer = Arc::new(Renderer::new(self.runtime.clone(), component.clone(), Arc::clone(&self.image_combiner_builder), Arc::clone(&self.audio_combiner_builder)));
         let key = Arc::new(Arc::clone(&self.key).read_owned().await);
+        let length = renderer.calc_natural_length(&**key).await?;
         if encoder.requires_audio() {
             match renderer.render(0, ParameterType::Audio(()), Arc::clone(&key)).await {
                 Ok(Parameter::Audio(value)) => encoder.set_audio(value),
@@ -159,7 +171,11 @@ where
             }
         }
         if encoder.requires_image() {
-            for f in 0..600 {
+            let length_frames = length.map_or(600, |length| {
+                let (i, n) = length.value().deconstruct_with_round(60);
+                i as usize * 60 + n as usize
+            });
+            for f in 0..length_frames {
                 match renderer.render(f, ParameterType::Image(()), Arc::clone(&key)).await {
                     Ok(Parameter::Image(value)) => encoder.push_frame(value),
                     Ok(other) => {
@@ -309,6 +325,7 @@ pub trait MPDeltaRenderingController {
 fn rendering_loop<K, T, C, ImageCombinerBuilder, AudioCombinerBuilder>(
     key: Arc<RwLock<TCellOwner<K>>>,
     component: ComponentInstanceHandle<K, T>,
+    component_natural_length: Arc<AtomicCell<Option<MarkerTime>>>,
     controller_builder: &C,
     image_combiner_builder: Arc<ImageCombinerBuilder>,
     audio_combiner_builder: Arc<AudioCombinerBuilder>,
@@ -329,9 +346,25 @@ where
         let _ = controller_sender.send(message);
     });
     let future = async move {
+        let calc_natural_length = || {
+            let renderer = Arc::clone(&renderer);
+            let key = Arc::clone(&key);
+            runtime.spawn(key.read_owned().then(move |key| renderer.calc_natural_length(key)))
+        };
+        let mut fut = calc_natural_length();
         loop {
             tokio::select! {
                 biased;
+                result = &mut fut => {
+                    match result {
+                        Ok(Ok(natural_length)) => {
+                            component_natural_length.store(natural_length);
+                        }
+                        Ok(Err(e)) => eprintln!("{}", e),
+                        Err(e) => eprintln!("{}", e),
+                    }
+                    fut = calc_natural_length();
+                }
                 message = receiver.recv() => {
                     let Some(message) = message else { return; };
                     match message {
@@ -406,6 +439,7 @@ where
 pub struct MPDeltaRenderer<K: 'static, T: ParameterValueType, C, ImageCombinerBuilder, AudioCombinerBuilder> {
     key: Arc<RwLock<TCellOwner<K>>>,
     component: ComponentInstanceHandle<K, T>,
+    component_natural_length: Arc<AtomicCell<Option<MarkerTime>>>,
     controller_builder: Arc<C>,
     image_combiner_builder: Arc<ImageCombinerBuilder>,
     audio_combiner_builder: Arc<AudioCombinerBuilder>,
@@ -477,8 +511,8 @@ where
 {
     type Err = RenderError<K, T>;
 
-    fn get_frame_count(&self) -> usize {
-        600
+    fn get_component_length(&self) -> Option<MarkerTime> {
+        self.component_natural_length.load()
     }
 
     fn render_frame(&self, frame: usize) -> Result<T::Image, Self::Err> {
@@ -494,7 +528,15 @@ where
                                 Ok(()) => break,
                                 Err(SendError(failed_message)) => {
                                     message = Some(failed_message);
-                                    let (new_loop_sender, fut) = rendering_loop(Arc::clone(&self.key), self.component.clone(), &*self.controller_builder, Arc::clone(&self.image_combiner_builder), Arc::clone(&self.audio_combiner_builder), self.runtime.clone());
+                                    let (new_loop_sender, fut) = rendering_loop(
+                                        Arc::clone(&self.key),
+                                        self.component.clone(),
+                                        Arc::clone(&self.component_natural_length),
+                                        &*self.controller_builder,
+                                        Arc::clone(&self.image_combiner_builder),
+                                        Arc::clone(&self.audio_combiner_builder),
+                                        self.runtime.clone(),
+                                    );
                                     self.runtime.spawn(fut);
                                     *loop_sender = new_loop_sender;
                                 }
@@ -529,7 +571,15 @@ where
                     Ok(()) => break,
                     Err(SendError(failed_message)) => {
                         message = Some(failed_message);
-                        let (new_loop_sender, fut) = rendering_loop(Arc::clone(&self.key), self.component.clone(), &*self.controller_builder, Arc::clone(&self.image_combiner_builder), Arc::clone(&self.audio_combiner_builder), self.runtime.clone());
+                        let (new_loop_sender, fut) = rendering_loop(
+                            Arc::clone(&self.key),
+                            self.component.clone(),
+                            Arc::clone(&self.component_natural_length),
+                            &*self.controller_builder,
+                            Arc::clone(&self.image_combiner_builder),
+                            Arc::clone(&self.audio_combiner_builder),
+                            self.runtime.clone(),
+                        );
                         self.runtime.spawn(fut);
                         *loop_sender = new_loop_sender;
                     }

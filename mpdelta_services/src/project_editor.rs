@@ -12,6 +12,7 @@ use mpdelta_core::project::RootComponentClassHandle;
 use mpdelta_core::ptr::StaticPointerOwned;
 use mpdelta_core::time::TimelineTime;
 use qcell::{TCell, TCellOwner};
+use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use std::iter;
 use std::sync::atomic::AtomicUsize;
@@ -153,6 +154,24 @@ where
                 }
 
                 self.edit_event_listeners.iter().for_each(|listener| listener.on_edit(target_ref, RootComponentEditEvent::EditMarkerLinkLength(&link, len)));
+                Ok(ProjectEditLog::Unimplemented)
+            }
+            RootComponentEditCommand::InsertComponentInstanceTo(instance, index) => {
+                {
+                    let mut item = target.get_mut().await;
+                    let components = item.component_mut();
+                    let index = if components.len() <= index { components.len() - 1 } else { index };
+                    let Some(i) = components.iter().enumerate().find_map(|(i, instance_owned)| (*instance_owned == instance).then_some(i)) else {
+                        return Err(ProjectEditError::ComponentInstanceNotFound);
+                    };
+                    match i.cmp(&index) {
+                        Ordering::Less => (i..index).for_each(|i| components.swap(i, i + 1)),
+                        Ordering::Greater => (index..i).rev().for_each(|i| components.swap(i, i + 1)),
+                        Ordering::Equal => {}
+                    }
+                }
+
+                self.edit_event_listeners.iter().for_each(|listener| listener.on_edit(target_ref, RootComponentEditEvent::InsertComponentInstanceTo(&instance, index)));
                 Ok(ProjectEditLog::Unimplemented)
             }
             RootComponentEditCommand::DeleteComponentInstance(instance) => {

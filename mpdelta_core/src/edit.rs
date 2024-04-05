@@ -8,6 +8,7 @@ pub enum RootComponentEditCommand<K: 'static, T: ParameterValueType> {
     AddComponentInstance(ComponentInstanceHandleOwned<K, T>),
     RemoveMarkerLink(MarkerLinkHandle<K>),
     EditMarkerLinkLength(MarkerLinkHandle<K>, TimelineTime),
+    InsertComponentInstanceTo(ComponentInstanceHandle<K, T>, usize),
     DeleteComponentInstance(ComponentInstanceHandle<K, T>),
     EditComponentLength(MarkerTime),
 }
@@ -28,6 +29,7 @@ pub enum RootComponentEditEvent<'a, K: 'static, T: ParameterValueType> {
     AddComponentInstance(&'a ComponentInstanceHandle<K, T>),
     RemoveMarkerLink(&'a MarkerLinkHandle<K>),
     EditMarkerLinkLength(&'a MarkerLinkHandle<K>, TimelineTime),
+    InsertComponentInstanceTo(&'a ComponentInstanceHandle<K, T>, usize),
     DeleteComponentInstance(&'a ComponentInstanceHandle<K, T>),
     EditComponentLength(MarkerTime),
 }

@@ -6,8 +6,8 @@ use std::hash::Hash;
 pub enum ComponentInstanceEditEvent<'a, PinHandle> {
     Click,
     Delete,
-    MoveWholeBlockTemporary(f64),
-    MoveWholeBlock(f64),
+    MoveWholeBlockTemporary { time: f64, top: f32 },
+    MoveWholeBlock { time: f64, top: f32 },
     MovePinTemporary(&'a PinHandle, f64),
     MovePin(&'a PinHandle, f64),
 }
@@ -17,8 +17,8 @@ impl<'a, PinHandle> Debug for ComponentInstanceEditEvent<'a, PinHandle> {
         match self {
             ComponentInstanceEditEvent::Click => write!(f, "Click"),
             ComponentInstanceEditEvent::Delete => write!(f, "Delete"),
-            ComponentInstanceEditEvent::MoveWholeBlockTemporary(value) => f.debug_tuple("MoveWholeBlockTemporary").field(value).finish(),
-            ComponentInstanceEditEvent::MoveWholeBlock(value) => f.debug_tuple("MoveWholeBlock").field(value).finish(),
+            ComponentInstanceEditEvent::MoveWholeBlockTemporary { time, top } => f.debug_struct("MoveWholeBlockTemporary").field("time", time).field("top", top).finish(),
+            ComponentInstanceEditEvent::MoveWholeBlock { time, top } => f.debug_struct("MoveWholeBlock").field("time", time).field("top", top).finish(),
             ComponentInstanceEditEvent::MovePinTemporary(_, value) => f.debug_tuple("MovePinTemporary").field(value).finish(),
             ComponentInstanceEditEvent::MovePin(_, value) => f.debug_tuple("MovePin").field(value).finish(),
         }
@@ -129,24 +129,25 @@ where
         if response.clicked() {
             edit(ComponentInstanceEditEvent::Click);
         }
-        if response.dragged_by(PointerButton::Primary) {
-            let pointer_x = response.interact_pointer_pos().unwrap().x;
+        if response.dragged_by(PointerButton::Primary) || response.drag_released_by(PointerButton::Primary) {
+            let pointer_pos = response.interact_pointer_pos().unwrap();
             let drag_started = response.drag_started_by(PointerButton::Primary);
             let drag_offset = ui.data_mut(|data| {
                 let key = Id::new((handle, "drag_offset"));
                 if drag_started {
-                    let drag_offset = pointer_x - left;
+                    let drag_offset = pointer_pos - Vec2::new(left, top);
                     data.insert_temp(key, drag_offset);
                     drag_offset
                 } else {
                     data.get_temp(key).unwrap_or_default()
                 }
             });
-            let new_start_time = point_to_time(pointer_x - drag_offset);
+            let drag_delta = pointer_pos - drag_offset;
+            let new_start_time = point_to_time(drag_delta.x);
             if response.drag_released_by(PointerButton::Primary) {
-                edit(ComponentInstanceEditEvent::MoveWholeBlock(new_start_time));
+                edit(ComponentInstanceEditEvent::MoveWholeBlock { time: new_start_time, top: drag_delta.y });
             } else {
-                edit(ComponentInstanceEditEvent::MoveWholeBlockTemporary(new_start_time));
+                edit(ComponentInstanceEditEvent::MoveWholeBlockTemporary { time: new_start_time, top: drag_delta.y });
             }
         }
         response.context_menu(|ui| {

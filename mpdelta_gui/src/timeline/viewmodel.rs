@@ -208,6 +208,7 @@ pub trait TimelineViewModel<K: 'static, T: ParameterValueType> {
     fn click_component_instance(&self, handle: &Self::ComponentInstanceHandle);
     fn delete_component_instance(&self, handle: &Self::ComponentInstanceHandle);
     fn move_component_instance(&self, handle: &Self::ComponentInstanceHandle, to: f64);
+    fn insert_component_instance_to(&self, handle: &Self::ComponentInstanceHandle, index: usize);
     fn move_marker_pin(&self, instance_handle: &Self::ComponentInstanceHandle, pin_handle: &Self::MarkerPinHandle, to: f64);
     type ComponentLinkHandle: Clone + Eq + Hash;
     fn component_links<R>(&self, f: impl FnOnce(&ComponentLinkDataList<Self::ComponentLinkHandle, Self::MarkerPinHandle, Self::ComponentInstanceHandle>) -> R) -> R;
@@ -236,6 +237,7 @@ pub enum Message<K: 'static, T: ParameterValueType> {
     ClickComponentInstance(ComponentInstanceHandle<K, T>),
     DeleteComponentInstance(ComponentInstanceHandle<K, T>),
     MoveComponentInstance(ComponentInstanceHandle<K, T>, f64),
+    InsertComponentInstanceTo(ComponentInstanceHandle<K, T>, usize),
     MoveMarkerPin(ComponentInstanceHandle<K, T>, MarkerPinHandle<K>, f64),
     EditMarkerLinkLength(MarkerLinkHandle<K>, f64),
     EditComponentLength(MarkerTime),
@@ -253,6 +255,7 @@ where
             Message::ClickComponentInstance(value) => Message::ClickComponentInstance(value.clone()),
             Message::DeleteComponentInstance(value) => Message::DeleteComponentInstance(value.clone()),
             &Message::MoveComponentInstance(ref value, to) => Message::MoveComponentInstance(value.clone(), to),
+            &Message::InsertComponentInstanceTo(ref instance, index) => Message::InsertComponentInstanceTo(instance.clone(), index),
             &Message::MoveMarkerPin(ref instance, ref pin, to) => Message::MoveMarkerPin(instance.clone(), pin.clone(), to),
             &Message::EditMarkerLinkLength(ref value, length) => Message::EditMarkerLinkLength(value.clone(), length),
             &Message::EditComponentLength(value) => Message::EditComponentLength(value),
@@ -275,6 +278,7 @@ where
             (Message::ClickComponentInstance(a), Message::ClickComponentInstance(b)) => a == b,
             (Message::DeleteComponentInstance(a), Message::DeleteComponentInstance(b)) => a == b,
             (Message::MoveComponentInstance(a, at), Message::MoveComponentInstance(b, bt)) => a == b && at == bt,
+            (Message::InsertComponentInstanceTo(a, ai), Message::InsertComponentInstanceTo(b, bi)) => a == b && ai == bi,
             (Message::MoveMarkerPin(ai, ap, at), Message::MoveMarkerPin(bi, bp, bt)) => ai == bi && ap == bp && at == bt,
             (Message::EditMarkerLinkLength(a, al), Message::EditMarkerLinkLength(b, bl)) => a == b && al == bl,
             (Message::EditComponentLength(a), Message::EditComponentLength(b)) => a == b,
@@ -377,7 +381,12 @@ impl<K: Send + Sync + 'static, T: ParameterValueType> TimelineViewModelImpl<K, T
             })
             .handle(|handler| {
                 handler
-                    .filter(|message| matches!(message, Message::EditComponentLength(_) | Message::AddComponentInstance(_) | Message::DeleteComponentInstance(_) | Message::EditMarkerLinkLength(_, _)))
+                    .filter(|message| {
+                        matches!(
+                            message,
+                            Message::EditComponentLength(_) | Message::AddComponentInstance(_) | Message::DeleteComponentInstance(_) | Message::EditMarkerLinkLength(_, _) | Message::InsertComponentInstanceTo(_, _)
+                        )
+                    })
                     .handle_async({
                         use_arc!(selected_root_component_class, edit);
                         move |message| {
@@ -398,6 +407,7 @@ impl<K: Send + Sync + 'static, T: ParameterValueType> TimelineViewModelImpl<K, T
                                     Message::DeleteComponentInstance(handle) => RootComponentEditCommand::DeleteComponentInstance(handle),
                                     Message::EditMarkerLinkLength(target, len) => RootComponentEditCommand::EditMarkerLinkLength(target, TimelineTime::new(MixedFraction::from_f64(len))),
                                     Message::EditComponentLength(len) => RootComponentEditCommand::EditComponentLength(len),
+                                    Message::InsertComponentInstanceTo(handle, index) => RootComponentEditCommand::InsertComponentInstanceTo(handle, index),
                                     _ => unreachable!(),
                                 };
                                 edit.edit(&target, command);
@@ -557,6 +567,10 @@ where
 
     fn move_component_instance(&self, handle: &Self::ComponentInstanceHandle, to: f64) {
         self.message_router.handle(Message::MoveComponentInstance(handle.clone(), to));
+    }
+
+    fn insert_component_instance_to(&self, handle: &Self::ComponentInstanceHandle, index: usize) {
+        self.message_router.handle(Message::InsertComponentInstanceTo(handle.clone(), index));
     }
 
     fn move_marker_pin(&self, instance_handle: &Self::ComponentInstanceHandle, pin_handle: &Self::MarkerPinHandle, to: f64) {

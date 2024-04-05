@@ -10,6 +10,7 @@ use ordered_float::OrderedFloat;
 use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::sync::Arc;
+use std::{convert, mem};
 
 mod range_max;
 mod widgets;
@@ -18,6 +19,8 @@ pub struct Timeline<K, T, VM> {
     view_model: Arc<VM>,
     size: Vec2,
     scroll_offset: Vec2,
+    component_top: Vec<RangeMax<OrderedFloat<f64>, f32>>,
+    component_top_buf: Vec<RangeMax<OrderedFloat<f64>, f32>>,
     _phantom: PhantomData<(K, T)>,
 }
 
@@ -27,6 +30,8 @@ impl<K: 'static, T: ParameterValueType, VM: TimelineViewModel<K, T>> Timeline<K,
             view_model,
             size: Vec2::new(0., 30.),
             scroll_offset: Vec2::ZERO,
+            component_top: Vec::new(),
+            component_top_buf: Vec::new(),
             _phantom: PhantomData,
         }
     }
@@ -69,18 +74,30 @@ impl<K: 'static, T: ParameterValueType, VM: TimelineViewModel<K, T>> Timeline<K,
                             }
                         });
                     });
+                    self.component_top_buf.clear();
                     let mut range_max = RangeMax::new();
                     for instance_data in component_instances.iter() {
-                        let top = range_max.get(&OrderedFloat(instance_data.start_time)..&OrderedFloat(instance_data.end_time)).copied().unwrap_or(top);
+                        self.component_top_buf.push(range_max.clone());
+                        let range = &OrderedFloat(instance_data.start_time)..&OrderedFloat(instance_data.end_time);
+                        let top = range_max.get(range.clone()).copied().unwrap_or(top);
                         let block_bottom = ComponentInstanceBlock::new(instance_data, top, time_to_point, point_to_time, |event| match event {
                             ComponentInstanceEditEvent::Click => self.view_model.click_component_instance(&instance_data.handle),
                             ComponentInstanceEditEvent::Delete => self.view_model.delete_component_instance(&instance_data.handle),
-                            ComponentInstanceEditEvent::MoveWholeBlockTemporary(to) | ComponentInstanceEditEvent::MoveWholeBlock(to) => self.view_model.move_component_instance(&instance_data.handle, to),
+                            ComponentInstanceEditEvent::MoveWholeBlockTemporary { time, .. } => self.view_model.move_component_instance(&instance_data.handle, time),
+                            ComponentInstanceEditEvent::MoveWholeBlock { time, top: move_target_top } => {
+                                self.view_model.move_component_instance(&instance_data.handle, time);
+                                let index = self
+                                    .component_top_buf
+                                    .binary_search_by_key(&OrderedFloat(move_target_top), |range_max| OrderedFloat(range_max.get(range.clone()).copied().unwrap_or(top)))
+                                    .unwrap_or_else(convert::identity);
+                                self.view_model.insert_component_instance_to(&instance_data.handle, index);
+                            }
                             ComponentInstanceEditEvent::MovePinTemporary(pin, to) | ComponentInstanceEditEvent::MovePin(pin, to) => self.view_model.move_marker_pin(&instance_data.handle, pin, to),
                         })
                         .show(ui);
-                        range_max.insert(OrderedFloat(instance_data.start_time)..OrderedFloat(instance_data.end_time), block_bottom);
+                        range_max = range_max.insert(OrderedFloat(instance_data.start_time)..OrderedFloat(instance_data.end_time), block_bottom);
                     }
+                    mem::swap(&mut self.component_top, &mut self.component_top_buf);
                 });
                 let seek = self.view_model.seek();
                 let seek_line_position = time_to_point(seek.value().into_f64());
@@ -236,6 +253,8 @@ mod tests {
             fn delete_component_instance(&self, _handle: &Self::ComponentInstanceHandle) {}
 
             fn move_component_instance(&self, _handle: &Self::ComponentInstanceHandle, _to: f64) {}
+
+            fn insert_component_instance_to(&self, _handle: &Self::ComponentInstanceHandle, _index: usize) {}
 
             fn move_marker_pin(&self, _instance_handle: &Self::ComponentInstanceHandle, _pin_handle: &Self::MarkerPinHandle, _to: f64) {}
 

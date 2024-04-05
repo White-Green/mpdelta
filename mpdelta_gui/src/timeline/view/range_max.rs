@@ -1,12 +1,20 @@
-use smallvec::SmallVec;
+use rpds::RedBlackTreeMap;
 use std::cmp::Ordering;
-use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::ops::Range;
 
 #[derive(Debug)]
 pub struct RangeMax<K, V> {
-    map: BTreeMap<K, Option<V>>,
+    map: RedBlackTreeMap<K, Option<V>>,
+}
+
+impl<K, V> Clone for RangeMax<K, V>
+where
+    RedBlackTreeMap<K, Option<V>>: Clone,
+{
+    fn clone(&self) -> Self {
+        RangeMax { map: self.map.clone() }
+    }
 }
 
 impl<K, V> RangeMax<K, V>
@@ -15,88 +23,93 @@ where
     V: PartialOrd + Clone,
 {
     pub fn new() -> RangeMax<K, V> {
-        RangeMax { map: BTreeMap::new() }
+        RangeMax { map: RedBlackTreeMap::new() }
     }
 
-    pub fn insert(&mut self, range: Range<K>, value: V) {
+    #[must_use]
+    pub fn insert(&self, range: Range<K>, value: V) -> RangeMax<K, V> {
         assert!(range.start < range.end);
         if self.map.is_empty() {
-            self.map.extend([(range.start, Some(value)), (range.end, None)]);
-            return;
+            let map = self.map.insert(range.start, Some(value)).insert(range.end, None);
+            return RangeMax { map };
         }
-        let first_key = self.map.first_key_value().unwrap().0.clone();
-        let (last_key, None) = self.map.last_key_value().unwrap() else {
+        let first_key = self.map.first().unwrap().0.clone();
+        let (last_key, None) = self.map.last().unwrap() else {
             unreachable!();
         };
         let last_key = last_key.clone();
         match range.end.cmp(&first_key) {
             Ordering::Less => {
-                self.map.extend([(range.start, Some(value)), (range.end, None)]);
-                return;
+                let map = self.map.insert(range.start, Some(value)).insert(range.end, None);
+                return RangeMax { map };
             }
             Ordering::Equal => {
                 let mut iter = self.map.iter();
                 let (_, v) = iter.next().unwrap();
-                if v.as_ref() == Some(&value) {
-                    self.map.remove(&first_key);
-                }
-                self.map.insert(range.start, Some(value));
-                return;
+                let map;
+                let map = if v.as_ref() == Some(&value) {
+                    map = self.map.remove(&first_key);
+                    &map
+                } else {
+                    &self.map
+                };
+                let map = map.insert(range.start, Some(value));
+                return RangeMax { map };
             }
             Ordering::Greater => {}
         }
         match last_key.cmp(&range.start) {
             Ordering::Less => {
-                self.map.extend([(range.start, Some(value)), (range.end, None)]);
-                return;
+                let map = self.map.insert(range.start, Some(value)).insert(range.end, None);
+                return RangeMax { map };
             }
             Ordering::Equal => {
                 let mut rev_iter = self.map.iter().rev();
                 rev_iter.next().unwrap();
                 let (_, v) = rev_iter.next().unwrap();
-                if v.as_ref() == Some(&value) {
-                    assert!(self.map.remove(&last_key) == Some(None));
-                    self.map.insert(range.end, None);
+                let map = if v.as_ref() == Some(&value) {
+                    self.map.remove(&last_key).insert(range.end, None)
                 } else {
-                    self.map.extend([(range.start, Some(value)), (range.end, None)]);
-                }
-                return;
+                    self.map.insert(range.start, Some(value)).insert(range.end, None)
+                };
+                return RangeMax { map };
             }
             Ordering::Greater => {}
         }
-        match self.map.range(..=&range.end).next_back().unwrap() {
-            (k, _) if k == &range.end => {}
+        let map;
+        let map = match self.map.range(..=&range.end).next_back().unwrap() {
+            (k, _) if k == &range.end => &self.map,
             (_, None) => {
-                self.map.insert(range.end.clone(), None);
+                map = self.map.insert(range.end.clone(), None);
+                &map
             }
             (_, Some(v)) if v < &value => {
-                self.map.insert(range.end.clone(), Some(v.clone()));
+                map = self.map.insert(range.end.clone(), Some(v.clone()));
+                &map
             }
-            _ => {}
-        }
-        let mut iter = self.map.range(..=&range.start).rev();
-        let (replace_start, concat_start) = match iter.next() {
+            _ => &self.map,
+        };
+        let mut iter = map.range(..=&range.start).rev();
+        let m;
+        let (map, replace_start, concat_start) = match iter.next() {
             None => {
-                self.map.insert(range.start.clone(), Some(value.clone()));
-                (range.start.clone(), range.start.clone())
+                m = map.insert(range.start.clone(), Some(value.clone()));
+                (&m, range.start.clone(), range.start.clone())
             }
             Some((_, v)) if v.as_ref() < Some(&value) => {
                 let start_key = iter.next().map_or_else(|| range.start.clone(), |(k, _)| k.clone());
-                self.map.insert(range.start.clone(), Some(value.clone()));
-                (range.start.clone(), start_key)
+                m = map.insert(range.start.clone(), Some(value.clone()));
+                (&m, range.start.clone(), start_key)
             }
-            Some((k, _)) => (k.clone(), k.clone()),
+            Some((k, _)) => (map, k.clone(), k.clone()),
         };
-        self.map.range_mut(&replace_start..&range.end).filter(|(_, v)| v.is_none() || v.as_ref().unwrap() < &value).for_each(|(_, v)| *v = Some(value.clone()));
-        let remove_keys = self
-            .map
+        let map = map.range(&replace_start..&range.end).filter(|(_, v)| v.is_none() || v.as_ref().unwrap() < &value).fold(map.clone(), |map, (k, _)| map.insert(k.clone(), Some(value.clone())));
+        let map = map
             .range(&concat_start..=&range.end)
             .scan(None, |prev: &mut Option<&Option<V>>, (k, value)| if prev.replace(value) == Some(value) { Some(Some(k.clone())) } else { Some(None) })
             .flatten()
-            .collect::<SmallVec<[_; 5]>>();
-        for k in remove_keys {
-            self.map.remove(&k);
-        }
+            .fold(map.clone(), |map, k| map.remove(&k));
+        RangeMax { map }
     }
 
     pub fn get(&self, range: Range<&K>) -> Option<&V> {
@@ -134,7 +147,7 @@ mod tests {
         fn assert_internal_range_equal(range_max: &RangeMax<usize, usize>, array_impl: &[Option<usize>]) {
             let mut grouped = array_impl.iter().copied().chain(iter::once(None)).skip_while(Option::is_none).collect::<Vec<_>>();
             grouped.dedup();
-            assert_eq!(range_max.map.len(), grouped.len(), "{range_max:?} {array_impl:?}");
+            assert_eq!(range_max.map.size(), grouped.len(), "{range_max:?} {array_impl:?}");
         }
         const MAX: usize = 5;
         for range1 in all_range(0..MAX) {
@@ -145,17 +158,17 @@ mod tests {
                         let mut array_impl = vec![None; MAX];
                         assert_all_equal(&range_max, &array_impl);
 
-                        range_max.insert(range1.clone(), values[0]);
+                        range_max = range_max.insert(range1.clone(), values[0]);
                         array_impl[range1.clone()].iter_mut().filter(|o| o.is_none() || o.unwrap() <= values[0]).for_each(|o| *o = Some(values[0]));
                         assert_all_equal(&range_max, &array_impl);
                         assert_internal_range_equal(&range_max, &array_impl);
 
-                        range_max.insert(range2.clone(), values[1]);
+                        range_max = range_max.insert(range2.clone(), values[1]);
                         array_impl[range2.clone()].iter_mut().filter(|o| o.is_none() || o.unwrap() <= values[1]).for_each(|o| *o = Some(values[1]));
                         assert_all_equal(&range_max, &array_impl);
                         assert_internal_range_equal(&range_max, &array_impl);
 
-                        range_max.insert(range3.clone(), values[2]);
+                        range_max = range_max.insert(range3.clone(), values[2]);
                         array_impl[range3.clone()].iter_mut().filter(|o| o.is_none() || o.unwrap() <= values[2]).for_each(|o| *o = Some(values[2]));
                         assert_all_equal(&range_max, &array_impl);
                         assert_internal_range_equal(&range_max, &array_impl);

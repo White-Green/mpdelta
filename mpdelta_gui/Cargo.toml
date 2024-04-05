@@ -20,6 +20,7 @@ ordered-float = { workspace = true }
 qcell = { workspace = true }
 regex = { workspace = true }
 rfd = { workspace = true }
+rpds = { workspace = true }
 serde = { workspace = true }
 smallvec = { workspace = true }
 tokio = { workspace = true }

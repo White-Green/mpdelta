@@ -526,10 +526,10 @@ impl<T: ParameterValueType> RootComponentClassForSerialize<T, Ser> {
                     .enumerate()
                     .flat_map(|(component_index, c)| {
                         let c = c.ro(&key);
-                        [(c.marker_left().clone(), PinIndex::Left), (c.marker_right().clone(), PinIndex::Right)]
+                        [(c.marker_left(), PinIndex::Left), (c.marker_right(), PinIndex::Right)]
                             .into_par_iter()
-                            .chain(c.markers().par_iter().enumerate().map(|(i, m)| (StaticPointerOwned::reference(m).clone(), PinIndex::Marker(i))))
-                            .map(move |(p, i)| (p, MarkerPinHandleForSerialize { component: Some(component_index), index: i }))
+                            .chain(c.markers().par_iter().enumerate().map(|(i, m)| (m, PinIndex::Marker(i))))
+                            .map(move |(p, i)| (StaticPointerOwned::reference(p).clone(), MarkerPinHandleForSerialize { component: Some(component_index), index: i }))
                     })
                     .chain([
                         (StaticPointerOwned::reference(value.left()).clone(), MarkerPinHandleForSerialize { component: None, index: PinIndex::Left }),
@@ -546,12 +546,6 @@ impl<T: ParameterValueType> RootComponentClassForSerialize<T, Ser> {
                                 let component = component.ro(&key);
                                 let left = component.marker_left();
                                 let right = component.marker_right();
-                                let Some(left) = left.upgrade() else {
-                                    return Err(SerializeError::InvalidMarkerPinHandle(left.clone()));
-                                };
-                                let Some(right) = right.upgrade() else {
-                                    return Err(SerializeError::InvalidMarkerPinHandle(right.clone()));
-                                };
                                 let mut markers = Vec::new();
                                 component.markers().par_iter().map(|p| MarkerPinForSerialize(p.ro(&key).locked_component_time())).collect_into_vec(&mut markers);
                                 let image_required_params = component.image_required_params().map(|image_required_params| {

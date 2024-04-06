@@ -11,6 +11,7 @@ pub enum RootComponentEditCommand<K: 'static, T: ParameterValueType> {
     InsertComponentInstanceTo(ComponentInstanceHandle<K, T>, usize),
     DeleteComponentInstance(ComponentInstanceHandle<K, T>),
     EditComponentLength(MarkerTime),
+    ConnectMarkerPins(MarkerPinHandle<K>, MarkerPinHandle<K>),
 }
 
 pub enum InstanceEditCommand<K: 'static, T: ParameterValueType> {
@@ -32,6 +33,7 @@ pub enum RootComponentEditEvent<'a, K: 'static, T: ParameterValueType> {
     InsertComponentInstanceTo(&'a ComponentInstanceHandle<K, T>, usize),
     DeleteComponentInstance(&'a ComponentInstanceHandle<K, T>),
     EditComponentLength(MarkerTime),
+    ConnectMarkerPins(&'a MarkerPinHandle<K>, &'a MarkerPinHandle<K>),
 }
 
 pub enum InstanceEditEvent<'a, K: 'static, T: ParameterValueType> {

@@ -4,13 +4,12 @@ use cgmath::Vector3;
 use futures::{stream, StreamExt, TryStreamExt};
 use mpdelta_core::common::mixed_fraction::MixedFraction;
 use mpdelta_core::component::instance::ComponentInstanceHandle;
-use mpdelta_core::component::marker_pin::{MarkerPinHandle, MarkerPinHandleOwned, MarkerTime};
+use mpdelta_core::component::marker_pin::{MarkerPinHandleOwned, MarkerTime};
 use mpdelta_core::component::parameter::value::DynEditableSingleValueMarker;
 use mpdelta_core::component::parameter::{
     AbstractFile, AudioRequiredParams, AudioRequiredParamsFixed, ImageRequiredParams, ImageRequiredParamsFixed, ImageRequiredParamsTransform, ImageRequiredParamsTransformFixed, Opacity, Parameter, ParameterType, ParameterValueRaw, ParameterValueType, VariableParameterValue,
 };
 use mpdelta_core::component::processor::{ComponentProcessorWrapper, ComponentsLinksPair, NativeProcessorInput};
-use mpdelta_core::ptr::StaticPointerOwned;
 use mpdelta_core::time::TimelineTime;
 use qcell::TCellOwner;
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
@@ -465,8 +464,8 @@ where
                         Ok(Parameter::Image((image, image_required_params()?)))
                     }
                     ParameterType::Audio(_) => {
-                        let left = component.marker_left().upgrade().unwrap().ro(&ctx.key).cached_timeline_time();
-                        let right = component.marker_right().upgrade().unwrap().ro(&ctx.key).cached_timeline_time();
+                        let left = component.marker_left().ro(&ctx.key).cached_timeline_time();
+                        let right = component.marker_right().ro(&ctx.key).cached_timeline_time();
                         let length = right - left;
                         let image = stream::iter(components)
                             .map(|component| {
@@ -544,22 +543,17 @@ pub struct TimeMap {
 }
 
 impl TimeMap {
-    fn new<K, T: ParameterValueType>(left: &MarkerPinHandle<K>, markers: &[MarkerPinHandleOwned<K>], right: &MarkerPinHandle<K>, key: &TCellOwner<K>) -> RenderResult<TimeMap, K, T> {
+    fn new<K, T: ParameterValueType>(left: &MarkerPinHandleOwned<K>, markers: &[MarkerPinHandleOwned<K>], right: &MarkerPinHandleOwned<K>, key: &TCellOwner<K>) -> RenderResult<TimeMap, K, T> {
         let markers = iter::once(left)
-            .chain(markers.iter().map(StaticPointerOwned::reference))
+            .chain(markers.iter())
             .chain(iter::once(right))
             .filter_map(|marker| {
-                let Some(marker) = marker.upgrade() else {
-                    return Some(Err(RenderError::InvalidMarker(marker.clone())));
-                };
                 let marker = marker.ro(key);
-                Some(Ok((marker.cached_timeline_time(), marker.locked_component_time()?)))
+                Some((marker.cached_timeline_time(), marker.locked_component_time()?))
             })
-            .collect::<Result<Vec<_>, _>>()?;
-        let left_ref = left.upgrade().ok_or_else(|| RenderError::InvalidMarker(left.clone()))?;
-        let right_ref = right.upgrade().ok_or_else(|| RenderError::InvalidMarker(right.clone()))?;
-        let left = left_ref.ro(key).cached_timeline_time();
-        let right = right_ref.ro(key).cached_timeline_time();
+            .collect::<Vec<_>>();
+        let left = left.ro(key).cached_timeline_time();
+        let right = right.ro(key).cached_timeline_time();
         Ok(TimeMap { left, right, markers })
     }
 
@@ -603,6 +597,7 @@ mod tests {
     use assert_matches::assert_matches;
     use mpdelta_core::component::marker_pin::MarkerPin;
     use mpdelta_core::mfrac;
+    use mpdelta_core::ptr::StaticPointerOwned;
     use qcell::TCell;
 
     struct TestParameterValueType;
@@ -627,7 +622,7 @@ mod tests {
         fn time_map_for_test(markers: &[MarkerPinHandleOwned<K>], key: &TCellOwner<K>, at: TimelineTime) -> Option<TimelineTime> {
             assert!(markers.len() >= 2);
             let [left, markers @ .., right] = markers else { unreachable!() };
-            TimeMap::new::<K, TestParameterValueType>(StaticPointerOwned::reference(left), markers, StaticPointerOwned::reference(right), key).ok()?.map(at)
+            TimeMap::new::<K, TestParameterValueType>(left, markers, right, key).ok()?.map(at)
         }
         macro_rules! marker {
             ($t:expr$(,)?) => {

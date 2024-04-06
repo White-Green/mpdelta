@@ -11,6 +11,8 @@ pub mod view;
 pub(crate) mod view_model_util;
 pub mod viewmodel;
 
+pub use view::new_gui;
+
 pub trait ImageRegister<T> {
     fn register_image(&mut self, texture: T) -> TextureId;
     fn unregister_image(&mut self, id: TextureId);

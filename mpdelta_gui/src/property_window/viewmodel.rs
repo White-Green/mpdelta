@@ -435,9 +435,7 @@ where
 
                     if let Some(instance) = instance.as_ref().and_then(StaticPointer::upgrade) {
                         let instance = instance.ro(&key);
-                        if let (Some(left), Some(right)) = (instance.marker_left().upgrade(), instance.marker_right().upgrade()) {
-                            selected_instance_at.store(Arc::new(left.ro(&key).cached_timeline_time().value().into_f64()..right.ro(&key).cached_timeline_time().value().into_f64()));
-                        }
+                        selected_instance_at.store(Arc::new(instance.marker_left().ro(&key).cached_timeline_time().value().into_f64()..instance.marker_right().ro(&key).cached_timeline_time().value().into_f64()));
                         let mut pin_time_map = MarkerPinTimeMap::builder(&key);
                         if let Some(params) = instance.image_required_params() {
                             pin_time_map.insert_by_image_required_params(params);

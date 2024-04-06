@@ -1,5 +1,5 @@
 use crate::component::class::ComponentClass;
-use crate::component::marker_pin::{MarkerPinHandle, MarkerPinHandleOwned};
+use crate::component::marker_pin::MarkerPinHandleOwned;
 use crate::component::parameter::{AudioRequiredParams, ImageRequiredParams, Parameter, ParameterNullableValue, ParameterValueFixed, ParameterValueType, Type, VariableParameterValue};
 use crate::component::processor::ComponentProcessorWrapper;
 use crate::ptr::{StaticPointer, StaticPointerCow, StaticPointerOwned};
@@ -143,11 +143,11 @@ impl<K, T: ParameterValueType> ComponentInstance<K, T> {
     pub fn component_class(&self) -> &StaticPointer<RwLock<dyn ComponentClass<K, T>>> {
         &self.component_class
     }
-    pub fn marker_left(&self) -> &MarkerPinHandle<K> {
-        StaticPointerOwned::reference(&self.marker_left)
+    pub fn marker_left(&self) -> &MarkerPinHandleOwned<K> {
+        &self.marker_left
     }
-    pub fn marker_right(&self) -> &MarkerPinHandle<K> {
-        StaticPointerOwned::reference(&self.marker_right)
+    pub fn marker_right(&self) -> &MarkerPinHandleOwned<K> {
+        &self.marker_right
     }
     pub fn markers(&self) -> &[MarkerPinHandleOwned<K>] {
         &self.markers

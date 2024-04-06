@@ -19,26 +19,34 @@ pub trait Gui<T> {
     fn ui_dyn(&mut self, ctx: &Context, image: &mut dyn ImageRegister<T>);
 }
 
-pub struct MPDeltaGUI<K: 'static, T, VM, PreviewViewModel, TimelineViewModel, PropertyWindowViewModel> {
+pub struct MPDeltaGUI<K: 'static, T, VM, PreviewVM, TimelineVM, PropertyWindowVM>
+where
+    K: 'static,
+    T: ParameterValueType,
+    VM: MainWindowViewModel<K, T>,
+    PreviewVM: PreviewViewModel<K, T>,
+    TimelineVM: TimelineViewModel<K, T>,
+    PropertyWindowVM: PropertyWindowViewModel<K, T>,
+{
     view_model: Arc<VM>,
-    preview: Preview<K, T, PreviewViewModel>,
-    timeline: Timeline<K, T, TimelineViewModel>,
-    property_window: PropertyWindow<K, T, PropertyWindowViewModel>,
+    preview: Preview<K, T, PreviewVM>,
+    timeline: Timeline<K, T, TimelineVM>,
+    property_window: PropertyWindow<K, T, PropertyWindowVM>,
 }
 
-impl<K: Send + Sync + 'static, T> MPDeltaGUI<K, T, (), (), (), ()> {
-    pub fn new<P: ViewModelParams<K, T> + 'static>(view_model_params: P) -> MPDeltaGUI<K, T, impl MainWindowViewModel<K, T>, impl PreviewViewModel<K, T>, impl TimelineViewModel<K, T>, impl PropertyWindowViewModel<K, T>>
-    where
-        T: ParameterValueType,
-    {
-        let global_ui_state = Arc::new(GlobalUIStateImpl::new(&view_model_params));
-        let edit_funnel = EditFunnelImpl::new(view_model_params.runtime().clone(), Arc::clone(view_model_params.edit()));
-        MPDeltaGUI {
-            view_model: MainWindowViewModelImpl::new(&global_ui_state, &view_model_params),
-            preview: Preview::new(PreviewViewModelImpl::new(&global_ui_state, &view_model_params)),
-            timeline: Timeline::new(TimelineViewModelImpl::new(&global_ui_state, &edit_funnel, &view_model_params)),
-            property_window: PropertyWindow::new(PropertyWindowViewModelImpl::new(&global_ui_state, &edit_funnel, &view_model_params)),
-        }
+pub fn new_gui<K, T, P>(view_model_params: P) -> MPDeltaGUI<K, T, impl MainWindowViewModel<K, T>, impl PreviewViewModel<K, T>, impl TimelineViewModel<K, T>, impl PropertyWindowViewModel<K, T>>
+where
+    K: Send + Sync + 'static,
+    T: ParameterValueType,
+    P: ViewModelParams<K, T> + 'static,
+{
+    let global_ui_state = Arc::new(GlobalUIStateImpl::new(&view_model_params));
+    let edit_funnel = EditFunnelImpl::new(view_model_params.runtime().clone(), Arc::clone(view_model_params.edit()));
+    MPDeltaGUI {
+        view_model: MainWindowViewModelImpl::new(&global_ui_state, &view_model_params),
+        preview: Preview::new(PreviewViewModelImpl::new(&global_ui_state, &view_model_params)),
+        timeline: Timeline::new(TimelineViewModelImpl::new(&global_ui_state, &edit_funnel, &view_model_params)),
+        property_window: PropertyWindow::new(PropertyWindowViewModelImpl::new(&global_ui_state, &edit_funnel, &view_model_params)),
     }
 }
 

@@ -10,6 +10,8 @@ pub enum ComponentInstanceEditEvent<'a, PinHandle> {
     MoveWholeBlock { time: f64, top: f32 },
     MovePinTemporary(&'a PinHandle, f64),
     MovePin(&'a PinHandle, f64),
+    PullLinkReleased(&'a PinHandle, Pos2),
+    PullLink(&'a PinHandle, Pos2),
 }
 
 impl<'a, PinHandle> Debug for ComponentInstanceEditEvent<'a, PinHandle> {
@@ -21,6 +23,8 @@ impl<'a, PinHandle> Debug for ComponentInstanceEditEvent<'a, PinHandle> {
             ComponentInstanceEditEvent::MoveWholeBlock { time, top } => f.debug_struct("MoveWholeBlock").field("time", time).field("top", top).finish(),
             ComponentInstanceEditEvent::MovePinTemporary(_, value) => f.debug_tuple("MovePinTemporary").field(value).finish(),
             ComponentInstanceEditEvent::MovePin(_, value) => f.debug_tuple("MovePin").field(value).finish(),
+            ComponentInstanceEditEvent::PullLinkReleased(_, value) => f.debug_tuple("PullLinkReleased").field(value).finish(),
+            ComponentInstanceEditEvent::PullLink(_, value) => f.debug_tuple("PullLink").field(value).finish(),
         }
     }
 }
@@ -174,13 +178,17 @@ where
         }))
         .for_each(|(handle, response)| {
             let make_event = if response.drag_released_by(PointerButton::Primary) {
-                ComponentInstanceEditEvent::MovePin
+                ComponentInstanceEditEvent::MovePin(handle, point_to_time(response.interact_pointer_pos().unwrap().x))
             } else if response.dragged_by(PointerButton::Primary) {
-                ComponentInstanceEditEvent::MovePinTemporary
+                ComponentInstanceEditEvent::MovePinTemporary(handle, point_to_time(response.interact_pointer_pos().unwrap().x))
+            } else if response.drag_released_by(PointerButton::Secondary) {
+                ComponentInstanceEditEvent::PullLinkReleased(handle, response.interact_pointer_pos().unwrap())
+            } else if response.dragged_by(PointerButton::Secondary) {
+                ComponentInstanceEditEvent::PullLink(handle, response.interact_pointer_pos().unwrap())
             } else {
                 return;
             };
-            edit(make_event(handle, point_to_time(response.interact_pointer_pos().unwrap().x)));
+            edit(make_event);
         });
         block_rect.bottom() + padding * 2.
     }

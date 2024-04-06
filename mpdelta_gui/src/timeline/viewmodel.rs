@@ -59,17 +59,17 @@ where
     fn new(handle: ComponentInstanceHandle<K, T>, key: &TCellOwner<K>, i: usize, pin_map: &mut HashMap<MarkerPinHandle<K>, ComponentInstanceHandle<K, T>>) -> Option<DefaultComponentInstanceData<K, T>> {
         let component = handle.upgrade()?;
         let component = component.ro(key);
-        let start_time = component.marker_left().upgrade()?.ro(key).cached_timeline_time().value().into_f64();
-        let end_time = component.marker_right().upgrade()?.ro(key).cached_timeline_time().value().into_f64();
-        pin_map.extend(component.markers().iter().map(StaticPointerOwned::reference).chain([component.marker_left(), component.marker_right()]).cloned().map(|marker| (marker, handle.clone())));
+        let start_time = component.marker_left().ro(key).cached_timeline_time().value().into_f64();
+        let end_time = component.marker_right().ro(key).cached_timeline_time().value().into_f64();
+        pin_map.extend(component.markers().iter().chain([component.marker_left(), component.marker_right()]).map(StaticPointerOwned::reference).cloned().map(|marker| (marker, handle.clone())));
         let left_pin = MarkerPinData {
-            handle: component.marker_left().clone(),
-            at: component.marker_left().upgrade()?.ro(key).cached_timeline_time().value().into_f64(),
+            handle: StaticPointerOwned::reference(component.marker_left()).clone(),
+            at: component.marker_left().ro(key).cached_timeline_time().value().into_f64(),
             render_location: Cell::new(Pos2::default()),
         };
         let right_pin = MarkerPinData {
-            handle: component.marker_right().clone(),
-            at: component.marker_right().upgrade()?.ro(key).cached_timeline_time().value().into_f64(),
+            handle: StaticPointerOwned::reference(component.marker_right()).clone(),
+            at: component.marker_right().ro(key).cached_timeline_time().value().into_f64(),
             render_location: Cell::new(Pos2::default()),
         };
         let pins = component
@@ -210,6 +210,7 @@ pub trait TimelineViewModel<K: 'static, T: ParameterValueType> {
     fn move_component_instance(&self, handle: &Self::ComponentInstanceHandle, to: f64);
     fn insert_component_instance_to(&self, handle: &Self::ComponentInstanceHandle, index: usize);
     fn move_marker_pin(&self, instance_handle: &Self::ComponentInstanceHandle, pin_handle: &Self::MarkerPinHandle, to: f64);
+    fn connect_marker_pins(&self, from: &Self::MarkerPinHandle, to: &Self::MarkerPinHandle);
     type ComponentLinkHandle: Clone + Eq + Hash;
     fn component_links<R>(&self, f: impl FnOnce(&ComponentLinkDataList<Self::ComponentLinkHandle, Self::MarkerPinHandle, Self::ComponentInstanceHandle>) -> R) -> R;
     fn edit_marker_link_length(&self, link: &Self::ComponentLinkHandle, value: f64);
@@ -239,6 +240,7 @@ pub enum Message<K: 'static, T: ParameterValueType> {
     MoveComponentInstance(ComponentInstanceHandle<K, T>, f64),
     InsertComponentInstanceTo(ComponentInstanceHandle<K, T>, usize),
     MoveMarkerPin(ComponentInstanceHandle<K, T>, MarkerPinHandle<K>, f64),
+    ConnectMarkerPins(MarkerPinHandle<K>, MarkerPinHandle<K>),
     EditMarkerLinkLength(MarkerLinkHandle<K>, f64),
     EditComponentLength(MarkerTime),
 }
@@ -257,6 +259,7 @@ where
             &Message::MoveComponentInstance(ref value, to) => Message::MoveComponentInstance(value.clone(), to),
             &Message::InsertComponentInstanceTo(ref instance, index) => Message::InsertComponentInstanceTo(instance.clone(), index),
             &Message::MoveMarkerPin(ref instance, ref pin, to) => Message::MoveMarkerPin(instance.clone(), pin.clone(), to),
+            Message::ConnectMarkerPins(from, to) => Message::ConnectMarkerPins(from.clone(), to.clone()),
             &Message::EditMarkerLinkLength(ref value, length) => Message::EditMarkerLinkLength(value.clone(), length),
             &Message::EditComponentLength(value) => Message::EditComponentLength(value),
         }
@@ -280,6 +283,7 @@ where
             (Message::MoveComponentInstance(a, at), Message::MoveComponentInstance(b, bt)) => a == b && at == bt,
             (Message::InsertComponentInstanceTo(a, ai), Message::InsertComponentInstanceTo(b, bi)) => a == b && ai == bi,
             (Message::MoveMarkerPin(ai, ap, at), Message::MoveMarkerPin(bi, bp, bt)) => ai == bi && ap == bp && at == bt,
+            (Message::ConnectMarkerPins(a, b), Message::ConnectMarkerPins(c, d)) => a == c && b == d,
             (Message::EditMarkerLinkLength(a, al), Message::EditMarkerLinkLength(b, bl)) => a == b && al == bl,
             (Message::EditComponentLength(a), Message::EditComponentLength(b)) => a == b,
             _ => unreachable!(),
@@ -384,7 +388,7 @@ impl<K: Send + Sync + 'static, T: ParameterValueType> TimelineViewModelImpl<K, T
                     .filter(|message| {
                         matches!(
                             message,
-                            Message::EditComponentLength(_) | Message::AddComponentInstance(_) | Message::DeleteComponentInstance(_) | Message::EditMarkerLinkLength(_, _) | Message::InsertComponentInstanceTo(_, _)
+                            Message::EditComponentLength(_) | Message::AddComponentInstance(_) | Message::DeleteComponentInstance(_) | Message::EditMarkerLinkLength(_, _) | Message::InsertComponentInstanceTo(_, _) | Message::ConnectMarkerPins(_, _)
                         )
                     })
                     .handle_async({
@@ -408,6 +412,7 @@ impl<K: Send + Sync + 'static, T: ParameterValueType> TimelineViewModelImpl<K, T
                                     Message::EditMarkerLinkLength(target, len) => RootComponentEditCommand::EditMarkerLinkLength(target, TimelineTime::new(MixedFraction::from_f64(len))),
                                     Message::EditComponentLength(len) => RootComponentEditCommand::EditComponentLength(len),
                                     Message::InsertComponentInstanceTo(handle, index) => RootComponentEditCommand::InsertComponentInstanceTo(handle, index),
+                                    Message::ConnectMarkerPins(from, to) => RootComponentEditCommand::ConnectMarkerPins(from, to),
                                     _ => unreachable!(),
                                 };
                                 edit.edit(&target, command);
@@ -575,6 +580,10 @@ where
 
     fn move_marker_pin(&self, instance_handle: &Self::ComponentInstanceHandle, pin_handle: &Self::MarkerPinHandle, to: f64) {
         self.message_router.handle(Message::MoveMarkerPin(instance_handle.clone(), pin_handle.clone(), to));
+    }
+
+    fn connect_marker_pins(&self, from: &Self::MarkerPinHandle, to: &Self::MarkerPinHandle) {
+        self.message_router.handle(Message::ConnectMarkerPins(from.clone(), to.clone()));
     }
 
     type ComponentLinkHandle = MarkerLinkHandle<K>;

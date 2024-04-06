@@ -14,7 +14,6 @@ use mpdelta_core::core::{ComponentClassLoader, MPDeltaCore, MPDeltaCoreArgs, New
 use mpdelta_core::ptr::{StaticPointer, StaticPointerOwned};
 use mpdelta_core_audio::AudioType;
 use mpdelta_core_vulkano::ImageType;
-use mpdelta_gui::view::MPDeltaGUI;
 use mpdelta_gui::viewmodel::ViewModelParamsImpl;
 use mpdelta_gui_audio_player_cpal::CpalAudioPlayer;
 use mpdelta_gui_vulkano::MPDeltaGUIVulkano;
@@ -204,7 +203,7 @@ fn main() {
         available_audio_codec: encoder_builder.available_audio_codec().into_iter().collect::<Vec<_>>().into(),
         encode: Arc::clone(&core),
     };
-    let gui = MPDeltaGUI::new(params);
+    let gui = mpdelta_gui::new_gui(params);
     let gui = MPDeltaGUIVulkano::new(context, event_loop, windows, gui);
     gui.main();
     drop(core);

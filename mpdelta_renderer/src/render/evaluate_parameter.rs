@@ -103,14 +103,8 @@ where
                     return Some(Err(RenderError::InvalidComponent(component.clone())));
                 };
                 let component = component.ro(&ctx.key);
-                let Some(left) = component.marker_left().upgrade() else {
-                    return Some(Err(RenderError::InvalidMarker(component.marker_left().clone())));
-                };
-                let left = left.ro(&ctx.key).cached_timeline_time();
-                let Some(right) = component.marker_right().upgrade() else {
-                    return Some(Err(RenderError::InvalidMarker(component.marker_right().clone())));
-                };
-                let right = right.ro(&ctx.key).cached_timeline_time();
+                let left = component.marker_left().ro(&ctx.key).cached_timeline_time();
+                let right = component.marker_right().ro(&ctx.key).cached_timeline_time();
                 (left, right)
             };
             if !(left <= at && at <= right) {

@@ -2,7 +2,7 @@ use crate::timeline::view::range_max::RangeMax;
 use crate::timeline::view::widgets::component_instance_block::{ComponentInstanceBlock, ComponentInstanceEditEvent};
 use crate::timeline::viewmodel::{ComponentClassData, ComponentClassDataList, ComponentInstanceDataList, ComponentLinkDataList, TimelineViewModel};
 use egui::style::ScrollStyle;
-use egui::{Color32, PointerButton, ScrollArea, Sense, Stroke, Ui, Vec2};
+use egui::{Color32, PointerButton, Pos2, ScrollArea, Sense, Stroke, Ui, Vec2};
 use mpdelta_core::common::mixed_fraction::MixedFraction;
 use mpdelta_core::component::marker_pin::MarkerTime;
 use mpdelta_core::component::parameter::ParameterValueType;
@@ -15,12 +15,18 @@ use std::{convert, mem};
 mod range_max;
 mod widgets;
 
-pub struct Timeline<K, T, VM> {
+pub struct Timeline<K, T, VM>
+where
+    K: 'static,
+    T: ParameterValueType,
+    VM: TimelineViewModel<K, T>,
+{
     view_model: Arc<VM>,
     size: Vec2,
     scroll_offset: Vec2,
     component_top: Vec<RangeMax<OrderedFloat<f64>, f32>>,
     component_top_buf: Vec<RangeMax<OrderedFloat<f64>, f32>>,
+    pulling_pin: Option<(VM::MarkerPinHandle, Pos2)>,
     _phantom: PhantomData<(K, T)>,
 }
 
@@ -32,6 +38,7 @@ impl<K: 'static, T: ParameterValueType, VM: TimelineViewModel<K, T>> Timeline<K,
             scroll_offset: Vec2::ZERO,
             component_top: Vec::new(),
             component_top_buf: Vec::new(),
+            pulling_pin: None,
             _phantom: PhantomData,
         }
     }
@@ -65,15 +72,29 @@ impl<K: 'static, T: ParameterValueType, VM: TimelineViewModel<K, T>> Timeline<K,
                         .flat_map(|instance| [&instance.left_pin, &instance.right_pin].into_iter().chain(&instance.pins))
                         .map(|pin| (&pin.handle, pin.render_location.get()))
                         .collect::<HashMap<_, _>>();
+                    let pull_link_pointer = self.pulling_pin.as_ref().map_or(Pos2::new(f32::INFINITY, f32::INFINITY), |(_, pos)| *pos);
+                    let mut pull_link_target_pin = None;
                     self.view_model.component_links(|ComponentLinkDataList { list }| {
                         list.iter().for_each(|link| {
                             let from = pin_position_map.get(&link.from_pin);
                             let to = pin_position_map.get(&link.to_pin);
                             if let (Some(from), Some(to)) = (from, to) {
+                                const EPS_SQUARED: f32 = 25.;
+                                if (*from - pull_link_pointer).length_sq() < EPS_SQUARED {
+                                    pull_link_target_pin = Some(link.from_pin.clone());
+                                }
+                                if (*to - pull_link_pointer).length_sq() < EPS_SQUARED {
+                                    pull_link_target_pin = Some(link.to_pin.clone());
+                                }
                                 ui.painter().line_segment([*from, *to], egui::Stroke::new(1., ui.visuals().text_color()));
                             }
                         });
                     });
+                    if let Some((pin, pointer)) = &self.pulling_pin {
+                        let from = pin_position_map.get(pin).unwrap();
+                        ui.painter().line_segment([*from, *pointer], egui::Stroke::new(1., Color32::GREEN));
+                    }
+
                     self.component_top_buf.clear();
                     let mut range_max = RangeMax::new();
                     for instance_data in component_instances.iter() {
@@ -93,6 +114,15 @@ impl<K: 'static, T: ParameterValueType, VM: TimelineViewModel<K, T>> Timeline<K,
                                 self.view_model.insert_component_instance_to(&instance_data.handle, index);
                             }
                             ComponentInstanceEditEvent::MovePinTemporary(pin, to) | ComponentInstanceEditEvent::MovePin(pin, to) => self.view_model.move_marker_pin(&instance_data.handle, pin, to),
+                            ComponentInstanceEditEvent::PullLinkReleased(handle, _pos) => {
+                                if let Some(target_pin) = &pull_link_target_pin {
+                                    if handle != target_pin {
+                                        self.view_model.connect_marker_pins(handle, target_pin);
+                                    }
+                                }
+                                self.pulling_pin = None;
+                            }
+                            ComponentInstanceEditEvent::PullLink(handle, pos) => self.pulling_pin = Some((handle.clone(), pos)),
                         })
                         .show(ui);
                         range_max = range_max.insert(OrderedFloat(instance_data.start_time)..OrderedFloat(instance_data.end_time), block_bottom);
@@ -257,6 +287,8 @@ mod tests {
             fn insert_component_instance_to(&self, _handle: &Self::ComponentInstanceHandle, _index: usize) {}
 
             fn move_marker_pin(&self, _instance_handle: &Self::ComponentInstanceHandle, _pin_handle: &Self::MarkerPinHandle, _to: f64) {}
+
+            fn connect_marker_pins(&self, _from: &Self::MarkerPinHandle, _to: &Self::MarkerPinHandle) {}
 
             type ComponentLinkHandle = &'static str;
 

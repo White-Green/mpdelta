@@ -662,29 +662,24 @@ where
             InstanceEditCommand::AddMarkerPin(at) => {
                 {
                     let mut key = self.key.write().await;
-                    let Err(insert_index) = target.ro(&key).markers().binary_search_by_key(&at, |p| p.ro(&key).cached_timeline_time()) else {
+                    let target_read = target.ro(&key);
+                    let Err(insert_index) = target_read.markers().binary_search_by_key(&at, |p| p.ro(&key).cached_timeline_time()) else {
                         return Err(ProjectEditError::InvalidMarkerPinAddPosition);
                     };
-                    if at <= target.ro(&key).marker_left().ro(&key).cached_timeline_time() || target.ro(&key).marker_right().ro(&key).cached_timeline_time() <= at {
+                    if at <= target_read.marker_left().ro(&key).cached_timeline_time() || target_read.marker_right().ro(&key).cached_timeline_time() <= at {
                         return Err(ProjectEditError::InvalidMarkerPinAddPosition);
                     }
-                    let mut iter_left = target
-                        .ro(&key)
-                        .marker_left()
-                        .ro(&key)
-                        .locked_component_time()
-                        .map(|locked| (locked, target.ro(&key).marker_left().ro(&key).cached_timeline_time()))
-                        .into_iter()
-                        .chain(target.ro(&key).markers().get(..insert_index).into_iter().flatten().filter_map(|p| p.ro(&key).locked_component_time().map(|locked| (locked, p.ro(&key).cached_timeline_time()))))
+                    let mut iter_left = iter::once(target_read.marker_left())
+                        .chain(target_read.markers().get(..insert_index).into_iter().flatten())
+                        .filter_map(|p| {
+                            let p = p.ro(&key);
+                            p.locked_component_time().map(|locked| (locked, p.cached_timeline_time()))
+                        })
                         .rev();
-                    let mut iter_right = target
-                        .ro(&key)
-                        .markers()
-                        .get(insert_index..)
-                        .into_iter()
-                        .flatten()
-                        .filter_map(|p| p.ro(&key).locked_component_time().map(|locked| (locked, p.ro(&key).cached_timeline_time())))
-                        .chain(target.ro(&key).marker_left().ro(&key).locked_component_time().map(|locked| (locked, target.ro(&key).marker_left().ro(&key).cached_timeline_time())));
+                    let mut iter_right = target_read.markers().get(insert_index..).into_iter().flatten().chain(iter::once(target_read.marker_right())).filter_map(|p| {
+                        let p = p.ro(&key);
+                        p.locked_component_time().map(|locked| (locked, p.cached_timeline_time()))
+                    });
                     let (left, right) = match (iter_left.next(), iter_right.next()) {
                         (Some(left), Some(right)) => (left, Some(right)),
                         (Some(left), None) => {
@@ -698,7 +693,7 @@ where
                         (None, None) => panic!("broken component structure"),
                     };
                     let lock_time = if let Some(right) = right {
-                        let p = (at - left.1).value() / (right.1 - left.1).value();
+                        let p = ((at) - (left.1)).value() / ((right.1) - (left.1)).value();
                         left.0.value() + (right.0.value() - left.0.value()) * p
                     } else {
                         let base = left.1.value();

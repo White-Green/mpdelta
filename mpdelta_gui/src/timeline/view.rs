@@ -6,6 +6,7 @@ use egui::{Color32, PointerButton, Pos2, ScrollArea, Sense, Stroke, Ui, Vec2};
 use mpdelta_core::common::mixed_fraction::MixedFraction;
 use mpdelta_core::component::marker_pin::MarkerTime;
 use mpdelta_core::component::parameter::ParameterValueType;
+use mpdelta_core::time::TimelineTime;
 use ordered_float::OrderedFloat;
 use std::collections::HashMap;
 use std::marker::PhantomData;
@@ -27,6 +28,7 @@ where
     component_top: Vec<RangeMax<OrderedFloat<f64>, f32>>,
     component_top_buf: Vec<RangeMax<OrderedFloat<f64>, f32>>,
     pulling_pin: Option<(VM::MarkerPinHandle, Pos2)>,
+    context_menu_opened_pos: (f64, f32),
     _phantom: PhantomData<(K, T)>,
 }
 
@@ -39,6 +41,7 @@ impl<K: 'static, T: ParameterValueType, VM: TimelineViewModel<K, T>> Timeline<K,
             component_top: Vec::new(),
             component_top_buf: Vec::new(),
             pulling_pin: None,
+            context_menu_opened_pos: (0., 0.),
             _phantom: PhantomData,
         }
     }
@@ -123,6 +126,9 @@ impl<K: 'static, T: ParameterValueType, VM: TimelineViewModel<K, T>> Timeline<K,
                                 self.pulling_pin = None;
                             }
                             ComponentInstanceEditEvent::PullLink(handle, pos) => self.pulling_pin = Some((handle.clone(), pos)),
+                            ComponentInstanceEditEvent::UpdateContextMenuOpenedPos(time, y) => self.context_menu_opened_pos = (time, y),
+                            ComponentInstanceEditEvent::AddMarkerPin => self.view_model.add_marker_pin(&instance_data.handle, TimelineTime::new(MixedFraction::from_f64(self.context_menu_opened_pos.0))),
+                            ComponentInstanceEditEvent::DeletePin(handle) => self.view_model.delete_marker_pin(&instance_data.handle, handle),
                         })
                         .show(ui);
                         range_max = range_max.insert(OrderedFloat(instance_data.start_time)..OrderedFloat(instance_data.end_time), block_bottom);
@@ -132,7 +138,11 @@ impl<K: 'static, T: ParameterValueType, VM: TimelineViewModel<K, T>> Timeline<K,
                 let seek = self.view_model.seek();
                 let seek_line_position = time_to_point(seek.value().into_f64());
                 ui.painter().vline(seek_line_position, response.rect.y_range(), Stroke::new(1., egui::Color32::RED));
+                let pointer_pos = response.interact_pointer_pos();
                 response.context_menu(|ui| {
+                    if let Some(pointer_pos) = pointer_pos {
+                        self.context_menu_opened_pos = (point_to_time(pointer_pos.x), pointer_pos.y);
+                    }
                     self.view_model.component_classes(|ComponentClassDataList { list }| {
                         for ComponentClassData { handle } in list {
                             if ui.button("add").clicked() {
@@ -289,6 +299,10 @@ mod tests {
             fn move_marker_pin(&self, _instance_handle: &Self::ComponentInstanceHandle, _pin_handle: &Self::MarkerPinHandle, _to: f64) {}
 
             fn connect_marker_pins(&self, _from: &Self::MarkerPinHandle, _to: &Self::MarkerPinHandle) {}
+
+            fn add_marker_pin(&self, _instance: &Self::ComponentInstanceHandle, _at: TimelineTime) {}
+
+            fn delete_marker_pin(&self, _instance: &Self::ComponentInstanceHandle, _pin: &Self::MarkerPinHandle) {}
 
             type ComponentLinkHandle = &'static str;
 

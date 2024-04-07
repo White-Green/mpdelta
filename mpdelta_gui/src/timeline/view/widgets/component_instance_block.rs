@@ -12,6 +12,9 @@ pub enum ComponentInstanceEditEvent<'a, PinHandle> {
     MovePin(&'a PinHandle, f64),
     PullLinkReleased(&'a PinHandle, Pos2),
     PullLink(&'a PinHandle, Pos2),
+    UpdateContextMenuOpenedPos(f64, f32),
+    AddMarkerPin,
+    DeletePin(&'a PinHandle),
 }
 
 impl<'a, PinHandle> Debug for ComponentInstanceEditEvent<'a, PinHandle> {
@@ -25,6 +28,9 @@ impl<'a, PinHandle> Debug for ComponentInstanceEditEvent<'a, PinHandle> {
             ComponentInstanceEditEvent::MovePin(_, value) => f.debug_tuple("MovePin").field(value).finish(),
             ComponentInstanceEditEvent::PullLinkReleased(_, value) => f.debug_tuple("PullLinkReleased").field(value).finish(),
             ComponentInstanceEditEvent::PullLink(_, value) => f.debug_tuple("PullLink").field(value).finish(),
+            ComponentInstanceEditEvent::UpdateContextMenuOpenedPos(time, y) => f.debug_tuple("UpdateContextMenuOpenedPos").field(time).field(y).finish(),
+            ComponentInstanceEditEvent::AddMarkerPin => write!(f, "AddMarkerPin"),
+            ComponentInstanceEditEvent::DeletePin(_) => f.debug_tuple("DeletePin").finish(),
         }
     }
 }
@@ -154,8 +160,16 @@ where
                 edit(ComponentInstanceEditEvent::MoveWholeBlockTemporary { time: new_start_time, top: drag_delta.y });
             }
         }
+        let pointer_pos = response.interact_pointer_pos();
         response.context_menu(|ui| {
-            if ui.button("delete").clicked() {
+            if let Some(pointer_pos) = pointer_pos {
+                edit(ComponentInstanceEditEvent::UpdateContextMenuOpenedPos(point_to_time(pointer_pos.x), pointer_pos.y));
+            }
+            if ui.button("add pin").clicked() {
+                edit(ComponentInstanceEditEvent::AddMarkerPin);
+                ui.close_menu();
+            }
+            if ui.button("delete component").clicked() {
                 edit(ComponentInstanceEditEvent::Delete);
                 ui.close_menu();
             }
@@ -181,11 +195,21 @@ where
                 ComponentInstanceEditEvent::MovePin(handle, point_to_time(response.interact_pointer_pos().unwrap().x))
             } else if response.dragged_by(PointerButton::Primary) {
                 ComponentInstanceEditEvent::MovePinTemporary(handle, point_to_time(response.interact_pointer_pos().unwrap().x))
-            } else if response.drag_released_by(PointerButton::Secondary) {
+            } else if response.drag_released_by(PointerButton::Middle) {
                 ComponentInstanceEditEvent::PullLinkReleased(handle, response.interact_pointer_pos().unwrap())
-            } else if response.dragged_by(PointerButton::Secondary) {
+            } else if response.dragged_by(PointerButton::Middle) {
                 ComponentInstanceEditEvent::PullLink(handle, response.interact_pointer_pos().unwrap())
             } else {
+                let pointer_pos = response.interact_pointer_pos();
+                response.context_menu(|ui| {
+                    if let Some(pointer_pos) = pointer_pos {
+                        edit(ComponentInstanceEditEvent::UpdateContextMenuOpenedPos(point_to_time(pointer_pos.x), pointer_pos.y));
+                    }
+                    if ui.button("delete pin").clicked() {
+                        edit(ComponentInstanceEditEvent::DeletePin(handle));
+                        ui.close_menu();
+                    }
+                });
                 return;
             };
             edit(make_event);

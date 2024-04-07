@@ -129,6 +129,8 @@ impl<K: 'static, T: ParameterValueType, VM: TimelineViewModel<K, T>> Timeline<K,
                             ComponentInstanceEditEvent::UpdateContextMenuOpenedPos(time, y) => self.context_menu_opened_pos = (time, y),
                             ComponentInstanceEditEvent::AddMarkerPin => self.view_model.add_marker_pin(&instance_data.handle, TimelineTime::new(MixedFraction::from_f64(self.context_menu_opened_pos.0))),
                             ComponentInstanceEditEvent::DeletePin(handle) => self.view_model.delete_marker_pin(&instance_data.handle, handle),
+                            ComponentInstanceEditEvent::UnlockPin(handle) => self.view_model.unlock_marker_pin(&instance_data.handle, handle),
+                            ComponentInstanceEditEvent::LockPin(handle) => self.view_model.lock_marker_pin(&instance_data.handle, handle),
                         })
                         .show(ui);
                         range_max = range_max.insert(OrderedFloat(instance_data.start_time)..OrderedFloat(instance_data.end_time), block_bottom);
@@ -221,16 +223,19 @@ mod tests {
                             left_pin: MarkerPinData {
                                 handle: "0 - left",
                                 at: 0.0,
+                                locked: true,
                                 render_location: Cell::new(Pos2::default()),
                             },
                             right_pin: MarkerPinData {
                                 handle: "0 - right",
                                 at: 1.0,
+                                locked: true,
                                 render_location: Cell::new(Pos2::default()),
                             },
                             pins: vec![MarkerPinData {
                                 handle: "0 - pin 0",
                                 at: 0.5,
+                                locked: true,
                                 render_location: Cell::new(Pos2::default()),
                             }],
                         },
@@ -244,11 +249,13 @@ mod tests {
                             left_pin: MarkerPinData {
                                 handle: "1 - left",
                                 at: 2.0,
+                                locked: true,
                                 render_location: Cell::new(Pos2::default()),
                             },
                             right_pin: MarkerPinData {
                                 handle: "1 - right",
                                 at: 4.0,
+                                locked: true,
                                 render_location: Cell::new(Pos2::default()),
                             },
                             pins: vec![],
@@ -263,22 +270,26 @@ mod tests {
                             left_pin: MarkerPinData {
                                 handle: "2 - left",
                                 at: 0.5,
+                                locked: true,
                                 render_location: Cell::new(Pos2::default()),
                             },
                             right_pin: MarkerPinData {
                                 handle: "2 - right",
                                 at: 1.8,
+                                locked: true,
                                 render_location: Cell::new(Pos2::default()),
                             },
                             pins: vec![
                                 MarkerPinData {
                                     handle: "2 - pin 0",
                                     at: 0.6,
+                                    locked: true,
                                     render_location: Cell::new(Pos2::default()),
                                 },
                                 MarkerPinData {
                                     handle: "2 - pin 1",
                                     at: 1.5,
+                                    locked: true,
                                     render_location: Cell::new(Pos2::default()),
                                 },
                             ],
@@ -303,6 +314,10 @@ mod tests {
             fn add_marker_pin(&self, _instance: &Self::ComponentInstanceHandle, _at: TimelineTime) {}
 
             fn delete_marker_pin(&self, _instance: &Self::ComponentInstanceHandle, _pin: &Self::MarkerPinHandle) {}
+
+            fn lock_marker_pin(&self, _instance: &Self::ComponentInstanceHandle, _pin: &Self::MarkerPinHandle) {}
+
+            fn unlock_marker_pin(&self, _instance: &Self::ComponentInstanceHandle, _pin: &Self::MarkerPinHandle) {}
 
             type ComponentLinkHandle = &'static str;
 

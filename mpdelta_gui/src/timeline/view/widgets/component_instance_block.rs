@@ -1,4 +1,4 @@
-use crate::timeline::viewmodel::ComponentInstanceData;
+use crate::timeline::viewmodel::{ComponentInstanceData, MarkerPinData};
 use egui::{Id, PointerButton, Pos2, Rect, Sense, Shape, TextStyle, Ui, Vec2};
 use std::fmt::{Debug, Formatter};
 use std::hash::Hash;
@@ -15,6 +15,8 @@ pub enum ComponentInstanceEditEvent<'a, PinHandle> {
     UpdateContextMenuOpenedPos(f64, f32),
     AddMarkerPin,
     DeletePin(&'a PinHandle),
+    UnlockPin(&'a PinHandle),
+    LockPin(&'a PinHandle),
 }
 
 impl<'a, PinHandle> Debug for ComponentInstanceEditEvent<'a, PinHandle> {
@@ -31,6 +33,8 @@ impl<'a, PinHandle> Debug for ComponentInstanceEditEvent<'a, PinHandle> {
             ComponentInstanceEditEvent::UpdateContextMenuOpenedPos(time, y) => f.debug_tuple("UpdateContextMenuOpenedPos").field(time).field(y).finish(),
             ComponentInstanceEditEvent::AddMarkerPin => write!(f, "AddMarkerPin"),
             ComponentInstanceEditEvent::DeletePin(_) => f.debug_tuple("DeletePin").finish(),
+            ComponentInstanceEditEvent::UnlockPin(_) => f.debug_tuple("UnlockPin").finish(),
+            ComponentInstanceEditEvent::LockPin(_) => f.debug_tuple("LockPin").finish(),
         }
     }
 }
@@ -176,13 +180,13 @@ where
         });
         let pin_head_y_range = block_rect.top() - pin_head_size..=block_rect.top();
         [
-            (&left_pin.handle, ui.interact(Rect::from_x_y_ranges(left..=left + pin_head_size / 2., pin_head_y_range.clone()), Id::new((handle, &left_pin.handle)), Sense::click_and_drag())),
-            (&right_pin.handle, ui.interact(Rect::from_x_y_ranges(right - pin_head_size / 2.0..=right, pin_head_y_range.clone()), Id::new((handle, &right_pin.handle)), Sense::click_and_drag())),
+            (left_pin, ui.interact(Rect::from_x_y_ranges(left..=left + pin_head_size / 2., pin_head_y_range.clone()), Id::new((handle, &left_pin.handle)), Sense::click_and_drag())),
+            (right_pin, ui.interact(Rect::from_x_y_ranges(right - pin_head_size / 2.0..=right, pin_head_y_range.clone()), Id::new((handle, &right_pin.handle)), Sense::click_and_drag())),
         ]
         .into_iter()
         .chain(pins.iter().map(|pin| {
             (
-                &pin.handle,
+                pin,
                 ui.interact(
                     Rect::from_x_y_ranges(time_to_point(pin.at) - pin_head_size / 2.0..=time_to_point(pin.at) + pin_head_size / 2.0, pin_head_y_range.clone()),
                     Id::new((handle, &pin.handle)),
@@ -190,7 +194,7 @@ where
                 ),
             )
         }))
-        .for_each(|(handle, response)| {
+        .for_each(|(&MarkerPinData { ref handle, locked, .. }, response)| {
             let make_event = if response.drag_released_by(PointerButton::Primary) {
                 ComponentInstanceEditEvent::MovePin(handle, point_to_time(response.interact_pointer_pos().unwrap().x))
             } else if response.dragged_by(PointerButton::Primary) {
@@ -208,6 +212,18 @@ where
                     if ui.button("delete pin").clicked() {
                         edit(ComponentInstanceEditEvent::DeletePin(handle));
                         ui.close_menu();
+                    }
+                    if locked {
+                        if ui.button("unlock pin").clicked() {
+                            edit(ComponentInstanceEditEvent::UnlockPin(handle));
+                            ui.close_menu();
+                        }
+                    } else {
+                        #[allow(clippy::collapsible_else_if)]
+                        if ui.button("lock pin").clicked() {
+                            edit(ComponentInstanceEditEvent::LockPin(handle));
+                            ui.close_menu();
+                        }
                     }
                 });
                 return;

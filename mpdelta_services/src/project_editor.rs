@@ -21,6 +21,8 @@ use thiserror::Error;
 use tokio::sync::RwLock;
 
 mod dsa;
+#[cfg(test)]
+mod tests;
 
 // TODO: Listenerをusizeで管理してるので、overflowしたらバグる(ほとんど気にしなくても良さそうではあるが)
 pub struct ProjectEditor<K: 'static, T> {
@@ -111,16 +113,8 @@ where
                     let guard = instance.ro(&key);
                     let left = guard.marker_left();
                     let right = guard.marker_right();
-                    let link_for_zero = MarkerLink {
-                        from: base,
-                        to: StaticPointerOwned::reference(left).clone(),
-                        len: TimelineTime::new(MixedFraction::from_integer(1)),
-                    };
-                    let link_for_length = MarkerLink {
-                        from: StaticPointerOwned::reference(left).clone(),
-                        to: StaticPointerOwned::reference(right).clone(),
-                        len: TimelineTime::new(MixedFraction::from_integer(1)),
-                    };
+                    let link_for_zero = MarkerLink::new(base, StaticPointerOwned::reference(left).clone(), TimelineTime::new(MixedFraction::from_integer(1)));
+                    let link_for_length = MarkerLink::new(StaticPointerOwned::reference(left).clone(), StaticPointerOwned::reference(right).clone(), TimelineTime::new(MixedFraction::from_integer(1)));
                     let mut item = target.get_mut().await;
                     item.component_mut().push(instance);
                     item.link_mut().extend([StaticPointerOwned::new(TCell::new(link_for_zero)), StaticPointerOwned::new(TCell::new(link_for_length))]);
@@ -152,7 +146,7 @@ where
                 {
                     if let Some(link) = link.upgrade() {
                         let mut key = self.key.write().await;
-                        link.rw(&mut key).len = len;
+                        link.rw(&mut key).set_len(len);
                         let key = key.downgrade();
                         let item = target.get().await;
                         if let Err(err) = mpdelta_differential::collect_cached_time(item.component(), item.link(), item.left().as_ref(), item.right().as_ref(), &key) {
@@ -200,10 +194,10 @@ where
                                 continue;
                             };
                             let link = link.ro(&key);
-                            connected_links.entry(link.from.clone()).or_default().insert(link.to.clone());
-                            connected_links.entry(link.to.clone()).or_default().insert(link.from.clone());
-                            if !delete_target_pins.contains(&link.from) && !delete_target_pins.contains(&link.to) {
-                                pin_union_find.union(link.from.clone(), link.to.clone());
+                            connected_links.entry(link.from().clone()).or_default().insert(link.to().clone());
+                            connected_links.entry(link.to().clone()).or_default().insert(link.from().clone());
+                            if !delete_target_pins.contains(&link.from()) && !delete_target_pins.contains(&link.to()) {
+                                pin_union_find.union(link.from().clone(), link.to().clone());
                             }
                         }
                         connected_links
@@ -221,11 +215,7 @@ where
                                             return None;
                                         }
                                         let to_time = p.upgrade()?.ro(&key).cached_timeline_time();
-                                        Some(MarkerLink {
-                                            from: (*connection_base).clone(),
-                                            to: p.clone(),
-                                            len: to_time - from_time,
-                                        })
+                                        Some(MarkerLink::new((*connection_base).clone(), p.clone(), to_time - from_time))
                                     })
                                     .map(TCell::new)
                                     .map(StaticPointerOwned::new),
@@ -234,7 +224,7 @@ where
                     }
                     item.link_mut().retain(|link| {
                         let link = link.ro(&key);
-                        !delete_target_pins.contains(&link.from) && !delete_target_pins.contains(&link.to)
+                        !delete_target_pins.contains(&link.from()) && !delete_target_pins.contains(&link.to())
                     });
                     let components = item.component_mut();
                     let components_len = components.len();
@@ -268,17 +258,17 @@ where
                     let mut pin_union_find = UnionFind::new();
                     item.link().iter().for_each(|link| {
                         let link = link.ro(&key);
-                        if link.from != right_pin && link.to != right_pin {
-                            pin_union_find.union(link.from.clone(), link.to.clone());
+                        if link.from() != &right_pin && link.to() != &right_pin {
+                            pin_union_find.union(link.from().clone(), link.to().clone());
                         }
                     });
-                    let left_root = pin_union_find.get_root(left_pin);
+                    let left_root = pin_union_find.get_root(left_pin.clone());
                     for link in item.link() {
                         let link = link.rw(&mut key);
-                        if link.to == right_pin && pin_union_find.get_root(link.from.clone()) == left_root {
-                            link.len = link.len + diff;
-                        } else if link.from == right_pin && pin_union_find.get_root(link.to.clone()) == left_root {
-                            link.len = link.len - diff;
+                        if link.to() == &right_pin && pin_union_find.get_root(link.from().clone()) == left_root {
+                            link.set_len(link.len() + diff);
+                        } else if link.from() == &right_pin && pin_union_find.get_root(link.to().clone()) == left_root {
+                            link.set_len(link.len() - diff);
                         }
                     }
 
@@ -314,11 +304,11 @@ where
                             continue;
                         };
                         let link = link.ro(&key);
-                        assert_ne!(link.from, link.to);
-                        connected_pins.entry(link.from.clone()).or_default().insert(link.to.clone(), Some(link_ptr.clone()));
-                        connected_pins.entry(link.to.clone()).or_default().insert(link.from.clone(), Some(link_ptr.clone()));
-                        if ![&from, &to].contains(&&link.from) && ![&from, &to].contains(&&link.to) {
-                            pin_union_find.union(link.from.clone(), link.to.clone());
+                        assert_ne!(link.from(), link.to());
+                        connected_pins.entry(link.from().clone()).or_default().insert(link.to().clone(), Some(link_ptr.clone()));
+                        connected_pins.entry(link.to().clone()).or_default().insert(link.from().clone(), Some(link_ptr.clone()));
+                        if ![&from, &to].contains(&link.from()) && ![&from, &to].contains(&link.to()) {
+                            pin_union_find.union(link.from().clone(), link.to().clone());
                         }
                     }
                     for component in item.component() {
@@ -340,86 +330,29 @@ where
                         }
                     }
 
-                    'edit: {
-                        let left = StaticPointerOwned::reference(item.left());
-                        let mut prev = HashMap::from([(left.clone(), left.clone())]);
-                        let mut q = VecDeque::from([left.clone()]);
-                        while let Some(pin) = q.pop_front() {
-                            for other_pin in connected_pins[&pin].keys() {
-                                if prev.contains_key(other_pin) {
-                                    continue;
-                                }
-                                prev.insert(other_pin.clone(), pin.clone());
-                                q.push_back(other_pin.clone());
-                            }
+                    if let Some(link) = connected_pins[&from].get(&to) {
+                        if link.is_some() {
+                            return Err(ProjectEditError::PinsAlreadyConnected);
                         }
-                        let path = iter::successors(Some(&from), |&pin| {
-                            let prev = &prev[pin];
-                            (prev != pin).then_some(prev)
-                        })
-                        .collect::<HashSet<_>>();
-                        let lca = iter::successors(Some(&to), |&pin| {
-                            let prev = &prev[pin];
-                            (prev != pin).then_some(prev)
-                        })
-                        .find(|pin| path.contains(pin))
-                        .unwrap();
-
-                        if let Some(link) = connected_pins[&from].get(&to) {
-                            if link.is_some() {
-                                return Err(ProjectEditError::PinsAlreadyConnected);
-                            }
-                            let mut prev = HashMap::from([(&from, &from)]);
-                            let mut q = VecDeque::from([&from]);
-                            while let Some(pin) = q.pop_front() {
-                                for other_pin in connected_pins[pin].iter().filter_map(|(p, l)| l.is_some().then_some(p)) {
-                                    if prev.contains_key(other_pin) {
-                                        continue;
-                                    }
-                                    prev.insert(other_pin, pin);
-                                    q.push_back(other_pin);
-                                }
-                            }
-                            let links = item.link_mut();
-                            if prev.contains_key(&to) {
-                                let link = connected_pins[&to][prev[&to]].as_ref().unwrap();
-                                links.retain(|l| l != link);
-                            }
-                            let len = to_strong_ref.ro(&key).cached_timeline_time() - from_strong_ref.ro(&key).cached_timeline_time();
-                            links.push(StaticPointerOwned::new(TCell::new(MarkerLink { from: from.clone(), to: to.clone(), len })));
-                            break 'edit;
-                        }
-
-                        let link = iter::successors(Some((&to, &prev[&to])), |&(_, pin)| {
-                            let prev = &prev[pin];
-                            (prev != pin).then_some((pin, prev))
-                        })
-                        .take_while(|&(pin, _)| pin != lca)
-                        .find_map(|(pin, prev)| connected_pins[pin][prev].clone());
-                        if let Some(link) = link {
-                            let links = item.link_mut();
-                            let len = to_strong_ref.ro(&key).cached_timeline_time() - from_strong_ref.ro(&key).cached_timeline_time();
-                            links.retain(|l| l != &link);
-                            links.push(StaticPointerOwned::new(TCell::new(MarkerLink { from: from.clone(), to: to.clone(), len })));
-                            break 'edit;
-                        }
-
-                        let link = iter::successors(Some((&from, &prev[&from])), |&(_, pin)| {
-                            let prev = &prev[pin];
-                            (prev != pin).then_some((pin, prev))
-                        })
-                        .take_while(|&(pin, _)| pin != lca)
-                        .find_map(|(pin, prev)| connected_pins[pin][prev].clone());
-                        if let Some(link) = link {
-                            let links = item.link_mut();
-                            let len = to_strong_ref.ro(&key).cached_timeline_time() - from_strong_ref.ro(&key).cached_timeline_time();
-                            links.retain(|l| l != &link);
-                            links.push(StaticPointerOwned::new(TCell::new(MarkerLink { from: from.clone(), to: to.clone(), len })));
-                            break 'edit;
-                        }
-
-                        unreachable!();
                     }
+                    let mut prev = HashMap::from([(&from, &from)]);
+                    let mut q = VecDeque::from([&from]);
+                    while let Some(pin) = q.pop_front() {
+                        for other_pin in connected_pins[pin].iter().filter_map(|(p, l)| l.is_some().then_some(p)) {
+                            if prev.contains_key(other_pin) {
+                                continue;
+                            }
+                            prev.insert(other_pin, pin);
+                            q.push_back(other_pin);
+                        }
+                    }
+                    let links = item.link_mut();
+                    if prev.contains_key(&to) {
+                        let link = connected_pins[&to][prev[&to]].as_ref().unwrap();
+                        links.retain(|l| l != link);
+                    }
+                    let len = to_strong_ref.ro(&key).cached_timeline_time() - from_strong_ref.ro(&key).cached_timeline_time();
+                    links.push(StaticPointerOwned::new(TCell::new(MarkerLink::new(from.clone(), to.clone(), len))));
 
                     if let Err(err) = mpdelta_differential::collect_cached_time(item.component(), item.link(), item.left().as_ref(), item.right().as_ref(), &key) {
                         eprintln!("{err}");
@@ -483,7 +416,8 @@ where
             InstanceEditCommand::MoveComponentInstance(to) => {
                 {
                     let root = root_ref.upgrade().ok_or(ProjectEditError::InvalidTarget)?;
-                    let (root, mut key) = tokio::join!(root.read(), self.key.write());
+                    let mut key = self.key.write().await;
+                    let root = root.read().await;
                     let target_raw_ref = target.ro(&key);
                     let target_left = target_raw_ref.marker_left();
                     let target_right = target_raw_ref.marker_right();
@@ -499,10 +433,10 @@ where
                                 continue;
                             };
                             let link = link.ro(&key);
-                            connected_links.entry(link.from.clone()).or_default().insert(link_ptr.clone());
-                            connected_links.entry(link.to.clone()).or_default().insert(link_ptr.clone());
-                            if !target_contains_pins.contains(&link.from) && !target_contains_pins.contains(&link.to) {
-                                pin_union_find.union(link.from.clone(), link.to.clone());
+                            connected_links.entry(link.from().clone()).or_default().insert(link_ptr.clone());
+                            connected_links.entry(link.to().clone()).or_default().insert(link_ptr.clone());
+                            if !target_contains_pins.contains(link.from()) && !target_contains_pins.contains(link.to()) {
+                                pin_union_find.union(link.from().clone(), link.to().clone());
                             }
                         }
                         connected_links
@@ -547,11 +481,14 @@ where
                                 continue;
                             };
                             let link = link.rw(&mut key);
-                            let other_pin = if &link.to == pin_handle { &link.from } else { &link.to };
+                            let other_pin = if link.to() == pin_handle { link.from() } else { link.to() };
+                            if target_contains_pins.contains(other_pin) {
+                                continue;
+                            }
                             if pin_union_find.get_root(other_pin.clone()) != zero_pin_root {
                                 continue;
                             }
-                            link.len = if &link.to == pin_handle { link.len + delta } else { link.len - delta };
+                            link.set_len(if link.to() == pin_handle { link.len() + delta } else { link.len() - delta });
                         }
                     }
 
@@ -577,10 +514,10 @@ where
                             continue;
                         };
                         let link = link.ro(&key);
-                        if link.from == pin || link.to == pin {
+                        if link.from() == &pin || link.to() == &pin {
                             next_links.insert(link_ptr.clone());
                         } else {
-                            pin_union_find.union(link.from.clone(), link.to.clone());
+                            pin_union_find.union(link.from().clone(), link.to().clone());
                         }
                     }
                     for component in root.component() {
@@ -602,10 +539,10 @@ where
                     let mut edited = false;
                     for l in &next_links {
                         let link = l.upgrade().unwrap();
-                        let other_pin = if link.ro(&key).from == pin { link.ro(&key).to.clone() } else { link.ro(&key).from.clone() };
+                        let other_pin = if link.ro(&key).from() == &pin { link.ro(&key).to().clone() } else { link.ro(&key).from().clone() };
                         if pin_union_find.get_root(other_pin) == root_left_root {
                             let link = link.rw(&mut key);
-                            link.len = if link.to == pin { link.len + time_diff } else { link.len - time_diff };
+                            link.set_len(if link.to() == &pin { link.len() + time_diff } else { link.len() - time_diff });
                             edited = true;
                         }
                     }
@@ -735,10 +672,10 @@ where
                             continue;
                         };
                         let link = link.ro(&key);
-                        if link.from == pin || link.to == pin {
+                        if link.from() == &pin || link.to() == &pin {
                             next_link.insert(link_ptr.clone());
                         } else {
-                            pin_union_find.union(link.from.clone(), link.to.clone());
+                            pin_union_find.union(link.from().clone(), link.to().clone());
                         }
                     }
                     for component in root.component() {
@@ -766,10 +703,10 @@ where
                             .map(|link| {
                                 let link = link.upgrade().unwrap();
                                 let link = link.ro(&key);
-                                if link.from == pin {
-                                    link.to.clone()
+                                if link.from() == &pin {
+                                    link.to().clone()
                                 } else {
-                                    link.from.clone()
+                                    link.from().clone()
                                 }
                             })
                             .find(|p| p.upgrade().is_some_and(|p| p.ro(&key).locked_component_time().is_some()))
@@ -781,25 +718,23 @@ where
                         .map(|link| {
                             let link = link.upgrade().unwrap();
                             let link = link.ro(&key);
-                            if link.from == pin {
-                                link.to.clone()
+                            if link.from() == &pin {
+                                link.to().clone()
                             } else {
-                                link.from.clone()
+                                link.from().clone()
                             }
                         })
-                        .filter(|p| pin_union_find.get_root(p.clone()) == root_left_root);
+                        .filter(|p| p != &base_pin)
+                        .filter(|p| pin_union_find.get_root(p.clone()) == root_left_root)
+                        .collect::<Vec<_>>();
                     let all_links = root.link_mut();
                     all_links.retain(|link| {
                         let link = link.ro(&key);
-                        link.from != pin && link.to != pin
+                        link.from() != &pin && link.to() != &pin
                     });
                     for p in floating_pins {
                         let to_time = p.upgrade().unwrap().ro(&key).cached_timeline_time();
-                        let link = MarkerLink {
-                            from: base_pin.clone(),
-                            to: p,
-                            len: to_time - base_pin_time,
-                        };
+                        let link = MarkerLink::new(base_pin.clone(), p, to_time - base_pin_time);
                         all_links.push(StaticPointerOwned::new(TCell::new(link)));
                     }
                     drop(all_pins);
@@ -880,7 +815,7 @@ where
                             continue;
                         };
                         let link = link.ro(&key);
-                        pin_union_find.union(link.from.clone(), link.to.clone());
+                        pin_union_find.union(link.from().clone(), link.to().clone());
                     }
                     for component in root.component() {
                         let component = component.ro(&key);
@@ -914,11 +849,11 @@ where
                     let Some(next_pin) = left_next_pin.or_else(|| locked_pins.next()) else {
                         return Err(ProjectEditError::CannotUnlockForAvoidFloating);
                     };
-                    root.link_mut().push(StaticPointerOwned::new(TCell::new(MarkerLink {
-                        from: pin.clone(),
-                        to: next_pin.clone(),
-                        len: next_pin.upgrade().unwrap().ro(&key).cached_timeline_time() - pin.upgrade().unwrap().ro(&key).cached_timeline_time(),
-                    })));
+                    root.link_mut().push(StaticPointerOwned::new(TCell::new(MarkerLink::new(
+                        pin.clone(),
+                        next_pin.clone(),
+                        next_pin.upgrade().unwrap().ro(&key).cached_timeline_time() - pin.upgrade().unwrap().ro(&key).cached_timeline_time(),
+                    ))));
                     let Some(pin_ref) = pin.upgrade() else {
                         return Err(ProjectEditError::InvalidMarkerPin);
                     };

@@ -39,10 +39,10 @@ where
     loop {
         let process = 'block: {
             for &link in &links {
-                match (locked.contains(&link.from), locked.contains(&link.to)) {
+                match (locked.contains(link.from()), locked.contains(link.to())) {
                     (false, false) => {}
-                    (true, false) => break 'block Some((link, &link.from, &link.to, link.len)),
-                    (false, true) => break 'block Some((link, &link.to, &link.from, -link.len)),
+                    (true, false) => break 'block Some((link, link.from(), link.to(), link.len())),
+                    (false, true) => break 'block Some((link, link.to(), link.from(), -link.len())),
                     (true, true) => return Err(CollectCachedTimeError::InvalidLinkGraph),
                 }
             }

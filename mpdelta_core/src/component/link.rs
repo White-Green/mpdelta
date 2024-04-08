@@ -8,9 +8,9 @@ use std::mem;
 
 #[derive(Debug)]
 pub struct MarkerLink<K> {
-    pub from: MarkerPinHandle<K>,
-    pub to: MarkerPinHandle<K>,
-    pub len: TimelineTime,
+    from: MarkerPinHandle<K>,
+    to: MarkerPinHandle<K>,
+    len: TimelineTime,
 }
 
 pub type MarkerLinkHandle<K> = StaticPointer<TCell<K, MarkerLink<K>>>;
@@ -18,6 +18,28 @@ pub type MarkerLinkHandleOwned<K> = StaticPointerOwned<TCell<K, MarkerLink<K>>>;
 pub type MarkerLinkHandleCow<K> = StaticPointerCow<TCell<K, MarkerLink<K>>>;
 
 impl<K> MarkerLink<K> {
+    #[track_caller]
+    pub fn new(from: MarkerPinHandle<K>, to: MarkerPinHandle<K>, len: TimelineTime) -> MarkerLink<K> {
+        assert_ne!(from, to);
+        MarkerLink { from, to, len }
+    }
+
+    pub fn from(&self) -> &MarkerPinHandle<K> {
+        &self.from
+    }
+
+    pub fn to(&self) -> &MarkerPinHandle<K> {
+        &self.to
+    }
+
+    pub fn len(&self) -> TimelineTime {
+        self.len
+    }
+
+    pub fn set_len(&mut self, len: TimelineTime) {
+        self.len = len;
+    }
+
     pub fn flip(&mut self) {
         mem::swap(&mut self.from, &mut self.to);
     }

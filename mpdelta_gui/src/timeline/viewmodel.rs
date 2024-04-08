@@ -132,12 +132,12 @@ where
             return None;
         };
         let link = link.ro(key);
-        let from_pin = link.from.clone();
-        let to_pin = link.to.clone();
-        let from_time = link.from.upgrade().unwrap().ro(key).cached_timeline_time().value().into_f64();
-        let to_time = link.to.upgrade().unwrap().ro(key).cached_timeline_time().value().into_f64();
-        let from_component = marker_map.get(&link.from).cloned();
-        let to_component = marker_map.get(&link.to).cloned();
+        let from_pin = link.from().clone();
+        let to_pin = link.to().clone();
+        let from_time = link.from().upgrade().unwrap().ro(key).cached_timeline_time().value().into_f64();
+        let to_time = link.to().upgrade().unwrap().ro(key).cached_timeline_time().value().into_f64();
+        let from_component = marker_map.get(link.from()).cloned();
+        let to_component = marker_map.get(link.to()).cloned();
         let from_layer;
         let to_layer;
         match (&from_component, &to_component) {
@@ -158,7 +158,7 @@ where
                 to_layer = 0.0;
             }
         }
-        let len = link.len;
+        let len = link.len();
         Some(ComponentLinkData {
             handle,
             len,

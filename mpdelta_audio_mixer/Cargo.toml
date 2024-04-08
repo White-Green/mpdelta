@@ -7,4 +7,9 @@ authors = { workspace = true }
 [dependencies]
 mpdelta_core = { workspace = true }
 mpdelta_core_audio = { workspace = true }
+mpdelta_dsp = { workspace = true }
 mpdelta_renderer = { workspace = true }
+smallvec = { workspace = true }
+
+[dev-dependencies]
+qcell = { workspace = true }

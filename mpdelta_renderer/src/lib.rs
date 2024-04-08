@@ -29,7 +29,7 @@ use tokio::sync::{oneshot, Mutex, RwLock};
 mod render;
 mod thread_cancel;
 
-pub use render::TimeMap;
+pub use render::{TimeMap, TimeMapSegment};
 
 type ImageCombinerRequest = ImageSizeRequest;
 type ImageCombinerParam = ImageRequiredParamsFixed;

@@ -34,6 +34,7 @@ pub trait MultiChannelAudioOp<T> {
 pub trait MultiChannelAudioMutOp<T>: MultiChannelAudioOp<T> {
     fn get_mut(&mut self, i: usize) -> Option<&mut [T]>;
     fn slice_mut(&mut self, range: impl RangeBounds<usize>) -> Option<MultiChannelAudioSliceMut<T>>;
+    fn as_linear_mut(&mut self) -> &mut [T];
     fn iter_mut(&mut self) -> ChunksExactMut<T>;
     fn fill(&mut self, value: T)
     where
@@ -105,6 +106,10 @@ impl<T> MultiChannelAudioMutOp<T> for MultiChannelAudio<T> {
     fn slice_mut(&mut self, range: impl RangeBounds<usize>) -> Option<MultiChannelAudioSliceMut<T>> {
         let data = self.data.get_mut(multiply_range(self.channels, range))?;
         Some(MultiChannelAudioSliceMut { channels: self.channels, data })
+    }
+
+    fn as_linear_mut(&mut self) -> &mut [T] {
+        &mut self.data
     }
 
     fn iter_mut(&mut self) -> ChunksExactMut<T> {
@@ -181,6 +186,10 @@ impl<'a, T> MultiChannelAudioMutOp<T> for MultiChannelAudioSliceMut<'a, T> {
     fn slice_mut(&mut self, range: impl RangeBounds<usize>) -> Option<MultiChannelAudioSliceMut<T>> {
         let data = self.data.get_mut(multiply_range(self.channels, range))?;
         Some(MultiChannelAudioSliceMut { channels: self.channels, data })
+    }
+
+    fn as_linear_mut(&mut self) -> &mut [T] {
+        self.data
     }
 
     fn iter_mut(&mut self) -> ChunksExactMut<T> {

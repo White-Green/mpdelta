@@ -21,6 +21,8 @@ use thiserror::Error;
 use tokio::sync::RwLock;
 
 mod dsa;
+#[cfg(test)]
+mod tests;
 
 // TODO: Listenerをusizeで管理してるので、overflowしたらバグる(ほとんど気にしなくても良さそうではあるが)
 pub struct ProjectEditor<K: 'static, T> {
@@ -328,86 +330,29 @@ where
                         }
                     }
 
-                    'edit: {
-                        let left = StaticPointerOwned::reference(item.left());
-                        let mut prev = HashMap::from([(left.clone(), left.clone())]);
-                        let mut q = VecDeque::from([left.clone()]);
-                        while let Some(pin) = q.pop_front() {
-                            for other_pin in connected_pins[&pin].keys() {
-                                if prev.contains_key(other_pin) {
-                                    continue;
-                                }
-                                prev.insert(other_pin.clone(), pin.clone());
-                                q.push_back(other_pin.clone());
-                            }
+                    if let Some(link) = connected_pins[&from].get(&to) {
+                        if link.is_some() {
+                            return Err(ProjectEditError::PinsAlreadyConnected);
                         }
-                        let path = iter::successors(Some(&from), |&pin| {
-                            let prev = &prev[pin];
-                            (prev != pin).then_some(prev)
-                        })
-                        .collect::<HashSet<_>>();
-                        let lca = iter::successors(Some(&to), |&pin| {
-                            let prev = &prev[pin];
-                            (prev != pin).then_some(prev)
-                        })
-                        .find(|pin| path.contains(pin))
-                        .unwrap();
-
-                        if let Some(link) = connected_pins[&from].get(&to) {
-                            if link.is_some() {
-                                return Err(ProjectEditError::PinsAlreadyConnected);
-                            }
-                            let mut prev = HashMap::from([(&from, &from)]);
-                            let mut q = VecDeque::from([&from]);
-                            while let Some(pin) = q.pop_front() {
-                                for other_pin in connected_pins[pin].iter().filter_map(|(p, l)| l.is_some().then_some(p)) {
-                                    if prev.contains_key(other_pin) {
-                                        continue;
-                                    }
-                                    prev.insert(other_pin, pin);
-                                    q.push_back(other_pin);
-                                }
-                            }
-                            let links = item.link_mut();
-                            if prev.contains_key(&to) {
-                                let link = connected_pins[&to][prev[&to]].as_ref().unwrap();
-                                links.retain(|l| l != link);
-                            }
-                            let len = to_strong_ref.ro(&key).cached_timeline_time() - from_strong_ref.ro(&key).cached_timeline_time();
-                            links.push(StaticPointerOwned::new(TCell::new(MarkerLink::new(from.clone(), to.clone(), len))));
-                            break 'edit;
-                        }
-
-                        let link = iter::successors(Some((&to, &prev[&to])), |&(_, pin)| {
-                            let prev = &prev[pin];
-                            (prev != pin).then_some((pin, prev))
-                        })
-                        .take_while(|&(pin, _)| pin != lca)
-                        .find_map(|(pin, prev)| connected_pins[pin][prev].clone());
-                        if let Some(link) = link {
-                            let links = item.link_mut();
-                            let len = to_strong_ref.ro(&key).cached_timeline_time() - from_strong_ref.ro(&key).cached_timeline_time();
-                            links.retain(|l| l != &link);
-                            links.push(StaticPointerOwned::new(TCell::new(MarkerLink::new(from.clone(), to.clone(), len))));
-                            break 'edit;
-                        }
-
-                        let link = iter::successors(Some((&from, &prev[&from])), |&(_, pin)| {
-                            let prev = &prev[pin];
-                            (prev != pin).then_some((pin, prev))
-                        })
-                        .take_while(|&(pin, _)| pin != lca)
-                        .find_map(|(pin, prev)| connected_pins[pin][prev].clone());
-                        if let Some(link) = link {
-                            let links = item.link_mut();
-                            let len = to_strong_ref.ro(&key).cached_timeline_time() - from_strong_ref.ro(&key).cached_timeline_time();
-                            links.retain(|l| l != &link);
-                            links.push(StaticPointerOwned::new(TCell::new(MarkerLink::new(from.clone(), to.clone(), len))));
-                            break 'edit;
-                        }
-
-                        unreachable!();
                     }
+                    let mut prev = HashMap::from([(&from, &from)]);
+                    let mut q = VecDeque::from([&from]);
+                    while let Some(pin) = q.pop_front() {
+                        for other_pin in connected_pins[pin].iter().filter_map(|(p, l)| l.is_some().then_some(p)) {
+                            if prev.contains_key(other_pin) {
+                                continue;
+                            }
+                            prev.insert(other_pin, pin);
+                            q.push_back(other_pin);
+                        }
+                    }
+                    let links = item.link_mut();
+                    if prev.contains_key(&to) {
+                        let link = connected_pins[&to][prev[&to]].as_ref().unwrap();
+                        links.retain(|l| l != link);
+                    }
+                    let len = to_strong_ref.ro(&key).cached_timeline_time() - from_strong_ref.ro(&key).cached_timeline_time();
+                    links.push(StaticPointerOwned::new(TCell::new(MarkerLink::new(from.clone(), to.clone(), len))));
 
                     if let Err(err) = mpdelta_differential::collect_cached_time(item.component(), item.link(), item.left().as_ref(), item.right().as_ref(), &key) {
                         eprintln!("{err}");
@@ -779,6 +724,7 @@ where
                                 link.from().clone()
                             }
                         })
+                        .filter(|p| p != &base_pin)
                         .filter(|p| pin_union_find.get_root(p.clone()) == root_left_root)
                         .collect::<Vec<_>>();
                     let all_links = root.link_mut();

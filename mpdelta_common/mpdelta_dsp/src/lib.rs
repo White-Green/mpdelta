@@ -126,6 +126,17 @@ impl Resample {
         })
     }
 
+    pub fn default_buffer_len(&self) -> usize {
+        self.default_buffer_length
+    }
+
+    pub fn reset_buffer_with_default_buffer(&mut self, default_buffer: impl IntoIterator<Item = f32>) {
+        self.buffer.clear();
+        self.buffer.extend(default_buffer.into_iter().take(self.default_buffer_length));
+        iter::repeat(0.).take(self.default_buffer_length - self.buffer.len()).for_each(|v| self.buffer.push_front(v));
+        self.filter_index = self.default_filter_index;
+    }
+
     pub fn reset_buffer(&mut self) {
         self.buffer.clear();
         self.buffer.resize(self.default_buffer_length, 0.);

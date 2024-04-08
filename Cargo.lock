@@ -2722,7 +2722,10 @@ version = "0.1.0"
 dependencies = [
  "mpdelta_core",
  "mpdelta_core_audio",
+ "mpdelta_dsp",
  "mpdelta_renderer",
+ "qcell",
+ "smallvec",
 ]
 
 [[package]]

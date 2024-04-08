@@ -16,9 +16,9 @@ use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIter
 use std::collections::HashMap;
 use std::future::Future;
 use std::marker::PhantomData;
-use std::ops::Deref;
+use std::ops::{Deref, Range};
 use std::sync::Arc;
-use std::{future, iter, mem, panic};
+use std::{convert, future, iter, mem, panic};
 use tokio::runtime::Handle;
 
 mod evaluate_parameter;
@@ -543,7 +543,7 @@ pub struct TimeMap {
 }
 
 impl TimeMap {
-    fn new<K, T: ParameterValueType>(left: &MarkerPinHandleOwned<K>, markers: &[MarkerPinHandleOwned<K>], right: &MarkerPinHandleOwned<K>, key: &TCellOwner<K>) -> RenderResult<TimeMap, K, T> {
+    pub fn new<K, T: ParameterValueType>(left: &MarkerPinHandleOwned<K>, markers: &[MarkerPinHandleOwned<K>], right: &MarkerPinHandleOwned<K>, key: &TCellOwner<K>) -> RenderResult<TimeMap, K, T> {
         let markers = iter::once(left)
             .chain(markers.iter())
             .chain(iter::once(right))
@@ -588,6 +588,61 @@ impl TimeMap {
                 Some(TimelineTime::new(time))
             }
         }
+    }
+
+    pub fn map_range_iter(&self, start: TimelineTime) -> impl Iterator<Item = TimeMapSegment> + '_ {
+        let i = self.markers.binary_search_by_key(&start, |&(time, _)| time).map_or_else(convert::identity, |x| x + 1);
+        let mut markers = &self.markers[i.saturating_sub(1).min(self.markers.len().saturating_sub(2))..];
+        let (left, right) = match markers {
+            [] => (TimeMapSegment::new(self.left..self.right, self.left..self.right, TimelineTime::ZERO..self.right - self.left), None),
+            &[(source, target)] => {
+                let target = TimelineTime::from(target);
+                (TimeMapSegment::new(self.left..self.right, self.left..self.right, target - (source - self.left)..target + (self.right - source)), None)
+            }
+            &[(s1, t1), (s2, t2)] => {
+                let t1 = TimelineTime::from(t1);
+                let t2 = TimelineTime::from(t2);
+                markers = &[];
+                (TimeMapSegment::new(self.left..self.right, s1..s2, t1..t2), None)
+            }
+            &[(s1, t1), (s2, t2), ..] => {
+                let &[(s3, t3), (s4, t4)] = markers.last_chunk().unwrap();
+                let t1 = TimelineTime::from(t1);
+                let t2 = TimelineTime::from(t2);
+                let t3 = TimelineTime::from(t3);
+                let t4 = TimelineTime::from(t4);
+                markers = &markers[1..markers.len() - 1];
+                (TimeMapSegment::new(self.left..s2, s1..s2, t1..t2), Some(TimeMapSegment::new(s3..self.right, s3..s4, t3..t4)))
+            }
+        };
+        iter::once(left)
+            .chain(
+                markers
+                    .windows(2)
+                    .map(|markers| {
+                        let &[(source1, target1), (source2, target2)] = markers else {
+                            unreachable!();
+                        };
+                        let target1 = TimelineTime::from(target1);
+                        let target2 = TimelineTime::from(target2);
+                        TimeMapSegment::new(source1..source2, source1..source2, target1..target2)
+                    })
+                    .skip_while(move |segment| segment.time_range.end <= start),
+            )
+            .chain(right)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TimeMapSegment {
+    pub time_range: Range<TimelineTime>,
+    pub source_range: Range<TimelineTime>,
+    pub target_range: Range<TimelineTime>,
+}
+
+impl TimeMapSegment {
+    fn new(time_range: Range<TimelineTime>, source_range: Range<TimelineTime>, target_range: Range<TimelineTime>) -> TimeMapSegment {
+        TimeMapSegment { time_range, source_range, target_range }
     }
 }
 
@@ -664,5 +719,88 @@ mod tests {
         assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(mfrac!(7, 0, 10))), Some(v) if (v.value() - mfrac!(13, 0, 10)) == MixedFraction::ZERO);
         assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(mfrac!(8, 0, 10))), Some(v) if (v.value() - mfrac!(12, 0, 10)) == MixedFraction::ZERO);
         assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(mfrac!(10, 0, 10))), Some(v) if (v.value() - mfrac!(10, 0, 10)) == MixedFraction::ZERO);
+    }
+
+    #[test]
+    fn test_time_map_range_iter() {
+        struct K;
+        let key = TCellOwner::new();
+        fn time_map_for_test(markers: &[MarkerPinHandleOwned<K>], key: &TCellOwner<K>, start: TimelineTime) -> Vec<TimeMapSegment> {
+            assert!(markers.len() >= 2);
+            let [left, markers @ .., right] = markers else { unreachable!() };
+            TimeMap::new::<K, TestParameterValueType>(left, markers, right, key).unwrap().map_range_iter(start).collect()
+        }
+        macro_rules! t {
+            ($($t:tt)*) => {
+                TimelineTime::new(mfrac!($($t)*))
+            }
+        }
+        macro_rules! marker {
+            ($t:expr$(,)?) => {
+                StaticPointerOwned::new(TCell::new(MarkerPin::new_unlocked(TimelineTime::new($t))))
+            };
+            ($t:expr, $m:expr$(,)?) => {
+                StaticPointerOwned::new(TCell::new(MarkerPin::new(TimelineTime::new($t), MarkerTime::new($m).unwrap())))
+            };
+        }
+        let markers = [marker!(mfrac!(3)), marker!(mfrac!(4)), marker!(mfrac!(5)), marker!(mfrac!(6))];
+        assert_eq!(time_map_for_test(&markers, &key, t!(3, 0, 10)), vec![TimeMapSegment::new(t!(3)..t!(6), t!(3)..t!(6), t!(0)..t!(3))]);
+        assert_eq!(time_map_for_test(&markers, &key, t!(3, 5, 10)), vec![TimeMapSegment::new(t!(3)..t!(6), t!(3)..t!(6), t!(0)..t!(3))]);
+        assert_eq!(time_map_for_test(&markers, &key, t!(5, 0, 10)), vec![TimeMapSegment::new(t!(3)..t!(6), t!(3)..t!(6), t!(0)..t!(3))]);
+        let markers = [marker!(mfrac!(3)), marker!(mfrac!(4)), marker!(mfrac!(5), mfrac!(10)), marker!(mfrac!(6))];
+        assert_eq!(time_map_for_test(&markers, &key, t!(3, 0, 10)), vec![TimeMapSegment::new(t!(3)..t!(6), t!(3)..t!(6), t!(8)..t!(11))]);
+        assert_eq!(time_map_for_test(&markers, &key, t!(3, 5, 10)), vec![TimeMapSegment::new(t!(3)..t!(6), t!(3)..t!(6), t!(8)..t!(11))]);
+        assert_eq!(time_map_for_test(&markers, &key, t!(5, 0, 10)), vec![TimeMapSegment::new(t!(3)..t!(6), t!(3)..t!(6), t!(8)..t!(11))]);
+        assert_eq!(time_map_for_test(&markers, &key, t!(5, 5, 10)), vec![TimeMapSegment::new(t!(3)..t!(6), t!(3)..t!(6), t!(8)..t!(11))]);
+        let markers = [marker!(mfrac!(3)), marker!(mfrac!(4), mfrac!(8)), marker!(mfrac!(5), mfrac!(10)), marker!(mfrac!(6))];
+        assert_eq!(time_map_for_test(&markers, &key, t!(3, 0, 10)), vec![TimeMapSegment::new(t!(3)..t!(6), t!(4)..t!(5), t!(8)..t!(10))]);
+        assert_eq!(time_map_for_test(&markers, &key, t!(3, 5, 10)), vec![TimeMapSegment::new(t!(3)..t!(6), t!(4)..t!(5), t!(8)..t!(10))]);
+        assert_eq!(time_map_for_test(&markers, &key, t!(4, 5, 10)), vec![TimeMapSegment::new(t!(3)..t!(6), t!(4)..t!(5), t!(8)..t!(10))]);
+        assert_eq!(time_map_for_test(&markers, &key, t!(5, 0, 10)), vec![TimeMapSegment::new(t!(3)..t!(6), t!(4)..t!(5), t!(8)..t!(10))]);
+        assert_eq!(time_map_for_test(&markers, &key, t!(5, 5, 10)), vec![TimeMapSegment::new(t!(3)..t!(6), t!(4)..t!(5), t!(8)..t!(10))]);
+        let markers = [
+            marker!(mfrac!(3)),
+            marker!(mfrac!(4), mfrac!(8)),
+            marker!(mfrac!(5), mfrac!(10)),
+            marker!(mfrac!(6)),
+            marker!(mfrac!(7), mfrac!(13)),
+            marker!(mfrac!(8)),
+            marker!(mfrac!(10), mfrac!(10)),
+        ];
+        assert_eq!(
+            time_map_for_test(&markers, &key, t!(3, 0, 10)),
+            vec![
+                TimeMapSegment::new(t!(3)..t!(5), t!(4)..t!(5), t!(8)..t!(10)),
+                TimeMapSegment::new(t!(5)..t!(7), t!(5)..t!(7), t!(10)..t!(13)),
+                TimeMapSegment::new(t!(7)..t!(10), t!(7)..t!(10), t!(13)..t!(10)),
+            ]
+        );
+        assert_eq!(
+            time_map_for_test(&markers, &key, t!(3, 5, 10)),
+            vec![
+                TimeMapSegment::new(t!(3)..t!(5), t!(4)..t!(5), t!(8)..t!(10)),
+                TimeMapSegment::new(t!(5)..t!(7), t!(5)..t!(7), t!(10)..t!(13)),
+                TimeMapSegment::new(t!(7)..t!(10), t!(7)..t!(10), t!(13)..t!(10)),
+            ]
+        );
+        assert_eq!(
+            time_map_for_test(&markers, &key, t!(4, 5, 10)),
+            vec![
+                TimeMapSegment::new(t!(3)..t!(5), t!(4)..t!(5), t!(8)..t!(10)),
+                TimeMapSegment::new(t!(5)..t!(7), t!(5)..t!(7), t!(10)..t!(13)),
+                TimeMapSegment::new(t!(7)..t!(10), t!(7)..t!(10), t!(13)..t!(10)),
+            ]
+        );
+        assert_eq!(
+            time_map_for_test(&markers, &key, t!(5, 0, 10)),
+            vec![TimeMapSegment::new(t!(3)..t!(7), t!(5)..t!(7), t!(10)..t!(13)), TimeMapSegment::new(t!(7)..t!(10), t!(7)..t!(10), t!(13)..t!(10))]
+        );
+        assert_eq!(
+            time_map_for_test(&markers, &key, t!(6, 0, 10)),
+            vec![TimeMapSegment::new(t!(3)..t!(7), t!(5)..t!(7), t!(10)..t!(13)), TimeMapSegment::new(t!(7)..t!(10), t!(7)..t!(10), t!(13)..t!(10))]
+        );
+        assert_eq!(time_map_for_test(&markers, &key, t!(7, 0, 10)), vec![TimeMapSegment::new(t!(3)..t!(10), t!(7)..t!(10), t!(13)..t!(10))]);
+        assert_eq!(time_map_for_test(&markers, &key, t!(8, 0, 10)), vec![TimeMapSegment::new(t!(3)..t!(10), t!(7)..t!(10), t!(13)..t!(10))]);
+        assert_eq!(time_map_for_test(&markers, &key, t!(10, 0, 10)), vec![TimeMapSegment::new(t!(3)..t!(10), t!(7)..t!(10), t!(13)..t!(10))]);
     }
 }

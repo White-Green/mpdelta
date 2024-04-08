@@ -635,9 +635,9 @@ impl<T: ParameterValueType> RootComponentClassForSerialize<T, Ser> {
                             .link()
                             .par_iter()
                             .map(|l| MarkerLinkForSerialize {
-                                from: pin_map[&l.ro(&key).from],
-                                to: pin_map[&l.ro(&key).to],
-                                length: l.ro(&key).len,
+                                from: pin_map[&l.ro(&key).from()],
+                                to: pin_map[&l.ro(&key).to()],
+                                length: l.ro(&key).len(),
                             })
                             .collect_into_vec(&mut links);
                         links
@@ -980,11 +980,7 @@ impl<T: ParameterValueType> RootComponentClassForSerialize<T, De> {
             .into_iter()
             .map(|link| {
                 let MarkerLinkForSerialize { from, to, length } = link;
-                let link = MarkerLink {
-                    from: pins_map.get(&from).cloned().ok_or_else(|| DeserializeError::UnknownPin(from))?,
-                    to: pins_map.get(&to).cloned().ok_or_else(|| DeserializeError::UnknownPin(to))?,
-                    len: length,
-                };
+                let link = MarkerLink::new(pins_map.get(&from).cloned().ok_or_else(|| DeserializeError::UnknownPin(from))?, pins_map.get(&to).cloned().ok_or_else(|| DeserializeError::UnknownPin(to))?, length);
                 Ok(StaticPointerOwned::new(TCell::new(link)))
             })
             .collect::<Result<_, DeserializeError<K>>>()?;

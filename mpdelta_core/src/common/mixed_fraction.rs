@@ -2,7 +2,7 @@ use num::Integer;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::cmp::Ordering;
 use std::fmt::{Debug, Display, Formatter};
-use std::ops::{Add, BitAnd, ControlFlow, Div, Mul, Neg, Not, Rem, Sub};
+use std::ops::{Add, ControlFlow, Div, Mul, Neg, Not, Rem, Sub};
 use std::{fmt, iter};
 
 pub mod atomic;
@@ -65,16 +65,13 @@ fn validate_denominator(denominator: u32) -> Result<u32, ()> {
 }
 
 #[inline]
-fn round_into<T>(numerator: T, denominator: T, target_denominator: T) -> T
-where
-    T: Integer + Copy + Not<Output = T> + BitAnd<Output = T>,
-{
+fn round_into(numerator: u64, denominator: u64, target_denominator: u64) -> u64 {
     let numerator = numerator * target_denominator;
     let (quotient, remainder) = numerator.div_rem(&denominator);
     match (remainder + remainder).cmp(&denominator) {
         Ordering::Less => quotient,
-        Ordering::Equal => (quotient + T::one()) & !T::one(),
-        Ordering::Greater => quotient + T::one(),
+        Ordering::Equal => (quotient + 1) & !1,
+        Ordering::Greater => quotient + 1,
     }
 }
 
@@ -355,7 +352,7 @@ impl MixedFraction {
         if d == denominator {
             (i, n)
         } else {
-            (i, round_into(n, d, denominator))
+            (i, round_into(n as u64, d as u64, denominator as u64).try_into().unwrap())
         }
     }
 }

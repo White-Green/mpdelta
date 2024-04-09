@@ -19,6 +19,7 @@ members = [
     "mpdelta_components/shaders/font_rendering",
     "mpdelta_core",
     "mpdelta_core_audio",
+    "mpdelta_core_test_util",
     "mpdelta_core_vulkano",
     "mpdelta_differential",
     "mpdelta_gui",
@@ -45,6 +46,7 @@ default-members = [
     "mpdelta_components",
     "mpdelta_core",
     "mpdelta_core_audio",
+    "mpdelta_core_test_util",
     "mpdelta_core_vulkano",
     "mpdelta_differential",
     "mpdelta_gui",
@@ -100,6 +102,7 @@ mpdelta_audio_mixer = { path = "mpdelta_audio_mixer" }
 mpdelta_components = { path = "mpdelta_components" }
 mpdelta_core = { path = "mpdelta_core" }
 mpdelta_core_audio = { path = "mpdelta_core_audio" }
+mpdelta_core_test_util = { path = "mpdelta_core_test_util" }
 mpdelta_core_vulkano = { path = "mpdelta_core_vulkano" }
 mpdelta_differential = { path = "mpdelta_differential" }
 mpdelta_dsp = { path = "mpdelta_common/mpdelta_dsp" }

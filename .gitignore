@@ -12,6 +12,7 @@
 !/mpdelta_components
 !/mpdelta_core
 !/mpdelta_core_audio
+!/mpdelta_core_test_util
 !/mpdelta_core_vulkano
 !/mpdelta_differential
 !/mpdelta_gui

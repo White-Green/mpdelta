@@ -1,0 +1,11 @@
+[package]
+name = "mpdelta_core_test_util"
+version = { workspace = true }
+edition = { workspace = true }
+authors = { workspace = true }
+
+[dependencies]
+async-trait = { workspace = true }
+mpdelta_core = { workspace = true }
+qcell = { workspace = true }
+tokio = { workspace = true }

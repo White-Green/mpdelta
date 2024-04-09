@@ -17,4 +17,5 @@ tokio = { workspace = true }
 uuid = { workspace = true, features = ["v1", "fast-rng"] }
 
 [dev-dependencies]
+mpdelta_core_test_util = { workspace = true }
 tokio = { workspace = true, features = ["rt"] }

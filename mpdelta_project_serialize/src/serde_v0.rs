@@ -656,7 +656,7 @@ impl<T: ParameterValueType> RootComponentClassForSerialize<T, Ser> {
 }
 
 impl<T: ParameterValueType> RootComponentClassForSerialize<T, De> {
-    async fn into_core<K, C, P, Q, E>(self, class_loader: Arc<ComponentClassLoaderWrapper<K, T, C, P, Q, E>>, slot: OwnedRwLockReadGuard<RootComponentClass<K, T>>, runtime: Handle, key: Arc<RwLock<TCellOwner<K>>>) -> Result<(), DeserializeError<K>>
+    async fn into_core<K, C, P, Q, E>(self, class_loader: Arc<ComponentClassLoaderWrapper<K, T, C, P, Q, E>>, slot: OwnedRwLockReadGuard<RootComponentClass<K, T>>, runtime: Handle, key: Arc<RwLock<TCellOwner<K>>>) -> Result<(), DeserializeError<K, T>>
     where
         C: ComponentClassLoader<K, T> + 'static,
         P: ParameterValueType,
@@ -743,7 +743,7 @@ impl<T: ParameterValueType> RootComponentClassForSerialize<T, De> {
                                 ParameterValueFixedForSerialize::Array(value) => deserialize_fixed_value!(value, class_loader.value_managers.array).map(ParameterValueFixed::Array),
                                 ParameterValueFixedForSerialize::ComponentClass(()) => Ok(ParameterValueFixed::ComponentClass(())),
                             };
-                            Ok::<_, DeserializeError<K>>(result?)
+                            Ok::<_, DeserializeError<K, T>>(result?)
                         })
                         .try_collect::<Vec<_>>()
                         .await?;
@@ -786,7 +786,7 @@ impl<T: ParameterValueType> RootComponentClassForSerialize<T, De> {
                                 }
                                 ParameterNullableValueForSerialize::ComponentClass(value) => Ok(ParameterNullableValue::ComponentClass(value)),
                             };
-                            Ok::<_, DeserializeError<K>>((params?, components, priority))
+                            Ok::<_, DeserializeError<K, T>>((params?, components, priority))
                         })
                         .try_collect::<Vec<_>>()
                         .await?;
@@ -801,7 +801,7 @@ impl<T: ParameterValueType> RootComponentClassForSerialize<T, De> {
                     }
                     let instance = instance.fixed_parameters(fixed_parameter_types.into_boxed_slice(), fixed_parameters.into_boxed_slice()).variable_parameters(variable_parameter_types, Vec::new()).build();
                     let instance_slot = StaticPointerOwned::new(TCell::new(instance));
-                    Ok::<_, DeserializeError<K>>((instance_slot, (variable_parameters, image_required_params, audio_required_params)))
+                    Ok::<_, DeserializeError<K, T>>((instance_slot, (variable_parameters, image_required_params, audio_required_params)))
                 })
             })
             .buffered(16)
@@ -830,7 +830,7 @@ impl<T: ParameterValueType> RootComponentClassForSerialize<T, De> {
                     let variable_parameters = variable_parameters
                         .into_iter()
                         .map(|(params, components, priority)| {
-                            Ok::<_, DeserializeError<K>>(VariableParameterValue {
+                            Ok::<_, DeserializeError<K, T>>(VariableParameterValue {
                                 params,
                                 components: components
                                     .into_iter()
@@ -939,7 +939,7 @@ impl<T: ParameterValueType> RootComponentClassForSerialize<T, De> {
                                         },
                                     )
                                     .await?;
-                                Ok::<_, DeserializeError<K>>(VariableParameterValue {
+                                Ok::<_, DeserializeError<K, T>>(VariableParameterValue {
                                     params,
                                     components: components
                                         .into_iter()
@@ -972,7 +972,7 @@ impl<T: ParameterValueType> RootComponentClassForSerialize<T, De> {
                 if let Some(params) = audio_required_params {
                     component.set_audio_required_params(params);
                 }
-                future::ready(Ok::<_, DeserializeError<K>>(()))
+                future::ready(Ok::<_, DeserializeError<K, T>>(()))
             })
             .await?;
         drop(key);
@@ -983,7 +983,7 @@ impl<T: ParameterValueType> RootComponentClassForSerialize<T, De> {
                 let link = MarkerLink::new(pins_map.get(&from).cloned().ok_or_else(|| DeserializeError::UnknownPin(from))?, pins_map.get(&to).cloned().ok_or_else(|| DeserializeError::UnknownPin(to))?, length);
                 Ok(StaticPointerOwned::new(TCell::new(link)))
             })
-            .collect::<Result<_, DeserializeError<K>>>()?;
+            .collect::<Result<_, DeserializeError<K, T>>>()?;
         *slot.component_mut() = components;
         *slot.link_mut() = links;
         Ok(())
@@ -995,7 +995,7 @@ async fn deserialize_vector3_params<K, T, C, P, Q, E>(
     class_loader: &ComponentClassLoaderWrapper<K, T, C, P, Q, E>,
     component_instance_map: &HashMap<ComponentInstanceHandleForSerialize, ComponentInstanceHandle<K, T>>,
     pins_map: &HashMap<MarkerPinHandleForSerialize, MarkerPinHandle<K>>,
-) -> Result<Vector3Params<K, T>, DeserializeError<K>>
+) -> Result<Vector3Params<K, T>, DeserializeError<K, T>>
 where
     T: ParameterValueType,
     C: ComponentClassLoader<K, T> + 'static,
@@ -1007,7 +1007,7 @@ where
         let VariableParameterValueForSerialize { params, components, priority } = value;
         let params = deserialize_pin_split_value!(params, pins_map, class_loader.value_managers.real_number, class_loader.easing_manager)?;
         let components = components.into_iter().map(|c| component_instance_map.get(&c).cloned().ok_or(DeserializeError::UnknownComponentInstanceHandle(c))).collect::<Result<_, _>>()?;
-        Ok::<_, DeserializeError<K>>(VariableParameterValue { params, components, priority })
+        Ok::<_, DeserializeError<K, T>>(VariableParameterValue { params, components, priority })
     };
     let Vector3ParamsForSerialize { x, y, z } = params;
     let (x, y, z) = tokio::try_join!(transform(x), transform(y), transform(z))?;
@@ -1034,7 +1034,7 @@ impl<T: ParameterValueType> ProjectForSerialize<T, Ser> {
 }
 
 impl<T: ParameterValueType> ProjectForSerialize<T, De> {
-    pub async fn into_core<K, C, P, Q, E>(self, class: C, runtime: &Handle, value_managers: ParameterAllValues<P>, quaternion_manager: Q, easing_manager: E, key: &Arc<RwLock<TCellOwner<K>>>) -> Result<ProjectHandleOwned<K, T>, DeserializeError<K>>
+    pub async fn into_core<K, C, P, Q, E>(self, class: C, runtime: &Handle, value_managers: ParameterAllValues<P>, quaternion_manager: Q, easing_manager: E, key: &Arc<RwLock<TCellOwner<K>>>) -> Result<ProjectHandleOwned<K, T>, DeserializeError<K, T>>
     where
         K: 'static,
         C: ComponentClassLoader<K, T> + 'static,

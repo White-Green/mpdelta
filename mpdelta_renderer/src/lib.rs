@@ -475,9 +475,10 @@ pub enum RenderError<K: 'static, T: ParameterValueType> {
 
 pub type RenderResult<Ok, K, T> = Result<Ok, RenderError<K, T>>;
 
-impl<K, T: ParameterValueType> From<CollectCachedTimeError<K>> for RenderError<K, T> {
-    fn from(value: CollectCachedTimeError<K>) -> Self {
+impl<K, T: ParameterValueType> From<CollectCachedTimeError<K, T>> for RenderError<K, T> {
+    fn from(value: CollectCachedTimeError<K, T>) -> Self {
         match value {
+            CollectCachedTimeError::InvalidComponentInstance(component) => RenderError::InvalidComponent(component),
             CollectCachedTimeError::InvalidMarkerLink(link) => RenderError::InvalidMarkerLink(link),
             CollectCachedTimeError::InvalidMarker(pin) => RenderError::InvalidMarker(pin),
             CollectCachedTimeError::InvalidLinkGraph => RenderError::InvalidLinkGraph,

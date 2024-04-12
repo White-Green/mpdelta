@@ -133,8 +133,23 @@ where
     write!(s, "]").unwrap();
     s
 }
+pub async fn assert_eq_root_component_class_ignore_cached_time<K, T>(a: &RootComponentClassHandleOwned<K, T>, b: &RootComponentClassHandleOwned<K, T>, key: &TCellOwner<K>)
+where
+    K: 'static,
+    T: ParameterValueType,
+{
+    assert_eq_root_component_class_inner(a, b, key, true).await;
+}
 
 pub async fn assert_eq_root_component_class<K, T>(a: &RootComponentClassHandleOwned<K, T>, b: &RootComponentClassHandleOwned<K, T>, key: &TCellOwner<K>)
+where
+    K: 'static,
+    T: ParameterValueType,
+{
+    assert_eq_root_component_class_inner(a, b, key, false).await;
+}
+
+async fn assert_eq_root_component_class_inner<K, T>(a: &RootComponentClassHandleOwned<K, T>, b: &RootComponentClassHandleOwned<K, T>, key: &TCellOwner<K>, ignore_cached_time: bool)
 where
     K: 'static,
     T: ParameterValueType,
@@ -143,7 +158,9 @@ where
         let (a, b) = tokio::join!(a.read(), b.read());
         let (a, b) = tokio::join!(a.get(), b.get());
         (a.left().ro(key).locked_component_time() == b.left().ro(key).locked_component_time()).then_some(())?;
+        (a.left().ro(key).cached_timeline_time() == b.left().ro(key).cached_timeline_time() || ignore_cached_time).then_some(())?;
         (a.right().ro(key).locked_component_time() == b.right().ro(key).locked_component_time()).then_some(())?;
+        (a.right().ro(key).cached_timeline_time() == b.right().ro(key).cached_timeline_time() || ignore_cached_time).then_some(())?;
         (a.component().len() == b.component().len()).then_some(())?;
         let pin_index_map_a = a
             .component()
@@ -181,8 +198,8 @@ where
                 .chain(a.markers())
                 .chain(iter::once(a.marker_right()))
                 .zip(iter::once(b.marker_left()).chain(b.markers()).chain(iter::once(b.marker_right())))
-                .try_for_each(|(a, b)| (a.ro(key).locked_component_time() == b.ro(key).locked_component_time()).then_some(()))
-        });
+                .try_for_each(|(a, b)| (a.ro(key).locked_component_time() == b.ro(key).locked_component_time() && (a.ro(key).cached_timeline_time() == b.ro(key).cached_timeline_time() || ignore_cached_time)).then_some(()))
+        })?;
         (a.link().len() == b.link().len()).then_some(())?;
         a.link().iter().zip(b.link()).try_for_each(|(a, b)| {
             let a = a.ro(key);
@@ -204,10 +221,27 @@ macro_rules! marker {
     () => {
         ::mpdelta_core::ptr::StaticPointerOwned::new(::qcell::TCell::new(::mpdelta_core::component::marker_pin::MarkerPin::new_unlocked(::mpdelta_core::time::TimelineTime::ZERO)))
     };
-    ($locked:expr$(,)?) => {
+    (locked: $locked:expr$(,)?) => {
         ::mpdelta_core::ptr::StaticPointerOwned::new(::qcell::TCell::new(::mpdelta_core::component::marker_pin::MarkerPin::new(
             ::mpdelta_core::time::TimelineTime::ZERO,
-            ::mpdelta_core::component::marker_pin::MarkerTime::new($locked).unwrap(),
+            ::mpdelta_core::component::marker_pin::MarkerTime::new(::mpdelta_core::common::mixed_fraction::MixedFraction::try_from($locked).unwrap()).unwrap(),
+        )))
+    };
+    (cached: $cached:expr$(,)?) => {
+        ::mpdelta_core::ptr::StaticPointerOwned::new(::qcell::TCell::new(::mpdelta_core::component::marker_pin::MarkerPin::new_unlocked(::mpdelta_core::time::TimelineTime::new(
+            ::mpdelta_core::common::mixed_fraction::MixedFraction::try_from($cached).unwrap(),
+        ))))
+    };
+    (cached: $cached:expr, locked: $locked:expr$(,)?) => {
+        ::mpdelta_core::ptr::StaticPointerOwned::new(::qcell::TCell::new(::mpdelta_core::component::marker_pin::MarkerPin::new(
+            ::mpdelta_core::time::TimelineTime::new(::mpdelta_core::common::mixed_fraction::MixedFraction::try_from($cached).unwrap()),
+            ::mpdelta_core::component::marker_pin::MarkerTime::new(::mpdelta_core::common::mixed_fraction::MixedFraction::try_from($locked).unwrap()).unwrap(),
+        )))
+    };
+    (locked: $locked:expr, cached: $cached:expr$(,)?) => {
+        ::mpdelta_core::ptr::StaticPointerOwned::new(::qcell::TCell::new(::mpdelta_core::component::marker_pin::MarkerPin::new(
+            ::mpdelta_core::time::TimelineTime::new(::mpdelta_core::common::mixed_fraction::MixedFraction::try_from($cached).unwrap()),
+            ::mpdelta_core::component::marker_pin::MarkerTime::new(::mpdelta_core::common::mixed_fraction::MixedFraction::try_from($locked).unwrap()).unwrap(),
         )))
     };
 }
@@ -220,6 +254,61 @@ macro_rules! root_component_class {
         $(right: $right:ident,)?
         components: [$({ markers: [$($pin:expr$( => $pin_name:ident)?),*$(,)?] }$(;$component_name:ident)?),*$(,)?],
         links: [$($from:ident = $len:expr => $to:expr $(;$link_name:ident)?),*$(,)?]$(,)?
+    ) => {
+        $crate::root_component_class! {
+            @inner;
+            $name, $k, $t, $key,
+            $(left: $left,)?
+            $(right: $right,)?
+            [$({ markers: [$($pin$( => $pin_name)?),*] }$(;$component_name)?),*],
+            [$($from = $len => $to $(;$link_name)?),*],
+            ::mpdelta_differential::collect_cached_time,
+        }
+    };
+    (
+        no_differential;
+        $name:ident = <$k:ty, $t:ty> $key:expr;
+        $(left: $left:ident,)?
+        $(right: $right:ident,)?
+        components: [$({ markers: [$($pin:expr$( => $pin_name:ident)?),*$(,)?] }$(;$component_name:ident)?),*$(,)?],
+        links: [$($from:ident = $len:expr => $to:expr $(;$link_name:ident)?),*$(,)?]$(,)?
+    ) => {
+        $crate::root_component_class! {
+            @inner;
+            $name, $k, $t, $key,
+            $(left: $left,)?
+            $(right: $right,)?
+            [$({ markers: [$($pin$( => $pin_name)?),*] }$(;$component_name)?),*],
+            [$($from = $len => $to $(;$link_name)?),*],
+            |_, _, _, _, _| Some(()),
+        }
+    };
+    (
+        custom_differential = $calc_differential:expr;
+        $name:ident = <$k:ty, $t:ty> $key:expr;
+        $(left: $left:ident,)?
+        $(right: $right:ident,)?
+        components: [$({ markers: [$($pin:expr$( => $pin_name:ident)?),*$(,)?] }$(;$component_name:ident)?),*$(,)?],
+        links: [$($from:ident = $len:expr => $to:expr $(;$link_name:ident)?),*$(,)?]$(,)?
+    ) => {
+        $crate::root_component_class! {
+            @inner;
+            $name, $k, $t, $key,
+            $(left: $left,)?
+            $(right: $right,)?
+            [$({ markers: [$($pin$( => $pin_name)?),*] }$(;$component_name)?),*],
+            [$($from = $len => $to $(;$link_name)?),*],
+            $calc_differential,
+        }
+    };
+    (
+        @inner;
+        $name:ident, $k:ty, $t:ty, $key:expr,
+        $(left: $left:ident,)?
+        $(right: $right:ident,)?
+        [$({ markers: [$($pin:expr$( => $pin_name:ident)?),*$(,)?] }$(;$component_name:ident)?),*$(,)?],
+        [$($from:ident = $len:expr => $to:expr $(;$link_name:ident)?),*$(,)?]$(,)?
+        $calc_differential:expr,
     ) => {
         let root_component_class = ::mpdelta_core::project::RootComponentClass::<$k, $t>::new_empty(
             ::uuid::Uuid::nil(),
@@ -256,13 +345,13 @@ macro_rules! root_component_class {
         }),*];
         #[allow(unused_assignments)]
         let links = vec![$({
-                let len = ::mpdelta_core::time::TimelineTime::new($len);
+                let len = ::mpdelta_core::time::TimelineTime::new(::mpdelta_core::common::mixed_fraction::MixedFraction::try_from($len).unwrap());
                 let link = ::mpdelta_core::component::link::MarkerLink::new($from.clone(), $to.clone(), len);
                 let link = ::mpdelta_core::ptr::StaticPointerOwned::new(::qcell::TCell::new(link));
                 $($link_name = ::mpdelta_core::ptr::StaticPointerOwned::reference(&link).clone();)?
                 link
             }),*];
-        ::mpdelta_differential::collect_cached_time(&components, &links, left, right, &$key).unwrap();
+        $calc_differential(&components, &links, left, right, &$key).unwrap();
         *item.component_mut() = components;
         *item.link_mut() = links;
         drop(item);

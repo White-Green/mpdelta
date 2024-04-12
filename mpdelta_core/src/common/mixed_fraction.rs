@@ -4,6 +4,7 @@ use std::cmp::Ordering;
 use std::fmt::{Debug, Display, Formatter};
 use std::ops::{Add, ControlFlow, Div, Mul, Neg, Not, Rem, Sub};
 use std::{fmt, iter};
+use thiserror::Error;
 
 pub mod atomic;
 
@@ -471,6 +472,30 @@ impl Display for MixedFraction {
 impl Default for MixedFraction {
     fn default() -> Self {
         MixedFraction::ZERO
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+#[error("overflow error")]
+pub struct OverflowError;
+
+impl TryFrom<i32> for MixedFraction {
+    type Error = OverflowError;
+
+    fn try_from(value: i32) -> Result<Self, Self::Error> {
+        Ok(MixedFraction::from_integer(validate_integer(value).map_err(|_| OverflowError)?))
+    }
+}
+
+impl From<f64> for MixedFraction {
+    fn from(value: f64) -> Self {
+        MixedFraction::from_f64(value)
+    }
+}
+
+impl From<MixedFraction> for f64 {
+    fn from(value: MixedFraction) -> Self {
+        value.into_f64()
     }
 }
 

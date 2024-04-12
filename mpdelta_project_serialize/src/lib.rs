@@ -91,7 +91,11 @@ impl<K: 'static, T: ParameterValueType> Debug for SerializeError<K, T> {
 }
 
 #[derive(Error)]
-pub enum DeserializeError<K> {
+pub enum DeserializeError<K, T>
+where
+    K: 'static,
+    T: ParameterValueType,
+{
     #[error("Unknown pin: {0:?}")]
     UnknownPin(MarkerPinHandleForSerialize),
     #[error("Unknown component class: {0:?}")]
@@ -115,10 +119,14 @@ pub enum DeserializeError<K> {
     #[error("unknown format version: {0}")]
     UnknownFormatVersion(u32),
     #[error("error in differential calculation: {0}")]
-    DifferentialError(#[from] CollectCachedTimeError<K>),
+    DifferentialError(#[from] CollectCachedTimeError<K, T>),
 }
 
-impl<K> Debug for DeserializeError<K> {
+impl<K, T> Debug for DeserializeError<K, T>
+where
+    K: 'static,
+    T: ParameterValueType,
+{
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             DeserializeError::UnknownPin(value) => f.debug_tuple("UnknownPin").field(value).finish(),
@@ -149,7 +157,7 @@ fn write_project<K, T: ParameterValueType>(project: &serde_v0::ProjectForSeriali
     Ok(())
 }
 
-fn read_project<K, T: ParameterValueType>(mut read: impl Read) -> Result<serde_v0::ProjectForSerialize<T, serde_v0::De>, DeserializeError<K>> {
+fn read_project<K, T: ParameterValueType>(mut read: impl Read) -> Result<serde_v0::ProjectForSerialize<T, serde_v0::De>, DeserializeError<K, T>> {
     let mut header = [0u8; 32];
     read.read_exact(&mut header)?;
     let (magic_number, header) = header.split_first_chunk().unwrap();
@@ -187,7 +195,7 @@ where
 {
     type SerializeError = SerializeError<K, T>;
 
-    type DeserializeError = DeserializeError<K>;
+    type DeserializeError = DeserializeError<K, T>;
 
     async fn serialize_project(&self, project: &ProjectHandle<K, T>, out: impl Write + Send) -> Result<(), Self::SerializeError> {
         let project = project.upgrade().ok_or_else(|| SerializeError::InvalidProjectHandle(project.clone()))?;

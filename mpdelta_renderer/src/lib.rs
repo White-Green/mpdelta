@@ -188,9 +188,15 @@ where
                     }
                     Err(err) => return Err(err.into()),
                 }
+                if f % 60 == 59 {
+                    println!("{} of {length_frames} frames rendered", f + 1);
+                }
             }
+            println!("{length_frames} for {length_frames} frames rendered");
         }
+        println!("waiting for encode");
         encoder.finish();
+        println!("encode finished");
         Ok(())
     }
 }

@@ -127,6 +127,17 @@ pub struct NativeProcessorInput<'a, T: ParameterValueType> {
     pub variable_parameter_type: &'a [(String, ParameterType)],
 }
 
+impl<'a, T> Clone for NativeProcessorInput<'a, T>
+where
+    T: ParameterValueType,
+{
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<'a, T> Copy for NativeProcessorInput<'a, T> where T: ParameterValueType {}
+
 pub struct NativeProcessorRequest;
 
 impl ParameterValueType for NativeProcessorRequest {

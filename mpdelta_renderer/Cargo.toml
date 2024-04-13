@@ -10,6 +10,7 @@ cgmath = { workspace = true }
 crossbeam-utils = { workspace = true }
 dashmap = { workspace = true }
 futures = { workspace = true }
+moka = { workspace = true }
 mpdelta_core = { workspace = true }
 mpdelta_differential = { workspace = true }
 once_cell = { workspace = true }

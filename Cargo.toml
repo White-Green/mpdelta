@@ -97,6 +97,7 @@ image = "0.25.1"
 indexmap = "2.2.6"
 lru = "0.12.3"
 lyon_tessellation = "1.0.13"
+moka = { version = "0.12.6", features = ["future"] }
 mpdelta_async_runtime = { path = "mpdelta_common/mpdelta_async_runtime" }
 mpdelta_audio_mixer = { path = "mpdelta_audio_mixer" }
 mpdelta_components = { path = "mpdelta_components" }

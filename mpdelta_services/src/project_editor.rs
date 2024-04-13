@@ -184,8 +184,8 @@ where
             }
             RootComponentEditCommand::DeleteComponentInstance(instance) => {
                 {
-                    let mut item = target.get_mut().await;
                     let key = self.key.write().await;
+                    let mut item = target.get_mut().await;
                     let Some(instance_ref) = instance.upgrade() else {
                         return Err(ProjectEditError::ComponentInstanceNotFound);
                     };
@@ -509,7 +509,8 @@ where
             InstanceEditCommand::MoveMarkerPin(pin, to) => {
                 {
                     let root = root_ref.upgrade().ok_or(ProjectEditError::InvalidTarget)?;
-                    let (root, mut key) = tokio::join!(root.read(), self.key.write());
+                    let mut key = self.key.write().await;
+                    let root = root.read().await;
                     let root = root.get().await;
 
                     let mut next_links = HashSet::new();
@@ -651,7 +652,8 @@ where
             InstanceEditCommand::DeleteMarkerPin(pin) => {
                 {
                     let root = root_ref.upgrade().ok_or(ProjectEditError::InvalidTarget)?;
-                    let (root, mut key) = tokio::join!(root.read(), self.key.write());
+                    let mut key = self.key.write().await;
+                    let root = root.read().await;
                     let mut root = root.get_mut().await;
 
                     let Some((remove_marker_index, _)) = target.ro(&key).markers().iter().enumerate().find(|&(_, p)| p == &pin) else {
@@ -757,7 +759,8 @@ where
             InstanceEditCommand::LockMarkerPin(pin) => {
                 {
                     let root = root_ref.upgrade().ok_or(ProjectEditError::InvalidTarget)?;
-                    let (root, mut key) = tokio::join!(root.read(), self.key.write());
+                    let mut key = self.key.write().await;
+                    let root = root.read().await;
                     let root = root.get().await;
                     let Some(pin_ref) = pin.upgrade() else {
                         return Err(ProjectEditError::InvalidMarkerPin);
@@ -806,7 +809,8 @@ where
             InstanceEditCommand::UnlockMarkerPin(pin) => {
                 {
                     let root = root_ref.upgrade().ok_or(ProjectEditError::InvalidTarget)?;
-                    let (root, mut key) = tokio::join!(root.read(), self.key.write());
+                    let mut key = self.key.write().await;
+                    let root = root.read().await;
                     let mut root = root.get_mut().await;
                     let Some(pin_ref) = pin.upgrade() else {
                         return Err(ProjectEditError::InvalidMarkerPin);

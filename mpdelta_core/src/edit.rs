@@ -24,6 +24,7 @@ pub enum InstanceEditCommand<K: 'static, T: ParameterValueType> {
     DeleteMarkerPin(MarkerPinHandle<K>),
     LockMarkerPin(MarkerPinHandle<K>),
     UnlockMarkerPin(MarkerPinHandle<K>),
+    SplitAtPin(MarkerPinHandle<K>),
 }
 
 pub enum RootComponentEditEvent<'a, K: 'static, T: ParameterValueType> {
@@ -46,4 +47,5 @@ pub enum InstanceEditEvent<'a, K: 'static, T: ParameterValueType> {
     DeleteMarkerPin(&'a MarkerPinHandle<K>),
     LockMarkerPin(&'a MarkerPinHandle<K>),
     UnlockMarkerPin(&'a MarkerPinHandle<K>),
+    SplitAtPin(&'a MarkerPinHandle<K>),
 }

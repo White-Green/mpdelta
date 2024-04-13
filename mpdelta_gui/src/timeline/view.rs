@@ -131,6 +131,7 @@ impl<K: 'static, T: ParameterValueType, VM: TimelineViewModel<K, T>> Timeline<K,
                             ComponentInstanceEditEvent::DeletePin(handle) => self.view_model.delete_marker_pin(&instance_data.handle, handle),
                             ComponentInstanceEditEvent::UnlockPin(handle) => self.view_model.unlock_marker_pin(&instance_data.handle, handle),
                             ComponentInstanceEditEvent::LockPin(handle) => self.view_model.lock_marker_pin(&instance_data.handle, handle),
+                            ComponentInstanceEditEvent::SplitComponentAtPin(handle) => self.view_model.split_component_at_pin(&instance_data.handle, handle),
                         })
                         .show(ui);
                         range_max = range_max.insert(OrderedFloat(instance_data.start_time)..OrderedFloat(instance_data.end_time), block_bottom);
@@ -318,6 +319,8 @@ mod tests {
             fn lock_marker_pin(&self, _instance: &Self::ComponentInstanceHandle, _pin: &Self::MarkerPinHandle) {}
 
             fn unlock_marker_pin(&self, _instance: &Self::ComponentInstanceHandle, _pin: &Self::MarkerPinHandle) {}
+
+            fn split_component_at_pin(&self, _instance: &Self::ComponentInstanceHandle, _pin: &Self::MarkerPinHandle) {}
 
             type ComponentLinkHandle = &'static str;
 

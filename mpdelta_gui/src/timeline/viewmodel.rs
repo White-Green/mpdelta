@@ -219,6 +219,7 @@ pub trait TimelineViewModel<K: 'static, T: ParameterValueType> {
     fn delete_marker_pin(&self, instance: &Self::ComponentInstanceHandle, pin: &Self::MarkerPinHandle);
     fn lock_marker_pin(&self, instance: &Self::ComponentInstanceHandle, pin: &Self::MarkerPinHandle);
     fn unlock_marker_pin(&self, instance: &Self::ComponentInstanceHandle, pin: &Self::MarkerPinHandle);
+    fn split_component_at_pin(&self, instance: &Self::ComponentInstanceHandle, pin: &Self::MarkerPinHandle);
     type ComponentLinkHandle: Clone + Eq + Hash;
     fn component_links<R>(&self, f: impl FnOnce(&ComponentLinkDataList<Self::ComponentLinkHandle, Self::MarkerPinHandle, Self::ComponentInstanceHandle>) -> R) -> R;
     fn edit_marker_link_length(&self, link: &Self::ComponentLinkHandle, value: f64);
@@ -255,6 +256,7 @@ pub enum Message<K: 'static, T: ParameterValueType> {
     DeleteMarkerPin(ComponentInstanceHandle<K, T>, MarkerPinHandle<K>),
     LockMarkerPin(ComponentInstanceHandle<K, T>, MarkerPinHandle<K>),
     UnlockMarkerPin(ComponentInstanceHandle<K, T>, MarkerPinHandle<K>),
+    SplitComponentAtPin(ComponentInstanceHandle<K, T>, MarkerPinHandle<K>),
 }
 
 impl<K, T> Clone for Message<K, T>
@@ -278,6 +280,7 @@ where
             Message::DeleteMarkerPin(instance, pin) => Message::DeleteMarkerPin(instance.clone(), pin.clone()),
             Message::LockMarkerPin(instance, pin) => Message::LockMarkerPin(instance.clone(), pin.clone()),
             Message::UnlockMarkerPin(instance, pin) => Message::UnlockMarkerPin(instance.clone(), pin.clone()),
+            Message::SplitComponentAtPin(instance, pin) => Message::SplitComponentAtPin(instance.clone(), pin.clone()),
         }
     }
 }
@@ -306,6 +309,7 @@ where
             (Message::DeleteMarkerPin(a, ap), Message::DeleteMarkerPin(b, bp)) => a == b && ap == bp,
             (Message::LockMarkerPin(a, ap), Message::LockMarkerPin(b, bp)) => a == b && ap == bp,
             (Message::UnlockMarkerPin(a, ap), Message::UnlockMarkerPin(b, bp)) => a == b && ap == bp,
+            (Message::SplitComponentAtPin(a, ap), Message::SplitComponentAtPin(b, bp)) => a == b && ap == bp,
             _ => unreachable!(),
         }
     }
@@ -460,7 +464,7 @@ impl<K: Send + Sync + 'static, T: ParameterValueType> TimelineViewModelImpl<K, T
                     .filter(|message| {
                         matches!(
                             message,
-                            Message::MoveComponentInstance(_, _) | Message::MoveMarkerPin(_, _, _) | Message::AddMarkerPin(_, _) | Message::DeleteMarkerPin(_, _) | Message::LockMarkerPin(_, _) | Message::UnlockMarkerPin(_, _)
+                            Message::MoveComponentInstance(_, _) | Message::MoveMarkerPin(_, _, _) | Message::AddMarkerPin(_, _) | Message::DeleteMarkerPin(_, _) | Message::LockMarkerPin(_, _) | Message::UnlockMarkerPin(_, _) | Message::SplitComponentAtPin(_, _)
                         )
                     })
                     .handle_async({
@@ -480,6 +484,7 @@ impl<K: Send + Sync + 'static, T: ParameterValueType> TimelineViewModelImpl<K, T
                                     Message::DeleteMarkerPin(target, pin) => (target, InstanceEditCommand::DeleteMarkerPin(pin)),
                                     Message::LockMarkerPin(target, pin) => (target, InstanceEditCommand::LockMarkerPin(pin)),
                                     Message::UnlockMarkerPin(target, pin) => (target, InstanceEditCommand::UnlockMarkerPin(pin)),
+                                    Message::SplitComponentAtPin(target, pin) => (target, InstanceEditCommand::SplitAtPin(pin)),
                                     _ => unreachable!(),
                                 };
                                 edit.edit_instance(&target_root, &target, command);
@@ -631,6 +636,10 @@ where
 
     fn unlock_marker_pin(&self, instance: &Self::ComponentInstanceHandle, pin: &Self::MarkerPinHandle) {
         self.message_router.handle(Message::UnlockMarkerPin(instance.clone(), pin.clone()));
+    }
+
+    fn split_component_at_pin(&self, instance: &Self::ComponentInstanceHandle, pin: &Self::MarkerPinHandle) {
+        self.message_router.handle(Message::SplitComponentAtPin(instance.clone(), pin.clone()))
     }
 
     type ComponentLinkHandle = MarkerLinkHandle<K>;

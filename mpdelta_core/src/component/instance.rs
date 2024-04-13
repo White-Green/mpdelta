@@ -5,6 +5,7 @@ use crate::component::processor::ComponentProcessorWrapper;
 use crate::ptr::{StaticPointer, StaticPointerCow, StaticPointerOwned};
 use qcell::TCell;
 use std::fmt::{Debug, Formatter};
+use std::mem;
 use tokio::sync::RwLock;
 
 pub struct ComponentInstanceBuilder<K: 'static, T: ParameterValueType> {
@@ -146,8 +147,14 @@ impl<K, T: ParameterValueType> ComponentInstance<K, T> {
     pub fn marker_left(&self) -> &MarkerPinHandleOwned<K> {
         &self.marker_left
     }
+    pub fn replace_marker_left(&mut self, left: MarkerPinHandleOwned<K>) -> MarkerPinHandleOwned<K> {
+        mem::replace(&mut self.marker_left, left)
+    }
     pub fn marker_right(&self) -> &MarkerPinHandleOwned<K> {
         &self.marker_right
+    }
+    pub fn replace_marker_right(&mut self, right: MarkerPinHandleOwned<K>) -> MarkerPinHandleOwned<K> {
+        mem::replace(&mut self.marker_right, right)
     }
     pub fn markers(&self) -> &[MarkerPinHandleOwned<K>] {
         &self.markers
@@ -158,6 +165,9 @@ impl<K, T: ParameterValueType> ComponentInstance<K, T> {
     pub fn image_required_params(&self) -> Option<&ImageRequiredParams<K, T>> {
         self.image_required_params.as_ref()
     }
+    pub fn image_required_params_mut(&mut self) -> Option<&mut ImageRequiredParams<K, T>> {
+        self.image_required_params.as_mut()
+    }
     pub fn set_image_required_params(&mut self, params: ImageRequiredParams<K, T>) {
         if let Some(current_params) = self.image_required_params.as_mut() {
             *current_params = params;
@@ -165,6 +175,9 @@ impl<K, T: ParameterValueType> ComponentInstance<K, T> {
     }
     pub fn audio_required_params(&self) -> Option<&AudioRequiredParams<K, T>> {
         self.audio_required_params.as_ref()
+    }
+    pub fn audio_required_params_mut(&mut self) -> Option<&mut AudioRequiredParams<K, T>> {
+        self.audio_required_params.as_mut()
     }
     pub fn set_audio_required_params(&mut self, params: AudioRequiredParams<K, T>) {
         if let Some(current_params) = self.audio_required_params.as_mut() {

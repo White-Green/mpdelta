@@ -2,10 +2,11 @@ use crate::project_editor::dsa::union_find::UnionFind;
 use async_trait::async_trait;
 use dashmap::DashMap;
 use mpdelta_core::common::mixed_fraction::MixedFraction;
-use mpdelta_core::component::instance::ComponentInstanceHandle;
+use mpdelta_core::common::time_split_value::TimeSplitValue;
+use mpdelta_core::component::instance::{ComponentInstance, ComponentInstanceHandle};
 use mpdelta_core::component::link::MarkerLink;
 use mpdelta_core::component::marker_pin::{MarkerPin, MarkerPinHandle, MarkerTime};
-use mpdelta_core::component::parameter::ParameterValueType;
+use mpdelta_core::component::parameter::{AudioRequiredParams, ImageRequiredParams, ImageRequiredParamsTransform, ParameterNullableValue, ParameterValueType, PinSplitValue, VariableParameterValue};
 use mpdelta_core::core::{EditEventListener, Editor};
 use mpdelta_core::edit::{InstanceEditCommand, InstanceEditEvent, RootComponentEditCommand, RootComponentEditEvent};
 use mpdelta_core::project::RootComponentClassHandle;
@@ -14,9 +15,9 @@ use mpdelta_core::time::TimelineTime;
 use qcell::{TCell, TCellOwner};
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::iter;
 use std::sync::atomic::AtomicUsize;
 use std::sync::{atomic, Arc};
+use std::{iter, mem};
 use thiserror::Error;
 use tokio::sync::RwLock;
 
@@ -41,6 +42,7 @@ impl<K, T> ProjectEditor<K, T> {
     }
 }
 
+#[derive(Debug)]
 pub enum ProjectEditLog {
     Unimplemented,
 }
@@ -65,6 +67,10 @@ pub enum ProjectEditError {
     MarkerPinsAreSame,
     #[error("marker pins already connected")]
     PinsAlreadyConnected,
+    #[error("marker pin should locked")]
+    MarkerPinShouldLocked,
+    #[error("cannot split for avoid floating")]
+    CannotSplitForAvoidFloating,
 }
 
 pub struct ProjectEditListenerGuard<K: 'static, T> {
@@ -865,6 +871,181 @@ where
                 }
 
                 self.edit_event_listeners.iter().for_each(|listener| listener.on_edit_instance(root_ref, target_ref, InstanceEditEvent::UnlockMarkerPin(&pin)));
+                Ok(ProjectEditLog::Unimplemented)
+            }
+            InstanceEditCommand::SplitAtPin(pin) => {
+                {
+                    let root = root_ref.upgrade().ok_or(ProjectEditError::InvalidTarget)?;
+                    let mut key = self.key.write().await;
+                    let root = root.read().await;
+                    let mut root = root.get_mut().await;
+
+                    let instance = target.ro(&key);
+                    let (i, pin_owned) = instance.markers().iter().enumerate().find(|&(_, p)| p == &pin).ok_or(ProjectEditError::MarkerPinNotFound)?;
+                    let right_pins = instance.markers()[i..].iter().chain(iter::once(instance.marker_right())).map(StaticPointerOwned::reference).cloned().collect::<HashSet<_>>();
+                    let cloned_pin = if let Some(component_time) = pin_owned.ro(&key).locked_component_time() {
+                        MarkerPin::new(TimelineTime::ZERO, component_time)
+                    } else {
+                        return Err(ProjectEditError::MarkerPinShouldLocked);
+                    };
+                    if root.link().iter().all(|link| {
+                        let link = link.ro(&key);
+                        !right_pins.contains(link.from()) && !right_pins.contains(link.to())
+                    }) {
+                        return Err(ProjectEditError::CannotSplitForAvoidFloating);
+                    }
+                    let cloned_pin = StaticPointerOwned::new(TCell::new(cloned_pin));
+                    let cloned_pin_weak = StaticPointerOwned::reference(&cloned_pin).clone();
+
+                    fn split_time_split_value<K, T: Clone>(value: &mut PinSplitValue<K, T>, right_pins: &HashSet<MarkerPinHandle<K>>, split_target_pin: &MarkerPinHandle<K>, new_pin: &MarkerPinHandle<K>) -> PinSplitValue<K, T> {
+                        let pin_position = value.binary_search_by(|p| {
+                            if p == split_target_pin {
+                                Ordering::Equal
+                            } else if right_pins.contains(p) {
+                                Ordering::Greater
+                            } else {
+                                Ordering::Less
+                            }
+                        });
+                        if let Err(p) = pin_position {
+                            value.split_value_by_clone(p.checked_sub(1).unwrap(), split_target_pin.clone()).unwrap();
+                        }
+                        let mut stack = Vec::new();
+                        while value.last().unwrap().1 != split_target_pin {
+                            stack.push(value.pop_last().unwrap());
+                        }
+                        let mut end = new_pin.clone();
+                        let mut data = Vec::new();
+                        for (v, t) in stack.into_iter().rev() {
+                            data.push((mem::replace(&mut end, t), v));
+                        }
+                        TimeSplitValue::by_data_end(data, end)
+                    }
+                    fn split_variable_parameter_value<K, T, V>(value: &mut VariableParameterValue<K, T, PinSplitValue<K, V>>, left_pins: &HashSet<MarkerPinHandle<K>>, split_target_pin: &MarkerPinHandle<K>, new_pin: &MarkerPinHandle<K>) -> VariableParameterValue<K, T, PinSplitValue<K, V>>
+                    where
+                        K: 'static,
+                        T: ParameterValueType,
+                        V: Clone,
+                    {
+                        let &mut VariableParameterValue { ref mut params, ref components, priority } = value;
+                        VariableParameterValue {
+                            params: split_time_split_value(params, left_pins, split_target_pin, new_pin),
+                            components: components.clone(),
+                            priority,
+                        }
+                    }
+
+                    let instance = target.rw(&mut key);
+                    let image_required_params = instance.image_required_params_mut().map(|image_required_params| {
+                        let &mut ImageRequiredParams {
+                            ref mut transform,
+                            background_color,
+                            ref mut opacity,
+                            ref mut blend_mode,
+                            ref mut composite_operation,
+                        } = image_required_params;
+                        let transform = match transform {
+                            ImageRequiredParamsTransform::Params {
+                                size,
+                                scale,
+                                translate,
+                                rotate,
+                                scale_center,
+                                rotate_center,
+                            } => ImageRequiredParamsTransform::Params {
+                                size: AsMut::<[_; 3]>::as_mut(size).each_mut().map(|value| split_variable_parameter_value(value, &right_pins, &pin, &cloned_pin_weak)).into(),
+                                scale: AsMut::<[_; 3]>::as_mut(scale).each_mut().map(|value| split_variable_parameter_value(value, &right_pins, &pin, &cloned_pin_weak)).into(),
+                                translate: AsMut::<[_; 3]>::as_mut(translate).each_mut().map(|value| split_variable_parameter_value(value, &right_pins, &pin, &cloned_pin_weak)).into(),
+                                rotate: split_time_split_value(rotate, &right_pins, &pin, &cloned_pin_weak),
+                                scale_center: AsMut::<[_; 3]>::as_mut(scale_center).each_mut().map(|value| split_variable_parameter_value(value, &right_pins, &pin, &cloned_pin_weak)).into(),
+                                rotate_center: AsMut::<[_; 3]>::as_mut(rotate_center).each_mut().map(|value| split_variable_parameter_value(value, &right_pins, &pin, &cloned_pin_weak)).into(),
+                            },
+                            ImageRequiredParamsTransform::Free { left_top, right_top, left_bottom, right_bottom } => ImageRequiredParamsTransform::Free {
+                                left_top: AsMut::<[_; 3]>::as_mut(left_top).each_mut().map(|value| split_variable_parameter_value(value, &right_pins, &pin, &cloned_pin_weak)).into(),
+                                right_top: AsMut::<[_; 3]>::as_mut(right_top).each_mut().map(|value| split_variable_parameter_value(value, &right_pins, &pin, &cloned_pin_weak)).into(),
+                                left_bottom: AsMut::<[_; 3]>::as_mut(left_bottom).each_mut().map(|value| split_variable_parameter_value(value, &right_pins, &pin, &cloned_pin_weak)).into(),
+                                right_bottom: AsMut::<[_; 3]>::as_mut(right_bottom).each_mut().map(|value| split_variable_parameter_value(value, &right_pins, &pin, &cloned_pin_weak)).into(),
+                            },
+                        };
+                        ImageRequiredParams {
+                            transform,
+                            background_color,
+                            opacity: split_time_split_value(opacity, &right_pins, &pin, &cloned_pin_weak),
+                            blend_mode: split_time_split_value(blend_mode, &right_pins, &pin, &cloned_pin_weak),
+                            composite_operation: split_time_split_value(composite_operation, &right_pins, &pin, &cloned_pin_weak),
+                        }
+                    });
+                    let audio_required_params = instance.audio_required_params_mut().map(|audio_required_params| {
+                        let AudioRequiredParams { volume } = audio_required_params;
+                        AudioRequiredParams {
+                            volume: volume.iter_mut().map(|value| split_variable_parameter_value(value, &right_pins, &pin, &cloned_pin_weak)).collect(),
+                        }
+                    });
+                    let variable_parameters_type = instance.variable_parameters_type().to_vec();
+                    let variable_parameters = instance
+                        .variable_parameters_mut()
+                        .iter_mut()
+                        .map(|value| {
+                            let &mut VariableParameterValue { ref mut params, ref components, priority } = value;
+                            let params = match params {
+                                ParameterNullableValue::None => ParameterNullableValue::None,
+                                ParameterNullableValue::Image(value) => ParameterNullableValue::Image(split_time_split_value(value, &right_pins, &pin, &cloned_pin_weak)),
+                                ParameterNullableValue::Audio(value) => ParameterNullableValue::Audio(split_time_split_value(value, &right_pins, &pin, &cloned_pin_weak)),
+                                ParameterNullableValue::Binary(value) => ParameterNullableValue::Binary(split_time_split_value(value, &right_pins, &pin, &cloned_pin_weak)),
+                                ParameterNullableValue::String(value) => ParameterNullableValue::String(split_time_split_value(value, &right_pins, &pin, &cloned_pin_weak)),
+                                ParameterNullableValue::Integer(value) => ParameterNullableValue::Integer(split_time_split_value(value, &right_pins, &pin, &cloned_pin_weak)),
+                                ParameterNullableValue::RealNumber(value) => ParameterNullableValue::RealNumber(split_time_split_value(value, &right_pins, &pin, &cloned_pin_weak)),
+                                ParameterNullableValue::Boolean(value) => ParameterNullableValue::Boolean(split_time_split_value(value, &right_pins, &pin, &cloned_pin_weak)),
+                                &mut ParameterNullableValue::Dictionary(value) => ParameterNullableValue::Dictionary(value),
+                                &mut ParameterNullableValue::Array(value) => ParameterNullableValue::Array(value),
+                                &mut ParameterNullableValue::ComponentClass(value) => ParameterNullableValue::ComponentClass(value),
+                            };
+                            VariableParameterValue { params, components: components.clone(), priority }
+                        })
+                        .collect();
+                    let fixed_parameters_type = instance.fixed_parameters_type().to_vec().into_boxed_slice();
+                    let fixed_parameters = instance.fixed_parameters().to_vec().into_boxed_slice();
+                    let component_class = instance.component_class().clone();
+                    let processor = instance.processor().clone();
+
+                    let mut pins = instance.markers_mut().drain(i..);
+                    let new_right = pins.next().unwrap();
+                    let right_markers = pins.collect();
+                    let right_right = instance.replace_marker_right(new_right);
+                    let mut builder = ComponentInstance::builder(component_class, cloned_pin, right_right, right_markers, processor);
+                    builder = builder.fixed_parameters(fixed_parameters_type, fixed_parameters).variable_parameters(variable_parameters_type, variable_parameters);
+                    if let Some(image_required_params) = image_required_params {
+                        builder = builder.image_required_params(image_required_params);
+                    }
+                    if let Some(audio_required_params) = audio_required_params {
+                        builder = builder.audio_required_params(audio_required_params);
+                    }
+                    let new_instance = builder.build();
+                    root.component_mut().push(StaticPointerOwned::new(TCell::new(new_instance)));
+                    let links = root.link_mut();
+                    let new_links = links
+                        .iter()
+                        .filter_map(|link| {
+                            let link = link.ro(&key);
+                            if link.from() == &pin {
+                                Some(MarkerLink::new(cloned_pin_weak.clone(), link.to().clone(), link.len()))
+                            } else if link.to() == &pin {
+                                Some(MarkerLink::new(link.from().clone(), cloned_pin_weak.clone(), link.len()))
+                            } else {
+                                None
+                            }
+                        })
+                        .map(TCell::new)
+                        .map(StaticPointerOwned::new)
+                        .collect::<Vec<_>>();
+                    links.extend(new_links);
+
+                    if let Err(err) = mpdelta_differential::collect_cached_time(root.component(), root.link(), root.left().as_ref(), root.right().as_ref(), &key) {
+                        eprintln!("{err}");
+                    }
+                }
+
+                self.edit_event_listeners.iter().for_each(|listener| listener.on_edit_instance(root_ref, target_ref, InstanceEditEvent::SplitAtPin(&pin)));
                 Ok(ProjectEditLog::Unimplemented)
             }
         }

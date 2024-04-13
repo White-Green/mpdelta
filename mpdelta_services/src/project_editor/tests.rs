@@ -1,7 +1,7 @@
 use crate::project_editor::ProjectEditor;
 use mpdelta_core::component::parameter::ParameterValueType;
 use mpdelta_core::core::Editor;
-use mpdelta_core::edit::RootComponentEditCommand;
+use mpdelta_core::edit::{InstanceEditCommand, RootComponentEditCommand};
 use mpdelta_core::mfrac;
 use mpdelta_core::time::TimelineTime;
 use mpdelta_core_test_util::{assert_eq_root_component_class_ignore_cached_time, marker, root_component_class};
@@ -189,4 +189,65 @@ async fn test_connect_marker_pins() {
         ],
     }
     assert_eq_root_component_class_ignore_cached_time(&edit_target, &expect, &key!()).await;
+}
+
+#[tokio::test]
+async fn test_split_at_pin() {
+    struct K;
+    let key = Arc::new(RwLock::new(TCellOwner::new()));
+    macro_rules! key {
+        () => {
+            *key.read().await
+        };
+    }
+    let editor = ProjectEditor::new(Arc::clone(&key));
+    root_component_class! {
+        edit_target = <K, T> key!();
+        left: left,
+        components: [
+            { markers: [marker!(locked: 0) => l1, marker!(locked: 1) => m, marker!(locked: 2) => r1] }; c1,
+        ],
+        links: [
+            left = 1 => l1,
+            l1 = 1 => m,
+        ],
+    }
+    editor.edit_instance(edit_target.as_ref(), &c1, InstanceEditCommand::SplitAtPin(m)).await.unwrap();
+    root_component_class! {
+        expect = <K, T> key!();
+        left: left,
+        components: [
+            { markers: [marker!(locked: 0) => l1, marker!(locked: 1) => r1] },
+            { markers: [marker!(locked: 1) => l2, marker!(locked: 2) => r2] },
+        ],
+        links: [
+            left = 1 => l1,
+            l1 = 1 => r1,
+            l1 = 1 => l2,
+        ],
+    }
+    assert_eq_root_component_class_ignore_cached_time(&edit_target, &expect, &key!()).await;
+    root_component_class! {
+        edit_target = <K, T> key!();
+        left: left,
+        components: [
+            { markers: [marker!(locked: 0) => l1, marker!() => m, marker!(locked: 2) => r1] }; c1,
+        ],
+        links: [
+            left = 1 => l1,
+            l1 = 1 => m,
+        ],
+    }
+    editor.edit_instance(edit_target.as_ref(), &c1, InstanceEditCommand::SplitAtPin(m)).await.unwrap_err();
+    root_component_class! {
+        edit_target = <K, T> key!();
+        left: left,
+        components: [
+            { markers: [marker!(locked: 0) => l1, marker!(locked: 1) => m, marker!(locked: 2) => r1] }; c1,
+        ],
+        links: [
+            left = 1 => l1,
+        ],
+    }
+    editor.edit_instance(edit_target.as_ref(), &c1, InstanceEditCommand::SplitAtPin(m)).await.unwrap_err();
 }

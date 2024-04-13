@@ -2,6 +2,7 @@ use crate::thread_cancel::{AutoCancellable, CancellationGuard};
 use crate::{AudioCombinerParam, AudioCombinerRequest, Combiner, CombinerBuilder, ImageCombinerParam, ImageCombinerRequest, ImageSizeRequest, RenderError, RenderResult};
 use cgmath::Vector3;
 use futures::{stream, StreamExt, TryStreamExt};
+use moka::future::Cache;
 use mpdelta_core::common::mixed_fraction::MixedFraction;
 use mpdelta_core::component::instance::ComponentInstanceHandle;
 use mpdelta_core::component::marker_pin::{MarkerPinHandleOwned, MarkerTime};
@@ -9,10 +10,11 @@ use mpdelta_core::component::parameter::value::DynEditableSingleValueMarker;
 use mpdelta_core::component::parameter::{
     AbstractFile, AudioRequiredParams, AudioRequiredParamsFixed, ImageRequiredParams, ImageRequiredParamsFixed, ImageRequiredParamsTransform, ImageRequiredParamsTransformFixed, Opacity, Parameter, ParameterType, ParameterValueRaw, ParameterValueType, VariableParameterValue,
 };
-use mpdelta_core::component::processor::{ComponentProcessorWrapper, ComponentsLinksPair, NativeProcessorInput};
+use mpdelta_core::component::processor::{CacheKey, ComponentProcessorWrapper, ComponentsLinksPair, NativeProcessorInput};
 use mpdelta_core::time::TimelineTime;
 use qcell::TCellOwner;
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
+use std::any::Any;
 use std::collections::HashMap;
 use std::future::Future;
 use std::marker::PhantomData;
@@ -28,6 +30,7 @@ pub(crate) struct Renderer<K: 'static, T: ParameterValueType, ImageCombinerBuild
     component: ComponentInstanceHandle<K, T>,
     image_combiner_builder: Arc<ImageCombinerBuilder>,
     audio_combiner_builder: Arc<AudioCombinerBuilder>,
+    cache: Cache<Box<dyn CacheKey>, Arc<dyn Any + Send + Sync>>,
 }
 
 impl<K, T, ImageCombinerBuilder, AudioCombinerBuilder> Renderer<K, T, ImageCombinerBuilder, AudioCombinerBuilder>
@@ -43,6 +46,7 @@ where
             component,
             image_combiner_builder,
             audio_combiner_builder,
+            cache: Cache::new(128),
         }
     }
 
@@ -52,6 +56,7 @@ where
             key,
             image_combiner_builder: Arc::clone(&self.image_combiner_builder),
             audio_combiner_builder: Arc::clone(&self.audio_combiner_builder),
+            cache: self.cache.clone(),
             _phantom: PhantomData,
         };
         let component = self.component.clone();
@@ -62,6 +67,7 @@ where
 
     pub(crate) fn calc_natural_length<'a>(&self, key: impl Deref<Target = TCellOwner<K>> + Send + 'a) -> impl Future<Output = Result<Option<MarkerTime>, RenderError<K, T>>> + Send + 'a {
         let component = self.component.clone();
+        let render_cache = self.cache.clone();
         async move {
             let Some(component) = component.upgrade() else {
                 return Err(RenderError::InvalidComponent(component.clone()));
@@ -85,7 +91,16 @@ where
                 })
                 .collect::<Vec<_>>();
             match component.processor() {
-                ComponentProcessorWrapper::Native(processor) => Ok(processor.natural_length(&fixed_parameters, &mut None).await),
+                ComponentProcessorWrapper::Native(processor) => {
+                    let cache_key = processor.whole_component_cache_key(&fixed_parameters);
+                    let mut cache = if let Some(key) = &cache_key { render_cache.get(key).await } else { None };
+
+                    let result = Ok(processor.natural_length(&fixed_parameters, &mut cache).await);
+                    if let (Some(key), Some(value)) = (cache_key, cache) {
+                        render_cache.insert(key, value).await;
+                    }
+                    result
+                }
                 ComponentProcessorWrapper::Component(processor) => Ok(Some(processor.natural_length(&fixed_parameters).await)),
                 ComponentProcessorWrapper::GatherNative(_) => unimplemented!(),
                 ComponentProcessorWrapper::GatherComponent(_) => unimplemented!(),
@@ -99,6 +114,7 @@ struct RenderContext<Key, T, ImageCombinerBuilder, AudioCombinerBuilder> {
     key: Arc<Key>,
     image_combiner_builder: Arc<ImageCombinerBuilder>,
     audio_combiner_builder: Arc<AudioCombinerBuilder>,
+    cache: Cache<Box<dyn CacheKey>, Arc<dyn Any + Send + Sync>>,
     _phantom: PhantomData<T>,
 }
 
@@ -109,6 +125,7 @@ impl<Key, T, ImageCombinerBuilder, AudioCombinerBuilder> Clone for RenderContext
             key,
             image_combiner_builder,
             audio_combiner_builder,
+            cache,
             _phantom,
         } = self;
         RenderContext {
@@ -116,6 +133,7 @@ impl<Key, T, ImageCombinerBuilder, AudioCombinerBuilder> Clone for RenderContext
             key: Arc::clone(key),
             image_combiner_builder: Arc::clone(image_combiner_builder),
             audio_combiner_builder: Arc::clone(audio_combiner_builder),
+            cache: cache.clone(),
             _phantom: PhantomData,
         }
     }
@@ -388,7 +406,9 @@ where
 
         match component.processor() {
             ComponentProcessorWrapper::Native(processor) => {
-                if !processor.supports_output_type(&fixed_parameters, ty.select(), &mut None).await {
+                let whole_cache_key = processor.whole_component_cache_key(&fixed_parameters);
+                let mut whole_cache_value = if let Some(cache_key) = &whole_cache_key { ctx.cache.get(cache_key).await } else { None };
+                if !processor.supports_output_type(&fixed_parameters, ty.select(), &mut whole_cache_value).await {
                     return Err(RenderError::NotProvided);
                 }
                 let params = NativeProcessorInput {
@@ -416,11 +436,20 @@ where
                     Parameter::Array(()) => Parameter::Array(()),
                     Parameter::ComponentClass(()) => Parameter::ComponentClass(()),
                 };
-                match processor.process(params, internal_at, request, &mut None, &mut None).await {
+                let framed_cache_key = processor.framed_cache_key(params, internal_at, request.select());
+                let mut framed_cache_value = if let Some(cache_key) = &framed_cache_key { ctx.cache.get(cache_key).await } else { None };
+                let result = match processor.process(params, internal_at, request, &mut whole_cache_value, &mut framed_cache_value).await {
                     Parameter::Image(image) => Ok(Parameter::Image((image, image_params.unwrap()))),
                     Parameter::Audio(audio) => Ok(Parameter::Audio((audio, time_map.clone()))),
                     other => Ok(from_parameter_value_fixed(other)),
+                };
+                if let (Some(cache_key), Some(cache_value)) = (whole_cache_key, whole_cache_value) {
+                    ctx.cache.insert(cache_key, cache_value).await;
                 }
+                if let (Some(cache_key), Some(cache_value)) = (framed_cache_key, framed_cache_value) {
+                    ctx.cache.insert(cache_key, cache_value).await;
+                }
+                result
             }
             ComponentProcessorWrapper::Component(processor) => {
                 let ComponentsLinksPair { components, links, left, right } = processor.process(&fixed_parameters, &[], &[/* TODO */], component.variable_parameters_type()).await;

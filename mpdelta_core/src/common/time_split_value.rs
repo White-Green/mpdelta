@@ -179,8 +179,30 @@ impl<Time, Value> TimeSplitValue<Time, Value> {
         self.data.push((mem::replace(&mut self.end, time), value));
     }
 
+    pub fn last(&self) -> Option<(&Value, &Time)> {
+        self.data.last().map(|(_, value)| (value, &self.end))
+    }
+
+    pub fn pop_last(&mut self) -> Option<(Value, Time)> {
+        if self.data.len() == 1 {
+            return None;
+        }
+        self.data.pop().map(|(time, value)| (value, mem::replace(&mut self.end, time)))
+    }
+
     pub fn push_first(&mut self, time: Time, value: Value) {
         self.data.insert(0, (time, value));
+    }
+
+    pub fn first(&self) -> Option<(&Time, &Value)> {
+        self.data.first().map(|(time, value)| (time, value))
+    }
+
+    pub fn pop_first(&mut self) -> Option<(Time, Value)> {
+        if self.data.len() == 1 {
+            return None;
+        }
+        Some(self.data.remove(0))
     }
 
     pub fn split_value(&mut self, value_at: usize, time: Time, left_value: Value, right_value: Value) -> Option<Value> {
@@ -285,6 +307,17 @@ impl<Time, Value> TimeSplitValue<Time, Value> {
             }
             Ordering::Equal => Some((self.data.last().map(|(_, value)| value), &mut self.end, None)),
             Ordering::Greater => None,
+        }
+    }
+
+    pub fn binary_search_by(&self, compare: impl Fn(&Time) -> Ordering) -> Result<usize, usize> {
+        match self.data.binary_search_by(|(time, _)| compare(time)) {
+            Err(i) if i == self.data.len() => match compare(&self.end) {
+                Ordering::Less => Err(self.data.len() + 1),
+                Ordering::Equal => Ok(self.data.len()),
+                Ordering::Greater => Err(self.data.len()),
+            },
+            other => other,
         }
     }
 }
@@ -464,6 +497,28 @@ mod tests {
 
         assert_eq!(value.split_value_by_clone(0, 'b'), Some(()));
         assert_eq!(value, time_split_value!['a', 128, 'b', 128, 'z']);
+
+        assert_eq!(value.pop_last(), Some((128, 'z')));
+        assert_eq!(value, time_split_value!['a', 128, 'b']);
+        value.push_last(128, 'z');
+        assert_eq!(value.pop_first(), Some(('a', 128)));
+        assert_eq!(value, time_split_value!['b', 128, 'z']);
+        assert_eq!(value.pop_last(), None);
+        assert_eq!(value.pop_first(), None);
+    }
+
+    #[test]
+    fn test_time_split_value_binary_search() {
+        let value = time_split_value![0, (), 1, (), 1, (), 2, (), 3, (), 5, (), 8];
+        assert_eq!(value.binary_search_by(|time| time.cmp(&0)), Ok(0));
+        assert_eq!(value.binary_search_by(|time| time.cmp(&2)), Ok(3));
+        assert_eq!(value.binary_search_by(|time| time.cmp(&4)), Err(5));
+        assert_eq!(value.binary_search_by(|time| time.cmp(&5)), Ok(5));
+        assert_eq!(value.binary_search_by(|time| time.cmp(&6)), Err(6));
+        assert_eq!(value.binary_search_by(|time| time.cmp(&7)), Err(6));
+        assert_eq!(value.binary_search_by(|time| time.cmp(&8)), Ok(6));
+        assert_eq!(value.binary_search_by(|time| time.cmp(&9)), Err(7));
+        assert_eq!(value.binary_search_by(|time| time.cmp(&10)), Err(7));
     }
 
     #[test]

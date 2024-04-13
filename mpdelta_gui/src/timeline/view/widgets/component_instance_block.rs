@@ -17,6 +17,7 @@ pub enum ComponentInstanceEditEvent<'a, PinHandle> {
     DeletePin(&'a PinHandle),
     UnlockPin(&'a PinHandle),
     LockPin(&'a PinHandle),
+    SplitComponentAtPin(&'a PinHandle),
 }
 
 impl<'a, PinHandle> Debug for ComponentInstanceEditEvent<'a, PinHandle> {
@@ -35,6 +36,7 @@ impl<'a, PinHandle> Debug for ComponentInstanceEditEvent<'a, PinHandle> {
             ComponentInstanceEditEvent::DeletePin(_) => f.debug_tuple("DeletePin").finish(),
             ComponentInstanceEditEvent::UnlockPin(_) => f.debug_tuple("UnlockPin").finish(),
             ComponentInstanceEditEvent::LockPin(_) => f.debug_tuple("LockPin").finish(),
+            ComponentInstanceEditEvent::SplitComponentAtPin(_) => f.debug_tuple("SplitComponentAtPin").finish(),
         }
     }
 }
@@ -216,6 +218,10 @@ where
                     if locked {
                         if ui.button("unlock pin").clicked() {
                             edit(ComponentInstanceEditEvent::UnlockPin(handle));
+                            ui.close_menu();
+                        }
+                        if ui.button("split component at pin").clicked() {
+                            edit(ComponentInstanceEditEvent::SplitComponentAtPin(handle));
                             ui.close_menu();
                         }
                     } else {

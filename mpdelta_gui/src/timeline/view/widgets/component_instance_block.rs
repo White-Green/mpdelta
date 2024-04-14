@@ -61,7 +61,7 @@ where
         ComponentInstanceBlock { instance, top, time_to_point, point_to_time, edit }
     }
 
-    pub fn show(self, ui: &mut Ui) -> f32 {
+    pub fn show(self, ui: &mut Ui) -> Rect {
         let ComponentInstanceBlock {
             instance:
                 &ComponentInstanceData {
@@ -89,6 +89,7 @@ where
         let pin_head_size = text_height / 2.;
         let padding = ui.style().visuals.widgets.active.bg_stroke.width * 2.;
         let block_height = text_height + padding * 2.;
+        let block_showing_rect = Rect::from_x_y_ranges(clip_rect.x_range(), clip_rect.top()..=clip_rect.top() + block_height);
         let block_rect = Rect::from_x_y_ranges(clip_rect.x_range(), clip_rect.top() + pin_head_size..=clip_rect.top() + pin_head_size + block_height);
         let widget_visuals = if selected { &ui.style().visuals.widgets.active } else { &ui.style().visuals.widgets.inactive };
         painter.rect(block_rect, 0., widget_visuals.bg_fill, widget_visuals.fg_stroke);
@@ -236,6 +237,6 @@ where
             };
             edit(make_event);
         });
-        block_rect.bottom() + padding * 2.
+        block_showing_rect.with_max_y(block_rect.bottom() + padding * 2.)
     }
 }

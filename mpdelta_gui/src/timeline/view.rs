@@ -2,7 +2,7 @@ use crate::timeline::view::range_max::RangeMax;
 use crate::timeline::view::widgets::component_instance_block::{ComponentInstanceBlock, ComponentInstanceEditEvent};
 use crate::timeline::viewmodel::{ComponentClassData, ComponentClassDataList, ComponentInstanceDataList, MarkerLinkDataList, TimelineViewModel};
 use egui::style::ScrollStyle;
-use egui::{Color32, PointerButton, Pos2, ScrollArea, Sense, Stroke, Ui, Vec2};
+use egui::{Color32, PointerButton, Pos2, Rect, ScrollArea, Sense, Stroke, Ui, Vec2};
 use mpdelta_core::common::mixed_fraction::MixedFraction;
 use mpdelta_core::component::marker_pin::MarkerTime;
 use mpdelta_core::component::parameter::ParameterValueType;
@@ -23,7 +23,7 @@ where
     VM: TimelineViewModel<K, T>,
 {
     view_model: Arc<VM>,
-    size: Vec2,
+    timeline_rect: Rect,
     scroll_offset: Vec2,
     component_top: Vec<RangeMax<OrderedFloat<f64>, f32>>,
     component_top_buf: Vec<RangeMax<OrderedFloat<f64>, f32>>,
@@ -36,7 +36,7 @@ impl<K: 'static, T: ParameterValueType, VM: TimelineViewModel<K, T>> Timeline<K,
     pub fn new(view_model: Arc<VM>) -> Timeline<K, T, VM> {
         Timeline {
             view_model,
-            size: Vec2::new(0., 30.),
+            timeline_rect: Rect::from_x_y_ranges(0.0..=0.0, 0.0..=30.0),
             scroll_offset: Vec2::ZERO,
             component_top: Vec::new(),
             component_top_buf: Vec::new(),
@@ -47,23 +47,30 @@ impl<K: 'static, T: ParameterValueType, VM: TimelineViewModel<K, T>> Timeline<K,
     }
 
     pub fn ui(&mut self, ui: &mut Ui) {
+        let mut next_timeline_rect = Rect::from_x_y_ranges(0.0..=0.0, 0.0..=30.0);
+        let mut now_dragging = false;
         ui.style_mut().spacing.scroll = ScrollStyle::solid();
         let output = ScrollArea::horizontal().id_source("Timeline").show(ui, |ui| {
+            let time_to_point = |time: f64| time as f32 * 100. - self.scroll_offset.x - self.timeline_rect.left();
+            let point_to_time = |point: f32| (point + self.scroll_offset.x + self.timeline_rect.left()) as f64 / 100.;
             let available_size = ui.available_size();
-            let time_to_point = |time: f64| time as f32 * 100. - self.scroll_offset.x;
-            let point_to_time = |point: f32| (point + self.scroll_offset.x) as f64 / 100.;
-            let (response, painter) = ui.allocate_painter(Vec2::new(available_size.x, 10.), Sense::click_and_drag());
+            let (response, painter) = ui.allocate_painter(Vec2::new(self.timeline_rect.width().max(available_size.x), 10.), Sense::click_and_drag());
             if response.clicked_by(PointerButton::Primary) || response.dragged_by(PointerButton::Primary) {
-                let time = point_to_time(response.interact_pointer_pos().unwrap().x);
-                self.view_model.edit_component_length(MarkerTime::new(MixedFraction::from_f64(time)).unwrap());
+                now_dragging = true;
+                let pointer_x = response.interact_pointer_pos().unwrap().x;
+                let time = point_to_time(pointer_x);
+                self.view_model.edit_component_length(MarkerTime::new(MixedFraction::from_f64(time.max(0.))).unwrap());
             }
             let length = self.view_model.component_length().map_or(10., |time| time.value().into_f64());
             painter.vline(time_to_point(length), response.rect.y_range(), Stroke::new(1., Color32::LIGHT_BLUE));
+            next_timeline_rect.extend_with_x(time_to_point(length) + self.scroll_offset.x + self.timeline_rect.left());
             let output = ScrollArea::vertical().id_source("Timeline-Vertical").show(ui, |ui| {
                 let available_size = ui.available_size();
-                let response = ui.allocate_response(Vec2::new(available_size.x, self.size.y.max(available_size.y)), Sense::click_and_drag());
+                let response = ui.allocate_response(Vec2::new(self.timeline_rect.width().max(available_size.x), self.timeline_rect.height().max(available_size.y)), Sense::click_and_drag());
                 if response.clicked_by(PointerButton::Primary) || response.dragged_by(PointerButton::Primary) {
-                    let time = point_to_time(response.interact_pointer_pos().unwrap().x);
+                    let pointer_x = response.interact_pointer_pos().unwrap().x;
+                    now_dragging = true;
+                    let time = point_to_time(pointer_x);
                     let limit = self.view_model.component_length().map_or(10., |time| time.value().into_f64());
                     let time = time.clamp(0., limit);
                     self.view_model.set_seek(MarkerTime::new(MixedFraction::from_f64(time)).unwrap());
@@ -103,21 +110,29 @@ impl<K: 'static, T: ParameterValueType, VM: TimelineViewModel<K, T>> Timeline<K,
                     for instance_data in component_instances.iter() {
                         self.component_top_buf.push(range_max.clone());
                         let range = &OrderedFloat(instance_data.start_time)..&OrderedFloat(instance_data.end_time);
-                        let top = range_max.get(range.clone()).copied().unwrap_or(top);
-                        let block_bottom = ComponentInstanceBlock::new(instance_data, top, time_to_point, point_to_time, |event| match event {
+                        let block_top = range_max.get(range.clone()).copied().unwrap_or(top);
+                        let block = ComponentInstanceBlock::new(instance_data, block_top, time_to_point, point_to_time, |event| match event {
                             ComponentInstanceEditEvent::Click => self.view_model.click_component_instance(&instance_data.handle),
                             ComponentInstanceEditEvent::Delete => self.view_model.delete_component_instance(&instance_data.handle),
-                            ComponentInstanceEditEvent::MoveWholeBlockTemporary { time, .. } => self.view_model.move_component_instance(&instance_data.handle, time),
+                            ComponentInstanceEditEvent::MoveWholeBlockTemporary { time, .. } => {
+                                now_dragging = true;
+                                self.view_model.move_component_instance(&instance_data.handle, time);
+                            }
                             ComponentInstanceEditEvent::MoveWholeBlock { time, top: move_target_top } => {
+                                now_dragging = true;
                                 self.view_model.move_component_instance(&instance_data.handle, time);
                                 let index = self
                                     .component_top_buf
-                                    .binary_search_by_key(&OrderedFloat(move_target_top), |range_max| OrderedFloat(range_max.get(range.clone()).copied().unwrap_or(top)))
+                                    .binary_search_by_key(&OrderedFloat(move_target_top), |range_max| OrderedFloat(range_max.get(range.clone()).copied().unwrap_or(block_top)))
                                     .unwrap_or_else(convert::identity);
                                 self.view_model.insert_component_instance_to(&instance_data.handle, index);
                             }
-                            ComponentInstanceEditEvent::MovePinTemporary(pin, to) | ComponentInstanceEditEvent::MovePin(pin, to) => self.view_model.move_marker_pin(&instance_data.handle, pin, to),
+                            ComponentInstanceEditEvent::MovePinTemporary(pin, to) | ComponentInstanceEditEvent::MovePin(pin, to) => {
+                                now_dragging = true;
+                                self.view_model.move_marker_pin(&instance_data.handle, pin, to);
+                            }
                             ComponentInstanceEditEvent::PullLinkReleased(handle, _pos) => {
+                                now_dragging = true;
                                 if let Some(target_pin) = &pull_link_target_pin {
                                     if handle != target_pin {
                                         self.view_model.connect_marker_pins(handle, target_pin);
@@ -125,8 +140,14 @@ impl<K: 'static, T: ParameterValueType, VM: TimelineViewModel<K, T>> Timeline<K,
                                 }
                                 self.pulling_pin = None;
                             }
-                            ComponentInstanceEditEvent::PullLink(handle, pos) => self.pulling_pin = Some((handle.clone(), pos)),
-                            ComponentInstanceEditEvent::UpdateContextMenuOpenedPos(time, y) => self.context_menu_opened_pos = (time, y),
+                            ComponentInstanceEditEvent::PullLink(handle, pos) => {
+                                now_dragging = true;
+                                self.pulling_pin = Some((handle.clone(), pos));
+                            }
+                            ComponentInstanceEditEvent::UpdateContextMenuOpenedPos(time, y) => {
+                                now_dragging = true;
+                                self.context_menu_opened_pos = (time, y);
+                            }
                             ComponentInstanceEditEvent::AddMarkerPin => self.view_model.add_marker_pin(&instance_data.handle, TimelineTime::new(MixedFraction::from_f64(self.context_menu_opened_pos.0))),
                             ComponentInstanceEditEvent::DeletePin(handle) => self.view_model.delete_marker_pin(&instance_data.handle, handle),
                             ComponentInstanceEditEvent::UnlockPin(handle) => self.view_model.unlock_marker_pin(&instance_data.handle, handle),
@@ -134,13 +155,17 @@ impl<K: 'static, T: ParameterValueType, VM: TimelineViewModel<K, T>> Timeline<K,
                             ComponentInstanceEditEvent::SplitComponentAtPin(handle) => self.view_model.split_component_at_pin(&instance_data.handle, handle),
                         })
                         .show(ui);
-                        range_max = range_max.insert(OrderedFloat(instance_data.start_time)..OrderedFloat(instance_data.end_time), block_bottom);
+                        range_max = range_max.insert(OrderedFloat(instance_data.start_time)..OrderedFloat(instance_data.end_time), block.bottom());
+                        next_timeline_rect.extend_with_x(block.left() + self.scroll_offset.x + self.timeline_rect.left());
+                        next_timeline_rect.extend_with_x(block.right() + self.scroll_offset.x + self.timeline_rect.left());
+                        next_timeline_rect.extend_with_y(block.bottom() - top);
                     }
                     mem::swap(&mut self.component_top, &mut self.component_top_buf);
                 });
                 let seek = self.view_model.seek();
                 let seek_line_position = time_to_point(seek.value().into_f64());
                 ui.painter().vline(seek_line_position, response.rect.y_range(), Stroke::new(1., egui::Color32::RED));
+                next_timeline_rect.extend_with_x(seek_line_position + self.scroll_offset.x + self.timeline_rect.left());
                 let pointer_pos = response.interact_pointer_pos();
                 response.context_menu(|ui| {
                     if let Some(pointer_pos) = pointer_pos {
@@ -159,7 +184,11 @@ impl<K: 'static, T: ParameterValueType, VM: TimelineViewModel<K, T>> Timeline<K,
             (output.state.offset.y, output.content_size.y)
         });
         self.scroll_offset = Vec2::new(output.state.offset.x, output.inner.0);
-        self.size = Vec2::new(output.content_size.x, output.inner.1);
+        if now_dragging {
+            next_timeline_rect.extend_with_x(self.timeline_rect.left());
+            next_timeline_rect.extend_with_x(self.timeline_rect.right());
+        }
+        self.timeline_rect = next_timeline_rect;
     }
 }
 

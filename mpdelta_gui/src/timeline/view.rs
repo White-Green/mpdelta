@@ -1,6 +1,6 @@
 use crate::timeline::view::range_max::RangeMax;
 use crate::timeline::view::widgets::component_instance_block::{ComponentInstanceBlock, ComponentInstanceEditEvent};
-use crate::timeline::viewmodel::{ComponentClassData, ComponentClassDataList, ComponentInstanceDataList, ComponentLinkDataList, TimelineViewModel};
+use crate::timeline::viewmodel::{ComponentClassData, ComponentClassDataList, ComponentInstanceDataList, MarkerLinkDataList, TimelineViewModel};
 use egui::style::ScrollStyle;
 use egui::{Color32, PointerButton, Pos2, ScrollArea, Sense, Stroke, Ui, Vec2};
 use mpdelta_core::common::mixed_fraction::MixedFraction;
@@ -73,11 +73,11 @@ impl<K: 'static, T: ParameterValueType, VM: TimelineViewModel<K, T>> Timeline<K,
                     let pin_position_map = component_instances
                         .iter()
                         .flat_map(|instance| [&instance.left_pin, &instance.right_pin].into_iter().chain(&instance.pins))
-                        .map(|pin| (&pin.handle, pin.render_location.get()))
+                        .map(|pin| (&pin.handle, pin.render_location.load()))
                         .collect::<HashMap<_, _>>();
                     let pull_link_pointer = self.pulling_pin.as_ref().map_or(Pos2::new(f32::INFINITY, f32::INFINITY), |(_, pos)| *pos);
                     let mut pull_link_target_pin = None;
-                    self.view_model.component_links(|ComponentLinkDataList { list }| {
+                    self.view_model.marker_links(|MarkerLinkDataList { list }| {
                         list.iter().for_each(|link| {
                             let from = pin_position_map.get(&link.from_pin);
                             let to = pin_position_map.get(&link.to_pin);
@@ -167,6 +167,7 @@ impl<K: 'static, T: ParameterValueType, VM: TimelineViewModel<K, T>> Timeline<K,
 mod tests {
     use super::*;
     use crate::timeline::viewmodel::{ComponentInstanceData, MarkerPinData};
+    use crossbeam_utils::atomic::AtomicCell;
     use egui::{Pos2, Visuals};
     use egui_image_renderer::FileFormat;
     use mpdelta_core::component::marker_pin::MarkerTime;
@@ -225,19 +226,19 @@ mod tests {
                                 handle: "0 - left",
                                 at: 0.0,
                                 locked: true,
-                                render_location: Cell::new(Pos2::default()),
+                                render_location: AtomicCell::new(Pos2::default()),
                             },
                             right_pin: MarkerPinData {
                                 handle: "0 - right",
                                 at: 1.0,
                                 locked: true,
-                                render_location: Cell::new(Pos2::default()),
+                                render_location: AtomicCell::new(Pos2::default()),
                             },
                             pins: vec![MarkerPinData {
                                 handle: "0 - pin 0",
                                 at: 0.5,
                                 locked: true,
-                                render_location: Cell::new(Pos2::default()),
+                                render_location: AtomicCell::new(Pos2::default()),
                             }],
                         },
                         ComponentInstanceData {
@@ -251,13 +252,13 @@ mod tests {
                                 handle: "1 - left",
                                 at: 2.0,
                                 locked: true,
-                                render_location: Cell::new(Pos2::default()),
+                                render_location: AtomicCell::new(Pos2::default()),
                             },
                             right_pin: MarkerPinData {
                                 handle: "1 - right",
                                 at: 4.0,
                                 locked: true,
-                                render_location: Cell::new(Pos2::default()),
+                                render_location: AtomicCell::new(Pos2::default()),
                             },
                             pins: vec![],
                         },
@@ -272,26 +273,26 @@ mod tests {
                                 handle: "2 - left",
                                 at: 0.5,
                                 locked: true,
-                                render_location: Cell::new(Pos2::default()),
+                                render_location: AtomicCell::new(Pos2::default()),
                             },
                             right_pin: MarkerPinData {
                                 handle: "2 - right",
                                 at: 1.8,
                                 locked: true,
-                                render_location: Cell::new(Pos2::default()),
+                                render_location: AtomicCell::new(Pos2::default()),
                             },
                             pins: vec![
                                 MarkerPinData {
                                     handle: "2 - pin 0",
                                     at: 0.6,
                                     locked: true,
-                                    render_location: Cell::new(Pos2::default()),
+                                    render_location: AtomicCell::new(Pos2::default()),
                                 },
                                 MarkerPinData {
                                     handle: "2 - pin 1",
                                     at: 1.5,
                                     locked: true,
-                                    render_location: Cell::new(Pos2::default()),
+                                    render_location: AtomicCell::new(Pos2::default()),
                                 },
                             ],
                         },
@@ -322,14 +323,14 @@ mod tests {
 
             fn split_component_at_pin(&self, _instance: &Self::ComponentInstanceHandle, _pin: &Self::MarkerPinHandle) {}
 
-            type ComponentLinkHandle = &'static str;
+            type MarkerLinkHandle = &'static str;
 
-            fn component_links<R>(&self, f: impl FnOnce(&ComponentLinkDataList<Self::ComponentLinkHandle, Self::MarkerPinHandle, Self::ComponentInstanceHandle>) -> R) -> R {
-                let list = ComponentLinkDataList { list: vec![] };
+            fn marker_links<R>(&self, f: impl FnOnce(&MarkerLinkDataList<Self::MarkerLinkHandle, Self::MarkerPinHandle, Self::ComponentInstanceHandle>) -> R) -> R {
+                let list = MarkerLinkDataList { list: vec![] };
                 f(&list)
             }
 
-            fn edit_marker_link_length(&self, _link: &Self::ComponentLinkHandle, _value: f64) {}
+            fn edit_marker_link_length(&self, _link: &Self::MarkerLinkHandle, _value: f64) {}
 
             type ComponentClassHandle = &'static str;
 

@@ -171,7 +171,6 @@ mod tests {
     use egui::{Pos2, Visuals};
     use egui_image_renderer::FileFormat;
     use mpdelta_core::component::marker_pin::MarkerTime;
-    use std::cell::Cell;
     use std::io::Cursor;
     use std::path::Path;
 

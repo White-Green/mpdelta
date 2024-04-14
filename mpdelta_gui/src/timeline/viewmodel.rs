@@ -4,7 +4,6 @@ use crate::view_model_util::use_arc;
 use crate::viewmodel::ViewModelParams;
 use arc_swap::{ArcSwap, ArcSwapOption};
 use crossbeam_utils::atomic::AtomicCell;
-use egui::epaint::ahash::{HashSet, HashSetExt};
 use egui::Pos2;
 use futures::FutureExt;
 use mpdelta_async_runtime::{AsyncRuntime, JoinHandleWrapper};
@@ -24,7 +23,6 @@ use mpdelta_message_router::handler::{IntoAsyncFunctionHandler, IntoFunctionHand
 use mpdelta_message_router::{MessageHandler, MessageRouter};
 use qcell::{TCell, TCellOwner};
 use rpds::HashTrieSet;
-use std::cell::Cell;
 use std::collections::HashMap;
 use std::hash::Hash;
 use std::mem;

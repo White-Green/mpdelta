@@ -2,8 +2,8 @@ use crate::edit_funnel::EditFunnel;
 use crate::global_ui_state::{GlobalUIEvent, GlobalUIEventHandler, GlobalUIState};
 use crate::view_model_util::use_arc;
 use crate::viewmodel::ViewModelParams;
-use arc_swap::ArcSwap;
-use egui::epaint::ahash::{HashSet, HashSetExt};
+use arc_swap::{ArcSwap, ArcSwapOption};
+use crossbeam_utils::atomic::AtomicCell;
 use egui::Pos2;
 use futures::FutureExt;
 use mpdelta_async_runtime::{AsyncRuntime, JoinHandleWrapper};
@@ -22,19 +22,33 @@ use mpdelta_core::usecase::{GetAvailableComponentClassesUsecase, SubscribeEditEv
 use mpdelta_message_router::handler::{IntoAsyncFunctionHandler, IntoFunctionHandler, MessageHandlerBuilder};
 use mpdelta_message_router::{MessageHandler, MessageRouter};
 use qcell::{TCell, TCellOwner};
-use std::cell::Cell;
+use rpds::HashTrieSet;
 use std::collections::HashMap;
 use std::hash::Hash;
 use std::mem;
 use std::sync::{Arc, Mutex as StdMutex, OnceLock};
 use tokio::sync::{Mutex, RwLock};
 
-#[derive(Clone)]
 pub struct MarkerPinData<Handle> {
     pub handle: Handle,
     pub at: f64,
     pub locked: bool,
-    pub render_location: Cell<Pos2>,
+    pub render_location: AtomicCell<Pos2>,
+}
+
+impl<Handle> Clone for MarkerPinData<Handle>
+where
+    Handle: Clone,
+{
+    fn clone(&self) -> Self {
+        let &MarkerPinData { ref handle, at, locked, ref render_location } = self;
+        MarkerPinData {
+            handle: handle.clone(),
+            at,
+            locked,
+            render_location: AtomicCell::new(render_location.load()),
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -67,13 +81,13 @@ where
             handle: StaticPointerOwned::reference(component.marker_left()).clone(),
             at: component.marker_left().ro(key).cached_timeline_time().value().into_f64(),
             locked: component.marker_left().ro(key).locked_component_time().is_some(),
-            render_location: Cell::new(Pos2::default()),
+            render_location: AtomicCell::new(Pos2::default()),
         };
         let right_pin = MarkerPinData {
             handle: StaticPointerOwned::reference(component.marker_right()).clone(),
             at: component.marker_right().ro(key).cached_timeline_time().value().into_f64(),
             locked: component.marker_right().ro(key).locked_component_time().is_some(),
-            render_location: Cell::new(Pos2::default()),
+            render_location: AtomicCell::new(Pos2::default()),
         };
         let pins = component
             .markers()
@@ -82,7 +96,7 @@ where
                 handle: StaticPointerOwned::reference(pin).clone(),
                 at: pin.ro(key).cached_timeline_time().value().into_f64(),
                 locked: pin.ro(key).locked_component_time().is_some(),
-                render_location: Cell::new(Pos2::default()),
+                render_location: AtomicCell::new(Pos2::default()),
             })
             .collect();
         Some(ComponentInstanceData {
@@ -99,13 +113,14 @@ where
     }
 }
 
+#[derive(Clone)]
 pub struct ComponentInstanceDataList<InstanceHandle, PinHandle> {
     pub list: Vec<ComponentInstanceData<InstanceHandle, PinHandle>>,
 }
 
 pub type DefaultComponentInstanceDataList<K, T> = ComponentInstanceDataList<ComponentInstanceHandle<K, T>, MarkerPinHandle<K>>;
 
-pub struct ComponentLinkData<LinkHandle, PinHandle, ComponentHandle> {
+pub struct MarkerLinkData<LinkHandle, PinHandle, ComponentHandle> {
     pub handle: LinkHandle,
     pub len: TimelineTime,
     pub len_str: Mutex<String>,
@@ -119,7 +134,7 @@ pub struct ComponentLinkData<LinkHandle, PinHandle, ComponentHandle> {
     pub to_time: f64,
 }
 
-pub type DefaultComponentLinkData<K, T> = ComponentLinkData<MarkerLinkHandle<K>, MarkerPinHandle<K>, ComponentInstanceHandle<K, T>>;
+pub type DefaultComponentLinkData<K, T> = MarkerLinkData<MarkerLinkHandle<K>, MarkerPinHandle<K>, ComponentInstanceHandle<K, T>>;
 
 impl<K, T> DefaultComponentLinkData<K, T>
 where
@@ -159,7 +174,7 @@ where
             }
         }
         let len = link.len();
-        Some(ComponentLinkData {
+        Some(MarkerLinkData {
             handle,
             len,
             len_str: Mutex::new(len.value().to_string()),
@@ -175,11 +190,11 @@ where
     }
 }
 
-pub struct ComponentLinkDataList<LinkHandle, PinHandle, ComponentHandle> {
-    pub list: Vec<ComponentLinkData<LinkHandle, PinHandle, ComponentHandle>>,
+pub struct MarkerLinkDataList<LinkHandle, PinHandle, ComponentHandle> {
+    pub list: Vec<MarkerLinkData<LinkHandle, PinHandle, ComponentHandle>>,
 }
 
-pub type DefaultComponentLinkDataList<K, T> = ComponentLinkDataList<MarkerLinkHandle<K>, MarkerPinHandle<K>, ComponentInstanceHandle<K, T>>;
+pub type DefaultComponentLinkDataList<K, T> = MarkerLinkDataList<MarkerLinkHandle<K>, MarkerPinHandle<K>, ComponentInstanceHandle<K, T>>;
 
 pub struct ComponentClassData<Handle> {
     pub handle: Handle,
@@ -220,9 +235,9 @@ pub trait TimelineViewModel<K: 'static, T: ParameterValueType> {
     fn lock_marker_pin(&self, instance: &Self::ComponentInstanceHandle, pin: &Self::MarkerPinHandle);
     fn unlock_marker_pin(&self, instance: &Self::ComponentInstanceHandle, pin: &Self::MarkerPinHandle);
     fn split_component_at_pin(&self, instance: &Self::ComponentInstanceHandle, pin: &Self::MarkerPinHandle);
-    type ComponentLinkHandle: Clone + Eq + Hash;
-    fn component_links<R>(&self, f: impl FnOnce(&ComponentLinkDataList<Self::ComponentLinkHandle, Self::MarkerPinHandle, Self::ComponentInstanceHandle>) -> R) -> R;
-    fn edit_marker_link_length(&self, link: &Self::ComponentLinkHandle, value: f64);
+    type MarkerLinkHandle: Clone + Eq + Hash;
+    fn marker_links<R>(&self, f: impl FnOnce(&MarkerLinkDataList<Self::MarkerLinkHandle, Self::MarkerPinHandle, Self::ComponentInstanceHandle>) -> R) -> R;
+    fn edit_marker_link_length(&self, link: &Self::MarkerLinkHandle, value: f64);
     type ComponentClassHandle: Clone + Eq + Hash;
     fn component_classes<R>(&self, f: impl FnOnce(&ComponentClassDataList<Self::ComponentClassHandle>) -> R) -> R;
     fn add_component_instance(&self, class: Self::ComponentClassHandle);
@@ -232,9 +247,9 @@ pub struct TimelineViewModelImpl<K: 'static, T: ParameterValueType, GlobalUIStat
     key: Arc<RwLock<TCellOwner<K>>>,
     global_ui_state: Arc<GlobalUIState>,
     component_classes: Arc<ArcSwap<DefaultComponentClassDataList<K, T>>>,
-    component_instances: Arc<Mutex<DefaultComponentInstanceDataList<K, T>>>,
-    component_links: Arc<RwLock<DefaultComponentLinkDataList<K, T>>>,
-    selected_root_component_class: Arc<RwLock<Option<RootComponentClassHandle<K, T>>>>,
+    component_instances: Arc<ArcSwap<DefaultComponentInstanceDataList<K, T>>>,
+    marker_links: Arc<ArcSwap<DefaultComponentLinkDataList<K, T>>>,
+    selected_root_component_class: Arc<ArcSwapOption<RootComponentClassHandle<K, T>>>,
     message_router: MessageRouter<MessageHandler, Runtime>,
     runtime: Runtime,
     load_timeline_task: Arc<StdMutex<Option<JoinHandleWrapper<JoinHandle>>>>,
@@ -346,9 +361,9 @@ where
     Runtime: AsyncRuntime<()> + Clone,
 {
     fn on_edit(&self, _: &RootComponentClassHandle<K, T>, _: RootComponentEditEvent<K, T>) {
-        use_arc!(key = self.key, component_instances = self.component_instances, component_links = self.component_links, selected_root_component_class = self.selected_root_component_class);
+        use_arc!(key = self.key, component_instances = self.component_instances, marker_links = self.marker_links, selected_root_component_class = self.selected_root_component_class);
         let mut task = self.load_timeline_task.lock().unwrap();
-        let future = TimelineViewModelImpl::load_timeline_by_current_root_component_class(key, component_instances, component_links, selected_root_component_class);
+        let future = TimelineViewModelImpl::load_timeline_by_current_root_component_class(key, component_instances, marker_links, selected_root_component_class);
         if let Some(handle) = task.take() {
             handle.abort();
             *task = Some(self.runtime.spawn(handle.then(|_| future)));
@@ -358,9 +373,9 @@ where
     }
 
     fn on_edit_instance(&self, _: &RootComponentClassHandle<K, T>, _: &ComponentInstanceHandle<K, T>, _: InstanceEditEvent<K, T>) {
-        use_arc!(key = self.key, component_instances = self.component_instances, component_links = self.component_links, selected_root_component_class = self.selected_root_component_class);
+        use_arc!(key = self.key, component_instances = self.component_instances, marker_links = self.marker_links, selected_root_component_class = self.selected_root_component_class);
         let mut task = self.load_timeline_task.lock().unwrap();
-        let future = TimelineViewModelImpl::load_timeline_by_current_root_component_class(key, component_instances, component_links, selected_root_component_class);
+        let future = TimelineViewModelImpl::load_timeline_by_current_root_component_class(key, component_instances, marker_links, selected_root_component_class);
         if let Some(handle) = task.take() {
             handle.abort();
             *task = Some(self.runtime.spawn(handle.then(|_| future)));
@@ -378,10 +393,10 @@ impl<K: Send + Sync + 'static, T: ParameterValueType> TimelineViewModelImpl<K, T
         params: &P,
     ) -> Arc<TimelineViewModelImpl<K, T, S, impl MessageHandler<Message<K, T>, P::AsyncRuntime>, <P::SubscribeEditEvent as SubscribeEditEventUsecase<K, T>>::EditEventListenerGuard, P::AsyncRuntime, <P::AsyncRuntime as AsyncRuntime<()>>::JoinHandle>> {
         let component_classes = Arc::new(ArcSwap::new(Arc::new(ComponentClassDataList { list: Vec::new() })));
-        let selected_components = Arc::new(RwLock::new(HashSet::new()));
-        let component_links = Arc::new(RwLock::new(ComponentLinkDataList { list: Vec::new() }));
-        let component_instances = Arc::new(Mutex::new(ComponentInstanceDataList { list: Vec::new() }));
-        let selected_root_component_class = Arc::new(RwLock::new(None));
+        let selected_components = Arc::new(ArcSwap::new(Arc::new(HashTrieSet::new_sync())));
+        let marker_links = Arc::new(ArcSwap::new(Arc::new(MarkerLinkDataList { list: Vec::new() })));
+        let component_instances = Arc::new(ArcSwap::new(Arc::new(ComponentInstanceDataList { list: Vec::new() })));
+        let selected_root_component_class = Arc::new(ArcSwapOption::new(None));
         let load_timeline_task = Arc::new(StdMutex::new(None::<JoinHandleWrapper<<P::AsyncRuntime as AsyncRuntime<()>>::JoinHandle>>));
         let message_router = MessageRouter::builder()
             .handle(|handler| {
@@ -391,11 +406,11 @@ impl<K: Send + Sync + 'static, T: ParameterValueType> TimelineViewModelImpl<K, T
                     .handle(|handler| {
                         handler.filter_map(|event| if let GlobalUIEvent::SelectRootComponentClass(value) = event { Some(value) } else { None }).handle({
                             let runtime = params.runtime().clone();
-                            use_arc!(key = params.key(), selected_root_component_class, component_instances, component_links, load_timeline_task);
+                            use_arc!(key = params.key(), selected_root_component_class, component_instances, marker_links, load_timeline_task);
                             move |root_component_class| {
-                                use_arc!(key, selected_root_component_class, component_instances, component_links);
+                                use_arc!(key, selected_root_component_class, component_instances, marker_links);
                                 let mut task = load_timeline_task.lock().unwrap();
-                                let future = Self::load_timeline_by_new_root_component_class(key, root_component_class, component_instances, component_links, selected_root_component_class);
+                                let future = Self::load_timeline_by_new_root_component_class(key, root_component_class, component_instances, marker_links, selected_root_component_class);
                                 if let Some(handle) = task.take() {
                                     handle.abort();
                                     *task = Some(runtime.spawn(handle.then(|_| future)));
@@ -420,11 +435,10 @@ impl<K: Send + Sync + 'static, T: ParameterValueType> TimelineViewModelImpl<K, T
                         move |message| {
                             use_arc!(selected_root_component_class, edit);
                             async move {
-                                let selected_root_component_class = selected_root_component_class.read().await;
-                                let Some(target) = selected_root_component_class.clone() else {
+                                let selected_root_component_class = selected_root_component_class.load();
+                                let Some(target) = selected_root_component_class.as_deref() else {
                                     return;
                                 };
-                                drop(selected_root_component_class);
                                 let command = match message {
                                     Message::AddComponentInstance(pointer) => {
                                         let class = pointer.upgrade().unwrap();
@@ -439,7 +453,7 @@ impl<K: Send + Sync + 'static, T: ParameterValueType> TimelineViewModelImpl<K, T
                                     Message::ConnectMarkerPins(from, to) => RootComponentEditCommand::ConnectMarkerPins(from, to),
                                     _ => unreachable!(),
                                 };
-                                edit.edit(&target, command);
+                                edit.edit(target, command);
                             }
                         }
                     })
@@ -451,10 +465,10 @@ impl<K: Send + Sync + 'static, T: ParameterValueType> TimelineViewModelImpl<K, T
                         global_ui_state.select_component_instance(&target);
                         use_arc!(selected_components, component_instances);
                         async move {
-                            let (mut selected_components, mut component_instances) = tokio::join!(selected_components.write(), component_instances.lock());
-                            component_instances.list.iter_mut().for_each(|ComponentInstanceData { handle, selected, .. }| *selected = *handle == target);
-                            selected_components.clear();
-                            selected_components.insert(target);
+                            let mut component_instances_inner = ComponentInstanceDataList::clone(&component_instances.load());
+                            component_instances_inner.list.iter_mut().for_each(|ComponentInstanceData { handle, selected, .. }| *selected = *handle == target);
+                            component_instances.store(Arc::new(component_instances_inner));
+                            selected_components.store(Arc::new(HashTrieSet::from_iter([target])));
                         }
                     }
                 })
@@ -472,11 +486,10 @@ impl<K: Send + Sync + 'static, T: ParameterValueType> TimelineViewModelImpl<K, T
                         move |message| {
                             use_arc!(selected_root_component_class, edit);
                             async move {
-                                let selected_root_component_class = selected_root_component_class.read().await;
-                                let Some(target_root) = selected_root_component_class.clone() else {
+                                let selected_root_component_class = selected_root_component_class.load();
+                                let Some(target_root) = selected_root_component_class.as_deref() else {
                                     return;
                                 };
-                                drop(selected_root_component_class);
                                 let (target, command) = match message {
                                     Message::MoveComponentInstance(target, to) => (target, InstanceEditCommand::MoveComponentInstance(TimelineTime::new(MixedFraction::from_f64(to)))),
                                     Message::MoveMarkerPin(target, pin, to) => (target, InstanceEditCommand::MoveMarkerPin(pin, TimelineTime::new(MixedFraction::from_f64(to)))),
@@ -487,7 +500,7 @@ impl<K: Send + Sync + 'static, T: ParameterValueType> TimelineViewModelImpl<K, T
                                     Message::SplitComponentAtPin(target, pin) => (target, InstanceEditCommand::SplitAtPin(pin)),
                                     _ => unreachable!(),
                                 };
-                                edit.edit_instance(&target_root, &target, command);
+                                edit.edit_instance(target_root, &target, command);
                             }
                         }
                     })
@@ -507,7 +520,7 @@ impl<K: Send + Sync + 'static, T: ParameterValueType> TimelineViewModelImpl<K, T
             global_ui_state: Arc::clone(global_ui_state),
             component_classes,
             component_instances,
-            component_links,
+            marker_links,
             selected_root_component_class,
             message_router,
             runtime: params.runtime().clone(),
@@ -523,41 +536,40 @@ impl<K: Send + Sync + 'static, T: ParameterValueType> TimelineViewModelImpl<K, T
     async fn load_timeline_by_new_root_component_class(
         key: Arc<RwLock<TCellOwner<K>>>,
         root_component_class: Option<RootComponentClassHandle<K, T>>,
-        component_instances: Arc<Mutex<DefaultComponentInstanceDataList<K, T>>>,
-        component_links: Arc<RwLock<DefaultComponentLinkDataList<K, T>>>,
-        selected_root_component_class: Arc<RwLock<Option<RootComponentClassHandle<K, T>>>>,
+        component_instances: Arc<ArcSwap<DefaultComponentInstanceDataList<K, T>>>,
+        marker_links: Arc<ArcSwap<DefaultComponentLinkDataList<K, T>>>,
+        selected_root_component_class: Arc<ArcSwapOption<RootComponentClassHandle<K, T>>>,
     ) {
-        let (mut selected_root_component_class, mut component_instances, mut component_links) = tokio::join!(selected_root_component_class.write(), component_instances.lock(), component_links.write());
-        *selected_root_component_class = root_component_class.clone();
-        Self::load_timeline_inner(key, root_component_class.as_ref(), &mut component_instances, &mut component_links).await;
+        selected_root_component_class.store(root_component_class.clone().map(Arc::new));
+        Self::load_timeline_inner(key, root_component_class.as_ref(), &component_instances, &marker_links).await;
     }
 
     async fn load_timeline_by_current_root_component_class(
         key: Arc<RwLock<TCellOwner<K>>>,
-        component_instances: Arc<Mutex<DefaultComponentInstanceDataList<K, T>>>,
-        component_links: Arc<RwLock<DefaultComponentLinkDataList<K, T>>>,
-        selected_root_component_class: Arc<RwLock<Option<RootComponentClassHandle<K, T>>>>,
+        component_instances: Arc<ArcSwap<DefaultComponentInstanceDataList<K, T>>>,
+        marker_links: Arc<ArcSwap<DefaultComponentLinkDataList<K, T>>>,
+        selected_root_component_class: Arc<ArcSwapOption<RootComponentClassHandle<K, T>>>,
     ) {
-        let (selected_root_component_class, mut component_instances, mut component_links) = tokio::join!(selected_root_component_class.read(), component_instances.lock(), component_links.write());
-        Self::load_timeline_inner(key, selected_root_component_class.as_ref(), &mut component_instances, &mut component_links).await;
+        Self::load_timeline_inner(key, selected_root_component_class.load().as_deref(), &component_instances, &marker_links).await;
     }
 
-    async fn load_timeline_inner(key: Arc<RwLock<TCellOwner<K>>>, root_component_class: Option<&RootComponentClassHandle<K, T>>, component_instances: &mut DefaultComponentInstanceDataList<K, T>, component_links: &mut DefaultComponentLinkDataList<K, T>) {
-        component_instances.list.clear();
-        component_links.list.clear();
+    async fn load_timeline_inner(key: Arc<RwLock<TCellOwner<K>>>, root_component_class: Option<&RootComponentClassHandle<K, T>>, component_instances: &ArcSwap<DefaultComponentInstanceDataList<K, T>>, marker_links: &ArcSwap<DefaultComponentLinkDataList<K, T>>) {
         let Some(root_component_class) = root_component_class else {
             return;
         };
         let Some(root_component_class) = root_component_class.upgrade() else {
             return;
         };
-        let (root_component_class, key) = tokio::join!(root_component_class.read(), key.read());
+        let key = key.read().await;
+        let root_component_class = root_component_class.read().await;
         let mut pin_map = HashMap::new();
-        component_instances
-            .list
-            .extend(root_component_class.components().await.iter().enumerate().filter_map(|(i, handle)| ComponentInstanceData::new(handle.as_ref().clone(), &key, i, &mut pin_map)));
-        let component_map = component_instances.list.iter().cloned().map(|component| (component.handle.clone(), component)).collect();
-        component_links.list.extend(root_component_class.links().await.iter().filter_map(|handle| ComponentLinkData::new(handle.as_ref().clone(), &key, &pin_map, &component_map)));
+        let list = root_component_class.components().await.iter().enumerate().filter_map(|(i, handle)| ComponentInstanceData::new(handle.as_ref().clone(), &key, i, &mut pin_map)).collect();
+        let component_instances_inner = ComponentInstanceDataList { list };
+        let component_map = component_instances_inner.list.iter().cloned().map(|component| (component.handle.clone(), component)).collect();
+        let list = root_component_class.links().await.iter().filter_map(|handle| MarkerLinkData::new(handle.as_ref().clone(), &key, &pin_map, &component_map)).collect();
+        let links = MarkerLinkDataList { list };
+        component_instances.store(Arc::new(component_instances_inner));
+        marker_links.store(Arc::new(links));
     }
 }
 
@@ -595,7 +607,7 @@ where
     type MarkerPinHandle = MarkerPinHandle<K>;
 
     fn component_instances<R>(&self, f: impl FnOnce(&ComponentInstanceDataList<Self::ComponentInstanceHandle, Self::MarkerPinHandle>) -> R) -> R {
-        f(&self.component_instances.blocking_lock())
+        f(&self.component_instances.load())
     }
 
     fn click_component_instance(&self, handle: &Self::ComponentInstanceHandle) {
@@ -642,13 +654,13 @@ where
         self.message_router.handle(Message::SplitComponentAtPin(instance.clone(), pin.clone()))
     }
 
-    type ComponentLinkHandle = MarkerLinkHandle<K>;
+    type MarkerLinkHandle = MarkerLinkHandle<K>;
 
-    fn component_links<R>(&self, f: impl FnOnce(&ComponentLinkDataList<Self::ComponentLinkHandle, Self::MarkerPinHandle, Self::ComponentInstanceHandle>) -> R) -> R {
-        f(&self.component_links.blocking_read())
+    fn marker_links<R>(&self, f: impl FnOnce(&MarkerLinkDataList<Self::MarkerLinkHandle, Self::MarkerPinHandle, Self::ComponentInstanceHandle>) -> R) -> R {
+        f(&self.marker_links.load())
     }
 
-    fn edit_marker_link_length(&self, link: &Self::ComponentLinkHandle, value: f64) {
+    fn edit_marker_link_length(&self, link: &Self::MarkerLinkHandle, value: f64) {
         self.message_router.handle(Message::EditMarkerLinkLength(link.clone(), value));
     }
 

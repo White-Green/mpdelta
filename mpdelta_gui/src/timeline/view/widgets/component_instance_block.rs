@@ -92,8 +92,8 @@ where
         let block_rect = Rect::from_x_y_ranges(clip_rect.x_range(), clip_rect.top() + pin_head_size..=clip_rect.top() + pin_head_size + block_height);
         let widget_visuals = if selected { &ui.style().visuals.widgets.active } else { &ui.style().visuals.widgets.inactive };
         painter.rect(block_rect, 0., widget_visuals.bg_fill, widget_visuals.fg_stroke);
-        left_pin.render_location.set(Pos2::new(left + pin_head_size / 4., block_rect.top() - pin_head_size * 2. / 3.));
-        right_pin.render_location.set(Pos2::new(right - pin_head_size / 4., block_rect.top() - pin_head_size * 2. / 3.));
+        left_pin.render_location.store(Pos2::new(left + pin_head_size / 4., block_rect.top() - pin_head_size * 2. / 3.));
+        right_pin.render_location.store(Pos2::new(right - pin_head_size / 4., block_rect.top() - pin_head_size * 2. / 3.));
         let shapes = [
             Shape::convex_polygon(
                 vec![
@@ -121,7 +121,7 @@ where
         .into_iter()
         .chain(pins.iter().flat_map(|pin| {
             let at = time_to_point(pin.at);
-            pin.render_location.set(Pos2::new(at, block_rect.top() - pin_head_size * 2. / 3.));
+            pin.render_location.store(Pos2::new(at, block_rect.top() - pin_head_size * 2. / 3.));
             [
                 Shape::convex_polygon(
                     vec![

@@ -2,7 +2,7 @@ use crate::edit_funnel::EditFunnel;
 use crate::global_ui_state::{GlobalUIEvent, GlobalUIEventHandler, GlobalUIState};
 use crate::view_model_util::use_arc;
 use crate::viewmodel::ViewModelParams;
-use arc_swap::ArcSwap;
+use arc_swap::{ArcSwap, ArcSwapOption};
 use cgmath::{Quaternion, Vector3};
 use mpdelta_async_runtime::{AsyncRuntime, JoinHandleWrapper};
 use mpdelta_core::common::time_split_value::TimeSplitValue;
@@ -19,8 +19,8 @@ use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::future;
 use std::marker::PhantomData;
-use std::ops::{DerefMut, Range};
-use std::sync::{Arc, Mutex, MutexGuard, RwLock as StdRwLock};
+use std::ops::Range;
+use std::sync::{Arc, Mutex, RwLock as StdRwLock};
 use tokio::sync::RwLock;
 
 pub struct MarkerPinTimeMap<K> {
@@ -373,11 +373,8 @@ pub struct ParametersEditSet<K: 'static, T: ParameterValueType> {
 }
 
 pub trait PropertyWindowViewModel<K: 'static, T: ParameterValueType> {
-    type Parameters<'a>: DerefMut<Target = Option<ParametersEditSet<K, T>>> + 'a
-    where
-        Self: 'a;
     fn selected_instance_at(&self) -> Range<f64>;
-    fn parameters(&self) -> Self::Parameters<'_>;
+    fn parameters<R>(&self, f: impl FnOnce(Option<&mut ParametersEditSet<K, T>>) -> R) -> R;
     fn updated_image_required_params(&self, image_required_params: &ImageRequiredParamsForEdit<K, T>);
     fn updated_fixed_params(&self, fixed_params: &[WithName<ParameterValueFixed<T::Image, T::Audio>>]);
     fn updated_variable_params(&self, variable_params: &[WithName<Parameter<NullableValueForEdit<K, T>>>]);
@@ -398,7 +395,7 @@ pub struct PropertyWindowViewModelImpl<K: 'static, T: ParameterValueType, Edit, 
     edit: Arc<Edit>,
     selected: Arc<StdRwLock<SelectedItem<K, T>>>,
     selected_instance_at: Arc<ArcSwap<Range<f64>>>,
-    parameters: Arc<Mutex<Option<ParametersEditSet<K, T>>>>,
+    parameters: Arc<ArcSwapOption<Mutex<ParametersEditSet<K, T>>>>,
     image_required_params_update_task: Mutex<JoinHandleWrapper<JoinHandle>>,
     runtime: Runtime,
     key: Arc<RwLock<TCellOwner<K>>>,
@@ -455,14 +452,14 @@ where
                             .zip(variable_params_type)
                             .map(|(value, (name, _))| WithName::new(name.clone(), NullableValueForEdit::from_variable_parameter_value(value.clone(), &pin_time_map)))
                             .collect();
-                        *parameters.lock().unwrap() = Some(ParametersEditSet {
+                        parameters.store(Some(Arc::new(Mutex::new(ParametersEditSet {
                             image_required_params,
                             fixed_params,
                             variable_params,
                             pin_times: pin_time_map.times.into_boxed_slice(),
-                        });
+                        }))));
                     } else {
-                        *parameters.lock().unwrap() = None;
+                        parameters.store(None);
                     }
                 });
             }
@@ -479,7 +476,7 @@ impl<K: 'static, T: ParameterValueType> PropertyWindowViewModelImpl<K, T, (), ()
             edit: Arc::clone(edit),
             selected: Arc::new(StdRwLock::new(SelectedItem::default())),
             selected_instance_at: Arc::new(ArcSwap::new(Arc::new(0.0..0.0))),
-            parameters: Arc::new(Mutex::new(None)),
+            parameters: Arc::new(ArcSwapOption::empty()),
             image_required_params_update_task: Mutex::new(runtime.spawn(future::ready(()))),
             runtime,
             key: Arc::clone(params.key()),
@@ -496,14 +493,12 @@ where
     Edit: EditFunnel<K, T>,
     Runtime: AsyncRuntime<()> + Clone,
 {
-    type Parameters<'a> = MutexGuard<'a, Option<ParametersEditSet<K, T>>> where Self: 'a;
-
     fn selected_instance_at(&self) -> Range<f64> {
         (**self.selected_instance_at.load()).clone()
     }
 
-    fn parameters(&self) -> Self::Parameters<'_> {
-        self.parameters.lock().unwrap()
+    fn parameters<R>(&self, f: impl FnOnce(Option<&mut ParametersEditSet<K, T>>) -> R) -> R {
+        f(self.parameters.load().as_deref().map(|mutex| mutex.lock().unwrap()).as_deref_mut())
     }
 
     fn updated_image_required_params(&self, image_required_params: &ImageRequiredParamsForEdit<K, T>) {

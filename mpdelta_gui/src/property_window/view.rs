@@ -94,247 +94,249 @@ impl<K: 'static, T: ParameterValueType, VM: PropertyWindowViewModel<K, T>> Prope
         let point_per_second = 320.;
         let (rect, _) = ui.allocate_at_least(ui.available_size(), Sense::click());
         ui.allocate_ui_at_rect(rect, |ui| {
-            if let Some(ParametersEditSet {
-                image_required_params,
-                fixed_params,
-                variable_params,
-                pin_times,
-            }) = &mut *self.view_model.parameters()
-            {
-                ui.label("Component Properties");
-                ScrollArea::vertical()
-                    .max_height(ui.available_height() - (ScrollStyle::solid().bar_width + ScrollStyle::solid().bar_inner_margin * 2. + ScrollStyle::solid().bar_outer_margin * 2.))
-                    .show(ui, |ui| {
-                        let mut edited = false;
-                        if let Some(image_required_params) = image_required_params {
-                            if let ImageRequiredParamsTransformForEdit::Params {
-                                size:
-                                    Vector3 {
-                                        x: ValueWithEditCopy {
-                                            value: VariableParameterValue { params: size_x, .. },
-                                            edit_copy: zx,
+            self.view_model.parameters(|parameters| {
+                if let Some(ParametersEditSet {
+                    image_required_params,
+                    fixed_params,
+                    variable_params,
+                    pin_times,
+                }) = parameters
+                {
+                    ui.label("Component Properties");
+                    ScrollArea::vertical()
+                        .max_height(ui.available_height() - (ScrollStyle::solid().bar_width + ScrollStyle::solid().bar_inner_margin * 2. + ScrollStyle::solid().bar_outer_margin * 2.))
+                        .show(ui, |ui| {
+                            let mut edited = false;
+                            if let Some(image_required_params) = image_required_params {
+                                if let ImageRequiredParamsTransformForEdit::Params {
+                                    size:
+                                        Vector3 {
+                                            x: ValueWithEditCopy {
+                                                value: VariableParameterValue { params: size_x, .. },
+                                                edit_copy: zx,
+                                            },
+                                            y: ValueWithEditCopy {
+                                                value: VariableParameterValue { params: size_y, .. },
+                                                edit_copy: zy,
+                                            },
+                                            ..
                                         },
-                                        y: ValueWithEditCopy {
-                                            value: VariableParameterValue { params: size_y, .. },
-                                            edit_copy: zy,
+                                    scale:
+                                        Vector3 {
+                                            x: ValueWithEditCopy {
+                                                value: VariableParameterValue { params: scale_x, .. },
+                                                edit_copy: sx,
+                                            },
+                                            y: ValueWithEditCopy {
+                                                value: VariableParameterValue { params: scale_y, .. },
+                                                edit_copy: sy,
+                                            },
+                                            ..
                                         },
-                                        ..
-                                    },
-                                scale:
-                                    Vector3 {
-                                        x: ValueWithEditCopy {
-                                            value: VariableParameterValue { params: scale_x, .. },
-                                            edit_copy: sx,
+                                    translate:
+                                        Vector3 {
+                                            x: ValueWithEditCopy {
+                                                value: VariableParameterValue { params: translate_x, .. },
+                                                edit_copy: tx,
+                                            },
+                                            y: ValueWithEditCopy {
+                                                value: VariableParameterValue { params: translate_y, .. },
+                                                edit_copy: ty,
+                                            },
+                                            ..
                                         },
-                                        y: ValueWithEditCopy {
-                                            value: VariableParameterValue { params: scale_y, .. },
-                                            edit_copy: sy,
-                                        },
-                                        ..
-                                    },
-                                translate:
-                                    Vector3 {
-                                        x: ValueWithEditCopy {
-                                            value: VariableParameterValue { params: translate_x, .. },
-                                            edit_copy: tx,
-                                        },
-                                        y: ValueWithEditCopy {
-                                            value: VariableParameterValue { params: translate_y, .. },
-                                            edit_copy: ty,
-                                        },
-                                        ..
-                                    },
-                                ..
-                            } = &mut image_required_params.transform
-                            {
-                                ui.label("position - X");
-                                let mut edit_events = SmallVec::<[_; 1]>::new();
-                                EasingValueEditorF64 {
-                                    id: "position - X",
-                                    time_range: instance_range.clone(),
-                                    times: pin_times.as_ref(),
-                                    value: tx,
-                                    value_range: -3.0..3.0,
-                                    point_per_second,
-                                    scroll_offset: &mut self.scroll_offset,
-                                    update: extend_fn(&mut edit_events),
-                                }
-                                .show(ui);
-                                edited |= edit_value_f64_by_event(translate_x, tx, edit_events);
-                                let mut edit_events = SmallVec::<[_; 1]>::new();
-                                ui.label("position - Y");
-                                EasingValueEditorF64 {
-                                    id: "position - Y",
-                                    time_range: instance_range.clone(),
-                                    times: pin_times.as_ref(),
-                                    value: ty,
-                                    value_range: -3.0..3.0,
-                                    point_per_second,
-                                    scroll_offset: &mut self.scroll_offset,
-                                    update: extend_fn(&mut edit_events),
-                                }
-                                .show(ui);
-                                edited |= edit_value_f64_by_event(translate_y, ty, edit_events);
-                                let mut edit_events = SmallVec::<[_; 1]>::new();
-                                ui.label("size - X");
-                                EasingValueEditorF64 {
-                                    id: "size - X",
-                                    time_range: instance_range.clone(),
-                                    times: pin_times.as_ref(),
-                                    value: zx,
-                                    value_range: 0.0..2.0,
-                                    point_per_second,
-                                    scroll_offset: &mut self.scroll_offset,
-                                    update: extend_fn(&mut edit_events),
-                                }
-                                .show(ui);
-                                edited |= edit_value_f64_by_event(size_x, zx, edit_events);
-                                let mut edit_events = SmallVec::<[_; 1]>::new();
-                                ui.label("size - Y");
-                                EasingValueEditorF64 {
-                                    id: "size - Y",
-                                    time_range: instance_range.clone(),
-                                    times: pin_times.as_ref(),
-                                    value: zy,
-                                    value_range: 0.0..2.0,
-                                    point_per_second,
-                                    scroll_offset: &mut self.scroll_offset,
-                                    update: extend_fn(&mut edit_events),
-                                }
-                                .show(ui);
-                                edited |= edit_value_f64_by_event(size_y, zy, edit_events);
-                                let mut edit_events = SmallVec::<[_; 1]>::new();
-                                ui.label("scale - X");
-                                EasingValueEditorF64 {
-                                    id: "scale - X",
-                                    time_range: instance_range.clone(),
-                                    times: pin_times.as_ref(),
-                                    value: sx,
-                                    value_range: 0.0..2.0,
-                                    point_per_second,
-                                    scroll_offset: &mut self.scroll_offset,
-                                    update: extend_fn(&mut edit_events),
-                                }
-                                .show(ui);
-                                edited |= edit_value_f64_by_event(scale_x, sx, edit_events);
-                                let mut edit_events = SmallVec::<[_; 1]>::new();
-                                ui.label("scale - Y");
-                                EasingValueEditorF64 {
-                                    id: "scale - Y",
-                                    time_range: instance_range.clone(),
-                                    times: pin_times.as_ref(),
-                                    value: sy,
-                                    value_range: 0.0..2.0,
-                                    point_per_second,
-                                    scroll_offset: &mut self.scroll_offset,
-                                    update: extend_fn(&mut edit_events),
-                                }
-                                .show(ui);
-                                edited |= edit_value_f64_by_event(scale_y, sy, edit_events);
-                            }
-                            if edited {
-                                self.view_model.updated_image_required_params(image_required_params);
-                            }
-                        }
-
-                        let mut edited = false;
-                        for WithName { name, value } in fixed_params.as_mut().iter_mut() {
-                            ui.label(name.clone());
-                            match value {
-                                ParameterValueFixed::None => {}
-                                ParameterValueFixed::Image(_value) => {}
-                                ParameterValueFixed::Audio(_value) => {}
-                                ParameterValueFixed::Binary(value) => {
-                                    let edit_as_path = value.edit_value(|path: &mut PathBuf| {
-                                        let before = path.to_str().unwrap_or("").to_owned();
-                                        let mut edit = before.clone();
-                                        ui.text_edit_singleline(&mut edit);
-                                        if before != edit {
-                                            *path = PathBuf::from(edit);
-                                            true
-                                        } else {
-                                            false
-                                        }
-                                    });
-                                    if let Ok(edit) = edit_as_path {
-                                        edited |= edit;
-                                        continue;
-                                    }
-                                }
-                                ParameterValueFixed::String(value) => {
-                                    let edit_as_string = value.edit_value(|s: &mut String| {
-                                        let mut edit = s.clone();
-                                        ui.text_edit_singleline(&mut edit);
-                                        if s != &edit {
-                                            *s = edit;
-                                            true
-                                        } else {
-                                            false
-                                        }
-                                    });
-                                    if let Ok(edit) = edit_as_string {
-                                        edited |= edit;
-                                        continue;
-                                    }
-                                }
-                                ParameterValueFixed::Integer(_value) => {}
-                                ParameterValueFixed::RealNumber(_value) => {}
-                                ParameterValueFixed::Boolean(_value) => {}
-                                ParameterValueFixed::Dictionary(_value) => {}
-                                ParameterValueFixed::Array(_value) => {}
-                                ParameterValueFixed::ComponentClass(()) => {}
-                            }
-                            ui.label("Unknown ParameterValueFixed");
-                        }
-                        if edited {
-                            self.view_model.updated_fixed_params(fixed_params);
-                        }
-
-                        let mut edited = false;
-                        for WithName { name, value } in variable_params.as_mut().iter_mut() {
-                            ui.label(name.clone());
-                            match value {
-                                Parameter::None => {}
-                                Parameter::Image(_value) => {}
-                                Parameter::Audio(_value) => {}
-                                Parameter::Binary(_value) => {}
-                                Parameter::String(value) => {
+                                    ..
+                                } = &mut image_required_params.transform
+                                {
+                                    ui.label("position - X");
                                     let mut edit_events = SmallVec::<[_; 1]>::new();
-                                    EasingValueEditorString {
-                                        id: name,
+                                    EasingValueEditorF64 {
+                                        id: "position - X",
                                         time_range: instance_range.clone(),
                                         times: pin_times.as_ref(),
-                                        value: &mut value.edit_copy,
+                                        value: tx,
+                                        value_range: -3.0..3.0,
                                         point_per_second,
                                         scroll_offset: &mut self.scroll_offset,
                                         update: extend_fn(&mut edit_events),
                                     }
                                     .show(ui);
-                                    edited |= edit_value_string_by_event(value, edit_events);
-                                    continue;
+                                    edited |= edit_value_f64_by_event(translate_x, tx, edit_events);
+                                    let mut edit_events = SmallVec::<[_; 1]>::new();
+                                    ui.label("position - Y");
+                                    EasingValueEditorF64 {
+                                        id: "position - Y",
+                                        time_range: instance_range.clone(),
+                                        times: pin_times.as_ref(),
+                                        value: ty,
+                                        value_range: -3.0..3.0,
+                                        point_per_second,
+                                        scroll_offset: &mut self.scroll_offset,
+                                        update: extend_fn(&mut edit_events),
+                                    }
+                                    .show(ui);
+                                    edited |= edit_value_f64_by_event(translate_y, ty, edit_events);
+                                    let mut edit_events = SmallVec::<[_; 1]>::new();
+                                    ui.label("size - X");
+                                    EasingValueEditorF64 {
+                                        id: "size - X",
+                                        time_range: instance_range.clone(),
+                                        times: pin_times.as_ref(),
+                                        value: zx,
+                                        value_range: 0.0..2.0,
+                                        point_per_second,
+                                        scroll_offset: &mut self.scroll_offset,
+                                        update: extend_fn(&mut edit_events),
+                                    }
+                                    .show(ui);
+                                    edited |= edit_value_f64_by_event(size_x, zx, edit_events);
+                                    let mut edit_events = SmallVec::<[_; 1]>::new();
+                                    ui.label("size - Y");
+                                    EasingValueEditorF64 {
+                                        id: "size - Y",
+                                        time_range: instance_range.clone(),
+                                        times: pin_times.as_ref(),
+                                        value: zy,
+                                        value_range: 0.0..2.0,
+                                        point_per_second,
+                                        scroll_offset: &mut self.scroll_offset,
+                                        update: extend_fn(&mut edit_events),
+                                    }
+                                    .show(ui);
+                                    edited |= edit_value_f64_by_event(size_y, zy, edit_events);
+                                    let mut edit_events = SmallVec::<[_; 1]>::new();
+                                    ui.label("scale - X");
+                                    EasingValueEditorF64 {
+                                        id: "scale - X",
+                                        time_range: instance_range.clone(),
+                                        times: pin_times.as_ref(),
+                                        value: sx,
+                                        value_range: 0.0..2.0,
+                                        point_per_second,
+                                        scroll_offset: &mut self.scroll_offset,
+                                        update: extend_fn(&mut edit_events),
+                                    }
+                                    .show(ui);
+                                    edited |= edit_value_f64_by_event(scale_x, sx, edit_events);
+                                    let mut edit_events = SmallVec::<[_; 1]>::new();
+                                    ui.label("scale - Y");
+                                    EasingValueEditorF64 {
+                                        id: "scale - Y",
+                                        time_range: instance_range.clone(),
+                                        times: pin_times.as_ref(),
+                                        value: sy,
+                                        value_range: 0.0..2.0,
+                                        point_per_second,
+                                        scroll_offset: &mut self.scroll_offset,
+                                        update: extend_fn(&mut edit_events),
+                                    }
+                                    .show(ui);
+                                    edited |= edit_value_f64_by_event(scale_y, sy, edit_events);
                                 }
-                                Parameter::Integer(_value) => {}
-                                Parameter::RealNumber(_value) => {}
-                                Parameter::Boolean(_value) => {}
-                                Parameter::Dictionary(_value) => {}
-                                Parameter::Array(_value) => {}
-                                Parameter::ComponentClass(_) => {}
+                                if edited {
+                                    self.view_model.updated_image_required_params(image_required_params);
+                                }
                             }
-                            ui.label("Unknown VariableParameter");
-                        }
-                        if edited {
-                            self.view_model.updated_variable_params(variable_params);
-                        }
-                    });
-                let old_scroll_style = mem::replace(&mut ui.style_mut().spacing.scroll, ScrollStyle::solid());
-                let scroll_output = ScrollArea::horizontal()
-                    .horizontal_scroll_offset(self.scroll_offset)
-                    .id_source(id.with("scroll_bar"))
-                    .scroll_bar_visibility(ScrollBarVisibility::VisibleWhenNeeded)
-                    .show(ui, |ui| ui.allocate_space(Vec2::new(instance_length * point_per_second as f32, 0.)));
-                self.scroll_offset = scroll_output.state.offset.x;
-                ui.style_mut().spacing.scroll = old_scroll_style;
-            }
+
+                            let mut edited = false;
+                            for WithName { name, value } in fixed_params.as_mut().iter_mut() {
+                                ui.label(name.clone());
+                                match value {
+                                    ParameterValueFixed::None => {}
+                                    ParameterValueFixed::Image(_value) => {}
+                                    ParameterValueFixed::Audio(_value) => {}
+                                    ParameterValueFixed::Binary(value) => {
+                                        let edit_as_path = value.edit_value(|path: &mut PathBuf| {
+                                            let before = path.to_str().unwrap_or("").to_owned();
+                                            let mut edit = before.clone();
+                                            ui.text_edit_singleline(&mut edit);
+                                            if before != edit {
+                                                *path = PathBuf::from(edit);
+                                                true
+                                            } else {
+                                                false
+                                            }
+                                        });
+                                        if let Ok(edit) = edit_as_path {
+                                            edited |= edit;
+                                            continue;
+                                        }
+                                    }
+                                    ParameterValueFixed::String(value) => {
+                                        let edit_as_string = value.edit_value(|s: &mut String| {
+                                            let mut edit = s.clone();
+                                            ui.text_edit_singleline(&mut edit);
+                                            if s != &edit {
+                                                *s = edit;
+                                                true
+                                            } else {
+                                                false
+                                            }
+                                        });
+                                        if let Ok(edit) = edit_as_string {
+                                            edited |= edit;
+                                            continue;
+                                        }
+                                    }
+                                    ParameterValueFixed::Integer(_value) => {}
+                                    ParameterValueFixed::RealNumber(_value) => {}
+                                    ParameterValueFixed::Boolean(_value) => {}
+                                    ParameterValueFixed::Dictionary(_value) => {}
+                                    ParameterValueFixed::Array(_value) => {}
+                                    ParameterValueFixed::ComponentClass(()) => {}
+                                }
+                                ui.label("Unknown ParameterValueFixed");
+                            }
+                            if edited {
+                                self.view_model.updated_fixed_params(fixed_params);
+                            }
+
+                            let mut edited = false;
+                            for WithName { name, value } in variable_params.as_mut().iter_mut() {
+                                ui.label(name.clone());
+                                match value {
+                                    Parameter::None => {}
+                                    Parameter::Image(_value) => {}
+                                    Parameter::Audio(_value) => {}
+                                    Parameter::Binary(_value) => {}
+                                    Parameter::String(value) => {
+                                        let mut edit_events = SmallVec::<[_; 1]>::new();
+                                        EasingValueEditorString {
+                                            id: name,
+                                            time_range: instance_range.clone(),
+                                            times: pin_times.as_ref(),
+                                            value: &mut value.edit_copy,
+                                            point_per_second,
+                                            scroll_offset: &mut self.scroll_offset,
+                                            update: extend_fn(&mut edit_events),
+                                        }
+                                        .show(ui);
+                                        edited |= edit_value_string_by_event(value, edit_events);
+                                        continue;
+                                    }
+                                    Parameter::Integer(_value) => {}
+                                    Parameter::RealNumber(_value) => {}
+                                    Parameter::Boolean(_value) => {}
+                                    Parameter::Dictionary(_value) => {}
+                                    Parameter::Array(_value) => {}
+                                    Parameter::ComponentClass(_) => {}
+                                }
+                                ui.label("Unknown VariableParameter");
+                            }
+                            if edited {
+                                self.view_model.updated_variable_params(variable_params);
+                            }
+                        });
+                    let old_scroll_style = mem::replace(&mut ui.style_mut().spacing.scroll, ScrollStyle::solid());
+                    let scroll_output = ScrollArea::horizontal()
+                        .horizontal_scroll_offset(self.scroll_offset)
+                        .id_source(id.with("scroll_bar"))
+                        .scroll_bar_visibility(ScrollBarVisibility::VisibleWhenNeeded)
+                        .show(ui, |ui| ui.allocate_space(Vec2::new(instance_length * point_per_second as f32, 0.)));
+                    self.scroll_offset = scroll_output.state.offset.x;
+                    ui.style_mut().spacing.scroll = old_scroll_style;
+                }
+            });
         });
     }
 }
@@ -355,7 +357,7 @@ mod tests {
     use std::io::Cursor;
     use std::ops::Range;
     use std::path::Path;
-    use std::sync::{Arc, Mutex, MutexGuard};
+    use std::sync::{Arc, Mutex};
 
     #[tokio::test]
     async fn view_property_window() {
@@ -380,14 +382,12 @@ mod tests {
             params: Mutex<Option<ParametersEditSet<K, T>>>,
         }
         impl PropertyWindowViewModel<K, T> for VM {
-            type Parameters<'a> = MutexGuard<'a, Option<ParametersEditSet<K, T>>>;
-
             fn selected_instance_at(&self) -> Range<f64> {
                 0.0..1.0
             }
 
-            fn parameters(&self) -> Self::Parameters<'_> {
-                self.params.lock().unwrap()
+            fn parameters<R>(&self, f: impl FnOnce(Option<&mut ParametersEditSet<K, T>>) -> R) -> R {
+                f(self.params.lock().unwrap().as_mut())
             }
 
             fn updated_image_required_params(&self, _image_required_params: &ImageRequiredParamsForEdit<K, T>) {}

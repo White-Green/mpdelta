@@ -5,6 +5,8 @@ edition = { workspace = true }
 authors = { workspace = true }
 
 [dependencies]
+arc-swap = { workspace = true }
+archery = { workspace = true }
 async-trait = { workspace = true }
 cgmath = { workspace = true }
 crossbeam-utils = { workspace = true }
@@ -16,9 +18,11 @@ mpdelta_differential = { workspace = true }
 once_cell = { workspace = true }
 qcell = { workspace = true }
 rayon = { workspace = true }
+rpds = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["rt"] }
 
 [dev-dependencies]
 assert_matches = { workspace = true }
+tokio = { workspace = true, features = ["rt", "rt-multi-thread"] }

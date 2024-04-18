@@ -67,6 +67,7 @@ edition = "2021"
 authors = ["White-Green"]
 
 [workspace.dependencies]
+archery = "1.2.0"
 arc-swap = "1.7.1"
 arrayvec = "0.7.4"
 assert_matches = "1.5.0"
@@ -95,7 +96,6 @@ icu_properties = "1.4.0"
 icu_segmenter = "1.4.0"
 image = "0.25.1"
 indexmap = "2.2.6"
-lru = "0.12.3"
 lyon_tessellation = "1.0.13"
 moka = { version = "0.12.6", features = ["future"] }
 mpdelta_async_runtime = { path = "mpdelta_common/mpdelta_async_runtime" }

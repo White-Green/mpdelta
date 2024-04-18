@@ -5,6 +5,5 @@ edition = { workspace = true }
 authors = { workspace = true }
 
 [dependencies]
-lru = { workspace = true }
 mpdelta_core = { workspace = true }
 mpdelta_renderer = { workspace = true }

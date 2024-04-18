@@ -1,7 +1,10 @@
+use crate::heartbeat::{HeartbeatController, HeartbeatMonitor};
+use crate::lazy_init::LazyInit;
 use crate::render::Renderer;
+use arc_swap::ArcSwap;
+use archery::ArcTK;
 use async_trait::async_trait;
 use crossbeam_utils::atomic::AtomicCell;
-use dashmap::DashMap;
 use futures::FutureExt;
 use mpdelta_core::component::instance::ComponentInstanceHandle;
 use mpdelta_core::component::link::MarkerLinkHandle;
@@ -12,20 +15,22 @@ use mpdelta_core::time::TimelineTime;
 use mpdelta_core::usecase::RealtimeComponentRenderer;
 use mpdelta_differential::CollectCachedTimeError;
 use qcell::TCellOwner;
+use rpds::RedBlackTreeMap;
 use std::convert::Infallible;
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
 use std::future::Future;
 use std::hash::{Hash, Hasher};
 use std::ops::{DerefMut, Range};
-use std::sync::Arc;
-use std::time::Duration;
+use std::sync::{Arc, RwLock as StdRwLock};
 use thiserror::Error;
 use tokio::runtime::Handle;
 use tokio::sync::mpsc::error::SendError;
 use tokio::sync::mpsc::UnboundedSender;
-use tokio::sync::{oneshot, Mutex, RwLock};
+use tokio::sync::{oneshot, RwLock};
 
+mod heartbeat;
+mod lazy_init;
 mod render;
 mod thread_cancel;
 
@@ -90,6 +95,8 @@ where
 
     async fn create_renderer(&self, component: &ComponentInstanceHandle<K, T>) -> Result<Self::Renderer, Self::Err> {
         let component_natural_length = Arc::new(AtomicCell::new(None));
+        let (controller, loop_heartbeat) = heartbeat::heartbeat();
+        let images = Arc::new(ArcSwap::new(Arc::new(RedBlackTreeMap::new_sync())));
         let (sender, future) = rendering_loop(
             Arc::clone(&self.key),
             component.clone(),
@@ -98,6 +105,8 @@ where
             Arc::clone(&self.image_combiner_builder),
             Arc::clone(&self.audio_combiner_builder),
             Handle::current(),
+            controller,
+            Arc::clone(&images),
         );
         self.runtime.spawn(future);
         Ok(MPDeltaRenderer {
@@ -108,7 +117,9 @@ where
             image_combiner_builder: Arc::clone(&self.image_combiner_builder),
             audio_combiner_builder: Arc::clone(&self.audio_combiner_builder),
             runtime: self.runtime.clone(),
-            loop_sender: Mutex::new(sender),
+            images,
+            loop_heartbeat: StdRwLock::new(loop_heartbeat),
+            loop_sender: ArcSwap::new(Arc::new(sender)),
         })
     }
 }
@@ -280,38 +291,8 @@ where
 }
 
 enum RenderingMessage<K: 'static, T: ParameterValueType> {
-    RequestRenderFrame { frame: usize, ret: oneshot::Sender<RenderResult<T::Image, K, T>> },
+    RequestRenderFrame { frame: usize },
     RequestConstructAudio { ret: oneshot::Sender<RenderResult<T::Audio, K, T>> },
-}
-
-struct RenderingCache<T> {
-    map: DashMap<usize, tokio::sync::OnceCell<T>>,
-}
-
-impl<T> Default for RenderingCache<T> {
-    fn default() -> Self {
-        RenderingCache::new()
-    }
-}
-
-impl<T> RenderingCache<T> {
-    fn new() -> RenderingCache<T> {
-        RenderingCache { map: DashMap::new() }
-    }
-
-    async fn get_or_try_insert_with<F1, Fut, F2, Ret, Err>(&self, frame: usize, f: F1, ret: F2) -> Ret
-    where
-        F1: FnOnce() -> Fut,
-        Fut: Future<Output = Result<T, Err>>,
-        F2: FnOnce(Result<&T, Err>) -> Ret,
-    {
-        let cell = self.map.entry(frame).or_default().downgrade();
-        cell.get_or_try_init(f).map(ret).await
-    }
-
-    fn remove(&self, frame: usize) {
-        self.map.remove(&frame);
-    }
 }
 
 pub enum RenderingControllerItem {
@@ -320,14 +301,18 @@ pub enum RenderingControllerItem {
 }
 
 pub trait MPDeltaRenderingControllerBuilder: Send + Sync {
-    type Controller<F: Fn(RenderingControllerItem) + Send + Sync>: MPDeltaRenderingController;
-    fn create<F: Fn(RenderingControllerItem) + Send + Sync>(&self, f: F) -> Self::Controller<F>;
+    type Controller<F: Fn(RenderingControllerItem) + Send + Sync + 'static>: MPDeltaRenderingController;
+    fn create<F: Fn(RenderingControllerItem) + Send + Sync + 'static>(&self, f: F) -> Self::Controller<F>;
 }
 
-pub trait MPDeltaRenderingController {
+pub trait MPDeltaRenderingController: Send + Sync + 'static {
     fn on_request_render(&self, frame: usize);
 }
 
+type Images<K, T> = RedBlackTreeMap<usize, LazyInit<Result<<T as ParameterValueType>::Image, RenderError<K, T>>>, ArcTK>;
+
+// TODO: あとでなんとかするかも
+#[allow(clippy::too_many_arguments)]
 fn rendering_loop<K, T, C, ImageCombinerBuilder, AudioCombinerBuilder>(
     key: Arc<RwLock<TCellOwner<K>>>,
     component: ComponentInstanceHandle<K, T>,
@@ -336,6 +321,8 @@ fn rendering_loop<K, T, C, ImageCombinerBuilder, AudioCombinerBuilder>(
     image_combiner_builder: Arc<ImageCombinerBuilder>,
     audio_combiner_builder: Arc<AudioCombinerBuilder>,
     runtime: Handle,
+    heartbeat_controller: HeartbeatController,
+    images: Arc<ArcSwap<Images<K, T>>>,
 ) -> (UnboundedSender<RenderingMessage<K, T>>, impl Future<Output = ()> + Send + 'static)
 where
     K: 'static + Send + Sync,
@@ -344,14 +331,17 @@ where
     ImageCombinerBuilder: CombinerBuilder<T::Image, Request = ImageCombinerRequest, Param = ImageCombinerParam> + 'static,
     AudioCombinerBuilder: CombinerBuilder<T::Audio, Request = AudioCombinerRequest, Param = AudioCombinerParam> + 'static,
 {
+    // println!("start rendering loop");
     let (sender, mut receiver) = tokio::sync::mpsc::unbounded_channel();
     let (controller_sender, mut controller_receiver) = tokio::sync::mpsc::unbounded_channel();
     let renderer = Arc::new(Renderer::new(runtime.clone(), component.clone(), image_combiner_builder, audio_combiner_builder));
-    let cache = Arc::new(RenderingCache::new());
-    let _controller = controller_builder.create(move |message| {
+    let controller = controller_builder.create(move |message| {
         let _ = controller_sender.send(message);
     });
+    images.store(Arc::new(RedBlackTreeMap::new_sync()));
+    #[allow(unreachable_code)] // heartbeat_controllerはdropされるときの通知を担当するので、panicしない場合ずっとdropされずにいなければならない
     let future = async move {
+        let _heartbeat_controller = heartbeat_controller;
         let calc_natural_length = || {
             let renderer = Arc::clone(&renderer);
             let key = Arc::clone(&key);
@@ -374,24 +364,7 @@ where
                 message = receiver.recv() => {
                     let Some(message) = message else { return; };
                     match message {
-                        RenderingMessage::RequestRenderFrame { frame, ret } => {
-                            let renderer = Arc::clone(&renderer);
-                            let cache = Arc::clone(&cache);
-                            let component = component.clone();
-                            let key = Arc::clone(&key);
-                            runtime.spawn(async move {
-                                cache.get_or_try_insert_with(frame, || key.read_owned().then(|key| renderer.render(frame, ParameterType::Image(()), Arc::new(key)))
-                                    .map(|result| match result {
-                                        Ok(Parameter::Image(value)) => Ok(value),
-                                        Ok(value) => Err(RenderError::OutputTypeMismatch {
-                                            component,
-                                            expect: Parameter::Image(()),
-                                            actual: value.select(),
-                                        }),
-                                        Err(e) => Err(e),
-                                    }), move |result| { let _ = ret.send(result.cloned()); }).await
-                            });
-                        }
+                        RenderingMessage::RequestRenderFrame { frame } => controller.on_request_render(frame),
                         RenderingMessage::RequestConstructAudio {ret} => {
                             let renderer = Arc::clone(&renderer);
                             let component = component.clone();
@@ -415,11 +388,9 @@ where
                     match message {
                         RenderingControllerItem::RequestRender {frame} => {
                             let renderer = Arc::clone(&renderer);
-                            let cache = Arc::clone(&cache);
                             let component = component.clone();
                             let key = Arc::clone(&key);
-                            runtime.spawn(async move {
-                                cache.get_or_try_insert_with(frame, || key.read_owned().then(|key| renderer.render(frame, ParameterType::Image(()), Arc::new(key)))
+                            let result = LazyInit::new(key.read_owned().then(move |key| renderer.render(frame, ParameterType::Image(()), Arc::new(key)))
                                     .map(|result| match result {
                                         Ok(Parameter::Image(value)) => Ok(value),
                                         Ok(value) => Err(RenderError::OutputTypeMismatch {
@@ -428,16 +399,19 @@ where
                                             actual: value.select(),
                                         }),
                                         Err(e) => Err(e),
-                                    }), |_| ()).await
-                            });
+                                    }), &runtime);
+                            let i = images.load().insert(frame, result);
+                            images.store(Arc::new(i));
                         }
                         RenderingControllerItem::RemoveCache {frame} => {
-                            cache.remove(frame);
+                            let i = images.load().remove(&frame);
+                            images.store(Arc::new(i));
                         }
                     }
                 }
             }
         }
+        drop(heartbeat_controller);
     };
     (sender, future)
 }
@@ -450,7 +424,9 @@ pub struct MPDeltaRenderer<K: 'static, T: ParameterValueType, C, ImageCombinerBu
     image_combiner_builder: Arc<ImageCombinerBuilder>,
     audio_combiner_builder: Arc<AudioCombinerBuilder>,
     runtime: Handle,
-    loop_sender: Mutex<UnboundedSender<RenderingMessage<K, T>>>,
+    images: Arc<ArcSwap<Images<K, T>>>,
+    loop_heartbeat: StdRwLock<HeartbeatMonitor>,
+    loop_sender: ArcSwap<UnboundedSender<RenderingMessage<K, T>>>,
 }
 
 #[derive(Error)]
@@ -508,6 +484,30 @@ impl<K, T: ParameterValueType> Debug for RenderError<K, T> {
     }
 }
 
+impl<K, T: ParameterValueType> Clone for RenderError<K, T> {
+    fn clone(&self) -> Self {
+        match self {
+            RenderError::InvalidComponent(handle) => RenderError::InvalidComponent(handle.clone()),
+            RenderError::OutputTypeMismatch { component, expect, actual } => RenderError::OutputTypeMismatch {
+                component: component.clone(),
+                expect: *expect,
+                actual: *actual,
+            },
+            RenderError::InvalidLinkGraph => RenderError::InvalidLinkGraph,
+            RenderError::InvalidMarker(handle) => RenderError::InvalidMarker(handle.clone()),
+            RenderError::InvalidMarkerLink(handle) => RenderError::InvalidMarkerLink(handle.clone()),
+            RenderError::InvalidVariableParameter { component, index } => RenderError::InvalidVariableParameter { component: component.clone(), index: *index },
+            RenderError::RenderTargetTimeOutOfRange { component, range, at } => RenderError::RenderTargetTimeOutOfRange {
+                component: component.clone(),
+                range: range.clone(),
+                at: *at,
+            },
+            RenderError::NotProvided => RenderError::NotProvided,
+            RenderError::Timeout => RenderError::Timeout,
+        }
+    }
+}
+
 impl<K, T, C, ImageCombinerBuilder, AudioCombinerBuilder> RealtimeComponentRenderer<T> for MPDeltaRenderer<K, T, C, ImageCombinerBuilder, AudioCombinerBuilder>
 where
     K: Send + Sync,
@@ -523,45 +523,31 @@ where
     }
 
     fn render_frame(&self, frame: usize) -> Result<T::Image, Self::Err> {
-        self.runtime
-            .block_on(async {
-                let mut loop_sender = self.loop_sender.lock().await;
-                tokio::time::timeout(Duration::from_millis(16), async {
-                    loop {
-                        let (sender, receiver) = oneshot::channel();
-                        let mut message = Some(RenderingMessage::RequestRenderFrame { frame, ret: sender });
-                        loop {
-                            match loop_sender.send(message.take().unwrap()) {
-                                Ok(()) => break,
-                                Err(SendError(failed_message)) => {
-                                    message = Some(failed_message);
-                                    let (new_loop_sender, fut) = rendering_loop(
-                                        Arc::clone(&self.key),
-                                        self.component.clone(),
-                                        Arc::clone(&self.component_natural_length),
-                                        &*self.controller_builder,
-                                        Arc::clone(&self.image_combiner_builder),
-                                        Arc::clone(&self.audio_combiner_builder),
-                                        self.runtime.clone(),
-                                    );
-                                    self.runtime.spawn(fut);
-                                    *loop_sender = new_loop_sender;
-                                }
-                            };
-                        }
-                        match receiver.await {
-                            Ok(Ok(result)) => break Ok(result),
-                            Ok(Err(result)) => {
-                                eprintln!("{}", result);
-                                break Err(result);
-                            }
-                            Err(_) => {}
-                        }
-                    }
-                })
-                .await
-            })
-            .unwrap_or(Err(RenderError::Timeout))
+        let result = self.images.load().get(&frame).and_then(|image| image.get().as_deref().cloned()).unwrap_or(Err(RenderError::Timeout));
+        if !self.loop_heartbeat.read().unwrap().is_live() {
+            let mut heartbeat_guard = self.loop_heartbeat.write().unwrap();
+            if heartbeat_guard.is_live() {
+                return result;
+            }
+            let (heartbeat_controller, new_monitor) = heartbeat::heartbeat();
+            dbg!();
+            let (new_loop_sender, fut) = rendering_loop(
+                Arc::clone(&self.key),
+                self.component.clone(),
+                Arc::clone(&self.component_natural_length),
+                &*self.controller_builder,
+                Arc::clone(&self.image_combiner_builder),
+                Arc::clone(&self.audio_combiner_builder),
+                self.runtime.clone(),
+                heartbeat_controller,
+                Arc::clone(&self.images),
+            );
+            self.runtime.spawn(fut);
+            *heartbeat_guard = new_monitor;
+            self.loop_sender.store(Arc::new(new_loop_sender));
+        }
+        let _ = self.loop_sender.load().send(RenderingMessage::RequestRenderFrame { frame });
+        result
     }
 
     fn sampling_rate(&self) -> u32 {
@@ -569,15 +555,20 @@ where
     }
 
     async fn mix_audio(&self, _offset: usize, _length: usize) -> Result<T::Audio, Self::Err> {
-        let mut loop_sender = self.loop_sender.lock().await;
         loop {
             let (sender, receiver) = oneshot::channel();
             let mut message = Some(RenderingMessage::RequestConstructAudio { ret: sender });
             loop {
-                match loop_sender.send(message.take().unwrap()) {
+                match self.loop_sender.load().send(message.take().unwrap()) {
                     Ok(()) => break,
                     Err(SendError(failed_message)) => {
                         message = Some(failed_message);
+                        let mut loop_heartbeat = self.loop_heartbeat.write().unwrap();
+                        if loop_heartbeat.is_live() {
+                            continue;
+                        }
+                        let (heartbeat_controller, new_monitor) = heartbeat::heartbeat();
+                        dbg!();
                         let (new_loop_sender, fut) = rendering_loop(
                             Arc::clone(&self.key),
                             self.component.clone(),
@@ -586,9 +577,12 @@ where
                             Arc::clone(&self.image_combiner_builder),
                             Arc::clone(&self.audio_combiner_builder),
                             self.runtime.clone(),
+                            heartbeat_controller,
+                            Arc::clone(&self.images),
                         );
+                        *loop_heartbeat = new_monitor;
                         self.runtime.spawn(fut);
-                        *loop_sender = new_loop_sender;
+                        self.loop_sender.store(Arc::new(new_loop_sender));
                     }
                 };
             }

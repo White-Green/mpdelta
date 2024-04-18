@@ -20,7 +20,7 @@ use mpdelta_gui_vulkano::MPDeltaGUIVulkano;
 use mpdelta_multimedia_encoder_ffmpeg::{FfmpegEncodeSettings, FfmpegEncoderBuilder};
 use mpdelta_project_serialize::MPDeltaProjectSerializer;
 use mpdelta_renderer::MPDeltaRendererBuilder;
-use mpdelta_rendering_controller::LRUCacheRenderingControllerBuilder;
+use mpdelta_rendering_controller::LookaheadRenderingControllerBuilder;
 use mpdelta_services::easing_loader::InMemoryEasingLoader;
 use mpdelta_services::history::InMemoryEditHistoryStore;
 use mpdelta_services::id_generator::UniqueIdGenerator;
@@ -151,7 +151,7 @@ fn main() {
     let project_serializer = Arc::new(MPDeltaProjectSerializer::new(Arc::clone(&key), runtime.handle().clone(), Arc::clone(&component_class_loader), value_managers, quaternion_manager, easing_manager));
     let component_renderer_builder = Arc::new(MPDeltaRendererBuilder::new(
         Arc::new(ImageCombinerBuilder::new(Arc::clone(&context))),
-        Arc::new(LRUCacheRenderingControllerBuilder::new()),
+        Arc::new(LookaheadRenderingControllerBuilder::new()),
         Arc::new(MPDeltaAudioMixerBuilder::new()),
         Arc::clone(&key),
         runtime.handle().clone(),

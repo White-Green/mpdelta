@@ -2545,15 +2545,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "lru"
-version = "0.12.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d3262e75e648fce39813cb56ac41f3c3e3f65217ebf3844d818d1f9398cfb0dc"
-dependencies = [
- "hashbrown 0.14.3",
-]
-
-[[package]]
 name = "lyon_geom"
 version = "1.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3012,6 +3003,8 @@ dependencies = [
 name = "mpdelta_renderer"
 version = "0.1.0"
 dependencies = [
+ "arc-swap",
+ "archery",
  "assert_matches",
  "async-trait",
  "cgmath",
@@ -3024,6 +3017,7 @@ dependencies = [
  "once_cell",
  "qcell",
  "rayon",
+ "rpds",
  "serde",
  "thiserror",
  "tokio",
@@ -3033,7 +3027,6 @@ dependencies = [
 name = "mpdelta_rendering_controller"
 version = "0.1.0"
 dependencies = [
- "lru",
  "mpdelta_core",
  "mpdelta_renderer",
 ]

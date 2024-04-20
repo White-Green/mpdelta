@@ -331,7 +331,6 @@ where
     ImageCombinerBuilder: CombinerBuilder<T::Image, Request = ImageCombinerRequest, Param = ImageCombinerParam> + 'static,
     AudioCombinerBuilder: CombinerBuilder<T::Audio, Request = AudioCombinerRequest, Param = AudioCombinerParam> + 'static,
 {
-    // println!("start rendering loop");
     let (sender, mut receiver) = tokio::sync::mpsc::unbounded_channel();
     let (controller_sender, mut controller_receiver) = tokio::sync::mpsc::unbounded_channel();
     let renderer = Arc::new(Renderer::new(runtime.clone(), component.clone(), image_combiner_builder, audio_combiner_builder));

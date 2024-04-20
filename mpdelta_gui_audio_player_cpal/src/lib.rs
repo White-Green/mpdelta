@@ -1,19 +1,21 @@
+use crate::signal_queue::signal_queue;
 use cpal::traits::{DeviceTrait, StreamTrait};
-use cpal::{BufferSize, Device, FromSample, SampleFormat, SizedSample, StreamConfig, SupportedBufferSize, SupportedStreamConfig, SupportedStreamConfigsError};
-use crossbeam_queue::ArrayQueue;
+use cpal::{Device, FromSample, SampleFormat, SizedSample, SupportedStreamConfig, SupportedStreamConfigsError};
 use mpdelta_core::common::mixed_fraction::MixedFraction;
 use mpdelta_core::time::TimelineTime;
 use mpdelta_core_audio::multi_channel_audio::{MultiChannelAudio, MultiChannelAudioMutOp, MultiChannelAudioOp};
 use mpdelta_core_audio::{AudioProvider, AudioType};
 use mpdelta_dsp::{Resample, ResampleBuilder};
 use mpdelta_gui::AudioTypePlayer;
-use std::cmp::Ordering;
 use std::fmt::Debug;
 use std::sync::{Arc, PoisonError, RwLock, Weak};
 use std::thread;
+use std::time::Duration;
 use thiserror::Error;
 use tokio::runtime::Handle;
 use tokio::sync::mpsc::UnboundedSender;
+
+mod signal_queue;
 
 pub struct CpalAudioPlayer {
     inner: Arc<RwLock<CpalAudioPlayerInner>>,
@@ -124,82 +126,26 @@ impl CpalAudioPlayerInner {
 
 fn create_stream_thread<S, F>(device: Device, config: SupportedStreamConfig, runtime: &Handle, this: Weak<RwLock<CpalAudioPlayerInner>>, this_creator: F) -> (UnboundedSender<StreamMessage>, UnboundedSender<TimelineTime>, UnboundedSender<AudioType>)
 where
-    S: SizedSample + FromSample<f32> + Debug + Send + 'static,
+    S: SizedSample + FromSample<f32> + Debug + Send + Sync + 'static,
     F: Fn() -> Result<CpalAudioPlayerInner, CpalAudioPlayerCreationError> + Clone + Send + 'static,
 {
     assert_eq!(S::FORMAT, config.sample_format());
-    const QUEUE_CAPACITY: usize = 16;
-    let provide_queue = Arc::new(ArrayQueue::<Box<[S]>>::new(QUEUE_CAPACITY));
-    let (return_queue_sender, mut return_queue_receiver) = tokio::sync::mpsc::channel(QUEUE_CAPACITY);
     let (play_message_sender, mut play_message_receiver) = tokio::sync::mpsc::unbounded_channel::<StreamMessage>();
     let (seek_message_sender, mut seek_message_receiver) = tokio::sync::mpsc::unbounded_channel::<TimelineTime>();
     let (audio_sender, mut audio_receiver) = tokio::sync::mpsc::unbounded_channel::<AudioType>();
     let stream_config = config.config();
-    let (stream_config, mut initialized) = match *config.buffer_size() {
-        SupportedBufferSize::Range { min, max } => {
-            let buffer_size = ((stream_config.sample_rate.0 as f64 * 0.05).round() as u32).next_power_of_two().clamp(min, max);
-            let stream_config = StreamConfig {
-                buffer_size: BufferSize::Fixed(buffer_size),
-                ..stream_config
-            };
-            for _ in 0..QUEUE_CAPACITY {
-                return_queue_sender.blocking_send(vec![S::EQUILIBRIUM; buffer_size as usize].into_boxed_slice()).unwrap();
-            }
-            (stream_config, true)
-        }
-        SupportedBufferSize::Unknown => (stream_config, false),
-    };
     let stream_channels = stream_config.channels;
     let stream_sample_rate = stream_config.sample_rate.0;
+    let (mut signal_sender, mut signal_receiver) = signal_queue::<S>();
     {
-        let return_queue_sender = return_queue_sender.clone();
-        let provide_queue = Arc::clone(&provide_queue);
         let this2 = this.clone();
         let this_creator2 = this_creator.clone();
         thread::spawn(move || {
-            let mut current_buffer = None::<Box<[S]>>;
-            let mut current_index = 0;
             let stream = device
                 .build_output_stream(
                     &stream_config,
-                    move |mut data: &mut [S], _info| {
-                        if !initialized {
-                            for _ in 0..QUEUE_CAPACITY {
-                                return_queue_sender.blocking_send(vec![S::EQUILIBRIUM; data.len()].into_boxed_slice()).unwrap();
-                            }
-                            initialized = true;
-                        }
-                        loop {
-                            if let Some(buffer) = &current_buffer {
-                                let buffer = &buffer[current_index..];
-                                match data.len().cmp(&buffer.len()) {
-                                    Ordering::Less => {
-                                        let data_len = data.len();
-                                        data.copy_from_slice(&buffer[..data_len]);
-                                        current_index += data_len;
-                                        break;
-                                    }
-                                    Ordering::Equal => {
-                                        data.copy_from_slice(buffer);
-                                        let _ = return_queue_sender.blocking_send(current_buffer.take().unwrap());
-                                        break;
-                                    }
-                                    Ordering::Greater => {
-                                        let buffer_len = buffer.len();
-                                        data[..buffer_len].copy_from_slice(buffer);
-                                        let _ = return_queue_sender.blocking_send(current_buffer.take().unwrap());
-                                        data = &mut data[buffer_len..];
-                                    }
-                                }
-                            } else if let Some(buffer) = provide_queue.pop() {
-                                current_buffer = Some(buffer);
-                                current_index = 0;
-                            } else {
-                                println!("no data");
-                                data.fill(S::EQUILIBRIUM);
-                                break;
-                            }
-                        }
+                    move |data: &mut [S], _info| {
+                        signal_receiver.receive_signal(data);
                     },
                     move |err| {
                         eprintln!("{err}");
@@ -246,39 +192,41 @@ where
         };
         let mut resample = vec![ResampleBuilder::new(audio.sample_rate(), stream_sample_rate).build().unwrap(); stream_channels as usize];
         let mut audio_buffer = MultiChannelAudio::new(stream_channels as usize);
+        let mut signal_buffer = Vec::new();
+        let mut timer = tokio::time::interval(Duration::from_millis(1));
         loop {
             tokio::select! {
-                data = return_queue_receiver.recv() => {
-                    let Some(mut data) = data else { break; };
-                    let sample_len = (data.len() * audio.sample_rate() as usize / stream_channels as usize / stream_sample_rate as usize).max(10);
-                    assert_eq!(data.len() % resample.len(), 0);
-                    let mut data_ref = &mut data[..];
+                _ = timer.tick() => {
                     loop {
-                        let proceed_count = data_ref.chunks_exact_mut(resample.len()).filter_map(|data| data.iter_mut().zip(resample.iter_mut()).try_for_each(|(data, resample)| {
-                            *data = resample.next().map(|a| S::from_sample(a * 0.5))?;
-                            Some(())
-                        })).count();
-                        if data_ref.len() == proceed_count * resample.len() {
+                        let mut offset = 0;
+                        while signal_buffer.len() > offset && signal_sender.send_signal(signal_buffer[offset..].iter().copied().take(128)).is_ok() {
+                            offset += 128;
+                        }
+                        signal_buffer.drain(..offset.min(signal_buffer.len()));
+                        if !signal_buffer.is_empty() {
                             break;
                         }
-                        data_ref = &mut data_ref[proceed_count * resample.len()..];
-                        audio_buffer.resize(sample_len, 0.);
+                        audio_buffer.resize((1024 * audio.sample_rate() as usize / stream_sample_rate as usize / stream_channels as usize).clamp(10, 1024), 0.);
                         let result_len = audio.compute_audio(play_time, audio_buffer.slice_mut(..).unwrap());
                         audio_buffer.iter().take(result_len).for_each(|audio_data| resample.iter_mut().zip(audio_data).for_each(|(resample, &a)| resample.extend([a])));
-                        if result_len == sample_len {
+                        'buffer_create: loop {
+                            for r in resample.iter_mut() {
+                                let Some(s) = r.next() else { break 'buffer_create; };
+                                signal_buffer.push(S::from_sample(s));
+                            }
+                        }
+                        if result_len == audio_buffer.len() {
                             play_time = play_time + TimelineTime::new(MixedFraction::from_fraction(result_len as i64, audio.sample_rate()));
                         } else {
                             play_time = TimelineTime::ZERO;
                         }
                     }
-                    provide_queue.push(data).unwrap();
                 }
                 message = seek_message_receiver.recv() => {
                     let Some(at) = message else { break; };
                     resample.iter_mut().for_each(Resample::reset_buffer);
-                    while let Some(data) = provide_queue.pop() {
-                        return_queue_sender.try_send(data).unwrap();
-                    }
+                    signal_sender.flush();
+                    signal_buffer.clear();
                     play_time = at;
                 }
                 new_audio = audio_receiver.recv() => {
@@ -288,9 +236,8 @@ where
                     } else {
                         resample.iter_mut().for_each(Resample::reset_buffer);
                     }
-                    while let Some(data) = provide_queue.pop() {
-                        return_queue_sender.try_send(data).unwrap();
-                    }
+                    signal_sender.flush();
+                    signal_buffer.clear();
                     audio = new_audio;
                 }
             }

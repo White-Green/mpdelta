@@ -1,5 +1,6 @@
 use crate::view_model_util::use_arc;
 use crate::viewmodel::ViewModelParams;
+use crate::AudioTypePlayer;
 use crossbeam_utils::atomic::AtomicCell;
 use mpdelta_async_runtime::AsyncRuntime;
 use mpdelta_core::common::mixed_fraction::atomic::AtomicMixedFraction;
@@ -9,6 +10,7 @@ use mpdelta_core::component::marker_pin::MarkerTime;
 use mpdelta_core::component::parameter::ParameterValueType;
 use mpdelta_core::project::{RootComponentClass, RootComponentClassHandle};
 use mpdelta_core::ptr::StaticPointer;
+use mpdelta_core::time::TimelineTime;
 use mpdelta_message_router::handler::{IntoFunctionHandler, MessageHandlerBuilder};
 use mpdelta_message_router::{MessageHandler, MessageRouter};
 use std::mem;
@@ -91,17 +93,18 @@ pub trait GlobalUIState<K: 'static, T: ParameterValueType>: Send + Sync + 'stati
     fn select_component_instance(&self, target: &ComponentInstanceHandle<K, T>);
 }
 
-pub struct GlobalUIStateImpl<K: 'static, T, H, Runtime> {
+pub struct GlobalUIStateImpl<K: 'static, T, A, H, Runtime> {
     request_play: Arc<AtomicBool>,
     playing: Arc<AtomicBool>,
     component_length: Arc<AtomicCell<Option<MarkerTime>>>,
     seek: Arc<AtomicMixedFraction>,
+    audio_player: Arc<A>,
     handlers: StdRwLock<Vec<Arc<dyn GlobalUIEventHandler<K, T> + Send + Sync>>>,
     message_router: MessageRouter<H, Runtime>,
 }
 
-impl<K: 'static, T: ParameterValueType> GlobalUIStateImpl<K, T, (), ()> {
-    pub fn new<P: ViewModelParams<K, T>>(params: &P) -> GlobalUIStateImpl<K, T, impl MessageHandler<Message, P::AsyncRuntime> + Send + Sync, P::AsyncRuntime> {
+impl<K: 'static, T: ParameterValueType> GlobalUIStateImpl<K, T, (), (), ()> {
+    pub fn new<P: ViewModelParams<K, T>>(params: &P) -> GlobalUIStateImpl<K, T, P::AudioPlayer, impl MessageHandler<Message, P::AsyncRuntime> + Send + Sync, P::AsyncRuntime> {
         let request_play = Arc::new(AtomicBool::new(false));
         let playing = Arc::new(AtomicBool::new(false));
         let component_length = Arc::new(AtomicCell::new(None::<MarkerTime>));
@@ -134,13 +137,20 @@ impl<K: 'static, T: ParameterValueType> GlobalUIStateImpl<K, T, (), ()> {
             playing,
             component_length,
             seek,
+            audio_player: Arc::clone(params.audio_player()),
             handlers: StdRwLock::new(Vec::new()),
             message_router,
         }
     }
 }
 
-impl<K: 'static, T: ParameterValueType, H: MessageHandler<Message, Runtime> + Send + Sync + 'static, Runtime> GlobalUIStateImpl<K, T, H, Runtime> {
+impl<K, T, A, H, Runtime> GlobalUIStateImpl<K, T, A, H, Runtime>
+where
+    K: 'static,
+    T: ParameterValueType,
+    A: AudioTypePlayer<T::Audio> + 'static,
+    H: MessageHandler<Message, Runtime> + Send + Sync + 'static,
+{
     fn handle_by(handlers: &StdRwLock<Vec<Arc<dyn GlobalUIEventHandler<K, T> + Send + Sync>>>, event: GlobalUIEvent<K, T>) {
         for handler in handlers.read().unwrap().iter() {
             handler.handle(event.clone());
@@ -152,10 +162,11 @@ impl<K: 'static, T: ParameterValueType, H: MessageHandler<Message, Runtime> + Se
     }
 }
 
-impl<K, T, H, Runtime> GlobalUIState<K, T> for GlobalUIStateImpl<K, T, H, Runtime>
+impl<K, T, A, H, Runtime> GlobalUIState<K, T> for GlobalUIStateImpl<K, T, A, H, Runtime>
 where
     K: 'static,
     T: ParameterValueType,
+    A: AudioTypePlayer<T::Audio> + 'static,
     H: MessageHandler<Message, Runtime> + Send + Sync + 'static,
     Runtime: AsyncRuntime<()> + Clone + 'static,
 {
@@ -179,10 +190,13 @@ where
 
     fn play(&self) {
         self.request_play.store(true, atomic::Ordering::Release);
+        self.audio_player.play();
     }
 
     fn pause(&self) {
         self.playing.store(false, atomic::Ordering::Release);
+        self.audio_player.pause();
+        self.audio_player.seek(TimelineTime::new(self.seek().value()));
     }
 
     fn component_length(&self) -> Option<MarkerTime> {
@@ -199,6 +213,7 @@ where
 
     fn set_seek(&self, seek: MarkerTime) {
         self.seek.store(seek.value(), atomic::Ordering::Release);
+        self.audio_player.seek(TimelineTime::new(seek.value()));
     }
 
     fn select_root_component_class(&self, target: &StaticPointer<tokio::sync::RwLock<RootComponentClass<K, T>>>) {

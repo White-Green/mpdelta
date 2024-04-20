@@ -220,13 +220,10 @@ where
 
     fn play(&self) {
         self.global_ui_state.play();
-        self.audio_player.play();
     }
 
     fn pause(&self) {
         self.global_ui_state.pause();
-        self.audio_player.pause();
-        self.audio_player.seek(TimelineTime::new(self.global_ui_state.seek().value()));
     }
 
     fn component_length(&self) -> Option<MarkerTime> {
@@ -240,6 +237,5 @@ where
     fn set_seek(&self, seek: MarkerTime) {
         let seek = seek.min(self.global_ui_state.component_length().unwrap_or_else(|| MarkerTime::new(MixedFraction::from_integer(10)).unwrap()));
         self.global_ui_state.set_seek(seek);
-        self.audio_player.seek(TimelineTime::new(seek.value()));
     }
 }

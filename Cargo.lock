@@ -1515,7 +1515,7 @@ version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9c3708c48ed7245587498d116a41566942d6d9943f5b3207fbf522e2bd0b72d0"
 dependencies = [
- "loom",
+ "loom 0.5.6",
 ]
 
 [[package]]
@@ -2536,6 +2536,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "loom"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7e045d70ddfbc984eacfa964ded019534e8f6cbf36f6410aee0ed5cefa5a9175"
+dependencies = [
+ "cfg-if",
+ "generator",
+ "scoped-tls",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "loop9"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2917,12 +2930,17 @@ dependencies = [
 name = "mpdelta_gui_audio_player_cpal"
 version = "0.1.0"
 dependencies = [
+ "arc-swap",
+ "archery",
  "cpal",
  "crossbeam-queue",
+ "crossbeam-utils",
+ "loom 0.7.1",
  "mpdelta_core",
  "mpdelta_core_audio",
  "mpdelta_dsp",
  "mpdelta_gui",
+ "rpds",
  "thiserror",
  "tokio",
 ]

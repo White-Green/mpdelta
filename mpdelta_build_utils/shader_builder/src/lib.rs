@@ -40,6 +40,8 @@ impl ShaderBuilder {
             cargo
                 .current_dir(dbg!(workspace_dir.join("mpdelta_build_utils").join("rust_gpu_builder")))
                 .envs(env::vars())
+                .env_remove("RUSTC")
+                .env_remove("RUSTDOC")
                 .env_remove("RUSTUP_TOOLCHAIN")
                 .env_remove("RUSTC_WORKSPACE_WRAPPER")
                 .args(["run", "--release"])

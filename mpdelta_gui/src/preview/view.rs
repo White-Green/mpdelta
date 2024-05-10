@@ -8,7 +8,13 @@ use mpdelta_core::component::parameter::ParameterValueType;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
-pub struct Preview<K, T, VM> {
+pub struct Preview<K, T, VM>
+where
+    K: 'static,
+    T: ParameterValueType,
+    VM: PreviewViewModel<K, T>,
+{
+    previous_instance: Option<VM::ComponentInstanceHandle>,
     previous_preview: Option<TextureId>,
     view_model: Arc<VM>,
     _phantom: PhantomData<(K, T)>,
@@ -17,6 +23,7 @@ pub struct Preview<K, T, VM> {
 impl<K: 'static, T: ParameterValueType, VM: PreviewViewModel<K, T>> Preview<K, T, VM> {
     pub fn new(view_model: Arc<VM>) -> Preview<K, T, VM> {
         Preview {
+            previous_instance: None,
             previous_preview: None,
             view_model,
             _phantom: PhantomData,
@@ -24,11 +31,21 @@ impl<K: 'static, T: ParameterValueType, VM: PreviewViewModel<K, T>> Preview<K, T
     }
 
     pub fn ui(&mut self, ui: &mut Ui, mut image_register: impl ImageRegister<T::Image>) {
-        if let Some(img) = self.previous_preview {
-            image_register.unregister_image(img);
+        let preview_image = self.view_model.get_preview_image();
+        if self.previous_instance != preview_image.instance {
+            self.previous_instance = preview_image.instance;
+            if let Some(previous_preview) = self.previous_preview.take() {
+                image_register.unregister_image(previous_preview);
+            }
         }
-        if let Some(img) = self.view_model.get_preview_image() {
-            let texture_id = image_register.register_image(img);
+        if let Some(new_image) = preview_image.image {
+            if let Some(previous_preview) = self.previous_preview.take() {
+                image_register.unregister_image(previous_preview);
+            }
+            let texture_id = image_register.register_image(new_image);
+            self.previous_preview = Some(texture_id);
+        }
+        if self.previous_instance.is_some() {
             let Vec2 { x: area_width, y: area_height } = ui.available_size();
             let area_height = area_height - 72.;
             let (image_width, image_height) = (area_width.min(area_height * 16. / 9.), area_height.min(area_width * 9. / 16.) + 66.);
@@ -36,7 +53,9 @@ impl<K: 'static, T: ParameterValueType, VM: PreviewViewModel<K, T>> Preview<K, T
             ui.allocate_ui_at_rect(Rect::from_min_size(base_pos + Vec2::new((area_width - image_width) / 2., (area_height - image_height) / 2.), Vec2::new(image_width, image_height)), |ui| {
                 let image_size = Vec2 { x: image_width, y: image_height - 66. };
                 ui.painter().rect(Rect::from_min_size(ui.cursor().min, image_size), Rounding::ZERO, Color32::BLACK, Stroke::default());
-                ui.image(SizedTexture::new(texture_id, image_size));
+                if let Some(texture_id) = self.previous_preview {
+                    ui.image(SizedTexture::new(texture_id, image_size));
+                }
                 ui.horizontal(|ui| {
                     let start = ui.cursor().min.x;
                     if self.view_model.playing() {
@@ -65,7 +84,6 @@ impl<K: 'static, T: ParameterValueType, VM: PreviewViewModel<K, T>> Preview<K, T
                     );
                 });
             });
-            self.previous_preview = Some(texture_id);
         }
     }
 }

@@ -16,10 +16,23 @@ use mpdelta_core::time::TimelineTime;
 use mpdelta_core::usecase::{RealtimeComponentRenderer, RealtimeRenderComponentUsecase, SubscribeEditEventUsecase};
 use qcell::TCell;
 use std::future;
+use std::hash::Hash;
 use std::sync::{Arc, Mutex, OnceLock};
 
+pub struct PreviewImage<Handle, Image> {
+    pub instance: Option<Handle>,
+    pub image: Option<Image>,
+}
+
+impl<Handle, Image> Default for PreviewImage<Handle, Image> {
+    fn default() -> Self {
+        PreviewImage { instance: None, image: None }
+    }
+}
+
 pub trait PreviewViewModel<K: 'static, T: ParameterValueType> {
-    fn get_preview_image(&self) -> Option<T::Image>;
+    type ComponentInstanceHandle: 'static + Send + Sync + Eq + Hash;
+    fn get_preview_image(&self) -> PreviewImage<Self::ComponentInstanceHandle, T::Image>;
     fn playing(&self) -> bool;
     fn play(&self);
     fn pause(&self);
@@ -198,8 +211,9 @@ where
     A: AudioTypePlayer<T::Audio>,
     Runtime: AsyncRuntime<()> + Clone,
 {
-    fn get_preview_image(&self) -> Option<T::Image> {
-        let option = self.real_time_renderer.load().as_deref().and_then(|RealTimeRendererHandle { renderer, .. }| {
+    type ComponentInstanceHandle = ComponentInstanceHandle<K, T>;
+    fn get_preview_image(&self) -> PreviewImage<Self::ComponentInstanceHandle, T::Image> {
+        self.real_time_renderer.load().as_deref().map_or_else(PreviewImage::default, |RealTimeRendererHandle { renderer, render_target_instance, .. }| {
             let len = renderer.get_component_length();
             if self.global_ui_state.component_length() != len {
                 if let Some(len) = len {
@@ -209,9 +223,11 @@ where
             let seek = self.seek();
             let (i, n) = seek.value().deconstruct_with_round(60);
             let seek = i as usize * 60 + n as usize;
-            renderer.render_frame(seek).ok()
-        });
-        option
+            PreviewImage {
+                instance: Some(StaticPointerOwned::reference(render_target_instance).clone()),
+                image: renderer.render_frame(seek).ok(),
+            }
+        })
     }
 
     fn playing(&self) -> bool {

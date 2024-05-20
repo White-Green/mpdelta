@@ -5,4 +5,4 @@ edition = { workspace = true }
 authors = { workspace = true }
 
 [dependencies]
-tokio = { workspace = true, features = ["rt-multi-thread"], optional = true }
+tokio = { workspace = true, features = ["rt"], optional = true }

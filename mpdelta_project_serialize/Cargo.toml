@@ -11,7 +11,7 @@ async-trait = { workspace = true }
 cgmath = { workspace = true }
 ciborium = { workspace = true }
 erased-serde = { workspace = true }
-futures = { workspace = true }
+futures = { workspace = true, features = ["alloc"] }
 mpdelta_core = { workspace = true }
 mpdelta_differential = { workspace = true }
 qcell = { workspace = true }
@@ -19,7 +19,7 @@ rayon = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
-tokio = { workspace = true, features = ["sync", "rt"] }
+tokio = { workspace = true, features = ["rt"] }
 uuid = { workspace = true, features = ["serde"] }
 
 [dev-dependencies]

@@ -14,8 +14,8 @@ qcell = { workspace = true }
 thiserror = { workspace = true }
 time = { workspace = true }
 tokio = { workspace = true }
-uuid = { workspace = true, features = ["v1", "fast-rng"] }
+uuid = { workspace = true, features = ["v1", "rng"] }
 
 [dev-dependencies]
 mpdelta_core_test_util = { workspace = true }
-tokio = { workspace = true, features = ["rt"] }
+tokio = { workspace = true, features = ["rt-multi-thread"] }

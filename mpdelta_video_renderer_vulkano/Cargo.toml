@@ -6,18 +6,14 @@ authors = { workspace = true }
 
 
 [dependencies]
-async-trait = { workspace = true }
 cgmath = { workspace = true }
-dashmap = { workspace = true }
-futures = { workspace = true }
 glam = { workspace = true }
 mpdelta_core = { workspace = true }
 mpdelta_core_vulkano = { workspace = true }
 mpdelta_renderer = { workspace = true }
-shader_composite_operation = { path = "shaders/composite_operation" }
-shader_texture_drawing = { path = "shaders/texture_drawing" }
+shader_composite_operation = { path = "shaders/composite_operation" , version = "*", default-features = false }
+shader_texture_drawing = { path = "shaders/texture_drawing" , version = "*", features = ["spirv-std"], default-features = false }
 smallvec = { workspace = true }
-tokio = { workspace = true }
 vulkano = { workspace = true }
 vulkano-util = { workspace = true }
 

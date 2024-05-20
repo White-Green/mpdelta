@@ -10,12 +10,10 @@ archery = { workspace = true }
 async-trait = { workspace = true }
 cgmath = { workspace = true }
 crossbeam-utils = { workspace = true }
-dashmap = { workspace = true }
 futures = { workspace = true }
 moka = { workspace = true }
 mpdelta_core = { workspace = true }
 mpdelta_differential = { workspace = true }
-once_cell = { workspace = true }
 qcell = { workspace = true }
 rayon = { workspace = true }
 rpds = { workspace = true }
@@ -25,4 +23,4 @@ tokio = { workspace = true, features = ["rt"] }
 
 [dev-dependencies]
 assert_matches = { workspace = true }
-tokio = { workspace = true, features = ["rt", "rt-multi-thread"] }
+tokio = { workspace = true, features = ["rt-multi-thread"] }

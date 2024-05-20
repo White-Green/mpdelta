@@ -69,7 +69,7 @@ authors = ["White-Green"]
 [workspace.dependencies]
 archery = "1.2.0"
 arc-swap = "1.7.1"
-arrayvec = "0.7.4"
+arrayvec = { version = "0.7.4", default-features = false }
 assert_matches = "1.5.0"
 async-trait = "0.1.80"
 bitflags = "2.5.0"
@@ -78,26 +78,26 @@ bytemuck_derive = "1.6.0"
 cgmath = { version = "0.18.0", features = ["serde"] }
 ciborium = "0.2.2"
 cpal = "0.15.3"
-crossbeam-queue = "0.3.11"
-crossbeam-utils = "0.8.19"
+crossbeam-queue = { version = "0.3.11" }
+crossbeam-utils = { version = "0.8.19", default-features = false }
 dashmap = "5.5.3"
-dyn-eq = "0.1.3"
+dyn-eq = { version = "0.1.3", default-features = false }
 dyn-hash = "0.2.0"
-egui = "0.24.1"
+egui = { version = "0.24.1", default-features = false }
 egui_image_renderer = { git = "https://github.com/White-Green/egui_image_renderer", rev = "9e4a24b689029863f39c48a53a4aba3bae948ecd" }
-egui_winit_vulkano = "0.27.0"
-erased-serde = "0.4.4"
-ffmpeg-next = { version = "6.1.1", default-features = false, features = ["codec", "format", "software-scaling", "software-resampling"] }
-ffmpeg-sys-next = { version = "6.1.0", default-features = false, features = ["avcodec", "avdevice", "avfilter", "avformat", "swresample", "swscale"] }
+egui_winit_vulkano = { version = "0.27.0", default-features = false }
+erased-serde = { version = "0.4.4", features = ["alloc"], default-features = false }
+ffmpeg-next = { version = "6.1.1", default-features = false, features = ["format", "software-resampling", "software-scaling"] }
+ffmpeg-sys-next = { version = "6.1.0", default-features = false }
 font-kit = "0.13.0"
-futures = "0.3.30"
-glam = { version = "0.24", default-features = false, features = ["libm"] }
+futures = { version = "0.3.30", default-features = false }
+glam = { version = "0.24" }
 icu_properties = "1.4.0"
 icu_segmenter = "1.4.0"
-image = "0.25.1"
+image = { version = "0.25.1", features = ["png"], default-features = false }
 indexmap = "2.2.6"
-lyon_tessellation = "1.0.13"
-moka = { version = "0.12.6", features = ["future"] }
+lyon_tessellation = { version = "1.0.13", default-features = false }
+moka = { version = "0.12.6", features = ["future"], default-features = false }
 mpdelta_async_runtime = { path = "mpdelta_common/mpdelta_async_runtime" }
 mpdelta_audio_mixer = { path = "mpdelta_audio_mixer" }
 mpdelta_components = { path = "mpdelta_components" }
@@ -119,35 +119,35 @@ mpdelta_renderer = { path = "mpdelta_renderer" }
 mpdelta_rendering_controller = { path = "mpdelta_rendering_controller" }
 mpdelta_services = { path = "mpdelta_services" }
 mpdelta_video_renderer_vulkano = { path = "mpdelta_video_renderer_vulkano" }
-nalgebra = { version = "0.32.5", features = ["sparse"] }
-num = "0.4.2"
-once_cell = "1.19.0"
-ordered-float = "4.2.0"
-phf = { version = "0.11.2", features = ["macros"] }
-proptest = "1.4.0"
+nalgebra = { version = "0.32.5", features = ["sparse", "std"], default-features = false }
+num = { version = "0.4.2", default-features = false }
+once_cell = { version = "1.19.0", default-features = false }
+ordered-float = { version = "4.2.0", default-features = false }
+phf = { version = "0.11.2", features = ["macros"], default-features = false }
+proptest = { version = "1.4.0", features = ["std"], default-features = false }
 proptest-derive = "0.4.0"
 qcell = "0.5.4"
 rayon = "1.10.0"
 regex = "1.10.4"
-rfd = { version = "0.14.1", features = ["file-handle-inner"] }
-rpds = "1.1.0"
-serde = { version = "1.0.197", features = ["derive"] }
+rfd = { version = "0.14.1", features = ["file-handle-inner"], default-features = false }
+rpds = { version = "1.1.0", default-features = false }
+serde = { version = "1.0.197", default-features = false }
 serde_repr = "0.1.19"
 serde_json = "1.0.115"
 shader_builder = { path = "mpdelta_build_utils/shader_builder" }
 smallvec = "1.13"
-spirv-builder = "0.9.0"
+spirv-builder = { version = "0.9.0", default-features = false, features = ["use-compiled-tools"] }
 spirv-std = "0.9.0"
-swash = "0.1.15"
+swash = { version = "0.1.15", features = ["scale"], default-features = false }
 thiserror = "1.0.58"
-time = { version = "0.3.36", features = ["std"] }
-tokio = { version = "1.37.0", features = ["fs", "macros", "sync", "time"] }
-uuid = "1.8.0"
-vulkano = "0.34.1"
+time = "0.3.36"
+tokio = { version = "1.37.0", features = ["fs", "macros", "time"] }
+uuid = { version = "1.8.0", default-features = false }
+vulkano = { version = "0.34.1", default-features = false }
 vulkano-util = "0.34.1"
 vulkano-win = "0.34.0"
 wav = "1.0.0"
-winit = "0.28.7"
+winit = { version = "0.28.7", default-features = false }
 
 [dependencies]
 async-trait = { workspace = true }
@@ -162,7 +162,6 @@ mpdelta_core_vulkano = { workspace = true }
 mpdelta_gui = { workspace = true }
 mpdelta_gui_audio_player_cpal = { workspace = true }
 mpdelta_gui_vulkano = { workspace = true }
-mpdelta_multimedia = { workspace = true }
 mpdelta_multimedia_encoder_ffmpeg = { workspace = true }
 mpdelta_project_serialize = { workspace = true }
 mpdelta_renderer = { workspace = true }
@@ -170,14 +169,13 @@ mpdelta_rendering_controller = { workspace = true }
 mpdelta_services = { workspace = true }
 mpdelta_video_renderer_vulkano = { workspace = true }
 qcell = { workspace = true }
-tokio = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread"] }
 vulkano = { workspace = true }
 vulkano-util = { workspace = true }
-vulkano-win = { workspace = true }
 winit = { workspace = true }
 
 [profile.dev]
-opt-level = 1
+opt-level = 3
 incremental = false
 
 [profile.release]

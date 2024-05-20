@@ -389,11 +389,11 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use hound::{SampleFormat, WavSpec};
     use mpdelta_core_audio::multi_channel_audio::MultiChannelAudio;
     use std::fs::OpenOptions;
     use std::path::Path;
     use std::{fs, io};
-    use wav::BitDepth;
 
     fn read_image_and_audio(name: &str, input: impl Read + Seek + Clone, contains_video: bool, contains_audio: bool) {
         ffmpeg_next::init().unwrap();
@@ -437,12 +437,19 @@ mod tests {
             if duration.is_some() {
                 assert_eq!(result_len, length_integer);
             }
-            wav::write(
-                wav::Header::new(wav::header::WAV_FORMAT_IEEE_FLOAT, 1, sample_rate, 32),
-                &BitDepth::ThirtyTwoFloat(audio_single_channel.slice(..result_len).unwrap().as_linear().to_vec()),
-                &mut OpenOptions::new().create_new(true).write(true).open(output_dir.join("audio_single_channel.wav")).unwrap(),
+            let mut out = OpenOptions::new().create_new(true).write(true).open(output_dir.join("audio_single_channel.wav")).unwrap();
+            let mut writer = hound::WavWriter::new(
+                &mut out,
+                WavSpec {
+                    channels: 1,
+                    sample_rate,
+                    bits_per_sample: 32,
+                    sample_format: SampleFormat::Float,
+                },
             )
             .unwrap();
+            audio_single_channel.slice(..result_len).unwrap().as_linear().iter().for_each(|&s| writer.write_sample(s).unwrap());
+            writer.flush().unwrap();
 
             let mut audio_multi_channel = MultiChannelAudio::new(channels);
             audio_multi_channel.resize(length_integer + 100, 0f32);
@@ -450,12 +457,19 @@ mod tests {
             if duration.is_some() {
                 assert_eq!(result_len, length_integer);
             }
-            wav::write(
-                wav::Header::new(wav::header::WAV_FORMAT_IEEE_FLOAT, channels as u16, sample_rate, 32),
-                &BitDepth::ThirtyTwoFloat(audio_multi_channel.slice(..result_len).unwrap().as_linear().to_vec()),
-                &mut OpenOptions::new().create_new(true).write(true).open(output_dir.join("audio_multi_channel.wav")).unwrap(),
+            let mut out = OpenOptions::new().create_new(true).write(true).open(output_dir.join("audio_multi_channel.wav")).unwrap();
+            let mut writer = hound::WavWriter::new(
+                &mut out,
+                WavSpec {
+                    channels: channels as u16,
+                    sample_rate,
+                    bits_per_sample: 32,
+                    sample_format: SampleFormat::Float,
+                },
             )
             .unwrap();
+            audio_multi_channel.slice(..result_len).unwrap().as_linear().iter().for_each(|&s| writer.write_sample(s).unwrap());
+            writer.flush().unwrap();
 
             let mut audio_multi_channel = MultiChannelAudio::new(channels);
             audio_multi_channel.resize(length_integer + 100, 0f32);
@@ -463,12 +477,19 @@ mod tests {
             if duration.is_some() {
                 assert_eq!(result_len, length_integer - sample_rate as usize);
             }
-            wav::write(
-                wav::Header::new(wav::header::WAV_FORMAT_IEEE_FLOAT, channels as u16, sample_rate, 32),
-                &BitDepth::ThirtyTwoFloat(audio_multi_channel.slice(..result_len).unwrap().as_linear().to_vec()),
-                &mut OpenOptions::new().create_new(true).write(true).open(output_dir.join("audio_offset_1sec.wav")).unwrap(),
+            let mut out = OpenOptions::new().create_new(true).write(true).open(output_dir.join("audio_offset_1sec.wav")).unwrap();
+            let mut writer = hound::WavWriter::new(
+                &mut out,
+                WavSpec {
+                    channels: channels as u16,
+                    sample_rate,
+                    bits_per_sample: 32,
+                    sample_format: SampleFormat::Float,
+                },
             )
             .unwrap();
+            audio_multi_channel.slice(..result_len).unwrap().as_linear().iter().for_each(|&s| writer.write_sample(s).unwrap());
+            writer.flush().unwrap();
         }
     }
 

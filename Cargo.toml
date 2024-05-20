@@ -91,7 +91,7 @@ ffmpeg-next = { version = "6.1.1", default-features = false, features = ["format
 ffmpeg-sys-next = { version = "6.1.0", default-features = false }
 font-kit = "0.13.1"
 futures = { version = "0.3.30", default-features = false }
-glam = { version = "0.24.2" }
+glam = { version = "0.24.2", default-features = false }
 icu_properties = "1.4.0"
 icu_segmenter = "1.4.0"
 image = { version = "0.25.1", features = ["png"], default-features = false }

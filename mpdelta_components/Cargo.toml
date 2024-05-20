@@ -35,6 +35,6 @@ vulkano = { workspace = true }
 shader_builder = { workspace = true }
 
 [dev-dependencies]
+hound = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread"] }
 vulkano-util = { workspace = true }
-hound = { workspace = true }

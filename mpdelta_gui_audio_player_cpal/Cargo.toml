@@ -5,8 +5,6 @@ edition = { workspace = true }
 authors = { workspace = true }
 
 [dependencies]
-archery = { workspace = true }
-arc-swap = { workspace = true }
 cpal = { workspace = true }
 crossbeam-queue = { workspace = true }
 crossbeam-utils = { workspace = true }
@@ -14,9 +12,8 @@ mpdelta_core = { workspace = true }
 mpdelta_core_audio = { workspace = true }
 mpdelta_dsp = { workspace = true }
 mpdelta_gui = { workspace = true }
-rpds = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["rt"] }
 
 [target.'cfg(loom)'.dependencies]
-loom = "0.7.1"
+loom = "0.7.2"

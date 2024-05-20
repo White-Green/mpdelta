@@ -10,7 +10,6 @@ async-trait = { workspace = true }
 crossbeam-queue = { workspace = true }
 erased-serde = { workspace = true }
 ffmpeg-next = { workspace = true }
-ffmpeg-sys-next = { workspace = true }
 font-kit = { workspace = true }
 glam = { workspace = true }
 icu_properties = { workspace = true }
@@ -25,7 +24,7 @@ num = { workspace = true }
 phf = { workspace = true }
 qcell = { workspace = true }
 serde = { workspace = true }
-shader_font_rendering = { path = "shaders/font_rendering", features = ["vulkano"] }
+shader_font_rendering = { path = "shaders/font_rendering", version = "*" }
 smallvec = { workspace = true }
 swash = { workspace = true }
 tokio = { workspace = true }

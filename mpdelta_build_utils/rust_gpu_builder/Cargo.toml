@@ -9,5 +9,5 @@ authors = { workspace = true }
 # これはrustc 1.71なので4.5以降のclap(rustc 1.74以降を要求する)だとコンパイルが通らない
 # これを回避するため4.5未満を指定する(おそらく4.4.18が使われる)
 # そしてこれはこのcrate特有の制約なのでworkspaceには書かない
-clap = { version = "<4.5", features = ["derive"] }
+clap = { version = "<4.5", default-features = false, features = ["derive", "std"] }
 spirv-builder = { workspace = true, optional = true }

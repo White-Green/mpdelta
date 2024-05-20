@@ -18,7 +18,6 @@ mpdelta_ffmpeg = { workspace = true }
 mpdelta_multimedia = { workspace = true }
 mpdelta_renderer = { workspace = true }
 once_cell = { workspace = true }
-smallvec = { workspace = true }
 thiserror = { workspace = true }
 vulkano = { workspace = true }
 vulkano-util = { workspace = true }

@@ -9,7 +9,7 @@ authors = { workspace = true }
 [dependencies]
 futures = { workspace = true }
 mpdelta_async_runtime = { workspace = true }
-tokio = { workspace = true }
+tokio = { workspace = true, features = ["sync"] }
 
 [dev-dependencies]
 mpdelta_async_runtime = { workspace = true, features = ["tokio"] }

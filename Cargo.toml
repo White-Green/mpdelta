@@ -92,6 +92,7 @@ ffmpeg-sys-next = { version = "6.1.0", default-features = false }
 font-kit = "0.13.1"
 futures = { version = "0.3.30", default-features = false }
 glam = { version = "0.24.2", default-features = false }
+hound = "3.5.1"
 icu_properties = "1.4.0"
 icu_segmenter = "1.4.0"
 image = { version = "0.25.1", features = ["png"], default-features = false }
@@ -146,7 +147,6 @@ uuid = { version = "1.8.0", default-features = false }
 vulkano = { version = "0.34.1", default-features = false }
 vulkano-util = "0.34.1"
 vulkano-win = "0.34.0"
-wav = "1.0.1"
 winit = { version = "0.28.7", default-features = false }
 
 [dependencies]

@@ -98,6 +98,7 @@ icu_segmenter = "1.4.0"
 image = { version = "0.25.1", features = ["png"], default-features = false }
 indexmap = "2.2.6"
 lyon_tessellation = { version = "1.0.14", default-features = false }
+memmap2 = "0.9.4"
 moka = { version = "0.12.7", features = ["future"], default-features = false }
 mpdelta_async_runtime = { path = "mpdelta_common/mpdelta_async_runtime" }
 mpdelta_audio_mixer = { path = "mpdelta_audio_mixer" }

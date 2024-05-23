@@ -1,12 +1,13 @@
+use memmap2::Mmap;
 use mpdelta_core::component::parameter::value::{DynEditableSingleValue, DynEditableSingleValueIdentifier, DynEditableSingleValueManager, DynEditableSingleValueMarker, NamedAny};
 use mpdelta_core::component::parameter::{AbstractFile, FileAbstraction};
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::fs::File;
+use std::io;
 use std::io::{ErrorKind, Read, Seek, SeekFrom};
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::{io, os};
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -36,7 +37,7 @@ impl DynEditableSingleValueMarker for FileReaderParam {
             return AbstractFile::default();
         };
         let id = Uuid::new_v5(&Uuid::NAMESPACE_URL, &b"file://".iter().chain(self.path.as_os_str().as_encoded_bytes()).copied().collect::<Vec<_>>());
-        AbstractFile::new(FileReader::new(file, id))
+        AbstractFile::new(FileReader::new(file, id).unwrap())
     }
 }
 
@@ -58,24 +59,25 @@ impl DynEditableSingleValueManager<AbstractFile> for FileReaderParamManager {
 
 #[derive(Clone)]
 pub struct FileReader {
-    file: Arc<File>,
+    file: Arc<(File, Mmap)>,
     cursor: u64,
     id: Uuid,
 }
 
 impl FileReader {
-    pub fn new(file: File, id: Uuid) -> FileReader {
-        FileReader { file: Arc::new(file), cursor: 0, id }
+    pub fn new(file: File, id: Uuid) -> io::Result<FileReader> {
+        // SAFETY: Mmap::mapがunsafeなのはmpdelta外のプロセスから同じファイルに対して変更が行われた場合などに安全性が保証されないためである
+        // これに関しては通常の<File as Read>::read等も何の保証も提供しておらず、その前提で問題のない利用方法でのみ利用することにすることで解決していた
+        // よって、Mmap::newを安全なものとして利用する
+        let mmap = unsafe { Mmap::map(&file)? };
+        Ok(FileReader { file: Arc::new((file, mmap)), cursor: 0, id })
     }
 
-    #[cfg(target_os = "windows")]
     fn read_at(&self, pos: u64, buf: &mut [u8]) -> io::Result<usize> {
-        os::windows::fs::FileExt::seek_read(&*self.file, buf, pos)
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    fn read_at(&self, pos: u64, buf: &mut [u8]) -> io::Result<usize> {
-        os::unix::fs::FileExt::read_at(&*self.file, buf, pos)
+        let Some(mut content) = self.file.1.get(pos as usize..) else {
+            return Err(io::Error::new(ErrorKind::UnexpectedEof, "unexpected eof"));
+        };
+        content.read(buf)
     }
 }
 
@@ -94,7 +96,7 @@ impl Seek for FileReader {
                 self.cursor = n;
                 return Ok(n);
             }
-            SeekFrom::End(n) => (self.file.metadata()?.len(), n),
+            SeekFrom::End(n) => (self.file.1.len() as u64, n),
             SeekFrom::Current(n) => (self.cursor, n),
         };
         match base_pos.checked_add_signed(offset) {

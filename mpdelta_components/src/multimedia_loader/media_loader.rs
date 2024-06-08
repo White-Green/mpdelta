@@ -259,7 +259,14 @@ macro_rules! compute_audio {
                     let Some(mut dst) = $dst.slice_mut(offset..) else {
                         return ControlFlow::Break(());
                     };
-                    for (dst, values) in dst.iter_mut().zip(decoded.plane::<$t>(0).chunks(usize::from($s.channels))) {
+
+                    // decoded.plane(0)の計算にバグがあり、Packedの場合には全データを取得できない
+                    // そのため、その問題の発生しないdata(0)によりFrame内のデータを取得する
+                    // SAFETY: 数値型のみを対象とするtransmuteなので安全
+                    let ([], plane, []) = (unsafe { decoded.data(0).align_to::<$t>() }) else {
+                        panic!("Packet::data(0) is not aligned by {}", std::any::type_name::<$t>())
+                    };
+                    for (dst, values) in dst.iter_mut().zip(plane.chunks(usize::from($s.channels))) {
                         match (dst.len(), values.len()) {
                             (1, 2..) => dst[0] = ($cls(values[0]) + $cls(values[1])) / 2.,
                             (2.., 1) => {
@@ -274,7 +281,7 @@ macro_rules! compute_audio {
                             }
                         }
                     }
-                    offset += decoded.samples() / usize::from($s.channels) - plane_offset;
+                    offset += plane.len() / usize::from($s.channels) - plane_offset;
                 }
                 ControlFlow::Continue(())
             };

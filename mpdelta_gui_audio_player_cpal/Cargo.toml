@@ -17,3 +17,6 @@ tokio = { workspace = true, features = ["rt"] }
 
 [target.'cfg(loom)'.dependencies]
 loom = "0.7.2"
+
+[lints.rust]
+unexpected_cfgs = { level = "deny", check-cfg = ['cfg(loom)'] }

@@ -18,3 +18,6 @@ vulkano = { workspace = true, optional = true }
 shader = ["dep:spirv-std"]
 vulkano = ["dep:vulkano"]
 default = ["shader"]
+
+[lints.rust]
+unexpected_cfgs = { level = "deny", check-cfg = ['cfg(target_arch, values("spirv"))'] }

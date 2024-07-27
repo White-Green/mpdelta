@@ -17,4 +17,4 @@ jobs:
         with:
           toolchain: nightly-2023-05-27
           components: "rust-src,rustc-dev,llvm-tools-preview"
-      - run: CARGO_FEATURE_BUILD=1 cargo clippy --workspace -- -D warnings
+      - run: CARGO_FEATURE_BUILD=1 cargo +stable clippy --workspace -- -D warnings

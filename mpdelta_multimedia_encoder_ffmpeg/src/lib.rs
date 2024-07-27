@@ -17,7 +17,6 @@ use mpdelta_ffmpeg::io::FfmpegIoError;
 use mpdelta_multimedia::options_value::{OptionValue, ValueTypeString, ValueWithDefault};
 use mpdelta_multimedia::{AudioCodec, CodecImplement, CodecOptions, FileFormat, MediaCodecImplementHandle, VideoCodec};
 use mpdelta_renderer::{VideoEncoder, VideoEncoderBuilder, VideoEncoderBuilderDyn};
-use once_cell::sync::Lazy;
 use std::borrow::Cow;
 use std::fmt::Debug;
 use std::fs::{File, OpenOptions};
@@ -26,7 +25,7 @@ use std::ops::ControlFlow;
 use std::path::Path;
 use std::ptr;
 use std::sync::mpsc::Receiver;
-use std::sync::{mpsc, Arc};
+use std::sync::{mpsc, Arc, LazyLock};
 use std::thread::JoinHandle;
 use thiserror::Error;
 use vulkano::buffer::{BufferCreateInfo, BufferUsage};
@@ -106,8 +105,8 @@ impl<Encoder: From<FfmpegEncodeSettings<File>>> MediaCodecImplementHandle<Encode
             return false;
         }
 
-        static CACHE_VIDEO: Lazy<DashMap<(FileFormat, VideoCodec), bool>> = Lazy::new(Default::default);
-        static CACHE_AUDIO: Lazy<DashMap<(FileFormat, AudioCodec), bool>> = Lazy::new(Default::default);
+        static CACHE_VIDEO: LazyLock<DashMap<(FileFormat, VideoCodec), bool>> = LazyLock::new(Default::default);
+        static CACHE_AUDIO: LazyLock<DashMap<(FileFormat, AudioCodec), bool>> = LazyLock::new(Default::default);
         if let Some(video) = video {
             if let Some(cached) = CACHE_VIDEO.get(&(file_format, video)) {
                 return *cached;

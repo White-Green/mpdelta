@@ -2620,7 +2620,6 @@ dependencies = [
  "mpdelta_ffmpeg",
  "mpdelta_multimedia",
  "mpdelta_renderer",
- "once_cell",
  "thiserror",
  "vulkano",
  "vulkano-util",

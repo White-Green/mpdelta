@@ -123,7 +123,6 @@ mpdelta_services = { path = "mpdelta_services" }
 mpdelta_video_renderer_vulkano = { path = "mpdelta_video_renderer_vulkano" }
 nalgebra = { version = "0.33.0", features = ["sparse", "std"], default-features = false }
 num = { version = "0.4.3", default-features = false }
-once_cell = { version = "1.19.0", default-features = false }
 ordered-float = { version = "4.2.1", default-features = false }
 phf = { version = "0.11.2", features = ["macros"], default-features = false }
 proptest = { version = "1.5.0", features = ["std"], default-features = false }

@@ -130,7 +130,7 @@ proptest-derive = "0.5.0"
 qcell = "0.5.4"
 rayon = "1.10.0"
 regex = "1.10.5"
-rfd = { version = "0.14.1", features = ["file-handle-inner"], default-features = false }
+rfd = { version = "0.14.1", features = ["file-handle-inner", "gtk3"], default-features = false }
 rpds = { version = "1.1.0", default-features = false }
 serde = { version = "1.0.204", default-features = false }
 serde_repr = "0.1.19"

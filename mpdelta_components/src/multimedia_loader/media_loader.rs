@@ -76,7 +76,7 @@ where
         let pts = time.div_floor(self.time_base).unwrap();
         if let Some((cache_index, cache)) = self.image_cache.iter_mut().enumerate().find_map(|(i, ImageCache { pts_range, images })| pts_range.contains(&pts).then_some((i, images))) {
             self.last_accessed = cache_index;
-            let i = cache.binary_search_by_key(&pts, |&(pts, _)| pts).map_or_else(|i| i.saturating_sub(1), |i| i);
+            let i = cache.binary_search_by_key(&pts, |&(pts, _)| pts).unwrap_or_else(|i| i.saturating_sub(1));
             return Arc::clone(&cache[i].1);
         }
         if self.image_cache.is_full() {
@@ -136,7 +136,7 @@ where
         self.image_cache.push(ImageCache { pts_range: range, images });
         self.last_accessed = self.image_cache.len() - 1;
         let ImageCache { images, .. } = self.image_cache.last().unwrap();
-        let i = images.binary_search_by_key(&pts, |&(pts, _)| pts).map_or_else(|i| i.saturating_sub(1), |i| i);
+        let i = images.binary_search_by_key(&pts, |&(pts, _)| pts).unwrap_or_else(|i| i.saturating_sub(1));
         Arc::clone(&images[i].1)
     }
 }

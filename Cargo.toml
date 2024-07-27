@@ -71,35 +71,35 @@ archery = "1.2.0"
 arc-swap = "1.7.1"
 arrayvec = { version = "0.7.4", default-features = false }
 assert_matches = "1.5.0"
-async-trait = "0.1.80"
-bitflags = "2.5.0"
-bytemuck = "1.16.0"
-bytemuck_derive = "1.6.0"
+async-trait = "0.1.81"
+bitflags = "2.6.0"
+bytemuck = "1.16.1"
+bytemuck_derive = "1.7.0"
 cgmath = { version = "0.18.0", features = ["serde"] }
 ciborium = "0.2.2"
 cpal = "0.15.3"
 crossbeam-queue = { version = "0.3.11" }
 crossbeam-utils = { version = "0.8.20", default-features = false }
-dashmap = "5.5.3"
+dashmap = "6.0.1"
 dyn-eq = { version = "0.1.3", default-features = false }
 dyn-hash = "0.2.0"
 egui = { version = "0.24.1", default-features = false }
-egui_image_renderer = { git = "https://github.com/White-Green/egui_image_renderer", rev = "9e4a24b689029863f39c48a53a4aba3bae948ecd" }
+egui_image_renderer = { git = "https://github.com/White-Green/egui_image_renderer", rev = "34a309bef611dbce4d273bd735c042093fd7e3de" }
 egui_winit_vulkano = { version = "0.27.0", default-features = false }
 erased-serde = { version = "0.4.5", features = ["alloc"], default-features = false }
 ffmpeg-next = { version = "6.1.1", default-features = false, features = ["format", "software-resampling", "software-scaling"] }
 ffmpeg-sys-next = { version = "6.1.0", default-features = false }
-font-kit = "0.13.1"
+font-kit = "0.14.1"
 futures = { version = "0.3.30", default-features = false }
-glam = { version = "0.24.2", default-features = false }
+glam = { version = "0.24.2", features = ["libm"], default-features = false }
 hound = "3.5.1"
-icu_properties = "1.4.0"
-icu_segmenter = "1.4.0"
-image = { version = "0.25.1", features = ["png"], default-features = false }
+icu_properties = "1.5.1"
+icu_segmenter = "1.5.0"
+image = { version = "0.25.2", features = ["png"], default-features = false }
 indexmap = "2.2.6"
-lyon_tessellation = { version = "1.0.14", default-features = false }
+lyon_tessellation = { version = "1.0.15", default-features = false }
 memmap2 = "0.9.4"
-moka = { version = "0.12.7", features = ["future"], default-features = false }
+moka = { version = "0.12.8", features = ["future"], default-features = false }
 mpdelta_async_runtime = { path = "mpdelta_common/mpdelta_async_runtime" }
 mpdelta_audio_mixer = { path = "mpdelta_audio_mixer" }
 mpdelta_components = { path = "mpdelta_components" }
@@ -121,30 +121,30 @@ mpdelta_renderer = { path = "mpdelta_renderer" }
 mpdelta_rendering_controller = { path = "mpdelta_rendering_controller" }
 mpdelta_services = { path = "mpdelta_services" }
 mpdelta_video_renderer_vulkano = { path = "mpdelta_video_renderer_vulkano" }
-nalgebra = { version = "0.32.5", features = ["sparse", "std"], default-features = false }
+nalgebra = { version = "0.33.0", features = ["sparse", "std"], default-features = false }
 num = { version = "0.4.3", default-features = false }
 once_cell = { version = "1.19.0", default-features = false }
-ordered-float = { version = "4.2.0", default-features = false }
+ordered-float = { version = "4.2.1", default-features = false }
 phf = { version = "0.11.2", features = ["macros"], default-features = false }
-proptest = { version = "1.4.0", features = ["std"], default-features = false }
-proptest-derive = "0.4.0"
+proptest = { version = "1.5.0", features = ["std"], default-features = false }
+proptest-derive = "0.5.0"
 qcell = "0.5.4"
 rayon = "1.10.0"
-regex = "1.10.4"
+regex = "1.10.5"
 rfd = { version = "0.14.1", features = ["file-handle-inner"], default-features = false }
 rpds = { version = "1.1.0", default-features = false }
-serde = { version = "1.0.202", default-features = false }
+serde = { version = "1.0.204", default-features = false }
 serde_repr = "0.1.19"
-serde_json = "1.0.117"
+serde_json = "1.0.120"
 shader_builder = { path = "mpdelta_build_utils/shader_builder" }
 smallvec = "1.13"
 spirv-builder = { version = "0.9.0", default-features = false, features = ["use-compiled-tools"] }
 spirv-std = "0.9.0"
-swash = { version = "0.1.15", features = ["scale"], default-features = false }
-thiserror = "1.0.61"
+swash = { version = "0.1.17", features = ["scale"], default-features = false }
+thiserror = "1.0.63"
 time = "0.3.36"
-tokio = { version = "1.37.0", features = ["fs", "macros", "time"] }
-uuid = { version = "1.8.0", default-features = false }
+tokio = { version = "1.39.1", features = ["fs", "macros", "time"] }
+uuid = { version = "1.10.0", default-features = false }
 vulkano = { version = "0.34.1", default-features = false }
 vulkano-util = "0.34.1"
 vulkano-win = "0.34.0"

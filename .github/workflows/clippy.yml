@@ -13,4 +13,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly-2023-05-27
+          components: "rust-src,rustc-dev,llvm-tools-preview"
       - run: CARGO_FEATURE_BUILD=1 cargo clippy --workspace -- -D warnings

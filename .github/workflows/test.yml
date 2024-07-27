@@ -1,9 +1,9 @@
-name: clippy lint in pull request
+name: test in pull request
 on: pull_request
 
 jobs:
   rustfmt:
-    name: clippy
+    name: test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -26,5 +26,5 @@ jobs:
             ~/.cargo/git/db/
             target/
             target_for_shaders/
-          key: ${{ runner.os }}-cargo-clippy-${{ hashFiles('**/Cargo.lock') }}
-      - run: CARGO_FEATURE_BUILD=1 cargo +stable clippy --workspace --locked -- -D warnings
+          key: ${{ runner.os }}-cargo-test-${{ hashFiles('**/Cargo.lock') }}
+      - run: CARGO_FEATURE_BUILD=1 cargo +stable test --workspace --locked

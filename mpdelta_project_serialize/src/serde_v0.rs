@@ -635,8 +635,8 @@ impl<T: ParameterValueType> RootComponentClassForSerialize<T, Ser> {
                             .link()
                             .par_iter()
                             .map(|l| MarkerLinkForSerialize {
-                                from: pin_map[&l.ro(&key).from()],
-                                to: pin_map[&l.ro(&key).to()],
+                                from: pin_map[l.ro(&key).from()],
+                                to: pin_map[l.ro(&key).to()],
                                 length: l.ro(&key).len(),
                             })
                             .collect_into_vec(&mut links);

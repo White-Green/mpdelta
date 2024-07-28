@@ -88,7 +88,7 @@ egui_image_renderer = { git = "https://github.com/White-Green/egui_image_rendere
 egui_winit_vulkano = { version = "0.27.0", default-features = false }
 erased-serde = { version = "0.4.5", features = ["alloc"], default-features = false }
 ffmpeg-next = { version = "6.1.1", default-features = false, features = ["format", "software-resampling", "software-scaling"] }
-ffmpeg-sys-next = { version = "6.1.0", default-features = false }
+ffmpeg-sys-next = { version = "6.1.0", default-features = false, features = ["static"] }
 font-kit = "0.14.1"
 futures = { version = "0.3.30", default-features = false }
 glam = { version = "0.24.2", features = ["libm"], default-features = false }
@@ -142,7 +142,7 @@ spirv-std = "0.9.0"
 swash = { version = "0.1.17", features = ["scale"], default-features = false }
 thiserror = "1.0.63"
 time = "0.3.36"
-tokio = { version = "1.39.1", features = ["fs", "macros", "time"] }
+tokio = { version = "1.39.2", features = ["fs", "macros", "time"] }
 uuid = { version = "1.10.0", default-features = false }
 vulkano = { version = "0.34.1", default-features = false }
 vulkano-util = "0.34.1"

@@ -359,7 +359,7 @@ dependencies = [
  "bitflags 2.6.0",
  "cexpr",
  "clang-sys",
- "itertools 0.12.1",
+ "itertools 0.10.5",
  "lazy_static",
  "lazycell",
  "proc-macro2",
@@ -1252,7 +1252,7 @@ dependencies = [
 [[package]]
 name = "ffmpeg-sys-next"
 version = "6.1.0"
-source = "git+https://github.com/White-Green/rust-ffmpeg-sys?branch=ffmpeg6#a9cb5b89e20e991a173b696e56fc4748f1013597"
+source = "git+https://github.com/White-Green/rust-ffmpeg-sys?branch=ffmpeg6#e3a15334154ee18004848b0885f584794f4d701d"
 dependencies = [
  "bindgen 0.64.0",
  "cc",
@@ -2362,9 +2362,9 @@ dependencies = [
 
 [[package]]
 name = "matrixmultiply"
-version = "0.3.8"
+version = "0.3.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7574c1cf36da4798ab73da5b215bbf444f50718207754cb522201d78d1cd0ff2"
+checksum = "9380b911e3e96d10c1f415da0876389aaf1b56759054eeb0de7df940c456ba1a"
 dependencies = [
  "autocfg",
  "rawpointer",
@@ -4640,9 +4640,9 @@ checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
 
 [[package]]
 name = "tokio"
-version = "1.39.1"
+version = "1.39.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d040ac2b29ab03b09d4129c2f5bbd012a3ac2f79d38ff506a4bf8dd34b0eac8a"
+checksum = "daa4fb1bc778bd6f04cbfc4bb2d06a7396a8f299dc33ea1900cedaa316f467b1"
 dependencies = [
  "backtrace",
  "pin-project-lite",

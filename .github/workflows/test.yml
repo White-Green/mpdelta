@@ -27,4 +27,4 @@ jobs:
             target/
             target_for_shaders/
           key: ${{ runner.os }}-cargo-test-${{ hashFiles('**/Cargo.lock') }}
-      - run: CARGO_FEATURE_BUILD=1 cargo +stable test --workspace --locked
+      - run: cargo +stable test --workspace --locked

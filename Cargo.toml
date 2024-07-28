@@ -149,6 +149,9 @@ vulkano-util = "0.34.1"
 vulkano-win = "0.34.0"
 winit = { version = "0.28.7", default-features = false }
 
+[patch.crates-io]
+ffmpeg-sys-next = { git = "https://github.com/White-Green/rust-ffmpeg-sys", branch = "ffmpeg6" }
+
 [dependencies]
 async-trait = { workspace = true }
 cpal = { workspace = true }

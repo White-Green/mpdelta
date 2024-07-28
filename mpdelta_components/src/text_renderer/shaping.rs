@@ -543,29 +543,20 @@ mod tests {
         let output_file_dir = Path::new(TEST_OUTPUT_DIR).join("text_shaping");
         fs::create_dir_all(&output_file_dir).unwrap();
 
-        let source = SystemSource::new();
-        let load_font = |name: FamilyName| {
-            let Ok(Handle::Path { path, font_index }) = source.select_best_match(&[name], &Properties::default()) else {
-                panic!();
-            };
-            (fs::read(path).unwrap(), font_index)
-        };
-        let (font_data, font_index) = load_font(FamilyName::Serif);
-        let font0 = FontRef::from_index(&font_data, font_index as usize).unwrap();
-        let (font_data, font_index) = load_font(FamilyName::SansSerif);
-        let font1 = FontRef::from_index(&font_data, font_index as usize).unwrap();
-        let (font_data, font_index) = load_font(FamilyName::Monospace);
-        let font2 = FontRef::from_index(&font_data, font_index as usize).unwrap();
-        let (font_data, font_index) = load_font(FamilyName::Cursive);
-        let font3 = FontRef::from_index(&font_data, font_index as usize).unwrap();
-        let (font_data, font_index) = load_font(FamilyName::Fantasy);
-        let font4 = FontRef::from_index(&font_data, font_index as usize).unwrap();
-        let (font_data, font_index) = load_font(FamilyName::Title("Yu Gothic UI".to_owned()));
-        let font5 = FontRef::from_index(&font_data, font_index as usize).unwrap();
-
+        let noto_sans_jp = [
+            FontRef::from_index(include_bytes!("fonts/Noto_Sans_JP/NotoSansJP-Thin.ttf"), 0).unwrap(),
+            FontRef::from_index(include_bytes!("fonts/Noto_Sans_JP/NotoSansJP-Black.ttf"), 0).unwrap(),
+            FontRef::from_index(include_bytes!("fonts/Noto_Sans_JP/NotoSansJP-Bold.ttf"), 0).unwrap(),
+            FontRef::from_index(include_bytes!("fonts/Noto_Sans_JP/NotoSansJP-ExtraBold.ttf"), 0).unwrap(),
+            FontRef::from_index(include_bytes!("fonts/Noto_Sans_JP/NotoSansJP-ExtraLight.ttf"), 0).unwrap(),
+            FontRef::from_index(include_bytes!("fonts/Noto_Sans_JP/NotoSansJP-Light.ttf"), 0).unwrap(),
+            FontRef::from_index(include_bytes!("fonts/Noto_Sans_JP/NotoSansJP-Medium.ttf"), 0).unwrap(),
+            FontRef::from_index(include_bytes!("fonts/Noto_Sans_JP/NotoSansJP-Regular.ttf"), 0).unwrap(),
+            FontRef::from_index(include_bytes!("fonts/Noto_Sans_JP/NotoSansJP-SemiBold.ttf"), 0).unwrap(),
+        ];
         let mut scale_context = ScaleContext::new();
 
-        let fonts = [font0, font1, font2, font3, font4];
+        let fonts = noto_sans_jp;
         let mut builder = ShapingBuilder::new(());
         builder
             .font_size(16.)
@@ -579,14 +570,14 @@ mod tests {
             .push_str("fox ")
             .font(vec![4])
             .push_str("jumps ")
-            .font(vec![0])
+            .font(vec![5])
             .push_str("over ")
-            .font(vec![1])
+            .font(vec![6])
             .font_size(16.)
             .push_str("the ")
-            .font(vec![2])
+            .font(vec![7])
             .push_str("lazy ")
-            .font(vec![3])
+            .font(vec![8])
             .push_str("dog.");
         let result = builder.shape(&fonts, 200.);
 
@@ -632,7 +623,7 @@ mod tests {
         }
         write!(file, "</svg>").unwrap();
 
-        let fonts = [font0, font5];
+        let fonts = [noto_sans_jp[6], noto_sans_jp[2]];
         let mut builder = ShapingBuilder::new(0usize);
         for (i, c) in "The quick brown fox jumps over the lazy dog.".chars().enumerate() {
             builder.font_size(16.).update_user_data(|_| i).push_str(c.encode_utf8(&mut [0; 4]));
@@ -641,7 +632,7 @@ mod tests {
         result.glyphs().zip(0..).for_each(|((_, &user_data), i)| assert_eq!(user_data, i));
         result.lines().flatten().zip(0..).for_each(|((_, &user_data), i)| assert_eq!(user_data, i));
 
-        let fonts = [font0, font5];
+        let fonts = [noto_sans_jp[6], noto_sans_jp[2]];
         let mut builder = ShapingBuilder::new(());
         builder
             .font_size(16.)

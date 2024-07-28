@@ -10,3 +10,6 @@ ffmpeg-next = { workspace = true }
 ffmpeg-sys-next = { workspace = true }
 mpdelta_multimedia = { workspace = true }
 thiserror = { workspace = true }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+ffmpeg-sys-next = { workspace = true, features = ["build", "build-zlib", "build-lib-openh264"] }

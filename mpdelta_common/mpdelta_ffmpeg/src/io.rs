@@ -32,7 +32,7 @@ unsafe extern "C" fn read<T: Read>(opaque: *mut c_void, buf: *mut u8, buf_size: 
     }
 }
 
-unsafe extern "C" fn write<T: Write>(opaque: *mut c_void, buffer: *mut u8, len: c_int) -> c_int {
+unsafe extern "C" fn write<T: Write>(opaque: *mut c_void, buffer: *const u8, len: c_int) -> c_int {
     let output = opaque.cast::<T>().as_mut().unwrap();
     output.write_all(slice::from_raw_parts(buffer, len as usize)).map_or(-1, |_| len)
 }

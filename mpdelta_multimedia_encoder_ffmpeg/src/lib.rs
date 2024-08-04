@@ -207,7 +207,6 @@ where
             encoder.set_format(sample_format);
             encoder.set_rate(sample_rate);
             encoder.set_channel_layout(ChannelLayout::STEREO);
-            encoder.set_channels(2);
             encoder.set_bit_rate(options.bit_rate());
             encoder.set_max_bit_rate(options.max_bit_rate());
             if global_header {

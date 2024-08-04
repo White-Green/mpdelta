@@ -87,8 +87,8 @@ egui = { version = "0.24.1", default-features = false }
 egui_image_renderer = { git = "https://github.com/White-Green/egui_image_renderer", rev = "34a309bef611dbce4d273bd735c042093fd7e3de" }
 egui_winit_vulkano = { version = "0.27.0", default-features = false }
 erased-serde = { version = "0.4.5", features = ["alloc"], default-features = false }
-ffmpeg-next = { version = "6.1.1", default-features = false, features = ["format", "software-resampling", "software-scaling"] }
-ffmpeg-sys-next = { version = "6.1.0", default-features = false, features = ["static"] }
+ffmpeg-next = { version = "7.0.4", default-features = false, features = ["format", "software-resampling", "software-scaling"] }
+ffmpeg-sys-next = { version = "7.0.2", default-features = false, features = ["static"] }
 font-kit = "0.14.1"
 futures = { version = "0.3.30", default-features = false }
 glam = { version = "0.24.2", features = ["libm"], default-features = false }
@@ -150,7 +150,7 @@ vulkano-win = "0.34.0"
 winit = { version = "0.28.7", default-features = false }
 
 [patch.crates-io]
-ffmpeg-sys-next = { git = "https://github.com/White-Green/rust-ffmpeg-sys", branch = "ffmpeg6" }
+ffmpeg-sys-next = { git = "https://github.com/White-Green/rust-ffmpeg-sys", branch = "ffmpeg7" }
 
 [dependencies]
 async-trait = { workspace = true }

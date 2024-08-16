@@ -187,7 +187,12 @@ impl MixedFraction {
     }
 
     pub fn signum(self) -> i8 {
-        self.0.signum() as i8
+        let (i, n, _) = self.deconstruct();
+        match i {
+            0 if n == 0 => 0,
+            ..=-1 => -1,
+            _ => 1,
+        }
     }
 
     pub fn checked_add(self, rhs: MixedFraction) -> Option<MixedFraction> {
@@ -539,6 +544,17 @@ mod tests {
         assert_eq!(MixedFraction::ONE.0, 0x0000_0010_0000_0001);
         assert_eq!(MixedFraction::MIN.0, 0x8000_0000_0000_0001u64 as i64);
         assert_eq!(MixedFraction::MAX.0, 0x7fff_ffff_fffb_ffff);
+    }
+
+    #[test]
+    fn test_mixed_fraction_signum() {
+        assert_eq!(MixedFraction::MIN.signum(), -1);
+        assert_eq!(MixedFraction::from_integer(-1).signum(), -1);
+        assert_eq!((-MixedFraction::from_fraction(1, 0x3_ffff)).signum(), -1);
+        assert_eq!(MixedFraction::ZERO.signum(), 0);
+        assert_eq!(MixedFraction::from_fraction(1, 0x3_ffff).signum(), 1);
+        assert_eq!(MixedFraction::from_integer(1).signum(), 1);
+        assert_eq!(MixedFraction::MAX.signum(), 1);
     }
 
     #[test]

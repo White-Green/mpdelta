@@ -664,14 +664,38 @@ impl TimeMap {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TimeMapSegment {
-    pub time_range: Range<TimelineTime>,
-    pub source_range: Range<TimelineTime>,
-    pub target_range: Range<TimelineTime>,
+    time_range: Range<TimelineTime>,
+    slope: MixedFraction,
+    intercept: MixedFraction,
 }
 
 impl TimeMapSegment {
     fn new(time_range: Range<TimelineTime>, source_range: Range<TimelineTime>, target_range: Range<TimelineTime>) -> TimeMapSegment {
-        TimeMapSegment { time_range, source_range, target_range }
+        let slope = (target_range.end.value() - target_range.start.value()) / (source_range.end.value() - source_range.start.value());
+        let intercept = target_range.start.value() - slope * source_range.start.value();
+        TimeMapSegment { time_range, slope, intercept }
+    }
+
+    pub fn start(&self) -> TimelineTime {
+        self.time_range.start
+    }
+
+    pub fn end(&self) -> TimelineTime {
+        self.time_range.end
+    }
+
+    pub fn map(&self, at: TimelineTime) -> TimelineTime {
+        let time = self.slope * at.value() + self.intercept;
+        TimelineTime::new(time)
+    }
+
+    pub fn map_inverse(&self, at: TimelineTime) -> TimelineTime {
+        let time = (at.value() - self.intercept) / self.slope;
+        TimelineTime::new(time)
+    }
+
+    pub fn scale(&self) -> MixedFraction {
+        self.slope
     }
 }
 
@@ -831,5 +855,44 @@ mod tests {
         assert_eq!(time_map_for_test(&markers, &key, t!(7, 0, 10)), vec![TimeMapSegment::new(t!(3)..t!(10), t!(7)..t!(10), t!(13)..t!(10))]);
         assert_eq!(time_map_for_test(&markers, &key, t!(8, 0, 10)), vec![TimeMapSegment::new(t!(3)..t!(10), t!(7)..t!(10), t!(13)..t!(10))]);
         assert_eq!(time_map_for_test(&markers, &key, t!(10, 0, 10)), vec![TimeMapSegment::new(t!(3)..t!(10), t!(7)..t!(10), t!(13)..t!(10))]);
+    }
+
+    #[test]
+    fn test_time_map_segment() {
+        macro_rules! t {
+            ($($t:tt)*) => {
+                TimelineTime::new(mfrac!($($t)*))
+            }
+        }
+        let segment = TimeMapSegment::new(t!(3)..t!(6), t!(3)..t!(6), t!(0)..t!(3));
+        assert_eq!(segment.scale(), mfrac!(1));
+        assert_eq!(segment.map(t!(3, 0, 10)), t!(0, 0, 10));
+        assert_eq!(segment.map(t!(4, 5, 10)), t!(1, 5, 10));
+        assert_eq!(segment.map(t!(6, 0, 10)), t!(3, 0, 10));
+        let segment = TimeMapSegment::new(t!(3)..t!(6), t!(3)..t!(6), t!(8)..t!(11));
+        assert_eq!(segment.scale(), mfrac!(1));
+        assert_eq!(segment.map(t!(3, 0, 10)), t!(8, 0, 10));
+        assert_eq!(segment.map(t!(4, 5, 10)), t!(9, 5, 10));
+        assert_eq!(segment.map(t!(6, 0, 10)), t!(11, 0, 10));
+        let segment = TimeMapSegment::new(t!(3)..t!(6), t!(4)..t!(5), t!(8)..t!(10));
+        assert_eq!(segment.scale(), mfrac!(2));
+        assert_eq!(segment.map(t!(4, 0, 10)), t!(8, 0, 10));
+        assert_eq!(segment.map(t!(4, 5, 10)), t!(9, 0, 10));
+        assert_eq!(segment.map(t!(5, 0, 10)), t!(10, 0, 10));
+        let segment = TimeMapSegment::new(t!(3)..t!(5), t!(4)..t!(5), t!(8)..t!(10));
+        assert_eq!(segment.scale(), mfrac!(2));
+        assert_eq!(segment.map(t!(4, 0, 10)), t!(8, 0, 10));
+        assert_eq!(segment.map(t!(4, 5, 10)), t!(9, 0, 10));
+        assert_eq!(segment.map(t!(5, 0, 10)), t!(10, 0, 10));
+        let segment = TimeMapSegment::new(t!(5)..t!(7), t!(5)..t!(7), t!(10)..t!(13));
+        assert_eq!(segment.scale(), mfrac!(3, 2));
+        assert_eq!(segment.map(t!(5, 0, 10)), t!(10, 0, 10));
+        assert_eq!(segment.map(t!(6, 0, 10)), t!(11, 5, 10));
+        assert_eq!(segment.map(t!(7, 0, 10)), t!(13, 0, 10));
+        let segment = TimeMapSegment::new(t!(7)..t!(10), t!(7)..t!(10), t!(13)..t!(10));
+        assert_eq!(segment.scale(), mfrac!(-1));
+        assert_eq!(segment.map(t!(7, 0, 10)), t!(13, 0, 10));
+        assert_eq!(segment.map(t!(8, 5, 10)), t!(11, 5, 10));
+        assert_eq!(segment.map(t!(10, 0, 10)), t!(10, 0, 10));
     }
 }

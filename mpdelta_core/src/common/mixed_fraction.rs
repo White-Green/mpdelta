@@ -347,6 +347,14 @@ impl MixedFraction {
         MixedFraction::ZERO.saturating_sub(self)
     }
 
+    pub fn abs(self) -> MixedFraction {
+        if self.signum() >= 0 {
+            self
+        } else {
+            self.saturating_neg()
+        }
+    }
+
     pub fn into_f64(self) -> f64 {
         let (i, n, d) = self.deconstruct();
         (i as f64) + (n as f64) / (d as f64)
@@ -360,6 +368,48 @@ impl MixedFraction {
         } else {
             (i, round_into(n as u64, d as u64, denominator as u64).try_into().unwrap())
         }
+    }
+
+    /// Deconstruct MixedFraction(I + N / D) into (I, N') s.t. N / D <= N' / D'
+    pub fn deconstruct_with_floor(self, denominator: u32) -> (i32, u32) {
+        let (i, n, d) = self.deconstruct();
+        if d == denominator {
+            (i, n)
+        } else {
+            let n = (n as u64 * denominator as u64) / d as u64;
+            (i, n as u32)
+        }
+    }
+
+    /// Deconstruct MixedFraction(I + N / D) into (I, N') s.t. N / D >= N' / D'
+    pub fn deconstruct_with_ceil(self, denominator: u32) -> (i32, u32) {
+        let (i, n, d) = self.deconstruct();
+        if d == denominator {
+            (i, n)
+        } else {
+            let n = (n as u64 * denominator as u64 + d as u64 - 1) / d as u64;
+            let n = n as u32;
+            if n == denominator {
+                (i + 1, 0)
+            } else {
+                (i, n)
+            }
+        }
+    }
+
+    pub fn round_to_denominator(self, denominator: u32) -> MixedFraction {
+        let (i, n) = self.deconstruct_with_round(denominator);
+        MixedFraction::new(i, n, denominator)
+    }
+
+    pub fn floor_to_denominator(self, denominator: u32) -> MixedFraction {
+        let (i, n) = self.deconstruct_with_floor(denominator);
+        MixedFraction::new(i, n, denominator)
+    }
+
+    pub fn ceil_to_denominator(self, denominator: u32) -> MixedFraction {
+        let (i, n) = self.deconstruct_with_ceil(denominator);
+        MixedFraction::new(i, n, denominator)
     }
 }
 
@@ -613,6 +663,24 @@ mod tests {
         assert!(MixedFraction::new(0, 1, 3) < MixedFraction::new(0, 1, 2));
     }
 
+    #[test]
+    fn test_mixed_fraction_round() {
+        assert_eq!(MixedFraction::new(0, 1, 3).round_to_denominator(2), MixedFraction::new(0, 1, 2));
+        assert_eq!(MixedFraction::new(0, 2, 3).round_to_denominator(2), MixedFraction::new(0, 1, 2));
+    }
+
+    #[test]
+    fn test_mixed_fraction_floor() {
+        assert_eq!(MixedFraction::new(0, 1, 3).floor_to_denominator(2), MixedFraction::new(0, 0, 1));
+        assert_eq!(MixedFraction::new(0, 2, 3).floor_to_denominator(2), MixedFraction::new(0, 1, 2));
+    }
+
+    #[test]
+    fn test_mixed_fraction_ceil() {
+        assert_eq!(MixedFraction::new(0, 1, 3).ceil_to_denominator(2), MixedFraction::new(0, 1, 2));
+        assert_eq!(MixedFraction::new(0, 2, 3).ceil_to_denominator(2), MixedFraction::new(1, 0, 1));
+    }
+
     proptest! {
         #[test]
         fn test_construct_deconstruct_prop(
@@ -687,6 +755,22 @@ mod tests {
             b in any::<MixedFraction>(),
         ) {
             a.checked_rem(b);
+        }
+
+        #[test]
+        fn test_mixed_fraction_floor_prop(
+            v in any::<MixedFraction>(),
+            d in 1u32..0x4_0000,
+        ) {
+            assert!(v.floor_to_denominator(d) <= v);
+        }
+
+        #[test]
+        fn test_mixed_fraction_ceil_prop(
+            v in any::<MixedFraction>(),
+            d in 1u32..0x4_0000,
+        ) {
+            assert!(v.ceil_to_denominator(d) >= v);
         }
 
         #[test]

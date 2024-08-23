@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use std::hash::Hash;
 use std::sync::atomic;
 
-/// 固定マーカの位置のコンポーネントの長さに対する割合
+/// コンポーネントの始点からの時間
 /// \[0.0, ∞)
 #[derive(Debug, Clone, Copy, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize)]
 #[cfg_attr(any(feature = "proptest", test), derive(proptest_derive::Arbitrary))]

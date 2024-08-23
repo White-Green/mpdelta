@@ -1,5 +1,9 @@
-name: test in pull request
-on: pull_request
+name: cargo test
+on:
+  pull_request:
+  push:
+    branches:
+      - main
 
 jobs:
   rustfmt:

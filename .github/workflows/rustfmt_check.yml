@@ -1,5 +1,9 @@
-name: rustfmt check in pull request
-on: pull_request
+name: rustfmt check
+on:
+  pull_request:
+  push:
+    branches:
+      - main
 
 jobs:
   rustfmt:

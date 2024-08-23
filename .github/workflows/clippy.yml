@@ -1,5 +1,9 @@
-name: clippy lint in pull request
-on: pull_request
+name: clippy lint
+on:
+  pull_request:
+  push:
+    branches:
+      - main
 
 jobs:
   rustfmt:

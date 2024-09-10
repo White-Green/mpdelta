@@ -238,33 +238,32 @@ async fn test_lock_marker_pin() {
     }
     assert_eq_root_component_class(&edit_target, &expect).await;
 
-    // TODO:
-    // root_component_class! {
-    //     edit_target; <T>; id;
-    //     left: left,
-    //     components: [
-    //         { markers: [marker!(locked: 0) => l1, marker!() => m, marker!(locked: 2) => r1] }; c1,
-    //     ],
-    //     links: [
-    //         left = 1 => l1,
-    //         l1 = 2 => m,
-    //         l1 = 3 => r1,
-    //     ],
-    // }
-    // editor.edit_instance(edit_target.as_ref(), &c1, InstanceEditCommand::LockMarkerPin(m)).await.unwrap_err();
-    // root_component_class! {
-    //     expect; <T>; id;
-    //     left: left,
-    //     components: [
-    //         { markers: [marker!(locked: 0) => l1, marker!() => m, marker!(locked: 2) => r1] }; c1,
-    //     ],
-    //     links: [
-    //         left = 1 => l1,
-    //         l1 = 2 => m,
-    //         l1 = 3 => r1,
-    //     ],
-    // }
-    // assert_eq_root_component_class(&edit_target, &expect).await;
+    root_component_class! {
+        edit_target; <T>; id;
+        left: left,
+        components: [
+            { markers: [marker!(locked: 0) => l1, marker!() => m, marker!(locked: 2) => r1] }; c1,
+        ],
+        links: [
+            left = 1 => l1,
+            l1 = 2 => m,
+            l1 = 3 => r1,
+        ],
+    }
+    editor.edit_instance(edit_target.as_ref(), &c1, InstanceEditCommand::LockMarkerPin(m)).await.unwrap_err();
+    root_component_class! {
+        expect; <T>; id;
+        left: left,
+        components: [
+            { markers: [marker!(locked: 0) => l1, marker!() => m, marker!(locked: 2) => r1] }; c1,
+        ],
+        links: [
+            left = 1 => l1,
+            l1 = 2 => m,
+            l1 = 3 => r1,
+        ],
+    }
+    assert_eq_root_component_class(&edit_target, &expect).await;
 }
 
 #[tokio::test]

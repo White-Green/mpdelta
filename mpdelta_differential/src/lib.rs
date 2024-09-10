@@ -506,113 +506,112 @@ mod tests {
         RootComponentClassItemWrite::commit_changes(root.get_mut().await, expect_timeline_time);
         assert_eq_root_component_class(&target, &expect).await;
 
-        // TODO:
-        // root_component_class! {
-        //     custom_differential: collect_cached_time;
-        //     target; <T>; id;
-        //     left: left,
-        //     right: right,
-        //     components: [
-        //         { markers: [marker!(locked: 0) => l1, marker!(locked: 1) => m, marker!(locked: 3) => r1] },
-        //     ],
-        //     links: [
-        //         left = 2 => m,
-        //         m = 1 => r1,
-        //     ],
-        // }
-        // root_component_class! {
-        //     custom_differential: |_| Ok::<_, ()>(HashMap::new());
-        //     expect; <T>; id;
-        //     left: left,
-        //     right: right,
-        //     components: [
-        //         { markers: [marker!(locked: 0) => l1, marker!(locked: 1) => m, marker!(locked: 3) => r1] },
-        //     ],
-        //     links: [
-        //         left = 2 => m,
-        //         m = 1 => r1,
-        //     ],
-        // }
-        // let expect_timeline_time = HashMap::from([
-        //     (left, TimelineTime::new(mfrac!(0))),
-        //     (l1, TimelineTime::new(mfrac!(3, 2))),
-        //     (m, TimelineTime::new(mfrac!(2))),
-        //     (r1, TimelineTime::new(mfrac!(3))),
-        //     (right, TimelineTime::new(mfrac!(10))),
-        // ]);
-        // let root = expect.read().await;
-        // RootComponentClassItemWrite::commit_changes(root.get_mut().await, expect_timeline_time);
-        // assert_eq_root_component_class(&target, &expect).await;
-        //
-        // root_component_class! {
-        //     custom_differential: collect_cached_time;
-        //     target; <T>; id;
-        //     left: left,
-        //     right: right,
-        //     components: [
-        //         { markers: [marker!(locked: 0) => l1, marker!(locked: 1) => m, marker!() => r1] },
-        //     ],
-        //     links: [
-        //         left = 1 => l1,
-        //         l1 = 2 => m,
-        //         l1 = 3 => r1,
-        //     ],
-        // }
-        // root_component_class! {
-        //     custom_differential: |_| Ok::<_, ()>(HashMap::new());
-        //     expect; <T>; id;
-        //     left: left,
-        //     right: right,
-        //     components: [
-        //         { markers: [marker!(locked: 0) => l1, marker!(locked: 1) => m, marker!() => r1] },
-        //     ],
-        //     links: [
-        //         left = 1 => l1,
-        //         l1 = 2 => m,
-        //         l1 = 3 => r1,
-        //     ],
-        // }
-        // let expect_timeline_time = HashMap::from([]);
-        // let root = expect.read().await;
-        // RootComponentClassItemWrite::commit_changes(root.get_mut().await, expect_timeline_time);
-        // assert_eq_root_component_class(&target, &expect).await;
-        //
-        // root_component_class! {
-        //     custom_differential: collect_cached_time;
-        //     target; <T>; id;
-        //     left: left,
-        //     right: right,
-        //     components: [
-        //         { markers: [marker!(locked: 0) => l1, marker!(locked: 1) => m1, marker!(locked: 2) => m2, marker!(locked: 0) => r1] },
-        //     ],
-        //     links: [
-        //         left = 2 => m2,
-        //         m1 = 3 => r1,
-        //     ],
-        // }
-        // root_component_class! {
-        //     custom_differential: |_| Ok::<_, ()>(HashMap::new());
-        //     expect; <T>; id;
-        //     left: left,
-        //     right: right,
-        //     components: [
-        //         { markers: [marker!(locked: 0) => l1, marker!(locked: 1) => m1, marker!(locked: 2) => m2, marker!(locked: 0) => r1] },
-        //     ],
-        //     links: [
-        //         left = 2 => m2,
-        //         m1 = 3 => r1,
-        //     ],
-        // }
-        // let expect_timeline_time = HashMap::from([
-        //     (left, TimelineTime::new(mfrac!(0))),
-        //     (l1, TimelineTime::new(mfrac!(0))),
-        //     (m1, TimelineTime::new(mfrac!(1))),
-        //     (m2, TimelineTime::new(mfrac!(2))),
-        //     (r1, TimelineTime::new(mfrac!(4))),
-        //     (right, TimelineTime::new(mfrac!(10))),
-        // ]);
-        // let root = expect.read().await;
-        // RootComponentClassItemWrite::commit_changes(root.get_mut().await, expect_timeline_time);
-        // assert_eq_root_component_class(&target, &expect).await;
+        root_component_class! {
+            custom_differential: collect_cached_time;
+            target; <T>; id;
+            left: left,
+            right: right,
+            components: [
+                { markers: [marker!(locked: 0) => l1, marker!(locked: 1) => m, marker!(locked: 3) => r1] },
+            ],
+            links: [
+                left = 2 => m,
+                m = 1 => r1,
+            ],
+        }
+        root_component_class! {
+            custom_differential: |_| Ok::<_, ()>(HashMap::new());
+            expect; <T>; id;
+            left: left,
+            right: right,
+            components: [
+                { markers: [marker!(locked: 0) => l1, marker!(locked: 1) => m, marker!(locked: 3) => r1] },
+            ],
+            links: [
+                left = 2 => m,
+                m = 1 => r1,
+            ],
+        }
+        let expect_timeline_time = HashMap::from([
+            (left, TimelineTime::new(mfrac!(0))),
+            (l1, TimelineTime::new(mfrac!(3, 2))),
+            (m, TimelineTime::new(mfrac!(2))),
+            (r1, TimelineTime::new(mfrac!(3))),
+            (right, TimelineTime::new(mfrac!(10))),
+        ]);
+        let root = expect.read().await;
+        RootComponentClassItemWrite::commit_changes(root.get_mut().await, expect_timeline_time);
+        assert_eq_root_component_class(&target, &expect).await;
+
+        root_component_class! {
+            custom_differential: collect_cached_time;
+            target; <T>; id;
+            left: left,
+            right: right,
+            components: [
+                { markers: [marker!(locked: 0) => l1, marker!(locked: 1) => m, marker!() => r1] },
+            ],
+            links: [
+                left = 1 => l1,
+                l1 = 2 => m,
+                l1 = 3 => r1,
+            ],
+        }
+        root_component_class! {
+            custom_differential: |_| Ok::<_, ()>(HashMap::new());
+            expect; <T>; id;
+            left: left,
+            right: right,
+            components: [
+                { markers: [marker!(locked: 0) => l1, marker!(locked: 1) => m, marker!() => r1] },
+            ],
+            links: [
+                left = 1 => l1,
+                l1 = 2 => m,
+                l1 = 3 => r1,
+            ],
+        }
+        let expect_timeline_time = HashMap::from([]);
+        let root = expect.read().await;
+        RootComponentClassItemWrite::commit_changes(root.get_mut().await, expect_timeline_time);
+        assert_eq_root_component_class(&target, &expect).await;
+
+        root_component_class! {
+            custom_differential: collect_cached_time;
+            target; <T>; id;
+            left: left,
+            right: right,
+            components: [
+                { markers: [marker!(locked: 0) => l1, marker!(locked: 1) => m1, marker!(locked: 2) => m2, marker!(locked: 0) => r1] },
+            ],
+            links: [
+                left = 2 => m2,
+                m1 = 3 => r1,
+            ],
+        }
+        root_component_class! {
+            custom_differential: |_| Ok::<_, ()>(HashMap::new());
+            expect; <T>; id;
+            left: left,
+            right: right,
+            components: [
+                { markers: [marker!(locked: 0) => l1, marker!(locked: 1) => m1, marker!(locked: 2) => m2, marker!(locked: 0) => r1] },
+            ],
+            links: [
+                left = 2 => m2,
+                m1 = 3 => r1,
+            ],
+        }
+        let expect_timeline_time = HashMap::from([
+            (left, TimelineTime::new(mfrac!(0))),
+            (l1, TimelineTime::new(mfrac!(0))),
+            (m1, TimelineTime::new(mfrac!(1))),
+            (m2, TimelineTime::new(mfrac!(2))),
+            (r1, TimelineTime::new(mfrac!(4))),
+            (right, TimelineTime::new(mfrac!(10))),
+        ]);
+        let root = expect.read().await;
+        RootComponentClassItemWrite::commit_changes(root.get_mut().await, expect_timeline_time);
+        assert_eq_root_component_class(&target, &expect).await;
     }
 }

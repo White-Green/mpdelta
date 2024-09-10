@@ -6,7 +6,7 @@ on:
       - main
 
 jobs:
-  rustfmt:
+  test:
     name: test
     runs-on: ubuntu-latest
     steps:
@@ -28,6 +28,10 @@ jobs:
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
+          key: ${{ runner.os }}-cargo
+      - uses: actions/cache@v4
+        with:
+          path: |
             target/
             target_for_shaders/
           key: ${{ runner.os }}-cargo-test-${{ hashFiles('**/Cargo.lock') }}

@@ -5,11 +5,11 @@ use mpdelta_core::component::instance::ComponentInstance;
 use mpdelta_core::component::marker_pin::{MarkerPin, MarkerTime};
 use mpdelta_core::component::parameter::{AudioRequiredParams, Parameter, ParameterSelect, ParameterType, ParameterValueRaw, ParameterValueType};
 use mpdelta_core::component::processor::{ComponentProcessor, ComponentProcessorNative, ComponentProcessorNativeDyn, ComponentProcessorWrapper, NativeProcessorInput, NativeProcessorRequest};
-use mpdelta_core::ptr::{StaticPointer, StaticPointerOwned};
+use mpdelta_core::core::IdGenerator;
+use mpdelta_core::ptr::StaticPointer;
 use mpdelta_core::time::TimelineTime;
 use mpdelta_core_audio::multi_channel_audio::{MultiChannelAudioMutOp, MultiChannelAudioOp, MultiChannelAudioSliceMut};
 use mpdelta_core_audio::{AudioProvider, AudioType};
-use qcell::TCell;
 use std::borrow::Cow;
 use std::f64::consts::TAU;
 use std::sync::Arc;
@@ -25,7 +25,7 @@ impl SineAudio {
 }
 
 #[async_trait]
-impl<K, T: ParameterValueType<Audio = AudioType>> ComponentClass<K, T> for SineAudio {
+impl<T: ParameterValueType<Audio = AudioType>> ComponentClass<T> for SineAudio {
     fn identifier(&self) -> ComponentClassIdentifier {
         ComponentClassIdentifier {
             namespace: Cow::Borrowed("mpdelta"),
@@ -34,22 +34,22 @@ impl<K, T: ParameterValueType<Audio = AudioType>> ComponentClass<K, T> for SineA
         }
     }
 
-    fn processor(&self) -> ComponentProcessorWrapper<K, T> {
+    fn processor(&self) -> ComponentProcessorWrapper<T> {
         ComponentProcessorWrapper::Native(Arc::new(SineAudio::new()))
     }
 
-    async fn instantiate(&self, this: &StaticPointer<RwLock<dyn ComponentClass<K, T>>>) -> ComponentInstance<K, T> {
-        let left = StaticPointerOwned::new(TCell::new(MarkerPin::new(TimelineTime::ZERO, MarkerTime::ZERO)));
-        let right = StaticPointerOwned::new(TCell::new(MarkerPin::new(TimelineTime::new(MixedFraction::from_integer(1)), MarkerTime::new(MixedFraction::from_integer(1)).unwrap())));
-        let audio_required_params = AudioRequiredParams::new_default(StaticPointerOwned::reference(&left), StaticPointerOwned::reference(&right), 1);
-        ComponentInstance::builder(this.clone(), left, right, Vec::new(), Arc::new(SineAudio::new()) as Arc<dyn ComponentProcessorNativeDyn<K, T>>)
+    async fn instantiate(&self, this: &StaticPointer<RwLock<dyn ComponentClass<T>>>, id: &dyn IdGenerator) -> ComponentInstance<T> {
+        let left = MarkerPin::new(id.generate_new(), MarkerTime::ZERO);
+        let right = MarkerPin::new(id.generate_new(), MarkerTime::new(MixedFraction::from_integer(1)).unwrap());
+        let audio_required_params = AudioRequiredParams::new_default(left.id(), right.id(), 1);
+        ComponentInstance::builder(this.clone(), left, right, Vec::new(), Arc::new(SineAudio::new()) as Arc<dyn ComponentProcessorNativeDyn<T>>)
             .audio_required_params(audio_required_params)
-            .build()
+            .build(id)
     }
 }
 
 #[async_trait]
-impl<K, T: ParameterValueType<Audio = AudioType>> ComponentProcessor<K, T> for SineAudio {
+impl<T: ParameterValueType<Audio = AudioType>> ComponentProcessor<T> for SineAudio {
     async fn fixed_parameter_types(&self) -> &[(String, ParameterType)] {
         &[]
     }
@@ -60,7 +60,7 @@ impl<K, T: ParameterValueType<Audio = AudioType>> ComponentProcessor<K, T> for S
 }
 
 #[async_trait]
-impl<K, T: ParameterValueType<Audio = AudioType>> ComponentProcessorNative<K, T> for SineAudio {
+impl<T: ParameterValueType<Audio = AudioType>> ComponentProcessorNative<T> for SineAudio {
     type WholeComponentCacheKey = ();
     type WholeComponentCacheValue = ();
     type FramedCacheKey = ();

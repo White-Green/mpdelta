@@ -1,9 +1,10 @@
-use crate::common::time_split_value::TimeSplitValue;
-use crate::component::instance::ComponentInstanceHandle;
-use crate::component::marker_pin::MarkerPinHandle;
+use crate::common::time_split_value_persistent::TimeSplitValuePersistent;
+use crate::component::instance::ComponentInstanceId;
+use crate::component::marker_pin::MarkerPinId;
 use crate::component::parameter::placeholder::{Placeholder, TagAudio, TagImage};
 use crate::component::parameter::value::{DynEditableLerpEasingValue, DynEditableSingleValue, EasingValue, LinearEasing};
 use cgmath::{One, Quaternion, Vector3};
+use rpds::{Vector, VectorSync};
 use serde::{Deserialize, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
 use std::cmp::Ordering;
@@ -14,7 +15,7 @@ use std::io::{IoSliceMut, Read, Seek, SeekFrom};
 use std::marker::PhantomData;
 use std::ops::Range;
 use std::sync::Arc;
-use std::{io, mem};
+use std::{io, iter, mem};
 use uuid::Uuid;
 
 pub mod placeholder;
@@ -659,32 +660,32 @@ pub type ParameterValue<K> = Parameter<Value<K>>;
 impl<K: 'static> ParameterValueType for Value<K> {
     type Image = Placeholder<TagImage>;
     type Audio = Placeholder<TagAudio>;
-    type Binary = TimeSplitValue<MarkerPinHandle<K>, EasingValue<AbstractFile>>;
-    type String = TimeSplitValue<MarkerPinHandle<K>, EasingValue<String>>;
-    type Integer = TimeSplitValue<MarkerPinHandle<K>, EasingValue<i64>>;
-    type RealNumber = TimeSplitValue<MarkerPinHandle<K>, EasingValue<f64>>;
-    type Boolean = TimeSplitValue<MarkerPinHandle<K>, EasingValue<bool>>;
+    type Binary = TimeSplitValuePersistent<MarkerPinId, EasingValue<AbstractFile>>;
+    type String = TimeSplitValuePersistent<MarkerPinId, EasingValue<String>>;
+    type Integer = TimeSplitValuePersistent<MarkerPinId, EasingValue<i64>>;
+    type RealNumber = TimeSplitValuePersistent<MarkerPinId, EasingValue<f64>>;
+    type Boolean = TimeSplitValuePersistent<MarkerPinId, EasingValue<bool>>;
     type Dictionary = Never;
     type Array = Never;
     type ComponentClass = ();
 }
 
-pub struct NullableValue<K, T>(PhantomData<(K, T)>);
+pub struct NullableValue<T>(PhantomData<T>);
 
-unsafe impl<K, T> Send for NullableValue<K, T> {}
+unsafe impl<T> Send for NullableValue<T> {}
 
-unsafe impl<K, T> Sync for NullableValue<K, T> {}
+unsafe impl<T> Sync for NullableValue<T> {}
 
-pub type ParameterNullableValue<K, T> = Parameter<NullableValue<K, T>>;
+pub type ParameterNullableValue<T> = Parameter<NullableValue<T>>;
 
-impl<K: 'static, T: ParameterValueType> ParameterValueType for NullableValue<K, T> {
-    type Image = TimeSplitValue<MarkerPinHandle<K>, Option<EasingValue<T::Image>>>;
-    type Audio = TimeSplitValue<MarkerPinHandle<K>, Option<EasingValue<T::Audio>>>;
-    type Binary = TimeSplitValue<MarkerPinHandle<K>, Option<EasingValue<AbstractFile>>>;
-    type String = TimeSplitValue<MarkerPinHandle<K>, Option<EasingValue<String>>>;
-    type Integer = TimeSplitValue<MarkerPinHandle<K>, Option<EasingValue<i64>>>;
-    type RealNumber = TimeSplitValue<MarkerPinHandle<K>, Option<EasingValue<f64>>>;
-    type Boolean = TimeSplitValue<MarkerPinHandle<K>, Option<EasingValue<bool>>>;
+impl<T: ParameterValueType> ParameterValueType for NullableValue<T> {
+    type Image = TimeSplitValuePersistent<MarkerPinId, Option<EasingValue<T::Image>>>;
+    type Audio = TimeSplitValuePersistent<MarkerPinId, Option<EasingValue<T::Audio>>>;
+    type Binary = TimeSplitValuePersistent<MarkerPinId, Option<EasingValue<AbstractFile>>>;
+    type String = TimeSplitValuePersistent<MarkerPinId, Option<EasingValue<String>>>;
+    type Integer = TimeSplitValuePersistent<MarkerPinId, Option<EasingValue<i64>>>;
+    type RealNumber = TimeSplitValuePersistent<MarkerPinId, Option<EasingValue<f64>>>;
+    type Boolean = TimeSplitValuePersistent<MarkerPinId, Option<EasingValue<bool>>>;
     type Dictionary = Never;
     type Array = Never;
     type ComponentClass = Option<()>;
@@ -701,13 +702,13 @@ pub type ParameterTypedValue<K> = Parameter<TypedValue<K>>;
 impl<K: 'static> ParameterValueType for TypedValue<K> {
     type Image = Placeholder<TagImage>;
     type Audio = Placeholder<TagAudio>;
-    type Binary = (Option<Box<[String]>>, TimeSplitValue<MarkerPinHandle<K>, EasingValue<AbstractFile>>);
-    type String = (Option<Range<usize>>, TimeSplitValue<MarkerPinHandle<K>, EasingValue<String>>);
-    type Integer = (Option<Range<i64>>, TimeSplitValue<MarkerPinHandle<K>, EasingValue<i64>>);
-    type RealNumber = (Option<Range<f64>>, TimeSplitValue<MarkerPinHandle<K>, EasingValue<f64>>);
-    type Boolean = TimeSplitValue<MarkerPinHandle<K>, EasingValue<bool>>;
-    type Dictionary = (Vec<(String, Parameter<Type>)>, TimeSplitValue<MarkerPinHandle<K>, HashMap<String, ParameterValue<K>>>);
-    type Array = (Vec<Parameter<Type>>, TimeSplitValue<MarkerPinHandle<K>, Vec<ParameterValue<K>>>);
+    type Binary = (Option<Box<[String]>>, TimeSplitValuePersistent<MarkerPinId, EasingValue<AbstractFile>>);
+    type String = (Option<Range<usize>>, TimeSplitValuePersistent<MarkerPinId, EasingValue<String>>);
+    type Integer = (Option<Range<i64>>, TimeSplitValuePersistent<MarkerPinId, EasingValue<i64>>);
+    type RealNumber = (Option<Range<f64>>, TimeSplitValuePersistent<MarkerPinId, EasingValue<f64>>);
+    type Boolean = TimeSplitValuePersistent<MarkerPinId, EasingValue<bool>>;
+    type Dictionary = (Vec<(String, Parameter<Type>)>, TimeSplitValuePersistent<MarkerPinId, HashMap<String, ParameterValue<K>>>);
+    type Array = (Vec<Parameter<Type>>, TimeSplitValuePersistent<MarkerPinId, Vec<ParameterValue<K>>>);
     type ComponentClass = ();
 }
 
@@ -901,16 +902,16 @@ pub enum VariableParameterPriority {
     PrioritizeComponent,
 }
 
-pub type PinSplitValue<K, T> = TimeSplitValue<MarkerPinHandle<K>, T>;
+pub type PinSplitValue<T> = TimeSplitValuePersistent<MarkerPinId, T>;
 
 #[derive(Debug)]
-pub struct VariableParameterValue<K: 'static, T: ParameterValueType, Nullable> {
+pub struct VariableParameterValue<Nullable> {
     pub params: Nullable,
-    pub components: Vec<ComponentInstanceHandle<K, T>>,
+    pub components: VectorSync<ComponentInstanceId>,
     pub priority: VariableParameterPriority,
 }
 
-impl<K, T: ParameterValueType, Nullable: Clone> Clone for VariableParameterValue<K, T, Nullable> {
+impl<Nullable: Clone> Clone for VariableParameterValue<Nullable> {
     fn clone(&self) -> Self {
         let VariableParameterValue { params, components, priority } = self;
         VariableParameterValue {
@@ -921,120 +922,71 @@ impl<K, T: ParameterValueType, Nullable: Clone> Clone for VariableParameterValue
     }
 }
 
-impl<K: 'static, T: ParameterValueType, Nullable> VariableParameterValue<K, T, Nullable> {
-    pub fn new(value: Nullable) -> VariableParameterValue<K, T, Nullable> {
+impl<Nullable> VariableParameterValue<Nullable> {
+    pub fn new(value: Nullable) -> VariableParameterValue<Nullable> {
         VariableParameterValue {
             params: value,
-            components: Vec::new(),
+            components: Vector::new_sync(),
             priority: VariableParameterPriority::PrioritizeManually,
         }
     }
 }
 
-#[derive(Debug)]
-pub struct ImageRequiredParams<K: 'static, T: ParameterValueType> {
-    pub transform: ImageRequiredParamsTransform<K, T>,
+#[derive(Debug, Clone)]
+pub struct ImageRequiredParams {
+    pub transform: Arc<ImageRequiredParamsTransform>,
     pub background_color: [u8; 4],
-    pub opacity: PinSplitValue<K, EasingValue<f64>>,
-    pub blend_mode: PinSplitValue<K, BlendMode>,
-    pub composite_operation: PinSplitValue<K, CompositeOperation>,
+    pub opacity: PinSplitValue<EasingValue<f64>>,
+    pub blend_mode: PinSplitValue<BlendMode>,
+    pub composite_operation: PinSplitValue<CompositeOperation>,
 }
 
-impl<K, T: ParameterValueType> ImageRequiredParams<K, T> {
-    pub fn new_default(marker_left: &MarkerPinHandle<K>, marker_right: &MarkerPinHandle<K>) -> ImageRequiredParams<K, T> {
-        let one = TimeSplitValue::new(marker_left.clone(), Some(EasingValue::new(DynEditableLerpEasingValue((1., 1.)), Arc::new(LinearEasing))), marker_right.clone());
+impl ImageRequiredParams {
+    pub fn new_default(marker_left: &MarkerPinId, marker_right: &MarkerPinId) -> ImageRequiredParams {
+        let one = TimeSplitValuePersistent::new(*marker_left, Some(EasingValue::new(DynEditableLerpEasingValue((1., 1.)), Arc::new(LinearEasing))), *marker_right);
         let one_value = VariableParameterValue::new(one);
-        let zero = VariableParameterValue::new(TimeSplitValue::new(marker_left.clone(), Some(EasingValue::new(DynEditableLerpEasingValue((0., 0.)), Arc::new(LinearEasing))), marker_right.clone()));
+        let one_vector3 = Arc::new(Vector3 {
+            x: one_value.clone(),
+            y: one_value.clone(),
+            z: one_value,
+        });
+        let zero = VariableParameterValue::new(TimeSplitValuePersistent::new(*marker_left, Some(EasingValue::new(DynEditableLerpEasingValue((0., 0.)), Arc::new(LinearEasing))), *marker_right));
+        let zero_vector3 = Arc::new(Vector3 { x: zero.clone(), y: zero.clone(), z: zero });
         ImageRequiredParams {
-            transform: ImageRequiredParamsTransform::Params {
-                size: Vector3 {
-                    x: one_value.clone(),
-                    y: one_value.clone(),
-                    z: one_value.clone(),
-                },
-                scale: Vector3 {
-                    x: one_value.clone(),
-                    y: one_value.clone(),
-                    z: one_value,
-                },
-                translate: Vector3 { x: zero.clone(), y: zero.clone(), z: zero.clone() },
-                rotate: TimeSplitValue::new(marker_left.clone(), EasingValue::new(DynEditableLerpEasingValue((Quaternion::one(), Quaternion::one())), Arc::new(LinearEasing)), marker_right.clone()),
-                scale_center: Vector3 { x: zero.clone(), y: zero.clone(), z: zero.clone() },
-                rotate_center: Vector3 { x: zero.clone(), y: zero.clone(), z: zero },
-            },
+            transform: Arc::new(ImageRequiredParamsTransform::Params {
+                size: one_vector3.clone(),
+                scale: one_vector3,
+                translate: zero_vector3.clone(),
+                rotate: Arc::new(TimeSplitValuePersistent::new(*marker_left, EasingValue::new(DynEditableLerpEasingValue((Quaternion::one(), Quaternion::one())), Arc::new(LinearEasing)), *marker_right)),
+                scale_center: zero_vector3.clone(),
+                rotate_center: zero_vector3,
+            }),
             background_color: [0; 4],
-            opacity: TimeSplitValue::new(marker_left.clone(), EasingValue::new(DynEditableLerpEasingValue((1., 1.)), Arc::new(LinearEasing)), marker_right.clone()),
-            blend_mode: TimeSplitValue::new(marker_left.clone(), Default::default(), marker_right.clone()),
-            composite_operation: TimeSplitValue::new(marker_left.clone(), Default::default(), marker_right.clone()),
+            opacity: TimeSplitValuePersistent::new(*marker_left, EasingValue::new(DynEditableLerpEasingValue((1., 1.)), Arc::new(LinearEasing)), *marker_right),
+            blend_mode: TimeSplitValuePersistent::new(*marker_left, Default::default(), *marker_right),
+            composite_operation: TimeSplitValuePersistent::new(*marker_left, Default::default(), *marker_right),
         }
     }
 }
 
-impl<K, T: ParameterValueType> Clone for ImageRequiredParams<K, T> {
-    fn clone(&self) -> Self {
-        let ImageRequiredParams {
-            transform,
-            background_color,
-            opacity,
-            blend_mode,
-            composite_operation,
-        } = self;
-        ImageRequiredParams {
-            transform: transform.clone(),
-            background_color: *background_color,
-            opacity: opacity.clone(),
-            blend_mode: blend_mode.clone(),
-            composite_operation: composite_operation.clone(),
-        }
-    }
-}
+pub type Vector3Params = Vector3<VariableParameterValue<PinSplitValue<Option<EasingValue<f64>>>>>;
 
-pub type Vector3Params<K, T> = Vector3<VariableParameterValue<K, T, PinSplitValue<K, Option<EasingValue<f64>>>>>;
-
-#[derive(Debug)]
-pub enum ImageRequiredParamsTransform<K: 'static, T: ParameterValueType> {
+#[derive(Debug, Clone)]
+pub enum ImageRequiredParamsTransform {
     Params {
-        size: Vector3Params<K, T>,
-        scale: Vector3Params<K, T>,
-        translate: Vector3Params<K, T>,
-        rotate: TimeSplitValue<MarkerPinHandle<K>, EasingValue<Quaternion<f64>>>,
-        scale_center: Vector3Params<K, T>,
-        rotate_center: Vector3Params<K, T>,
+        size: Arc<Vector3Params>,
+        scale: Arc<Vector3Params>,
+        translate: Arc<Vector3Params>,
+        rotate: Arc<TimeSplitValuePersistent<MarkerPinId, EasingValue<Quaternion<f64>>>>,
+        scale_center: Arc<Vector3Params>,
+        rotate_center: Arc<Vector3Params>,
     },
     Free {
-        left_top: Vector3Params<K, T>,
-        right_top: Vector3Params<K, T>,
-        left_bottom: Vector3Params<K, T>,
-        right_bottom: Vector3Params<K, T>,
+        left_top: Arc<Vector3Params>,
+        right_top: Arc<Vector3Params>,
+        left_bottom: Arc<Vector3Params>,
+        right_bottom: Arc<Vector3Params>,
     },
-}
-
-impl<K, T: ParameterValueType> Clone for ImageRequiredParamsTransform<K, T> {
-    fn clone(&self) -> Self {
-        match self {
-            ImageRequiredParamsTransform::Params {
-                size,
-                scale,
-                translate,
-                rotate,
-                scale_center,
-                rotate_center,
-            } => ImageRequiredParamsTransform::Params {
-                size: size.clone(),
-                scale: scale.clone(),
-                translate: translate.clone(),
-                rotate: rotate.clone(),
-                scale_center: scale_center.clone(),
-                rotate_center: rotate_center.clone(),
-            },
-            ImageRequiredParamsTransform::Free { left_top, right_top, left_bottom, right_bottom } => ImageRequiredParamsTransform::Free {
-                left_top: left_top.clone(),
-                right_top: right_top.clone(),
-                left_bottom: left_bottom.clone(),
-                right_bottom: right_bottom.clone(),
-            },
-        }
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -1064,27 +1016,23 @@ pub enum ImageRequiredParamsTransformFixed {
     },
 }
 
-pub type SingleChannelVolume<K, T> = VariableParameterValue<K, T, PinSplitValue<K, Option<EasingValue<f64>>>>;
+pub type SingleChannelVolume = VariableParameterValue<PinSplitValue<Option<EasingValue<f64>>>>;
 
-#[derive(Debug)]
-pub struct AudioRequiredParams<K: 'static, T: ParameterValueType> {
-    pub volume: Vec<SingleChannelVolume<K, T>>,
+#[derive(Debug, Clone)]
+pub struct AudioRequiredParams {
+    pub volume: VectorSync<SingleChannelVolume>,
 }
 
-impl<K: 'static, T: ParameterValueType> AudioRequiredParams<K, T> {
-    pub fn new_default(left: &MarkerPinHandle<K>, right: &MarkerPinHandle<K>, channels: usize) -> AudioRequiredParams<K, T> {
-        let one = TimeSplitValue::new(left.clone(), Some(EasingValue::new(DynEditableLerpEasingValue((1., 1.)), Arc::new(LinearEasing))), right.clone());
+impl AudioRequiredParams {
+    pub fn new_default(left: &MarkerPinId, right: &MarkerPinId, channels: usize) -> AudioRequiredParams {
+        let one = TimeSplitValuePersistent::new(*left, Some(EasingValue::new(DynEditableLerpEasingValue((1., 1.)), Arc::new(LinearEasing))), *right);
         let one_value = VariableParameterValue::new(one);
-        AudioRequiredParams { volume: vec![one_value; channels] }
+        AudioRequiredParams {
+            volume: iter::repeat(one_value).take(channels).collect(),
+        }
     }
 }
 
-impl<K, T: ParameterValueType> Clone for AudioRequiredParams<K, T> {
-    fn clone(&self) -> Self {
-        let AudioRequiredParams { volume } = self;
-        AudioRequiredParams { volume: volume.clone() }
-    }
-}
 #[derive(Debug, Clone)]
 pub struct AudioRequiredParamsFixed {
     pub volume: Vec<f64>,

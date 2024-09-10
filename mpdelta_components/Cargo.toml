@@ -23,7 +23,7 @@ mpdelta_core_vulkano = { workspace = true }
 mpdelta_ffmpeg = { workspace = true }
 num = { workspace = true }
 phf = { workspace = true }
-qcell = { workspace = true }
+rpds = { workspace = true }
 serde = { workspace = true }
 shader_font_rendering = { path = "shaders/font_rendering", version = "*" }
 smallvec = { workspace = true }

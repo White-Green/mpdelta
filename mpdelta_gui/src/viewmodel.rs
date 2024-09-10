@@ -5,8 +5,8 @@ use arc_swap::ArcSwapOption;
 use mpdelta_async_runtime::AsyncRuntime;
 use mpdelta_core::component::class::ComponentClass;
 use mpdelta_core::component::parameter::ParameterValueType;
+use mpdelta_core::core::IdGenerator;
 use mpdelta_core::project::{ProjectHandle, RootComponentClassHandle};
-use mpdelta_core::ptr::StaticPointerOwned;
 use mpdelta_core::usecase::{
     EditUsecase, GetAvailableComponentClassesUsecase, GetLoadedProjectsUsecase, GetRootComponentClassesUsecase, LoadProjectUsecase, NewProjectUsecase, NewRootComponentClassUsecase, RealtimeRenderComponentUsecase, RedoUsecase, RenderWholeComponentUsecase, SetOwnerForRootComponentClassUsecase,
     SubscribeEditEventUsecase, UndoUsecase, WriteProjectUsecase,
@@ -14,7 +14,6 @@ use mpdelta_core::usecase::{
 use mpdelta_message_router::handler::{IntoAsyncFunctionHandler, IntoAsyncFunctionHandlerSingle, IntoDerefHandler, MessageHandlerBuilder};
 use mpdelta_message_router::{handler, MessageHandler, MessageRouter};
 use mpdelta_multimedia::{AudioCodec, CodecImplement, FileFormat, VideoCodec};
-use qcell::{TCell, TCellOwner};
 use rfd::AsyncFileDialog;
 use std::borrow::Cow;
 use std::hash::Hash;
@@ -22,27 +21,28 @@ use std::mem;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-pub trait ViewModelParams<K: 'static, T: ParameterValueType> {
+pub trait ViewModelParams<T: ParameterValueType> {
     type AsyncRuntime: AsyncRuntime<()> + Clone + 'static;
-    type Edit: EditUsecase<K, T> + 'static;
-    type SubscribeEditEvent: SubscribeEditEventUsecase<K, T> + 'static;
-    type GetAvailableComponentClasses: GetAvailableComponentClassesUsecase<K, T> + 'static;
-    type GetLoadedProjects: GetLoadedProjectsUsecase<K, T> + 'static;
-    type GetRootComponentClasses: GetRootComponentClassesUsecase<K, T> + 'static;
-    type LoadProject: LoadProjectUsecase<K, T> + 'static;
-    type NewProject: NewProjectUsecase<K, T> + 'static;
-    type NewRootComponentClass: NewRootComponentClassUsecase<K, T> + 'static;
-    type RealtimeRenderComponent: RealtimeRenderComponentUsecase<K, T> + 'static;
-    type Redo: RedoUsecase<K, T> + 'static;
-    type SetOwnerForRootComponentClass: SetOwnerForRootComponentClassUsecase<K, T> + 'static;
-    type Undo: UndoUsecase<K, T> + 'static;
-    type WriteProject: WriteProjectUsecase<K, T> + 'static;
+    type IdGenerator: IdGenerator + 'static;
+    type Edit: EditUsecase<T> + 'static;
+    type SubscribeEditEvent: SubscribeEditEventUsecase<T> + 'static;
+    type GetAvailableComponentClasses: GetAvailableComponentClassesUsecase<T> + 'static;
+    type GetLoadedProjects: GetLoadedProjectsUsecase<T> + 'static;
+    type GetRootComponentClasses: GetRootComponentClassesUsecase<T> + 'static;
+    type LoadProject: LoadProjectUsecase<T> + 'static;
+    type NewProject: NewProjectUsecase<T> + 'static;
+    type NewRootComponentClass: NewRootComponentClassUsecase<T> + 'static;
+    type RealtimeRenderComponent: RealtimeRenderComponentUsecase<T> + 'static;
+    type Redo: RedoUsecase<T> + 'static;
+    type SetOwnerForRootComponentClass: SetOwnerForRootComponentClassUsecase<T> + 'static;
+    type Undo: UndoUsecase<T> + 'static;
+    type WriteProject: WriteProjectUsecase<T> + 'static;
     type AudioPlayer: AudioTypePlayer<T::Audio> + 'static;
     type EncoderType: Send + Sync + 'static;
-    type Encode: RenderWholeComponentUsecase<K, T, Self::EncoderType> + 'static;
+    type Encode: RenderWholeComponentUsecase<T, Self::EncoderType> + 'static;
 
     fn runtime(&self) -> &Self::AsyncRuntime;
-    fn key(&self) -> &Arc<RwLock<TCellOwner<K>>>;
+    fn id_generator(&self) -> &Arc<Self::IdGenerator>;
     fn edit(&self) -> &Arc<Self::Edit>;
     fn subscribe_edit_event(&self) -> &Arc<Self::SubscribeEditEvent>;
     fn get_available_component_classes(&self) -> &Arc<Self::GetAvailableComponentClasses>;
@@ -63,8 +63,8 @@ pub trait ViewModelParams<K: 'static, T: ParameterValueType> {
 }
 
 pub struct ViewModelParamsImpl<
-    K: 'static,
     Runtime,
+    Id,
     Edit,
     SubscribeEditEvent,
     GetAvailableComponentClasses,
@@ -83,6 +83,7 @@ pub struct ViewModelParamsImpl<
     Encode,
 > {
     pub runtime: Runtime,
+    pub id: Arc<Id>,
     pub edit: Arc<Edit>,
     pub subscribe_edit_event: Arc<SubscribeEditEvent>,
     pub get_available_component_classes: Arc<GetAvailableComponentClasses>,
@@ -96,17 +97,16 @@ pub struct ViewModelParamsImpl<
     pub set_owner_for_root_component_class: Arc<SetOwnerForRootComponentClass>,
     pub undo: Arc<Undo>,
     pub write_project: Arc<WriteProject>,
-    pub key: Arc<RwLock<TCellOwner<K>>>,
     pub audio_player: Arc<AudioPlayer>,
     pub available_video_codec: Arc<[CodecImplement<VideoCodec, EncoderType>]>,
     pub available_audio_codec: Arc<[CodecImplement<AudioCodec, EncoderType>]>,
     pub encode: Arc<Encode>,
 }
 
-impl<K, Runtime, Edit, SubscribeEditEvent, GetAvailableComponentClasses, GetLoadedProjects, GetRootComponentClasses, LoadProject, NewProject, NewRootComponentClass, RealtimeRenderComponent, Redo, SetOwnerForRootComponentClass, Undo, WriteProject, AudioPlayer, EncoderType, Encode> Clone
+impl<Runtime, Id, Edit, SubscribeEditEvent, GetAvailableComponentClasses, GetLoadedProjects, GetRootComponentClasses, LoadProject, NewProject, NewRootComponentClass, RealtimeRenderComponent, Redo, SetOwnerForRootComponentClass, Undo, WriteProject, AudioPlayer, EncoderType, Encode> Clone
     for ViewModelParamsImpl<
-        K,
         Runtime,
+        Id,
         Edit,
         SubscribeEditEvent,
         GetAvailableComponentClasses,
@@ -130,6 +130,7 @@ where
     fn clone(&self) -> Self {
         let ViewModelParamsImpl {
             runtime,
+            id,
             edit,
             subscribe_edit_event,
             get_available_component_classes,
@@ -143,7 +144,6 @@ where
             set_owner_for_root_component_class,
             undo,
             write_project,
-            key,
             audio_player,
             available_video_codec,
             available_audio_codec,
@@ -151,6 +151,7 @@ where
         } = self;
         ViewModelParamsImpl {
             runtime: runtime.clone(),
+            id: Arc::clone(id),
             edit: Arc::clone(edit),
             subscribe_edit_event: Arc::clone(subscribe_edit_event),
             get_available_component_classes: Arc::clone(get_available_component_classes),
@@ -164,7 +165,6 @@ where
             set_owner_for_root_component_class: Arc::clone(set_owner_for_root_component_class),
             undo: Arc::clone(undo),
             write_project: Arc::clone(write_project),
-            key: Arc::clone(key),
             audio_player: Arc::clone(audio_player),
             available_video_codec: Arc::clone(available_video_codec),
             available_audio_codec: Arc::clone(available_audio_codec),
@@ -174,9 +174,9 @@ where
 }
 
 impl<
-        K,
         T: ParameterValueType,
         Runtime,
+        Id,
         Edit,
         SubscribeEditEvent,
         GetAvailableComponentClasses,
@@ -193,10 +193,10 @@ impl<
         AudioPlayer,
         EncoderType,
         Encode,
-    > ViewModelParams<K, T>
+    > ViewModelParams<T>
     for ViewModelParamsImpl<
-        K,
         Runtime,
+        Id,
         Edit,
         SubscribeEditEvent,
         GetAvailableComponentClasses,
@@ -216,25 +216,27 @@ impl<
     >
 where
     Runtime: AsyncRuntime<()> + Clone + 'static,
-    Edit: EditUsecase<K, T> + 'static,
-    SubscribeEditEvent: SubscribeEditEventUsecase<K, T> + 'static,
-    GetAvailableComponentClasses: GetAvailableComponentClassesUsecase<K, T> + 'static,
-    GetLoadedProjects: GetLoadedProjectsUsecase<K, T> + 'static,
-    GetRootComponentClasses: GetRootComponentClassesUsecase<K, T> + 'static,
-    LoadProject: LoadProjectUsecase<K, T> + 'static,
-    NewProject: NewProjectUsecase<K, T> + 'static,
-    NewRootComponentClass: NewRootComponentClassUsecase<K, T> + 'static,
-    RealtimeRenderComponent: RealtimeRenderComponentUsecase<K, T> + 'static,
+    Id: IdGenerator + 'static,
+    Edit: EditUsecase<T> + 'static,
+    SubscribeEditEvent: SubscribeEditEventUsecase<T> + 'static,
+    GetAvailableComponentClasses: GetAvailableComponentClassesUsecase<T> + 'static,
+    GetLoadedProjects: GetLoadedProjectsUsecase<T> + 'static,
+    GetRootComponentClasses: GetRootComponentClassesUsecase<T> + 'static,
+    LoadProject: LoadProjectUsecase<T> + 'static,
+    NewProject: NewProjectUsecase<T> + 'static,
+    NewRootComponentClass: NewRootComponentClassUsecase<T> + 'static,
+    RealtimeRenderComponent: RealtimeRenderComponentUsecase<T> + 'static,
     RealtimeRenderComponent::Renderer: 'static,
-    Redo: RedoUsecase<K, T> + 'static,
-    SetOwnerForRootComponentClass: SetOwnerForRootComponentClassUsecase<K, T> + 'static,
-    Undo: UndoUsecase<K, T> + 'static,
-    WriteProject: WriteProjectUsecase<K, T> + 'static,
+    Redo: RedoUsecase<T> + 'static,
+    SetOwnerForRootComponentClass: SetOwnerForRootComponentClassUsecase<T> + 'static,
+    Undo: UndoUsecase<T> + 'static,
+    WriteProject: WriteProjectUsecase<T> + 'static,
     AudioPlayer: AudioTypePlayer<T::Audio> + 'static,
     EncoderType: Send + Sync + 'static,
-    Encode: RenderWholeComponentUsecase<K, T, EncoderType> + 'static,
+    Encode: RenderWholeComponentUsecase<T, EncoderType> + 'static,
 {
     type AsyncRuntime = Runtime;
+    type IdGenerator = Id;
     type Edit = Edit;
     type SubscribeEditEvent = SubscribeEditEvent;
     type GetAvailableComponentClasses = GetAvailableComponentClasses;
@@ -255,8 +257,8 @@ where
     fn runtime(&self) -> &Self::AsyncRuntime {
         &self.runtime
     }
-    fn key(&self) -> &Arc<RwLock<TCellOwner<K>>> {
-        &self.key
+    fn id_generator(&self) -> &Arc<Id> {
+        &self.id
     }
     fn edit(&self) -> &Arc<Edit> {
         &self.edit
@@ -316,12 +318,11 @@ pub struct ProjectData<Handle> {
     pub name: String,
 }
 
-impl<K, T> ProjectData<ProjectHandle<K, T>>
+impl<T> ProjectData<ProjectHandle<T>>
 where
-    K: 'static,
     T: ParameterValueType,
 {
-    fn new(handle: ProjectHandle<K, T>) -> ProjectData<ProjectHandle<K, T>> {
+    fn new(handle: ProjectHandle<T>) -> ProjectData<ProjectHandle<T>> {
         ProjectData { handle, name: "Project".to_string() }
     }
 }
@@ -336,12 +337,11 @@ pub struct RootComponentClassData<Handle> {
     pub name: String,
 }
 
-impl<K, T> RootComponentClassData<RootComponentClassHandle<K, T>>
+impl<T> RootComponentClassData<RootComponentClassHandle<T>>
 where
-    K: 'static,
     T: ParameterValueType,
 {
-    fn new(handle: RootComponentClassHandle<K, T>) -> RootComponentClassData<RootComponentClassHandle<K, T>> {
+    fn new(handle: RootComponentClassHandle<T>) -> RootComponentClassData<RootComponentClassHandle<T>> {
         RootComponentClassData { handle, name: "RootComponentClass".to_string() }
     }
 }
@@ -351,7 +351,7 @@ pub struct RootComponentClassDataList<Handle> {
     pub selected: usize,
 }
 
-pub trait MainWindowViewModel<K: 'static, T> {
+pub trait MainWindowViewModel<T> {
     fn new_project(&self);
     fn open_project(&self);
     fn save_project(&self);
@@ -366,28 +366,27 @@ pub trait MainWindowViewModel<K: 'static, T> {
     fn encode(&self);
 }
 
-pub struct MainWindowViewModelImpl<K: 'static, T: ParameterValueType, GlobalUIState, MessageHandler, Runtime> {
-    projects: Arc<RwLock<ProjectDataList<ProjectHandle<K, T>>>>,
-    root_component_classes: Arc<RwLock<RootComponentClassDataList<RootComponentClassHandle<K, T>>>>,
+pub struct MainWindowViewModelImpl<T: ParameterValueType, GlobalUIState, MessageHandler, Runtime> {
+    projects: Arc<RwLock<ProjectDataList<ProjectHandle<T>>>>,
+    root_component_classes: Arc<RwLock<RootComponentClassDataList<RootComponentClassHandle<T>>>>,
     global_ui_state: Arc<GlobalUIState>,
     message_router: MessageRouter<MessageHandler, Runtime>,
-    selected_root_component_class: Arc<ArcSwapOption<RootComponentClassHandle<K, T>>>,
+    selected_root_component_class: Arc<ArcSwapOption<RootComponentClassHandle<T>>>,
 }
 
 #[derive(Debug)]
-pub enum Message<K: 'static, T: ParameterValueType> {
+pub enum Message<T: ParameterValueType> {
     NewProject,
-    SelectProject(ProjectHandle<K, T>),
+    SelectProject(ProjectHandle<T>),
     NewRootComponentClass,
-    SelectRootComponentClass(RootComponentClassHandle<K, T>),
+    SelectRootComponentClass(RootComponentClassHandle<T>),
     Encode,
     OpenProject,
     SaveProject,
 }
 
-impl<K, T> Clone for Message<K, T>
+impl<T> Clone for Message<T>
 where
-    K: 'static,
     T: ParameterValueType,
 {
     fn clone(&self) -> Self {
@@ -403,9 +402,8 @@ where
     }
 }
 
-impl<K, T> PartialEq for Message<K, T>
+impl<T> PartialEq for Message<T>
 where
-    K: 'static,
     T: ParameterValueType,
 {
     fn eq(&self, other: &Self) -> bool {
@@ -425,27 +423,21 @@ where
     }
 }
 
-impl<K, T> Eq for Message<K, T>
-where
-    K: 'static,
-    T: ParameterValueType,
-{
-}
+impl<T> Eq for Message<T> where T: ParameterValueType {}
 
-impl<K, T: ParameterValueType, GlobalUIState, MessageHandler, Runtime> GlobalUIEventHandler<K, T> for MainWindowViewModelImpl<K, T, GlobalUIState, MessageHandler, Runtime> {
-    fn handle(&self, event: GlobalUIEvent<K, T>) {
+impl<T: ParameterValueType, GlobalUIState, MessageHandler, Runtime> GlobalUIEventHandler<T> for MainWindowViewModelImpl<T, GlobalUIState, MessageHandler, Runtime> {
+    fn handle(&self, event: GlobalUIEvent<T>) {
         if let GlobalUIEvent::SelectRootComponentClass(root_component_class) = event {
             self.selected_root_component_class.store(root_component_class.map(Arc::new));
         }
     }
 }
 
-impl<K, T: ParameterValueType> MainWindowViewModelImpl<K, T, (), (), ()>
+impl<T: ParameterValueType> MainWindowViewModelImpl<T, (), (), ()>
 where
-    K: 'static,
     T: ParameterValueType,
 {
-    pub fn new<S: GlobalUIState<K, T>, P: ViewModelParams<K, T>>(global_ui_state: &Arc<S>, params: &P) -> Arc<MainWindowViewModelImpl<K, T, S, impl MessageHandler<Message<K, T>, P::AsyncRuntime>, P::AsyncRuntime>> {
+    pub fn new<S: GlobalUIState<T>, P: ViewModelParams<T>>(global_ui_state: &Arc<S>, params: &P) -> Arc<MainWindowViewModelImpl<T, S, impl MessageHandler<Message<T>, P::AsyncRuntime>, P::AsyncRuntime>> {
         let projects = Arc::new(RwLock::new(ProjectDataList { list: Vec::new(), selected: 0 }));
         let root_component_classes = Arc::new(RwLock::new(RootComponentClassDataList { list: Vec::new(), selected: 0 }));
         let reset_root_component_classes = {
@@ -454,7 +446,7 @@ where
                 root_component_classes.write().await.list.clear();
             }
         };
-        let selected_root_component_class = Arc::new(ArcSwapOption::<RootComponentClassHandle<K, T>>::empty());
+        let selected_root_component_class = Arc::new(ArcSwapOption::<RootComponentClassHandle<T>>::empty());
         let update_selected_project = Arc::new(handler::handle_async::<_, P::AsyncRuntime, _, _>({
             use_arc!(projects, get_root_component_classes = params.get_root_component_classes(), root_component_classes, global_ui_state);
             move |_project| {
@@ -576,9 +568,15 @@ where
             })
             .handle(|handler| {
                 handler.filter(|message| *message == Message::Encode).handle_async_single({
-                    use_arc!(selected_root_component_class, available_video_codec = params.available_video_codec(), available_audio_codec = params.available_audio_codec(), encode = params.encode());
+                    use_arc!(
+                        selected_root_component_class,
+                        id = params.id_generator(),
+                        available_video_codec = params.available_video_codec(),
+                        available_audio_codec = params.available_audio_codec(),
+                        encode = params.encode()
+                    );
                     move |_| {
-                        use_arc!(selected_root_component_class, available_video_codec, available_audio_codec, encode);
+                        use_arc!(selected_root_component_class, id, available_video_codec, available_audio_codec, encode);
                         async move {
                             if let Some(root_component_class) = selected_root_component_class.load().as_ref() {
                                 let video_codec = &available_video_codec[0];
@@ -593,9 +591,8 @@ where
                                 let Some(root_component_class_ref) = root_component_class.upgrade() else {
                                     return;
                                 };
-                                let instance = root_component_class_ref.read().await.instantiate(&RootComponentClassHandle::clone(root_component_class).map(|weak| weak as _)).await;
-                                let instance = StaticPointerOwned::new(TCell::new(instance));
-                                if let Err(err) = encode.render_and_encode(StaticPointerOwned::reference(&instance), encoder).await {
+                                let instance = root_component_class_ref.read().await.instantiate(&RootComponentClassHandle::clone(root_component_class).map(|weak| weak as _), &id).await;
+                                if let Err(err) = encode.render_and_encode(instance, encoder).await {
                                     eprintln!("failed to encode by {err}");
                                 }
                             }
@@ -666,12 +663,11 @@ where
     }
 }
 
-impl<K, T, S, Handler, Runtime> MainWindowViewModel<K, T> for MainWindowViewModelImpl<K, T, S, Handler, Runtime>
+impl<T, S, Handler, Runtime> MainWindowViewModel<T> for MainWindowViewModelImpl<T, S, Handler, Runtime>
 where
-    K: 'static,
     T: ParameterValueType,
-    S: GlobalUIState<K, T>,
-    Handler: MessageHandler<Message<K, T>, Runtime>,
+    S: GlobalUIState<T>,
+    Handler: MessageHandler<Message<T>, Runtime>,
     Runtime: AsyncRuntime<()> + Clone + 'static,
 {
     fn new_project(&self) {
@@ -686,7 +682,7 @@ where
         self.message_router.handle(Message::SaveProject);
     }
 
-    type ProjectHandle = ProjectHandle<K, T>;
+    type ProjectHandle = ProjectHandle<T>;
 
     fn projects<R>(&self, f: impl FnOnce(&ProjectDataList<Self::ProjectHandle>) -> R) -> R {
         f(&self.projects.blocking_read())
@@ -700,7 +696,7 @@ where
         self.message_router.handle(Message::NewRootComponentClass);
     }
 
-    type RootComponentClassHandle = RootComponentClassHandle<K, T>;
+    type RootComponentClassHandle = RootComponentClassHandle<T>;
 
     fn root_component_classes<R>(&self, f: impl FnOnce(&RootComponentClassDataList<Self::RootComponentClassHandle>) -> R) -> R {
         f(&self.root_component_classes.blocking_read())

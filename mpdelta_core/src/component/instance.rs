@@ -1,67 +1,71 @@
 use crate::component::class::ComponentClass;
-use crate::component::marker_pin::MarkerPinHandleOwned;
+use crate::component::marker_pin::MarkerPin;
 use crate::component::parameter::{AudioRequiredParams, ImageRequiredParams, Parameter, ParameterNullableValue, ParameterValueFixed, ParameterValueType, Type, VariableParameterValue};
 use crate::component::processor::ComponentProcessorWrapper;
-use crate::ptr::{StaticPointer, StaticPointerCow, StaticPointerOwned};
-use qcell::TCell;
+use crate::core::IdGenerator;
+use crate::ptr::StaticPointer;
+use rpds::{Vector, VectorSync};
+use std::borrow::Borrow;
 use std::fmt::{Debug, Formatter};
-use std::mem;
+use std::iter;
+use std::sync::Arc;
 use tokio::sync::RwLock;
+use uuid::Uuid;
 
-pub struct ComponentInstanceBuilder<K: 'static, T: ParameterValueType> {
-    component_class: StaticPointer<RwLock<dyn ComponentClass<K, T>>>,
-    marker_left: MarkerPinHandleOwned<K>,
-    marker_right: MarkerPinHandleOwned<K>,
-    markers: Vec<MarkerPinHandleOwned<K>>,
-    image_required_params: Option<ImageRequiredParams<K, T>>,
-    audio_required_params: Option<AudioRequiredParams<K, T>>,
-    fixed_parameters_type: Box<[(String, Parameter<Type>)]>,
-    fixed_parameters: Box<[ParameterValueFixed<T::Image, T::Audio>]>,
-    variable_parameters_type: Vec<(String, Parameter<Type>)>,
-    variable_parameters: Vec<VariableParameterValue<K, T, ParameterNullableValue<K, T>>>,
-    processor: ComponentProcessorWrapper<K, T>,
+pub struct ComponentInstanceBuilder<T: ParameterValueType> {
+    component_class: StaticPointer<RwLock<dyn ComponentClass<T>>>,
+    marker_left: MarkerPin,
+    marker_right: MarkerPin,
+    markers: Arc<Vec<MarkerPin>>,
+    image_required_params: Option<Arc<ImageRequiredParams>>,
+    audio_required_params: Option<Arc<AudioRequiredParams>>,
+    fixed_parameters_type: Arc<[(String, Parameter<Type>)]>,
+    fixed_parameters: Arc<[ParameterValueFixed<T::Image, T::Audio>]>,
+    variable_parameters_type: Arc<Vec<(String, Parameter<Type>)>>,
+    variable_parameters: VectorSync<VariableParameterValue<ParameterNullableValue<T>>>,
+    processor: ComponentProcessorWrapper<T>,
 }
 
-impl<K: 'static, T: ParameterValueType> ComponentInstanceBuilder<K, T> {
-    pub fn new(component_class: StaticPointer<RwLock<dyn ComponentClass<K, T>>>, marker_left: MarkerPinHandleOwned<K>, marker_right: MarkerPinHandleOwned<K>, markers: Vec<MarkerPinHandleOwned<K>>, processor: impl Into<ComponentProcessorWrapper<K, T>>) -> ComponentInstanceBuilder<K, T> {
+impl<T: ParameterValueType> ComponentInstanceBuilder<T> {
+    pub fn new(component_class: StaticPointer<RwLock<dyn ComponentClass<T>>>, marker_left: MarkerPin, marker_right: MarkerPin, markers: impl Into<Arc<Vec<MarkerPin>>>, processor: impl Into<ComponentProcessorWrapper<T>>) -> ComponentInstanceBuilder<T> {
         ComponentInstanceBuilder {
             component_class,
             marker_left,
             marker_right,
-            markers,
+            markers: markers.into(),
             image_required_params: None,
             audio_required_params: None,
-            fixed_parameters_type: Box::new([]),
-            fixed_parameters: Box::new([]),
-            variable_parameters_type: Vec::new(),
-            variable_parameters: Vec::new(),
+            fixed_parameters_type: Arc::new([]),
+            fixed_parameters: Arc::new([]),
+            variable_parameters_type: Arc::new(Vec::new()),
+            variable_parameters: Vector::new_sync(),
             processor: processor.into(),
         }
     }
 
-    pub fn image_required_params(mut self, params: ImageRequiredParams<K, T>) -> Self {
-        self.image_required_params = Some(params);
+    pub fn image_required_params(mut self, params: impl Into<Arc<ImageRequiredParams>>) -> Self {
+        self.image_required_params = Some(params.into());
         self
     }
 
-    pub fn audio_required_params(mut self, params: AudioRequiredParams<K, T>) -> Self {
-        self.audio_required_params = Some(params);
+    pub fn audio_required_params(mut self, params: impl Into<Arc<AudioRequiredParams>>) -> Self {
+        self.audio_required_params = Some(params.into());
         self
     }
 
-    pub fn fixed_parameters(mut self, types: Box<[(String, Parameter<Type>)]>, values: Box<[ParameterValueFixed<T::Image, T::Audio>]>) -> Self {
+    pub fn fixed_parameters(mut self, types: Arc<[(String, Parameter<Type>)]>, values: Arc<[ParameterValueFixed<T::Image, T::Audio>]>) -> Self {
         self.fixed_parameters_type = types;
         self.fixed_parameters = values;
         self
     }
 
-    pub fn variable_parameters(mut self, types: Vec<(String, Parameter<Type>)>, values: Vec<VariableParameterValue<K, T, ParameterNullableValue<K, T>>>) -> Self {
-        self.variable_parameters_type = types;
+    pub fn variable_parameters(mut self, types: impl Into<Arc<Vec<(String, Parameter<Type>)>>>, values: VectorSync<VariableParameterValue<ParameterNullableValue<T>>>) -> Self {
+        self.variable_parameters_type = types.into();
         self.variable_parameters = values;
         self
     }
 
-    pub fn build(self) -> ComponentInstance<K, T> {
+    pub fn build(self, id_generator: &(impl IdGenerator + ?Sized)) -> ComponentInstance<T> {
         let ComponentInstanceBuilder {
             component_class,
             marker_left,
@@ -76,6 +80,7 @@ impl<K: 'static, T: ParameterValueType> ComponentInstanceBuilder<K, T> {
             processor,
         } = self;
         ComponentInstance {
+            id: ComponentInstanceId::new(id_generator.generate_new()),
             component_class,
             marker_left,
             marker_right,
@@ -91,42 +96,44 @@ impl<K: 'static, T: ParameterValueType> ComponentInstanceBuilder<K, T> {
     }
 }
 
-pub struct ComponentInstance<K: 'static, T: ParameterValueType> {
-    component_class: StaticPointer<RwLock<dyn ComponentClass<K, T>>>,
-    marker_left: MarkerPinHandleOwned<K>,
-    marker_right: MarkerPinHandleOwned<K>,
-    markers: Vec<MarkerPinHandleOwned<K>>,
-    image_required_params: Option<ImageRequiredParams<K, T>>,
-    audio_required_params: Option<AudioRequiredParams<K, T>>,
-    fixed_parameters_type: Box<[(String, Parameter<Type>)]>,
-    fixed_parameters: Box<[ParameterValueFixed<T::Image, T::Audio>]>,
-    variable_parameters_type: Vec<(String, Parameter<Type>)>,
-    variable_parameters: Vec<VariableParameterValue<K, T, ParameterNullableValue<K, T>>>,
-    processor: ComponentProcessorWrapper<K, T>,
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct ComponentInstanceId {
+    id: Uuid,
 }
 
-pub type ComponentInstanceHandle<K, T> = StaticPointer<TCell<K, ComponentInstance<K, T>>>;
-pub type ComponentInstanceHandleOwned<K, T> = StaticPointerOwned<TCell<K, ComponentInstance<K, T>>>;
-pub type ComponentInstanceHandleCow<K, T> = StaticPointerCow<TCell<K, ComponentInstance<K, T>>>;
+impl ComponentInstanceId {
+    fn new(id: Uuid) -> ComponentInstanceId {
+        ComponentInstanceId { id }
+    }
 
-impl<K, T: ParameterValueType> Debug for ComponentInstance<K, T>
-where
-    ImageRequiredParams<K, T>: Debug,
-    AudioRequiredParams<K, T>: Debug,
-    VariableParameterValue<K, T, ParameterNullableValue<K, T>>: Debug,
-{
+    pub fn raw_id(&self) -> Uuid {
+        self.id
+    }
+}
+
+pub struct ComponentInstance<T: ParameterValueType> {
+    id: ComponentInstanceId,
+    component_class: StaticPointer<RwLock<dyn ComponentClass<T>>>,
+    marker_left: MarkerPin,
+    marker_right: MarkerPin,
+    markers: Arc<Vec<MarkerPin>>,
+    image_required_params: Option<Arc<ImageRequiredParams>>,
+    audio_required_params: Option<Arc<AudioRequiredParams>>,
+    fixed_parameters_type: Arc<[(String, Parameter<Type>)]>,
+    fixed_parameters: Arc<[ParameterValueFixed<T::Image, T::Audio>]>,
+    variable_parameters_type: Arc<Vec<(String, Parameter<Type>)>>,
+    variable_parameters: VectorSync<VariableParameterValue<ParameterNullableValue<T>>>,
+    processor: ComponentProcessorWrapper<T>,
+}
+
+impl<T: ParameterValueType> Debug for ComponentInstance<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        struct DebugFn<F>(F);
-        impl<F: for<'a> Fn(&mut Formatter<'a>) -> std::fmt::Result> Debug for DebugFn<F> {
-            fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-                self.0(f)
-            }
-        }
         f.debug_struct("ComponentInstance")
+            .field("id", &self.id)
             .field("component_class", &self.component_class)
-            .field("marker_left", StaticPointerOwned::reference(&self.marker_left))
-            .field("marker_right", StaticPointerOwned::reference(&self.marker_right))
-            .field("markers", &DebugFn(|f: &mut Formatter<'_>| f.debug_list().entries(self.markers.iter().map(StaticPointerOwned::reference)).finish()))
+            .field("marker_left", &self.marker_left)
+            .field("marker_right", &self.marker_right)
+            .field("markers", &self.markers)
             .field("image_required_params", &self.image_required_params)
             .field("audio_required_params", &self.audio_required_params)
             .field("fixed_parameters_type", &self.fixed_parameters_type)
@@ -137,72 +144,130 @@ where
     }
 }
 
-impl<K, T: ParameterValueType> ComponentInstance<K, T> {
-    pub fn builder(component_class: StaticPointer<RwLock<dyn ComponentClass<K, T>>>, marker_left: MarkerPinHandleOwned<K>, marker_right: MarkerPinHandleOwned<K>, markers: Vec<MarkerPinHandleOwned<K>>, processor: impl Into<ComponentProcessorWrapper<K, T>>) -> ComponentInstanceBuilder<K, T> {
+impl<T: ParameterValueType> Clone for ComponentInstance<T> {
+    fn clone(&self) -> Self {
+        let ComponentInstance {
+            id,
+            component_class,
+            marker_left,
+            marker_right,
+            markers,
+            image_required_params,
+            audio_required_params,
+            fixed_parameters_type,
+            fixed_parameters,
+            variable_parameters_type,
+            variable_parameters,
+            processor,
+        } = self;
+        ComponentInstance {
+            id: *id,
+            component_class: component_class.clone(),
+            marker_left: marker_left.clone(),
+            marker_right: marker_right.clone(),
+            markers: markers.clone(),
+            image_required_params: image_required_params.clone(),
+            audio_required_params: audio_required_params.clone(),
+            fixed_parameters_type: fixed_parameters_type.clone(),
+            fixed_parameters: fixed_parameters.clone(),
+            variable_parameters_type: variable_parameters_type.clone(),
+            variable_parameters: variable_parameters.clone(),
+            processor: processor.clone(),
+        }
+    }
+}
+
+impl<T: ParameterValueType> Borrow<ComponentInstanceId> for ComponentInstance<T> {
+    fn borrow(&self) -> &ComponentInstanceId {
+        &self.id
+    }
+}
+
+impl<'a, T: ParameterValueType> Borrow<ComponentInstanceId> for &'a ComponentInstance<T> {
+    fn borrow(&self) -> &ComponentInstanceId {
+        &self.id
+    }
+}
+
+impl<T: ParameterValueType> ComponentInstance<T> {
+    pub fn builder(component_class: StaticPointer<RwLock<dyn ComponentClass<T>>>, marker_left: MarkerPin, marker_right: MarkerPin, markers: Vec<MarkerPin>, processor: impl Into<ComponentProcessorWrapper<T>>) -> ComponentInstanceBuilder<T> {
         ComponentInstanceBuilder::new(component_class, marker_left, marker_right, markers, processor)
     }
-    pub fn component_class(&self) -> &StaticPointer<RwLock<dyn ComponentClass<K, T>>> {
+    pub fn id(&self) -> &ComponentInstanceId {
+        &self.id
+    }
+    pub fn component_class(&self) -> &StaticPointer<RwLock<dyn ComponentClass<T>>> {
         &self.component_class
     }
-    pub fn marker_left(&self) -> &MarkerPinHandleOwned<K> {
+    pub fn marker_left(&self) -> &MarkerPin {
         &self.marker_left
     }
-    pub fn replace_marker_left(&mut self, left: MarkerPinHandleOwned<K>) -> MarkerPinHandleOwned<K> {
-        mem::replace(&mut self.marker_left, left)
+    pub fn marker_left_mut(&mut self) -> &mut MarkerPin {
+        &mut self.marker_left
     }
-    pub fn marker_right(&self) -> &MarkerPinHandleOwned<K> {
+    pub fn marker_right(&self) -> &MarkerPin {
         &self.marker_right
     }
-    pub fn replace_marker_right(&mut self, right: MarkerPinHandleOwned<K>) -> MarkerPinHandleOwned<K> {
-        mem::replace(&mut self.marker_right, right)
+    pub fn marker_right_mut(&mut self) -> &mut MarkerPin {
+        &mut self.marker_right
     }
-    pub fn markers(&self) -> &[MarkerPinHandleOwned<K>] {
+    pub fn markers(&self) -> &[MarkerPin] {
         &self.markers
     }
-    pub fn markers_mut(&mut self) -> &mut Vec<MarkerPinHandleOwned<K>> {
-        &mut self.markers
+    pub fn markers_mut(&mut self) -> &mut Vec<MarkerPin> {
+        Arc::make_mut(&mut self.markers)
     }
-    pub fn image_required_params(&self) -> Option<&ImageRequiredParams<K, T>> {
-        self.image_required_params.as_ref()
+    pub fn iter_all_markers(&self) -> impl Iterator<Item = &MarkerPin> + '_ {
+        iter::once(&self.marker_left).chain(self.markers.iter()).chain(iter::once(&self.marker_right))
     }
-    pub fn image_required_params_mut(&mut self) -> Option<&mut ImageRequiredParams<K, T>> {
-        self.image_required_params.as_mut()
+    pub fn iter_all_markers_mut(&mut self) -> impl Iterator<Item = &mut MarkerPin> + '_ {
+        iter::once(&mut self.marker_left).chain(Arc::make_mut(&mut self.markers).iter_mut()).chain(iter::once(&mut self.marker_right))
     }
-    pub fn set_image_required_params(&mut self, params: ImageRequiredParams<K, T>) {
+    pub fn image_required_params(&self) -> Option<&ImageRequiredParams> {
+        self.image_required_params.as_deref()
+    }
+    pub fn image_required_params_mut(&mut self) -> Option<&mut ImageRequiredParams> {
+        self.image_required_params.as_mut().map(Arc::make_mut)
+    }
+    pub fn set_image_required_params(&mut self, params: ImageRequiredParams) {
         if let Some(current_params) = self.image_required_params.as_mut() {
-            *current_params = params;
+            *current_params = Arc::new(params);
         }
     }
-    pub fn audio_required_params(&self) -> Option<&AudioRequiredParams<K, T>> {
-        self.audio_required_params.as_ref()
+    pub fn audio_required_params(&self) -> Option<&AudioRequiredParams> {
+        self.audio_required_params.as_deref()
     }
-    pub fn audio_required_params_mut(&mut self) -> Option<&mut AudioRequiredParams<K, T>> {
-        self.audio_required_params.as_mut()
+    pub fn audio_required_params_mut(&mut self) -> Option<&mut AudioRequiredParams> {
+        self.audio_required_params.as_mut().map(Arc::make_mut)
     }
-    pub fn set_audio_required_params(&mut self, params: AudioRequiredParams<K, T>) {
+    pub fn set_audio_required_params(&mut self, params: AudioRequiredParams) {
         if let Some(current_params) = self.audio_required_params.as_mut() {
-            *current_params = params;
+            *current_params = Arc::new(params);
         }
     }
-    pub fn fixed_parameters_type(&self) -> &[(String, Parameter<Type>)] {
+    pub fn fixed_parameters_type(&self) -> &Arc<[(String, Parameter<Type>)]> {
         &self.fixed_parameters_type
     }
-    pub fn fixed_parameters(&self) -> &[ParameterValueFixed<T::Image, T::Audio>] {
+    pub fn fixed_parameters(&self) -> &Arc<[ParameterValueFixed<T::Image, T::Audio>]> {
         &self.fixed_parameters
     }
     pub fn fixed_parameters_mut(&mut self) -> &mut [ParameterValueFixed<T::Image, T::Audio>] {
-        &mut self.fixed_parameters
+        // TODO: if let Some(_) = Arc::get_mut(_)でやると、ライフタイムのエラーになる　polonius待ち
+        if Arc::get_mut(&mut self.fixed_parameters).is_none() {
+            self.fixed_parameters = <&[_]>::into(&self.fixed_parameters);
+        }
+        Arc::get_mut(&mut self.fixed_parameters).unwrap()
     }
     pub fn variable_parameters_type(&self) -> &[(String, Parameter<Type>)] {
         &self.variable_parameters_type
     }
-    pub fn variable_parameters(&self) -> &[VariableParameterValue<K, T, ParameterNullableValue<K, T>>] {
+    pub fn variable_parameters(&self) -> &VectorSync<VariableParameterValue<ParameterNullableValue<T>>> {
         &self.variable_parameters
     }
-    pub fn variable_parameters_mut(&mut self) -> &mut Vec<VariableParameterValue<K, T, ParameterNullableValue<K, T>>> {
+    pub fn variable_parameters_mut(&mut self) -> &mut VectorSync<VariableParameterValue<ParameterNullableValue<T>>> {
         &mut self.variable_parameters
     }
-    pub fn processor(&self) -> &ComponentProcessorWrapper<K, T> {
+    pub fn processor(&self) -> &ComponentProcessorWrapper<T> {
         &self.processor
     }
 }

@@ -7,7 +7,6 @@ authors = { workspace = true }
 [dependencies]
 mpdelta_core = { workspace = true }
 nalgebra = { workspace = true }
-qcell = { workspace = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]

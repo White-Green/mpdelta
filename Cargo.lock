@@ -1185,15 +1185,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "exclusion-set"
-version = "0.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9c3708c48ed7245587498d116a41566942d6d9943f5b3207fbf522e2bd0b72d0"
-dependencies = [
- "loom 0.5.6",
-]
-
-[[package]]
 name = "exr"
 version = "1.72.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1498,19 +1489,6 @@ dependencies = [
  "pango-sys",
  "pkg-config",
  "system-deps",
-]
-
-[[package]]
-name = "generator"
-version = "0.7.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5cc16584ff22b460a382b7feec54b23d2908d858152e5739a120b949293bd74e"
-dependencies = [
- "cc",
- "libc",
- "log",
- "rustversion",
- "windows 0.48.0",
 ]
 
 [[package]]
@@ -2248,25 +2226,12 @@ checksum = "b3bd0dd2cd90571056fdb71f6275fada10131182f84899f4b2a916e565d81d86"
 
 [[package]]
 name = "loom"
-version = "0.5.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ff50ecb28bb86013e935fb6683ab1f6d3a20016f123c76fd4c27470076ac30f5"
-dependencies = [
- "cfg-if",
- "generator 0.7.5",
- "scoped-tls",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
-name = "loom"
 version = "0.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "419e0dc8046cb947daa77eb95ae174acfbddb7673b4151f56d1eed8e93fbfaca"
 dependencies = [
  "cfg-if",
- "generator 0.8.2",
+ "generator",
  "scoped-tls",
  "tracing",
  "tracing-subscriber",
@@ -2480,7 +2445,6 @@ dependencies = [
  "mpdelta_rendering_controller",
  "mpdelta_services",
  "mpdelta_video_renderer_vulkano",
- "qcell",
  "tokio",
  "vulkano",
  "vulkano-util",
@@ -2500,9 +2464,9 @@ version = "0.1.0"
 dependencies = [
  "mpdelta_core",
  "mpdelta_core_audio",
+ "mpdelta_core_test_util",
  "mpdelta_dsp",
  "mpdelta_renderer",
- "qcell",
  "smallvec",
 ]
 
@@ -2529,7 +2493,7 @@ dependencies = [
  "mpdelta_ffmpeg",
  "num",
  "phf",
- "qcell",
+ "rpds",
  "serde",
  "shader_builder",
  "shader_font_rendering",
@@ -2545,6 +2509,7 @@ dependencies = [
 name = "mpdelta_core"
 version = "0.1.0"
 dependencies = [
+ "arc-swap",
  "async-trait",
  "cgmath",
  "dyn-eq",
@@ -2554,8 +2519,8 @@ dependencies = [
  "num",
  "proptest",
  "proptest-derive",
- "qcell",
  "regex",
+ "rpds",
  "serde",
  "serde_json",
  "serde_repr",
@@ -2577,8 +2542,8 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "mpdelta_core",
- "qcell",
  "tokio",
+ "uuid",
 ]
 
 [[package]]
@@ -2595,7 +2560,6 @@ dependencies = [
  "mpdelta_core",
  "mpdelta_core_test_util",
  "nalgebra",
- "qcell",
  "thiserror",
  "tokio",
  "uuid",
@@ -2633,10 +2597,10 @@ dependencies = [
  "glam",
  "mpdelta_async_runtime",
  "mpdelta_core",
+ "mpdelta_core_test_util",
  "mpdelta_message_router",
  "mpdelta_multimedia",
  "ordered-float",
- "qcell",
  "rfd",
  "rpds",
  "serde",
@@ -2651,7 +2615,7 @@ dependencies = [
  "cpal",
  "crossbeam-queue",
  "crossbeam-utils",
- "loom 0.7.2",
+ "loom",
  "mpdelta_core",
  "mpdelta_core_audio",
  "mpdelta_dsp",
@@ -2721,8 +2685,8 @@ dependencies = [
  "mpdelta_differential",
  "proptest",
  "proptest-derive",
- "qcell",
  "rayon",
+ "rpds",
  "serde",
  "serde_json",
  "thiserror",
@@ -2735,7 +2699,6 @@ name = "mpdelta_renderer"
 version = "0.1.0"
 dependencies = [
  "arc-swap",
- "archery",
  "assert_matches",
  "async-trait",
  "cgmath",
@@ -2743,8 +2706,8 @@ dependencies = [
  "futures",
  "moka",
  "mpdelta_core",
+ "mpdelta_core_test_util",
  "mpdelta_differential",
- "qcell",
  "rayon",
  "rpds",
  "serde",
@@ -2764,12 +2727,13 @@ name = "mpdelta_services"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "cgmath",
  "dashmap",
  "futures",
  "mpdelta_core",
  "mpdelta_core_test_util",
  "mpdelta_differential",
- "qcell",
+ "rpds",
  "thiserror",
  "time",
  "tokio",
@@ -3597,16 +3561,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "qcell"
-version = "0.5.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9f6c04aa3dea4dab485f6d87449ba94d5664c388c0f1fe2b07c4891175513345"
-dependencies = [
- "exclusion-set",
- "once_cell",
-]
-
-[[package]]
 name = "qoi"
 version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3909,9 +3863,8 @@ dependencies = [
 
 [[package]]
 name = "rpds"
-version = "1.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a0e15515d3ce3313324d842629ea4905c25a13f81953eadb88f85516f59290a4"
+version = "1.1.1-pre"
+source = "git+https://github.com/White-Green/rpds?rev=5d99c47f2a3ca2084ad85e66cbe37010191e853a#5d99c47f2a3ca2084ad85e66cbe37010191e853a"
 dependencies = [
  "archery",
 ]
@@ -4701,19 +4654,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c3523ab5a71916ccf420eebdf5521fcef02141234bbc0b8a49f2fdc4544364ef"
 dependencies = [
  "pin-project-lite",
- "tracing-attributes",
  "tracing-core",
-]
-
-[[package]]
-name = "tracing-attributes"
-version = "0.1.27"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "34704c8d6ebcbc939824180af020566b01a7c01f80641264eba0999f6c2b6be7"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.72",
 ]
 
 [[package]]
@@ -5320,15 +5261,6 @@ name = "winapi-x86_64-pc-windows-gnu"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "712e227841d057c1ee1cd2fb22fa7e5a5461ae8e48fa2ca79ec42cfc1931183f"
-
-[[package]]
-name = "windows"
-version = "0.48.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e686886bc078bc1b0b600cac0147aadb815089b6e4da64016cbd754b6342700f"
-dependencies = [
- "windows-targets 0.48.5",
-]
 
 [[package]]
 name = "windows"

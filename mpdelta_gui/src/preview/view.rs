@@ -8,20 +8,19 @@ use mpdelta_core::component::parameter::ParameterValueType;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
-pub struct Preview<K, T, VM>
+pub struct Preview<T, VM>
 where
-    K: 'static,
     T: ParameterValueType,
-    VM: PreviewViewModel<K, T>,
+    VM: PreviewViewModel<T>,
 {
     previous_instance: Option<VM::ComponentInstanceHandle>,
     previous_preview: Option<TextureId>,
     view_model: Arc<VM>,
-    _phantom: PhantomData<(K, T)>,
+    _phantom: PhantomData<T>,
 }
 
-impl<K: 'static, T: ParameterValueType, VM: PreviewViewModel<K, T>> Preview<K, T, VM> {
-    pub fn new(view_model: Arc<VM>) -> Preview<K, T, VM> {
+impl<T: ParameterValueType, VM: PreviewViewModel<T>> Preview<T, VM> {
+    pub fn new(view_model: Arc<VM>) -> Preview<T, VM> {
         Preview {
             previous_instance: None,
             previous_preview: None,

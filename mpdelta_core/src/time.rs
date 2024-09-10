@@ -1,11 +1,9 @@
-use crate::common::mixed_fraction::atomic::AtomicMixedFraction;
 use crate::common::mixed_fraction::MixedFraction;
 use crate::component::marker_pin::MarkerTime;
 use serde::{Deserialize, Serialize};
-use std::fmt::{Debug, Formatter};
+use std::fmt::Debug;
 use std::hash::Hash;
 use std::ops::{Add, Div, Neg, Sub};
-use std::sync::atomic;
 
 /// タイムライン上での時間(秒)
 /// (-∞, ∞)
@@ -62,39 +60,5 @@ impl Div for TimelineTime {
 
     fn div(self, rhs: Self) -> Self::Output {
         self.0 / rhs.0
-    }
-}
-
-pub struct AtomicTimelineTime(AtomicMixedFraction);
-
-impl AtomicTimelineTime {
-    pub fn new(value: TimelineTime) -> AtomicTimelineTime {
-        AtomicTimelineTime(AtomicMixedFraction::new(value.0))
-    }
-
-    pub fn load(&self, ordering: atomic::Ordering) -> TimelineTime {
-        TimelineTime(self.0.load(ordering))
-    }
-
-    pub fn store(&self, value: TimelineTime, ordering: atomic::Ordering) {
-        self.0.store(value.0, ordering)
-    }
-}
-
-impl From<TimelineTime> for AtomicTimelineTime {
-    fn from(value: TimelineTime) -> Self {
-        AtomicTimelineTime::new(value)
-    }
-}
-
-impl Debug for AtomicTimelineTime {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        self.load(atomic::Ordering::Acquire).fmt(f)
-    }
-}
-
-impl Clone for AtomicTimelineTime {
-    fn clone(&self) -> Self {
-        AtomicTimelineTime::new(self.load(atomic::Ordering::Acquire))
     }
 }

@@ -4,33 +4,50 @@ use mpdelta_core::component::instance::ComponentInstance;
 use mpdelta_core::component::marker_pin::MarkerTime;
 use mpdelta_core::component::parameter::{Parameter, ParameterSelect, ParameterType, ParameterValueRaw, ParameterValueType};
 use mpdelta_core::component::processor::{ComponentProcessor, ComponentProcessorNative, ComponentProcessorWrapper, NativeProcessorInput, NativeProcessorRequest};
+use mpdelta_core::core::IdGenerator;
 use mpdelta_core::project::RootComponentClassHandleOwned;
-use mpdelta_core::ptr::{StaticPointer, StaticPointerOwned};
+use mpdelta_core::ptr::StaticPointer;
 use mpdelta_core::time::TimelineTime;
-use qcell::TCellOwner;
 use std::collections::HashMap;
-use std::fmt::Write;
+use std::fmt::{Display, Formatter, Write};
 use std::iter;
-use std::sync::Arc;
+use std::sync::atomic::AtomicUsize;
+use std::sync::{atomic, Arc};
 use tokio::sync::RwLock;
+use uuid::Uuid;
+
+#[derive(Default)]
+pub struct TestIdGenerator(AtomicUsize);
+
+impl TestIdGenerator {
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
+impl IdGenerator for TestIdGenerator {
+    fn generate_new(&self) -> Uuid {
+        let id = self.0.fetch_add(1, atomic::Ordering::Relaxed);
+        Uuid::from_u128(id as u128)
+    }
+}
 
 pub struct NoopComponentClass;
 
 #[async_trait]
-impl<K, T> ComponentClass<K, T> for NoopComponentClass
+impl<T> ComponentClass<T> for NoopComponentClass
 where
-    K: 'static,
     T: ParameterValueType,
 {
     fn identifier(&self) -> ComponentClassIdentifier {
         unimplemented!()
     }
 
-    fn processor(&self) -> ComponentProcessorWrapper<K, T> {
+    fn processor(&self) -> ComponentProcessorWrapper<T> {
         unimplemented!()
     }
 
-    async fn instantiate(&self, _: &StaticPointer<RwLock<dyn ComponentClass<K, T>>>) -> ComponentInstance<K, T> {
+    async fn instantiate(&self, _: &StaticPointer<RwLock<dyn ComponentClass<T>>>, _: &dyn IdGenerator) -> ComponentInstance<T> {
         unimplemented!()
     }
 }
@@ -38,9 +55,8 @@ where
 pub struct NoopProcessor;
 
 #[async_trait]
-impl<K, T> ComponentProcessor<K, T> for NoopProcessor
+impl<T> ComponentProcessor<T> for NoopProcessor
 where
-    K: 'static,
     T: ParameterValueType,
 {
     async fn fixed_parameter_types(&self) -> &[(String, ParameterType)] {
@@ -53,9 +69,8 @@ where
 }
 
 #[async_trait]
-impl<K, T> ComponentProcessorNative<K, T> for NoopProcessor
+impl<T> ComponentProcessorNative<T> for NoopProcessor
 where
-    K: 'static,
     T: ParameterValueType,
 {
     type WholeComponentCacheKey = ();
@@ -84,277 +99,230 @@ where
     }
 }
 
-pub async fn pretty_print_root_component_class<K, T>(value: &RootComponentClassHandleOwned<K, T>, key: &TCellOwner<K>) -> String
+pub async fn pretty_print_root_component_class<T>(value: &RootComponentClassHandleOwned<T>) -> String
 where
-    K: 'static,
     T: ParameterValueType,
 {
+    struct MaySome<T>(Option<T>);
+    impl<T> Display for MaySome<T>
+    where
+        T: Display,
+    {
+        fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+            match &self.0 {
+                None => write!(f, "###Unexpected None###"),
+                Some(v) => write!(f, "{v}"),
+            }
+        }
+    }
+
     let mut s = String::new();
     let value = value.read().await;
-    let value = value.get().await;
+    let value = value.get();
     let pin_index_map = value
-        .component()
-        .iter()
+        .iter_components()
         .enumerate()
-        .flat_map(|(i, component)| {
-            let component = component.ro(key);
-            iter::once(component.marker_left())
-                .chain(component.markers())
-                .chain(iter::once(component.marker_right()))
-                .enumerate()
-                .map(move |(j, p)| (StaticPointerOwned::reference(p).clone(), (i, j)))
-        })
+        .flat_map(|(i, component)| iter::once(component.marker_left()).chain(component.markers()).chain(iter::once(component.marker_right())).enumerate().map(move |(j, p)| (*p.id(), (i, j))))
         .map(|(p, id)| (p, format!("p{}_{}", id.0, id.1)))
-        .chain([(StaticPointerOwned::reference(value.left()).clone(), "left".to_owned()), (StaticPointerOwned::reference(value.right()).clone(), "right".to_owned())])
+        .chain([(*value.left().id(), "left".to_owned()), (*value.right().id(), "right".to_owned())])
         .collect::<HashMap<_, _>>();
-    let left = value.left().ro(key);
-    writeln!(s, "left: {:?}:{}", left.locked_component_time().map(|t| t.value()), left.cached_timeline_time().value()).unwrap();
-    let right = value.right().ro(key);
-    writeln!(s, "right: {:?}:{}", right.locked_component_time().map(|t| t.value()), right.cached_timeline_time().value()).unwrap();
+    let left = value.left();
+    writeln!(s, "left: {:?}:{}", left.locked_component_time().map(|t| t.value()), MaySome(value.time_of_pin(left.id()).map(|v| v.value()))).unwrap();
+    let right = value.right();
+    writeln!(s, "right: {:?}:{}", right.locked_component_time().map(|t| t.value()), MaySome(value.time_of_pin(right.id()).map(|v| v.value()))).unwrap();
     writeln!(s, "components: [").unwrap();
-    for component in value.component() {
+    for component in value.iter_components() {
         write!(s, "    {{ markers: [").unwrap();
-        let component = component.ro(key);
-        let left = component.marker_left().ro(key);
-        write!(s, "{:?}:{} => {}, ", left.locked_component_time().map(|t| t.value()), left.cached_timeline_time().value(), pin_index_map[component.marker_left().as_ref()]).unwrap();
-        for marker in component.markers() {
-            let marker_pin = marker.ro(key);
-            write!(s, "{:?}:{} => {}, ", marker_pin.locked_component_time().map(|t| t.value()), marker_pin.cached_timeline_time().value(), pin_index_map[marker.as_ref()]).unwrap();
+        let left = component.marker_left();
+        write!(s, "{:?}:{} => {}, ", left.locked_component_time().map(|t| t.value()), MaySome(value.time_of_pin(left.id()).map(|v| v.value())), pin_index_map[component.marker_left().id()]).unwrap();
+        for marker_pin in component.markers() {
+            write!(s, "{:?}:{} => {}, ", marker_pin.locked_component_time().map(|t| t.value()), MaySome(value.time_of_pin(marker_pin.id()).map(|v| v.value())), pin_index_map[marker_pin.id()]).unwrap();
         }
-        let right = component.marker_right().ro(key);
-        writeln!(s, "{:?}:{} => {}] }},", right.locked_component_time().map(|t| t.value()), right.cached_timeline_time().value(), pin_index_map[component.marker_right().as_ref()]).unwrap();
+        let right = component.marker_right();
+        writeln!(s, "{:?}:{} => {}] }},", right.locked_component_time().map(|t| t.value()), MaySome(value.time_of_pin(right.id()).map(|v| v.value())), pin_index_map[component.marker_right().id()]).unwrap();
     }
     writeln!(s, "],").unwrap();
     writeln!(s, "links: [").unwrap();
-    for link in value.link() {
-        let link = link.ro(key);
+    for link in value.iter_links() {
         writeln!(s, "    {} = {:?} => {},", pin_index_map[link.from()], link.len().value(), pin_index_map[link.to()]).unwrap();
     }
     write!(s, "]").unwrap();
     s
 }
-pub async fn assert_eq_root_component_class_ignore_cached_time<K, T>(a: &RootComponentClassHandleOwned<K, T>, b: &RootComponentClassHandleOwned<K, T>, key: &TCellOwner<K>)
+pub async fn assert_eq_root_component_class<T>(a: &RootComponentClassHandleOwned<T>, b: &RootComponentClassHandleOwned<T>)
 where
-    K: 'static,
-    T: ParameterValueType,
-{
-    assert_eq_root_component_class_inner(a, b, key, true).await;
-}
-
-pub async fn assert_eq_root_component_class<K, T>(a: &RootComponentClassHandleOwned<K, T>, b: &RootComponentClassHandleOwned<K, T>, key: &TCellOwner<K>)
-where
-    K: 'static,
-    T: ParameterValueType,
-{
-    assert_eq_root_component_class_inner(a, b, key, false).await;
-}
-
-async fn assert_eq_root_component_class_inner<K, T>(a: &RootComponentClassHandleOwned<K, T>, b: &RootComponentClassHandleOwned<K, T>, key: &TCellOwner<K>, ignore_cached_time: bool)
-where
-    K: 'static,
     T: ParameterValueType,
 {
     let result = async {
         let (a, b) = tokio::join!(a.read(), b.read());
-        let (a, b) = tokio::join!(a.get(), b.get());
-        (a.left().ro(key).locked_component_time() == b.left().ro(key).locked_component_time()).then_some(())?;
-        (a.left().ro(key).cached_timeline_time() == b.left().ro(key).cached_timeline_time() || ignore_cached_time).then_some(())?;
-        (a.right().ro(key).locked_component_time() == b.right().ro(key).locked_component_time()).then_some(())?;
-        (a.right().ro(key).cached_timeline_time() == b.right().ro(key).cached_timeline_time() || ignore_cached_time).then_some(())?;
-        (a.component().len() == b.component().len()).then_some(())?;
+        let a = a.get();
+        let b = b.get();
+        (a.left().locked_component_time() == b.left().locked_component_time()).then_some(())?;
+        (a.right().locked_component_time() == b.right().locked_component_time()).then_some(())?;
+        (a.time_of_pin(a.left().id())? == b.time_of_pin(b.left().id())?).then_some(())?;
+        (a.time_of_pin(a.right().id())? == b.time_of_pin(b.right().id())?).then_some(())?;
+        (a.iter_components().count() == b.iter_components().count()).then_some(())?;
         let pin_index_map_a = a
-            .component()
-            .iter()
+            .iter_components()
             .enumerate()
-            .flat_map(|(i, component)| {
-                let component = component.ro(key);
-                iter::once(component.marker_left())
-                    .chain(component.markers())
-                    .chain(iter::once(component.marker_right()))
-                    .enumerate()
-                    .map(move |(j, p)| (StaticPointerOwned::reference(p).clone(), (i, j)))
-            })
-            .chain([(StaticPointerOwned::reference(a.left()).clone(), (usize::MAX, 0)), (StaticPointerOwned::reference(a.right()).clone(), (usize::MAX, 1))])
+            .flat_map(|(i, component)| iter::once(component.marker_left()).chain(component.markers()).chain(iter::once(component.marker_right())).enumerate().map(move |(j, p)| (*p.id(), (i, j))))
+            .chain([(*a.left().id(), (usize::MAX, 0)), (*a.right().id(), (usize::MAX, 1))])
             .collect::<HashMap<_, _>>();
         let pin_index_map_b = b
-            .component()
-            .iter()
+            .iter_components()
             .enumerate()
-            .flat_map(|(i, component)| {
-                let component = component.ro(key);
-                iter::once(component.marker_left())
-                    .chain(component.markers())
-                    .chain(iter::once(component.marker_right()))
-                    .enumerate()
-                    .map(move |(j, p)| (StaticPointerOwned::reference(p).clone(), (i, j)))
-            })
-            .chain([(StaticPointerOwned::reference(b.left()).clone(), (usize::MAX, 0)), (StaticPointerOwned::reference(b.right()).clone(), (usize::MAX, 1))])
+            .flat_map(|(i, component)| iter::once(component.marker_left()).chain(component.markers()).chain(iter::once(component.marker_right())).enumerate().map(move |(j, p)| (*p.id(), (i, j))))
+            .chain([(*b.left().id(), (usize::MAX, 0)), (*b.right().id(), (usize::MAX, 1))])
             .collect::<HashMap<_, _>>();
-        a.component().iter().zip(b.component()).try_for_each(|(a, b)| {
-            let a = a.ro(key);
-            let b = b.ro(key);
-            (a.markers().len() == b.markers().len()).then_some(())?;
-            iter::once(a.marker_left())
-                .chain(a.markers())
-                .chain(iter::once(a.marker_right()))
-                .zip(iter::once(b.marker_left()).chain(b.markers()).chain(iter::once(b.marker_right())))
-                .try_for_each(|(a, b)| (a.ro(key).locked_component_time() == b.ro(key).locked_component_time() && (a.ro(key).cached_timeline_time() == b.ro(key).cached_timeline_time() || ignore_cached_time)).then_some(()))
+        a.iter_components().zip(b.iter_components()).try_for_each(|(instance_a, instance_b)| {
+            (instance_a.markers().len() == instance_b.markers().len()).then_some(())?;
+            let mut iter = iter::once(instance_a.marker_left())
+                .chain(instance_a.markers())
+                .chain(iter::once(instance_a.marker_right()))
+                .zip(iter::once(instance_b.marker_left()).chain(instance_b.markers()).chain(iter::once(instance_b.marker_right())));
+            iter.try_for_each(|(pin_a, pin_b)| (pin_a.locked_component_time() == pin_b.locked_component_time() && (a.time_of_pin(pin_a.id())? == b.time_of_pin(pin_b.id())?)).then_some(()))
         })?;
-        (a.link().len() == b.link().len()).then_some(())?;
-        a.link().iter().zip(b.link()).try_for_each(|(a, b)| {
-            let a = a.ro(key);
-            let b = b.ro(key);
+        (a.iter_links().count() == b.iter_links().count()).then_some(())?;
+        a.iter_links().zip(b.iter_links()).try_for_each(|(a, b)| {
             (pin_index_map_a[a.from()] == pin_index_map_b[b.from()] && pin_index_map_a[a.to()] == pin_index_map_b[b.to()] && a.len() == b.len() || pin_index_map_a[a.from()] == pin_index_map_b[b.to()] && pin_index_map_a[a.to()] == pin_index_map_b[b.from()] && a.len() == -b.len()).then_some(())
         })?;
         Some(())
     }
     .await;
     if result.is_none() {
-        let a = pretty_print_root_component_class(a, key).await;
-        let b = pretty_print_root_component_class(b, key).await;
+        let a = pretty_print_root_component_class(a).await;
+        let b = pretty_print_root_component_class(b).await;
         panic!("assertion failed\n# left\n{a}\n# right\n{b}");
     }
 }
 
 #[macro_export]
-macro_rules! marker {
-    () => {
-        ::mpdelta_core::ptr::StaticPointerOwned::new(::qcell::TCell::new(::mpdelta_core::component::marker_pin::MarkerPin::new_unlocked(::mpdelta_core::time::TimelineTime::ZERO)))
-    };
-    (locked: $locked:expr$(,)?) => {
-        ::mpdelta_core::ptr::StaticPointerOwned::new(::qcell::TCell::new(::mpdelta_core::component::marker_pin::MarkerPin::new(
-            ::mpdelta_core::time::TimelineTime::ZERO,
-            ::mpdelta_core::component::marker_pin::MarkerTime::new(::mpdelta_core::common::mixed_fraction::MixedFraction::try_from($locked).unwrap()).unwrap(),
-        )))
-    };
-    (cached: $cached:expr$(,)?) => {
-        ::mpdelta_core::ptr::StaticPointerOwned::new(::qcell::TCell::new(::mpdelta_core::component::marker_pin::MarkerPin::new_unlocked(::mpdelta_core::time::TimelineTime::new(
-            ::mpdelta_core::common::mixed_fraction::MixedFraction::try_from($cached).unwrap(),
-        ))))
-    };
-    (cached: $cached:expr, locked: $locked:expr$(,)?) => {
-        ::mpdelta_core::ptr::StaticPointerOwned::new(::qcell::TCell::new(::mpdelta_core::component::marker_pin::MarkerPin::new(
-            ::mpdelta_core::time::TimelineTime::new(::mpdelta_core::common::mixed_fraction::MixedFraction::try_from($cached).unwrap()),
-            ::mpdelta_core::component::marker_pin::MarkerTime::new(::mpdelta_core::common::mixed_fraction::MixedFraction::try_from($locked).unwrap()).unwrap(),
-        )))
-    };
-    (locked: $locked:expr, cached: $cached:expr$(,)?) => {
-        ::mpdelta_core::ptr::StaticPointerOwned::new(::qcell::TCell::new(::mpdelta_core::component::marker_pin::MarkerPin::new(
-            ::mpdelta_core::time::TimelineTime::new(::mpdelta_core::common::mixed_fraction::MixedFraction::try_from($cached).unwrap()),
-            ::mpdelta_core::component::marker_pin::MarkerTime::new(::mpdelta_core::common::mixed_fraction::MixedFraction::try_from($locked).unwrap()).unwrap(),
-        )))
-    };
-}
-
-#[macro_export]
 macro_rules! root_component_class {
     (
-        $name:ident = <$k:ty, $t:ty> $key:expr;
+        custom_differential: $custom_differential:expr;
+        $name:ident; <$t:ty>;
+        $id:expr;
         $(left: $left:ident,)?
         $(right: $right:ident,)?
-        components: [$({ markers: [$($pin:expr$( => $pin_name:ident)?),*$(,)?] }$(;$component_name:ident)?),*$(,)?],
+        components: [$({
+            markers: [$($pin:expr$( => $pin_name:ident)?),*$(,)?]
+            $(, processor: $processor:expr)?
+        }$(;$component_name:ident)?),*$(,)?],
         links: [$($from:ident = $len:expr => $to:expr $(;$link_name:ident)?),*$(,)?]$(,)?
     ) => {
-        $crate::root_component_class! {
+        $crate::root_component_class!(
             @inner;
-            $name, $k, $t, $key,
+            $custom_differential;
+            $name; <$t>;
+            $id;
             $(left: $left,)?
             $(right: $right,)?
-            [$({ markers: [$($pin$( => $pin_name)?),*] }$(;$component_name)?),*],
-            [$($from = $len => $to $(;$link_name)?),*],
-            ::mpdelta_differential::collect_cached_time,
-        }
+            components: [$({
+                markers: [$($pin$( => $pin_name)?),*]
+                $(, processor: $processor)?
+            }$(;$component_name)?),*],
+            links: [$($from = $len => $to $(;$link_name)?),*],
+        )
     };
     (
-        no_differential;
-        $name:ident = <$k:ty, $t:ty> $key:expr;
+        $name:ident; <$t:ty>;
+        $id:expr;
         $(left: $left:ident,)?
         $(right: $right:ident,)?
-        components: [$({ markers: [$($pin:expr$( => $pin_name:ident)?),*$(,)?] }$(;$component_name:ident)?),*$(,)?],
+        components: [$({
+            markers: [$($pin:expr$( => $pin_name:ident)?),*$(,)?]
+            $(, processor: $processor:expr)?
+        }$(;$component_name:ident)?),*$(,)?],
         links: [$($from:ident = $len:expr => $to:expr $(;$link_name:ident)?),*$(,)?]$(,)?
     ) => {
-        $crate::root_component_class! {
+        $crate::root_component_class!(
             @inner;
-            $name, $k, $t, $key,
+            ::mpdelta_differential::collect_cached_time;
+            $name; <$t>;
+            $id;
             $(left: $left,)?
             $(right: $right,)?
-            [$({ markers: [$($pin$( => $pin_name)?),*] }$(;$component_name)?),*],
-            [$($from = $len => $to $(;$link_name)?),*],
-            |_, _, _, _, _| Some(()),
-        }
-    };
-    (
-        custom_differential = $calc_differential:expr;
-        $name:ident = <$k:ty, $t:ty> $key:expr;
-        $(left: $left:ident,)?
-        $(right: $right:ident,)?
-        components: [$({ markers: [$($pin:expr$( => $pin_name:ident)?),*$(,)?] }$(;$component_name:ident)?),*$(,)?],
-        links: [$($from:ident = $len:expr => $to:expr $(;$link_name:ident)?),*$(,)?]$(,)?
-    ) => {
-        $crate::root_component_class! {
-            @inner;
-            $name, $k, $t, $key,
-            $(left: $left,)?
-            $(right: $right,)?
-            [$({ markers: [$($pin$( => $pin_name)?),*] }$(;$component_name)?),*],
-            [$($from = $len => $to $(;$link_name)?),*],
-            $calc_differential,
-        }
+            components: [$({
+                markers: [$($pin$( => $pin_name)?),*]
+                $(, processor: $processor)?
+            }$(;$component_name)?),*],
+            links: [$($from = $len => $to $(;$link_name)?),*],
+        )
     };
     (
         @inner;
-        $name:ident, $k:ty, $t:ty, $key:expr,
+        $collect_cached_time:expr;
+        $name:ident; <$t:ty>;
+        $id:expr;
         $(left: $left:ident,)?
         $(right: $right:ident,)?
-        [$({ markers: [$($pin:expr$( => $pin_name:ident)?),*$(,)?] }$(;$component_name:ident)?),*$(,)?],
-        [$($from:ident = $len:expr => $to:expr $(;$link_name:ident)?),*$(,)?]$(,)?
-        $calc_differential:expr,
+        components: [$({
+            markers: [$($pin:expr$( => $pin_name:ident)?),*$(,)?]
+            $(, processor: $processor:expr)?
+        }$(;$component_name:ident)?),*$(,)?],
+        links: [$($from:ident = $len:expr => $to:expr $(;$link_name:ident)?),*$(,)?]$(,)?
     ) => {
-        let root_component_class = ::mpdelta_core::project::RootComponentClass::<$k, $t>::new_empty(
-            ::uuid::Uuid::nil(),
-            ::mpdelta_core::ptr::StaticPointer::<::tokio::sync::RwLock<::mpdelta_core::project::Project<$k, $t>>>::new(),
-            ::uuid::Uuid::nil(),
+        macro_rules! marker {
+            () => {
+                ::mpdelta_core::component::marker_pin::MarkerPin::new_unlocked(::mpdelta_core::core::IdGenerator::generate_new(&$id))
+            };
+            (locked: $locked:expr) => {
+                ::mpdelta_core::component::marker_pin::MarkerPin::new(
+                    ::mpdelta_core::core::IdGenerator::generate_new(&$id),
+                    ::mpdelta_core::component::marker_pin::MarkerTime::new(::mpdelta_core::common::mixed_fraction::MixedFraction::try_from($locked).unwrap()).unwrap(),
+                )
+            };
+        }
+        let root_component_class = ::mpdelta_core::project::RootComponentClass::<$t>::new_empty(
+            ::mpdelta_core::core::IdGenerator::generate_new(&$id),
+            ::mpdelta_core::ptr::StaticPointer::<::tokio::sync::RwLock<::mpdelta_core::project::Project<$t>>>::new(),
+            ::mpdelta_core::core::IdGenerator::generate_new(&$id),
+            &$id,
         );
         let read = root_component_class.read().await;
         let mut item = read.get_mut().await;
-        let left = ::mpdelta_core::ptr::StaticPointerOwned::reference(item.left());
-        let right = ::mpdelta_core::ptr::StaticPointerOwned::reference(item.right());
-        $(#[allow(unused_assignments, unused_variables)] let $left = left.clone();)?
-        $(#[allow(unused_assignments, unused_variables)] let $right = right.clone();)?
+        let left = item.left().id();
+        let right = item.right().id();
+        $(#[allow(unused_assignments, unused_variables)] let $left = *left;)?
+        $(#[allow(unused_assignments, unused_variables)] let $right = *right;)?
         $($($(#[allow(unused_variables)] let $pin_name;)?)*$(#[allow(unused_variables)] let $component_name;)?)*
         $($(#[allow(unused_variables)] let $link_name;)?)*
         #[allow(unused_assignments)]
-        let components = vec![$({
+        let components = [$({
             let mut markers = vec![$({
                 let pin = $pin;
-                $($pin_name = ::mpdelta_core::ptr::StaticPointerOwned::reference(&pin).clone();)?
+                $($pin_name = *pin.id();)?
                 pin
             }),*];
             let marker_left = markers.remove(0);
             let marker_right = markers.pop().unwrap();
+            let image_required_params = ::mpdelta_core::component::parameter::ImageRequiredParams::new_default(marker_left.id(), marker_right.id());
+            let audio_required_params = ::mpdelta_core::component::parameter::AudioRequiredParams::new_default(marker_left.id(), marker_right.id(), 2);
+            let [.., processor] = [::std::sync::Arc::new($crate::NoopProcessor) as ::std::sync::Arc<dyn ::mpdelta_core::component::processor::ComponentProcessorNativeDyn<$t>>, $($processor)?];
             let builder = ::mpdelta_core::component::instance::ComponentInstance::builder(
                 ::mpdelta_core::ptr::StaticPointer::<::tokio::sync::RwLock<$crate::NoopComponentClass>>::new().map(|c| c as _),
                 marker_left,
                 marker_right,
                 markers,
-                ::mpdelta_core::component::processor::ComponentProcessorWrapper::Native(::std::sync::Arc::new($crate::NoopProcessor) as ::std::sync::Arc<dyn ::mpdelta_core::component::processor::ComponentProcessorNativeDyn<$k, $t>>),
+                ::mpdelta_core::component::processor::ComponentProcessorWrapper::from(processor),
             );
-            let component = ::mpdelta_core::ptr::StaticPointerOwned::new(::qcell::TCell::new(builder.build()));
-            $($component_name = ::mpdelta_core::ptr::StaticPointerOwned::reference(&component).clone();)?
+            let component = builder.image_required_params(image_required_params)
+                .audio_required_params(audio_required_params)
+                .build(&$id);
+            $($component_name = *component.id();)?
             component
         }),*];
         #[allow(unused_assignments)]
-        let links = vec![$({
+        let links = [$({
                 let len = ::mpdelta_core::time::TimelineTime::new(::mpdelta_core::common::mixed_fraction::MixedFraction::try_from($len).unwrap());
                 let link = ::mpdelta_core::component::link::MarkerLink::new($from.clone(), $to.clone(), len);
-                let link = ::mpdelta_core::ptr::StaticPointerOwned::new(::qcell::TCell::new(link));
-                $($link_name = ::mpdelta_core::ptr::StaticPointerOwned::reference(&link).clone();)?
+                $($link_name = link.clone();)?
                 link
             }),*];
-        $calc_differential(&components, &links, left, right, &$key).unwrap();
-        *item.component_mut() = components;
-        *item.link_mut() = links;
-        drop(item);
+        components.into_iter().for_each(|component| item.add_component(component));
+        links.into_iter().for_each(|link| item.add_link(link));
+        let time_map = $collect_cached_time(&*item).unwrap();
+        ::mpdelta_core::project::RootComponentClassItemWrite::commit_changes(item, time_map);
         drop(read);
         let $name = root_component_class;
     }

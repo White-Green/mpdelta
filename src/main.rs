@@ -29,7 +29,6 @@ use mpdelta_services::project_io::{LocalFSProjectLoader, LocalFSProjectWriter};
 use mpdelta_services::project_store::InMemoryProjectStore;
 use mpdelta_services::value_manager_loader::InMemoryValueManagerLoader;
 use mpdelta_video_renderer_vulkano::ImageCombinerBuilder;
-use qcell::TCellOwner;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fs::File;
@@ -42,8 +41,6 @@ use vulkano::Version;
 use vulkano_util::context::{VulkanoConfig, VulkanoContext};
 use vulkano_util::window::VulkanoWindows;
 use winit::event_loop::EventLoop;
-
-struct ProjectKey;
 
 struct ValueType;
 
@@ -61,14 +58,14 @@ impl ParameterValueType for ValueType {
 }
 
 #[derive(Default)]
-struct ComponentClassList(Vec<StaticPointerOwned<RwLock<dyn ComponentClass<ProjectKey, ValueType>>>>, Vec<StaticPointer<RwLock<dyn ComponentClass<ProjectKey, ValueType>>>>);
+struct ComponentClassList(Vec<StaticPointerOwned<RwLock<dyn ComponentClass<ValueType>>>>, Vec<StaticPointer<RwLock<dyn ComponentClass<ValueType>>>>);
 
 impl ComponentClassList {
     fn new() -> ComponentClassList {
         Default::default()
     }
 
-    fn add(&mut self, class: impl ComponentClass<ProjectKey, ValueType> + 'static) -> &mut Self {
+    fn add(&mut self, class: impl ComponentClass<ValueType> + 'static) -> &mut Self {
         let class = StaticPointerOwned::new(RwLock::new(class)).map(|arc| arc as _, |weak| weak as _);
         let reference = StaticPointerOwned::reference(&class).clone();
         self.0.push(class);
@@ -78,12 +75,12 @@ impl ComponentClassList {
 }
 
 #[async_trait]
-impl ComponentClassLoader<ProjectKey, ValueType> for ComponentClassList {
-    async fn get_available_component_classes(&self) -> Cow<[StaticPointer<RwLock<dyn ComponentClass<ProjectKey, ValueType>>>]> {
+impl ComponentClassLoader<ValueType> for ComponentClassList {
+    async fn get_available_component_classes(&self) -> Cow<[StaticPointer<RwLock<dyn ComponentClass<ValueType>>>]> {
         Cow::Borrowed(&self.1)
     }
 
-    async fn component_class_by_identifier(&self, identifier: ComponentClassIdentifier<'_>) -> Option<StaticPointer<RwLock<dyn ComponentClass<ProjectKey, ValueType>>>> {
+    async fn component_class_by_identifier(&self, identifier: ComponentClassIdentifier<'_>) -> Option<StaticPointer<RwLock<dyn ComponentClass<ValueType>>>> {
         let map = stream::iter(self.0.iter()).filter(|&class| class.read().map(|class| class.identifier() == identifier)).map(|class| StaticPointerOwned::reference(class).clone());
         pin_mut!(map);
         map.next().await
@@ -119,7 +116,7 @@ fn main() {
     let id_generator = Arc::new(UniqueIdGenerator::new());
     let project_loader = Arc::new(LocalFSProjectLoader);
     let project_writer = Arc::new(LocalFSProjectWriter);
-    let project_memory = Arc::new(InMemoryProjectStore::<ProjectKey, ValueType>::new());
+    let project_memory = Arc::new(InMemoryProjectStore::<ValueType>::new());
     let mut component_class_loader = ComponentClassList::new();
     let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(Arc::clone(context.device()), StandardCommandBufferAllocatorCreateInfo::default()));
     component_class_loader.add(RectangleClass::new(Arc::clone(context.graphics_queue()), context.memory_allocator(), &command_buffer_allocator));
@@ -127,7 +124,6 @@ fn main() {
     component_class_loader.add(FfmpegMultimediaLoaderClass::new(context.graphics_queue(), context.memory_allocator(), &command_buffer_allocator));
     component_class_loader.add(TextRendererClass::new(context.device(), context.graphics_queue(), context.memory_allocator()));
     let component_class_loader = Arc::new(component_class_loader);
-    let key = Arc::new(RwLock::new(TCellOwner::<ProjectKey>::new()));
     let value_managers = ParameterAllValues::<ValueManagerLoaderTypes> {
         image: Arc::new(InMemoryValueManagerLoader::from_iter([], [])),
         audio: Arc::new(InMemoryValueManagerLoader::from_iter([], [])),
@@ -148,18 +144,17 @@ fn main() {
         [Arc::new(DynEditableSelfValueManager::default()) as _, Arc::new(DynEditableLerpEasingValueManager::default()) as _],
     ));
     let easing_manager = Arc::new(InMemoryEasingLoader::from_iter([Arc::new(LinearEasing) as _]));
-    let project_serializer = Arc::new(MPDeltaProjectSerializer::new(Arc::clone(&key), runtime.handle().clone(), Arc::clone(&component_class_loader), value_managers, quaternion_manager, easing_manager));
+    let project_serializer = Arc::new(MPDeltaProjectSerializer::new(runtime.handle().clone(), Arc::clone(&id_generator), Arc::clone(&component_class_loader), value_managers, quaternion_manager, easing_manager));
     let component_renderer_builder = Arc::new(MPDeltaRendererBuilder::new(
         Arc::new(ImageCombinerBuilder::new(Arc::clone(&context))),
         Arc::new(LookaheadRenderingControllerBuilder::new()),
         Arc::new(MPDeltaAudioMixerBuilder::new()),
-        Arc::clone(&key),
         runtime.handle().clone(),
     ));
-    let editor = Arc::new(ProjectEditor::new(Arc::clone(&key)));
+    let editor = Arc::new(ProjectEditor::new(Arc::clone(&id_generator)));
     let edit_history = Arc::new(InMemoryEditHistoryStore::new(100));
     let core = Arc::new(MPDeltaCore::new(MPDeltaCoreArgs {
-        id_generator,
+        id_generator: Arc::clone(&id_generator),
         project_serializer,
         project_loader,
         project_writer,
@@ -184,6 +179,7 @@ fn main() {
     let encoder_builder = Arc::new(FfmpegEncoderBuilder::new(Arc::clone(&context)));
     let params = ViewModelParamsImpl {
         runtime: runtime.handle().clone(),
+        id: Arc::clone(&id_generator),
         edit: Arc::clone(&core),
         subscribe_edit_event: Arc::clone(&core),
         get_available_component_classes: Arc::clone(&core),
@@ -197,7 +193,6 @@ fn main() {
         set_owner_for_root_component_class: Arc::clone(&core),
         undo: Arc::clone(&core),
         write_project: Arc::clone(&core),
-        key: Arc::clone(&key),
         audio_player,
         available_video_codec: encoder_builder.available_video_codec::<FfmpegEncodeSettings<File>>().into_iter().collect::<Vec<_>>().into(),
         available_audio_codec: encoder_builder.available_audio_codec().into_iter().collect::<Vec<_>>().into(),

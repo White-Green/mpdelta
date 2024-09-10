@@ -62,6 +62,7 @@ macro_rules! time_split_value {
         $crate::common::time_split_value::TimeSplitValue::by_data_end(vec![$($set),*], $time)
     };
 }
+use crate::common::time_split_value_persistent::TimeSplitValuePersistent;
 pub use time_split_value;
 
 pub struct TimeSplitValueView<'a, Time, Value, TimeMutability, ValueMutability> {
@@ -121,6 +122,11 @@ impl<Time, Value> TimeSplitValue<Time, Value> {
         })
     }
 
+    pub fn try_map_time_value_to_persistent<Err, Time2, Value2>(self, mut map_time: impl FnMut(Time) -> Result<Time2, Err>, mut map_value: impl FnMut(Value) -> Result<Value2, Err>) -> Result<TimeSplitValuePersistent<Time2, Value2>, Err> {
+        let TimeSplitValue { data, end } = self;
+        Ok(TimeSplitValuePersistent::by_data_end(data.into_iter().map(|(time, value)| Ok((map_time(time)?, map_value(value)?))).collect::<Result<_, _>>()?, map_time(end)?))
+    }
+
     pub async fn map_time_value_async<Time2, F1: Future<Output = Time2>, Value2, F2: Future<Output = Value2>>(self, map_time: impl Fn(Time) -> F1, map_value: impl Fn(Value) -> F2) -> TimeSplitValue<Time2, Value2> {
         let TimeSplitValue { data, end } = self;
         let map_time = &map_time;
@@ -139,6 +145,16 @@ impl<Time, Value> TimeSplitValue<Time, Value> {
             data: stream::iter(data).then(|(time, value)| async move { Ok((map_time(time).await?, map_value(value).await?)) }).try_collect().await?,
             end: map_time(end).await?,
         })
+    }
+
+    pub async fn try_map_time_value_async_to_persistent<Err, Time2, F1: Future<Output = Result<Time2, Err>>, Value2, F2: Future<Output = Result<Value2, Err>>>(self, map_time: impl Fn(Time) -> F1, map_value: impl Fn(Value) -> F2) -> Result<TimeSplitValuePersistent<Time2, Value2>, Err> {
+        let TimeSplitValue { data, end } = self;
+        let map_time = &map_time;
+        let map_value = &map_value;
+        Ok(TimeSplitValuePersistent::by_data_end(
+            stream::iter(data).then(|(time, value)| async move { Ok((map_time(time).await?, map_value(value).await?)) }).try_collect().await?,
+            map_time(end).await?,
+        ))
     }
 
     pub fn map_time_value_ref<'a, Time2: 'a, Value2: 'a>(&'a self, mut map_time: impl FnMut(&'a Time) -> Time2, mut map_value: impl FnMut(&'a Value) -> Value2) -> TimeSplitValue<Time2, Value2> {

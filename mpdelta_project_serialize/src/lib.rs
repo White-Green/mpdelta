@@ -1,16 +1,14 @@
 use crate::serde_v0::{ComponentInstanceHandleForSerialize, MarkerPinHandleForSerialize};
 use async_trait::async_trait;
 use cgmath::Quaternion;
-use futures::{stream, FutureExt, StreamExt, TryStreamExt};
 use mpdelta_core::component::class::{ComponentClass, ComponentClassIdentifier};
-use mpdelta_core::component::marker_pin::MarkerPinHandle;
+use mpdelta_core::component::marker_pin::MarkerPinId;
 use mpdelta_core::component::parameter::value::{DynEditableEasingValueIdentifier, DynEditableSingleValueIdentifier, EasingIdentifier};
 use mpdelta_core::component::parameter::{ParameterAllValues, ParameterValueType, ValueRaw};
-use mpdelta_core::core::{ComponentClassLoader, EasingLoader, ProjectSerializer, ValueManagerLoader};
+use mpdelta_core::core::{ComponentClassLoader, EasingLoader, IdGenerator, ProjectSerializer, ValueManagerLoader};
 use mpdelta_core::project::{ProjectHandle, ProjectHandleOwned, RootComponentClassHandle};
-use mpdelta_core::ptr::{StaticPointer, StaticPointerOwned};
+use mpdelta_core::ptr::StaticPointer;
 use mpdelta_differential::CollectCachedTimeError;
-use qcell::TCellOwner;
 use std::fmt::{Debug, Formatter};
 use std::io::{Read, Write};
 use std::sync::Arc;
@@ -21,21 +19,21 @@ use tokio::sync::RwLock;
 
 pub mod serde_v0;
 
-pub struct MPDeltaProjectSerializer<K: 'static, C, P: ParameterValueType, Q, E> {
-    key: Arc<RwLock<TCellOwner<K>>>,
+pub struct MPDeltaProjectSerializer<Id, C, P: ParameterValueType, Q, E> {
     runtime: Handle,
+    id_generator: Arc<Id>,
     component_class_loader: C,
     value_managers: ParameterAllValues<P>,
     quaternion_manager: Q,
     easing_manager: E,
 }
 
-impl<K: 'static, C, P: ParameterValueType, Q, E> MPDeltaProjectSerializer<K, C, P, Q, E> {
-    pub fn new<T>(key: Arc<RwLock<TCellOwner<K>>>, runtime: Handle, component_class_loader: C, value_managers: ParameterAllValues<P>, quaternion_manager: Q, easing_manager: E) -> MPDeltaProjectSerializer<K, C, P, Q, E>
+impl<Id, C, P: ParameterValueType, Q, E> MPDeltaProjectSerializer<Id, C, P, Q, E> {
+    pub fn new<T>(runtime: Handle, id_generator: Arc<Id>, component_class_loader: C, value_managers: ParameterAllValues<P>, quaternion_manager: Q, easing_manager: E) -> MPDeltaProjectSerializer<Id, C, P, Q, E>
     where
-        K: 'static,
+        Id: IdGenerator + 'static,
         T: ParameterValueType,
-        C: ComponentClassLoader<K, T> + Clone + 'static,
+        C: ComponentClassLoader<T> + Clone + 'static,
         P: ParameterValueType,
         P::Image: ValueManagerLoader<<ValueRaw<T::Image, T::Audio> as ParameterValueType>::Image>,
         P::Audio: ValueManagerLoader<<ValueRaw<T::Image, T::Audio> as ParameterValueType>::Audio>,
@@ -51,8 +49,8 @@ impl<K: 'static, C, P: ParameterValueType, Q, E> MPDeltaProjectSerializer<K, C, 
         E: EasingLoader + Clone + 'static,
     {
         MPDeltaProjectSerializer {
-            key,
             runtime,
+            id_generator,
             component_class_loader,
             value_managers,
             quaternion_manager,
@@ -62,22 +60,22 @@ impl<K: 'static, C, P: ParameterValueType, Q, E> MPDeltaProjectSerializer<K, C, 
 }
 
 #[derive(Error)]
-pub enum SerializeError<K: 'static, T: ParameterValueType> {
+pub enum SerializeError<T: ParameterValueType> {
     #[error("invalid project handle: {0:?}")]
-    InvalidProjectHandle(ProjectHandle<K, T>),
+    InvalidProjectHandle(ProjectHandle<T>),
     #[error("invalid root component class handle: {0:?}")]
-    InvalidRootComponentClassHandle(RootComponentClassHandle<K, T>),
+    InvalidRootComponentClassHandle(RootComponentClassHandle<T>),
     #[error("invalid component class handle: {0:?}")]
-    InvalidComponentClassHandle(StaticPointer<RwLock<dyn ComponentClass<K, T>>>),
+    InvalidComponentClassHandle(StaticPointer<RwLock<dyn ComponentClass<T>>>),
     #[error("invalid marker pin handle: {0:?}")]
-    InvalidMarkerPinHandle(MarkerPinHandle<K>),
+    InvalidMarkerPinHandle(MarkerPinId),
     #[error("io error: {0}")]
     IoError(#[from] io::Error),
     #[error("error in serialization: {0}")]
     CiboriumError(#[from] ciborium::ser::Error<io::Error>),
 }
 
-impl<K: 'static, T: ParameterValueType> Debug for SerializeError<K, T> {
+impl<T: ParameterValueType> Debug for SerializeError<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             SerializeError::InvalidProjectHandle(value) => f.debug_tuple("InvalidProjectHandle").field(value).finish(),
@@ -91,11 +89,7 @@ impl<K: 'static, T: ParameterValueType> Debug for SerializeError<K, T> {
 }
 
 #[derive(Error)]
-pub enum DeserializeError<K, T>
-where
-    K: 'static,
-    T: ParameterValueType,
-{
+pub enum DeserializeError {
     #[error("Unknown pin: {0:?}")]
     UnknownPin(MarkerPinHandleForSerialize),
     #[error("Unknown component class: {0:?}")]
@@ -119,14 +113,10 @@ where
     #[error("unknown format version: {0}")]
     UnknownFormatVersion(u32),
     #[error("error in differential calculation: {0}")]
-    DifferentialError(#[from] CollectCachedTimeError<K, T>),
+    DifferentialError(#[from] CollectCachedTimeError),
 }
 
-impl<K, T> Debug for DeserializeError<K, T>
-where
-    K: 'static,
-    T: ParameterValueType,
-{
+impl Debug for DeserializeError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             DeserializeError::UnknownPin(value) => f.debug_tuple("UnknownPin").field(value).finish(),
@@ -147,7 +137,7 @@ where
 
 const MAGIC_NUMBER: &[u8; 4] = b"mpdl";
 
-fn write_project<K, T: ParameterValueType>(project: &serde_v0::ProjectForSerialize<T, serde_v0::Ser>, out: impl Write) -> Result<(), SerializeError<K, T>> {
+fn write_project<T: ParameterValueType>(project: &serde_v0::ProjectForSerialize<T, serde_v0::Ser>, out: impl Write) -> Result<(), SerializeError<T>> {
     let mut out = io::BufWriter::new(out);
     out.write_all(MAGIC_NUMBER)?;
     out.write_all(&serde_v0::FORMAT_VERSION.to_be_bytes())?;
@@ -157,7 +147,7 @@ fn write_project<K, T: ParameterValueType>(project: &serde_v0::ProjectForSeriali
     Ok(())
 }
 
-fn read_project<K, T: ParameterValueType>(mut read: impl Read) -> Result<serde_v0::ProjectForSerialize<T, serde_v0::De>, DeserializeError<K, T>> {
+fn read_project<T: ParameterValueType>(mut read: impl Read) -> Result<serde_v0::ProjectForSerialize<T, serde_v0::De>, DeserializeError> {
     let mut header = [0u8; 32];
     read.read_exact(&mut header)?;
     let (magic_number, header) = header.split_first_chunk().unwrap();
@@ -174,11 +164,11 @@ fn read_project<K, T: ParameterValueType>(mut read: impl Read) -> Result<serde_v
 }
 
 #[async_trait]
-impl<K, T, C, P, Q, E> ProjectSerializer<K, T> for MPDeltaProjectSerializer<K, C, P, Q, E>
+impl<T, Id, C, P, Q, E> ProjectSerializer<T> for MPDeltaProjectSerializer<Id, C, P, Q, E>
 where
-    K: 'static,
     T: ParameterValueType,
-    C: ComponentClassLoader<K, T> + Clone + 'static,
+    Id: IdGenerator + 'static,
+    C: ComponentClassLoader<T> + Clone + 'static,
     P: ParameterValueType,
     P::Image: ValueManagerLoader<<ValueRaw<T::Image, T::Audio> as ParameterValueType>::Image>,
     P::Audio: ValueManagerLoader<<ValueRaw<T::Image, T::Audio> as ParameterValueType>::Audio>,
@@ -193,35 +183,22 @@ where
     Q: ValueManagerLoader<Quaternion<f64>> + Clone + 'static,
     E: EasingLoader + Clone + 'static,
 {
-    type SerializeError = SerializeError<K, T>;
+    type SerializeError = SerializeError<T>;
 
-    type DeserializeError = DeserializeError<K, T>;
+    type DeserializeError = DeserializeError;
 
-    async fn serialize_project(&self, project: &ProjectHandle<K, T>, out: impl Write + Send) -> Result<(), Self::SerializeError> {
+    async fn serialize_project(&self, project: &ProjectHandle<T>, out: impl Write + Send) -> Result<(), Self::SerializeError> {
         let project = project.upgrade().ok_or_else(|| SerializeError::InvalidProjectHandle(project.clone()))?;
-        let (project, key) = tokio::join!(project.read(), Arc::clone(&self.key).read_owned());
-        let core = serde_v0::ProjectForSerialize::from_core(&project, &Arc::new(key), &self.runtime).await?;
+        let project = project.read().await;
+        let core = serde_v0::ProjectForSerialize::from_core(&project, &self.runtime).await?;
         write_project(&core, out)
     }
 
-    async fn deserialize_project(&self, data: impl Read + Send) -> Result<ProjectHandleOwned<K, T>, Self::DeserializeError> {
+    async fn deserialize_project(&self, data: impl Read + Send) -> Result<ProjectHandleOwned<T>, Self::DeserializeError> {
         let project = read_project(data)?;
-        let project_handle = project.into_core(self.component_class_loader.clone(), &self.runtime, self.value_managers.clone(), self.quaternion_manager.clone(), self.easing_manager.clone(), &self.key).await?;
-        let project_read = project_handle.read().await;
-        let key = Arc::new(Arc::clone(&self.key).read_owned().await);
-        stream::iter(project_read.children().iter())
-            .map(Ok)
-            .try_for_each_concurrent(16, |component_class| async {
-                let component_class = component_class.read().await;
-                let component_class = component_class.get_owned().await;
-                let key = Arc::clone(&key);
-                self.runtime
-                    .spawn_blocking(move || mpdelta_differential::collect_cached_time(component_class.component(), component_class.link(), StaticPointerOwned::reference(component_class.left()), StaticPointerOwned::reference(component_class.right()), &key))
-                    .map(Result::unwrap)
-                    .await
-            })
+        let project_handle = project
+            .into_core(&self.id_generator, self.component_class_loader.clone(), &self.runtime, self.value_managers.clone(), self.quaternion_manager.clone(), self.easing_manager.clone())
             .await?;
-        drop(project_read);
         Ok(project_handle)
     }
 }
@@ -422,8 +399,8 @@ mod tests {
         #[test]
         fn test_serialize_deserialize_project(project in serde_v0::proptest::project::<T>()) {
             let mut data = Vec::new();
-            write_project::<(), T>(&project, &mut data).unwrap();
-            let project_deserialized = read_project::<(), T>(data.as_slice()).unwrap();
+            write_project::<T>(&project, &mut data).unwrap();
+            let project_deserialized = read_project::<T>(data.as_slice()).unwrap();
             assert_eq!(project_into(project), project_deserialized);
         }
     }

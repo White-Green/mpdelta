@@ -1,51 +1,51 @@
-use crate::component::instance::{ComponentInstanceHandle, ComponentInstanceHandleOwned};
-use crate::component::link::MarkerLinkHandle;
-use crate::component::marker_pin::{MarkerPinHandle, MarkerTime};
+use crate::component::instance::{ComponentInstance, ComponentInstanceId};
+use crate::component::link::MarkerLink;
+use crate::component::marker_pin::{MarkerPinId, MarkerTime};
 use crate::component::parameter::{ImageRequiredParams, ParameterNullableValue, ParameterValueFixed, ParameterValueType, VariableParameterValue};
 use crate::time::TimelineTime;
 
-pub enum RootComponentEditCommand<K: 'static, T: ParameterValueType> {
-    AddComponentInstance(ComponentInstanceHandleOwned<K, T>),
-    RemoveMarkerLink(MarkerLinkHandle<K>),
-    EditMarkerLinkLength(MarkerLinkHandle<K>, TimelineTime),
-    InsertComponentInstanceTo(ComponentInstanceHandle<K, T>, usize),
-    DeleteComponentInstance(ComponentInstanceHandle<K, T>),
+pub enum RootComponentEditCommand<T: ParameterValueType> {
+    AddComponentInstance(ComponentInstance<T>),
+    InsertComponentInstanceTo(ComponentInstanceId, usize),
+    RemoveMarkerLink(MarkerLink),
+    EditMarkerLinkLength(MarkerLink, TimelineTime),
+    DeleteComponentInstance(ComponentInstanceId),
     EditComponentLength(MarkerTime),
-    ConnectMarkerPins(MarkerPinHandle<K>, MarkerPinHandle<K>),
+    ConnectMarkerPins(MarkerPinId, MarkerPinId),
 }
 
-pub enum InstanceEditCommand<K: 'static, T: ParameterValueType> {
+pub enum InstanceEditCommand<T: ParameterValueType> {
     UpdateFixedParams(Box<[ParameterValueFixed<T::Image, T::Audio>]>),
-    UpdateVariableParams(Vec<VariableParameterValue<K, T, ParameterNullableValue<K, T>>>),
-    UpdateImageRequiredParams(ImageRequiredParams<K, T>),
+    UpdateVariableParams(Vec<VariableParameterValue<ParameterNullableValue<T>>>),
+    UpdateImageRequiredParams(ImageRequiredParams),
     MoveComponentInstance(TimelineTime),
-    MoveMarkerPin(MarkerPinHandle<K>, TimelineTime),
+    MoveMarkerPin(MarkerPinId, TimelineTime),
     AddMarkerPin(TimelineTime),
-    DeleteMarkerPin(MarkerPinHandle<K>),
-    LockMarkerPin(MarkerPinHandle<K>),
-    UnlockMarkerPin(MarkerPinHandle<K>),
-    SplitAtPin(MarkerPinHandle<K>),
+    DeleteMarkerPin(MarkerPinId),
+    LockMarkerPin(MarkerPinId),
+    UnlockMarkerPin(MarkerPinId),
+    SplitAtPin(MarkerPinId),
 }
 
-pub enum RootComponentEditEvent<'a, K: 'static, T: ParameterValueType> {
-    AddComponentInstance(&'a ComponentInstanceHandle<K, T>),
-    RemoveMarkerLink(&'a MarkerLinkHandle<K>),
-    EditMarkerLinkLength(&'a MarkerLinkHandle<K>, TimelineTime),
-    InsertComponentInstanceTo(&'a ComponentInstanceHandle<K, T>, usize),
-    DeleteComponentInstance(&'a ComponentInstanceHandle<K, T>),
+pub enum RootComponentEditEvent<'a> {
+    AddComponentInstance(&'a ComponentInstanceId),
+    InsertComponentInstanceTo(&'a ComponentInstanceId, usize),
+    RemoveMarkerLink(&'a MarkerLink),
+    EditMarkerLinkLength(&'a MarkerLink, TimelineTime),
+    DeleteComponentInstance(&'a ComponentInstanceId),
     EditComponentLength(MarkerTime),
-    ConnectMarkerPins(&'a MarkerPinHandle<K>, &'a MarkerPinHandle<K>),
+    ConnectMarkerPins(&'a MarkerPinId, &'a MarkerPinId),
 }
 
-pub enum InstanceEditEvent<'a, K: 'static, T: ParameterValueType> {
+pub enum InstanceEditEvent<'a, T: ParameterValueType> {
     UpdateFixedParams(&'a [ParameterValueFixed<T::Image, T::Audio>]),
-    UpdateVariableParams(&'a [VariableParameterValue<K, T, ParameterNullableValue<K, T>>]),
-    UpdateImageRequiredParams(&'a ImageRequiredParams<K, T>),
+    UpdateVariableParams(&'a [VariableParameterValue<ParameterNullableValue<T>>]),
+    UpdateImageRequiredParams(&'a ImageRequiredParams),
     MoveComponentInstance(TimelineTime),
-    MoveMarkerPin(&'a MarkerPinHandle<K>, TimelineTime),
+    MoveMarkerPin(&'a MarkerPinId, TimelineTime),
     AddMarkerPin(TimelineTime),
-    DeleteMarkerPin(&'a MarkerPinHandle<K>),
-    LockMarkerPin(&'a MarkerPinHandle<K>),
-    UnlockMarkerPin(&'a MarkerPinHandle<K>),
-    SplitAtPin(&'a MarkerPinHandle<K>),
+    DeleteMarkerPin(&'a MarkerPinId),
+    LockMarkerPin(&'a MarkerPinId),
+    UnlockMarkerPin(&'a MarkerPinId),
+    SplitAtPin(&'a MarkerPinId),
 }

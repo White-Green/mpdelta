@@ -19,26 +19,24 @@ pub trait Gui<T> {
     fn ui_dyn(&mut self, ctx: &Context, image: &mut dyn ImageRegister<T>);
 }
 
-pub struct MPDeltaGUI<K: 'static, T, VM, PreviewVM, TimelineVM, PropertyWindowVM>
+pub struct MPDeltaGUI<T, VM, PreviewVM, TimelineVM, PropertyWindowVM>
 where
-    K: 'static,
     T: ParameterValueType,
-    VM: MainWindowViewModel<K, T>,
-    PreviewVM: PreviewViewModel<K, T>,
-    TimelineVM: TimelineViewModel<K, T>,
-    PropertyWindowVM: PropertyWindowViewModel<K, T>,
+    VM: MainWindowViewModel<T>,
+    PreviewVM: PreviewViewModel<T>,
+    TimelineVM: TimelineViewModel<T>,
+    PropertyWindowVM: PropertyWindowViewModel<T>,
 {
     view_model: Arc<VM>,
-    preview: Preview<K, T, PreviewVM>,
-    timeline: Timeline<K, T, TimelineVM>,
-    property_window: PropertyWindow<K, T, PropertyWindowVM>,
+    preview: Preview<T, PreviewVM>,
+    timeline: Timeline<T, TimelineVM>,
+    property_window: PropertyWindow<T, PropertyWindowVM>,
 }
 
-pub fn new_gui<K, T, P>(view_model_params: P) -> MPDeltaGUI<K, T, impl MainWindowViewModel<K, T>, impl PreviewViewModel<K, T>, impl TimelineViewModel<K, T>, impl PropertyWindowViewModel<K, T>>
+pub fn new_gui<T, P>(view_model_params: P) -> MPDeltaGUI<T, impl MainWindowViewModel<T>, impl PreviewViewModel<T>, impl TimelineViewModel<T>, impl PropertyWindowViewModel<T>>
 where
-    K: Send + Sync + 'static,
     T: ParameterValueType,
-    P: ViewModelParams<K, T> + 'static,
+    P: ViewModelParams<T> + 'static,
 {
     let global_ui_state = Arc::new(GlobalUIStateImpl::new(&view_model_params));
     let edit_funnel = EditFunnelImpl::new(view_model_params.runtime().clone(), Arc::clone(view_model_params.edit()));
@@ -50,14 +48,13 @@ where
     }
 }
 
-impl<K, T, VM, TPreviewViewModel, TTimelineViewModel, TPropertyWindowViewModel> Gui<T::Image> for MPDeltaGUI<K, T, VM, TPreviewViewModel, TTimelineViewModel, TPropertyWindowViewModel>
+impl<T, VM, TPreviewViewModel, TTimelineViewModel, TPropertyWindowViewModel> Gui<T::Image> for MPDeltaGUI<T, VM, TPreviewViewModel, TTimelineViewModel, TPropertyWindowViewModel>
 where
-    K: 'static,
     T: ParameterValueType,
-    VM: MainWindowViewModel<K, T>,
-    TPreviewViewModel: PreviewViewModel<K, T>,
-    TTimelineViewModel: TimelineViewModel<K, T>,
-    TPropertyWindowViewModel: PropertyWindowViewModel<K, T>,
+    VM: MainWindowViewModel<T>,
+    TPreviewViewModel: PreviewViewModel<T>,
+    TTimelineViewModel: TimelineViewModel<T>,
+    TPropertyWindowViewModel: PropertyWindowViewModel<T>,
 {
     fn ui(&mut self, ctx: &Context, image: &mut impl ImageRegister<T::Image>) {
         self.view_model.render_frame(|| {

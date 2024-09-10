@@ -5,7 +5,7 @@ use crossbeam_utils::atomic::AtomicCell;
 use mpdelta_async_runtime::AsyncRuntime;
 use mpdelta_core::common::mixed_fraction::atomic::AtomicMixedFraction;
 use mpdelta_core::common::mixed_fraction::MixedFraction;
-use mpdelta_core::component::instance::ComponentInstanceHandle;
+use mpdelta_core::component::instance::ComponentInstanceId;
 use mpdelta_core::component::marker_pin::MarkerTime;
 use mpdelta_core::component::parameter::ParameterValueType;
 use mpdelta_core::project::{RootComponentClass, RootComponentClassHandle};
@@ -19,16 +19,15 @@ use std::sync::{atomic, Arc, Mutex, RwLock as StdRwLock};
 use std::time::Instant;
 
 #[derive(Debug)]
-pub enum GlobalUIEvent<K: 'static, T: ParameterValueType> {
+pub enum GlobalUIEvent<T: ParameterValueType> {
     BeginRenderFrame,
     EndRenderFrame,
-    SelectRootComponentClass(Option<RootComponentClassHandle<K, T>>),
-    SelectComponentInstance(Option<ComponentInstanceHandle<K, T>>),
+    SelectRootComponentClass(Option<RootComponentClassHandle<T>>),
+    SelectComponentInstance(Option<ComponentInstanceId>),
 }
 
-impl<K, T> Clone for GlobalUIEvent<K, T>
+impl<T> Clone for GlobalUIEvent<T>
 where
-    K: 'static,
     T: ParameterValueType,
 {
     fn clone(&self) -> Self {
@@ -36,14 +35,13 @@ where
             GlobalUIEvent::BeginRenderFrame => GlobalUIEvent::BeginRenderFrame,
             GlobalUIEvent::EndRenderFrame => GlobalUIEvent::EndRenderFrame,
             GlobalUIEvent::SelectRootComponentClass(target) => GlobalUIEvent::SelectRootComponentClass(target.clone()),
-            GlobalUIEvent::SelectComponentInstance(target) => GlobalUIEvent::SelectComponentInstance(target.clone()),
+            GlobalUIEvent::SelectComponentInstance(target) => GlobalUIEvent::SelectComponentInstance(*target),
         }
     }
 }
 
-impl<K, T> PartialEq for GlobalUIEvent<K, T>
+impl<T> PartialEq for GlobalUIEvent<T>
 where
-    K: 'static,
     T: ParameterValueType,
 {
     fn eq(&self, other: &Self) -> bool {
@@ -60,12 +58,7 @@ where
     }
 }
 
-impl<K, T> Eq for GlobalUIEvent<K, T>
-where
-    K: 'static,
-    T: ParameterValueType,
-{
-}
+impl<T> Eq for GlobalUIEvent<T> where T: ParameterValueType {}
 
 #[derive(Clone, PartialEq, Eq)]
 pub enum Message {
@@ -73,12 +66,12 @@ pub enum Message {
     EndRenderFrame,
 }
 
-pub trait GlobalUIEventHandler<K: 'static, T: ParameterValueType> {
-    fn handle(&self, event: GlobalUIEvent<K, T>);
+pub trait GlobalUIEventHandler<T: ParameterValueType> {
+    fn handle(&self, event: GlobalUIEvent<T>);
 }
 
-pub trait GlobalUIState<K: 'static, T: ParameterValueType>: Send + Sync + 'static {
-    fn register_global_ui_event_handler(&self, handler: Arc<impl GlobalUIEventHandler<K, T> + Send + Sync + 'static>);
+pub trait GlobalUIState<T: ParameterValueType>: Send + Sync + 'static {
+    fn register_global_ui_event_handler(&self, handler: Arc<impl GlobalUIEventHandler<T> + Send + Sync + 'static>);
     fn begin_render_frame(&self);
     fn end_render_frame(&self);
     fn playing(&self) -> bool;
@@ -88,23 +81,23 @@ pub trait GlobalUIState<K: 'static, T: ParameterValueType>: Send + Sync + 'stati
     fn set_component_length(&self, length: MarkerTime);
     fn seek(&self) -> MarkerTime;
     fn set_seek(&self, seek: MarkerTime);
-    fn select_root_component_class(&self, target: &RootComponentClassHandle<K, T>);
+    fn select_root_component_class(&self, target: &RootComponentClassHandle<T>);
     fn unselect_root_component_class(&self);
-    fn select_component_instance(&self, target: &ComponentInstanceHandle<K, T>);
+    fn select_component_instance(&self, target: &ComponentInstanceId);
 }
 
-pub struct GlobalUIStateImpl<K: 'static, T, A, H, Runtime> {
+pub struct GlobalUIStateImpl<T, A, H, Runtime> {
     request_play: Arc<AtomicBool>,
     playing: Arc<AtomicBool>,
     component_length: Arc<AtomicCell<Option<MarkerTime>>>,
     seek: Arc<AtomicMixedFraction>,
     audio_player: Arc<A>,
-    handlers: StdRwLock<Vec<Arc<dyn GlobalUIEventHandler<K, T> + Send + Sync>>>,
+    handlers: StdRwLock<Vec<Arc<dyn GlobalUIEventHandler<T> + Send + Sync>>>,
     message_router: MessageRouter<H, Runtime>,
 }
 
-impl<K: 'static, T: ParameterValueType> GlobalUIStateImpl<K, T, (), (), ()> {
-    pub fn new<P: ViewModelParams<K, T>>(params: &P) -> GlobalUIStateImpl<K, T, P::AudioPlayer, impl MessageHandler<Message, P::AsyncRuntime> + Send + Sync, P::AsyncRuntime> {
+impl<T: ParameterValueType> GlobalUIStateImpl<T, (), (), ()> {
+    pub fn new<P: ViewModelParams<T>>(params: &P) -> GlobalUIStateImpl<T, P::AudioPlayer, impl MessageHandler<Message, P::AsyncRuntime> + Send + Sync, P::AsyncRuntime> {
         let request_play = Arc::new(AtomicBool::new(false));
         let playing = Arc::new(AtomicBool::new(false));
         let component_length = Arc::new(AtomicCell::new(None::<MarkerTime>));
@@ -144,34 +137,32 @@ impl<K: 'static, T: ParameterValueType> GlobalUIStateImpl<K, T, (), (), ()> {
     }
 }
 
-impl<K, T, A, H, Runtime> GlobalUIStateImpl<K, T, A, H, Runtime>
+impl<T, A, H, Runtime> GlobalUIStateImpl<T, A, H, Runtime>
 where
-    K: 'static,
     T: ParameterValueType,
     A: AudioTypePlayer<T::Audio> + 'static,
     H: MessageHandler<Message, Runtime> + Send + Sync + 'static,
 {
-    fn handle_by(handlers: &StdRwLock<Vec<Arc<dyn GlobalUIEventHandler<K, T> + Send + Sync>>>, event: GlobalUIEvent<K, T>) {
+    fn handle_by(handlers: &StdRwLock<Vec<Arc<dyn GlobalUIEventHandler<T> + Send + Sync>>>, event: GlobalUIEvent<T>) {
         for handler in handlers.read().unwrap().iter() {
             handler.handle(event.clone());
         }
     }
 
-    fn handle(&self, event: GlobalUIEvent<K, T>) {
+    fn handle(&self, event: GlobalUIEvent<T>) {
         Self::handle_by(&self.handlers, event);
     }
 }
 
-impl<K, T, A, H, Runtime> GlobalUIState<K, T> for GlobalUIStateImpl<K, T, A, H, Runtime>
+impl<T, A, H, Runtime> GlobalUIState<T> for GlobalUIStateImpl<T, A, H, Runtime>
 where
-    K: 'static,
     T: ParameterValueType,
     A: AudioTypePlayer<T::Audio> + 'static,
     H: MessageHandler<Message, Runtime> + Send + Sync + 'static,
     Runtime: AsyncRuntime<()> + Clone + 'static,
 {
-    fn register_global_ui_event_handler(&self, handler: Arc<impl GlobalUIEventHandler<K, T> + Send + Sync + 'static>) {
-        self.handlers.write().unwrap().push(handler as Arc<dyn GlobalUIEventHandler<K, T> + Send + Sync + 'static>);
+    fn register_global_ui_event_handler(&self, handler: Arc<impl GlobalUIEventHandler<T> + Send + Sync + 'static>) {
+        self.handlers.write().unwrap().push(handler as Arc<dyn GlobalUIEventHandler<T> + Send + Sync + 'static>);
     }
 
     fn begin_render_frame(&self) {
@@ -216,7 +207,7 @@ where
         self.audio_player.seek(TimelineTime::new(seek.value()));
     }
 
-    fn select_root_component_class(&self, target: &StaticPointer<tokio::sync::RwLock<RootComponentClass<K, T>>>) {
+    fn select_root_component_class(&self, target: &StaticPointer<tokio::sync::RwLock<RootComponentClass<T>>>) {
         self.handle(GlobalUIEvent::SelectRootComponentClass(Some(target.clone())));
     }
 
@@ -225,7 +216,7 @@ where
         self.handle(GlobalUIEvent::SelectComponentInstance(None));
     }
 
-    fn select_component_instance(&self, target: &ComponentInstanceHandle<K, T>) {
-        self.handle(GlobalUIEvent::SelectComponentInstance(Some(target.clone())));
+    fn select_component_instance(&self, target: &ComponentInstanceId) {
+        self.handle(GlobalUIEvent::SelectComponentInstance(Some(*target)));
     }
 }

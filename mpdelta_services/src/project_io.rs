@@ -8,9 +8,8 @@ use std::path::Path;
 pub struct LocalFSProjectLoader;
 
 #[async_trait]
-impl<K, T> ProjectLoader<K, T> for LocalFSProjectLoader
+impl<T> ProjectLoader<T> for LocalFSProjectLoader
 where
-    K: 'static,
     T: ParameterValueType,
 {
     type Err = io::Error;
@@ -24,9 +23,8 @@ where
 pub struct LocalFSProjectWriter;
 
 #[async_trait]
-impl<K, T> ProjectWriter<K, T> for LocalFSProjectWriter
+impl<T> ProjectWriter<T> for LocalFSProjectWriter
 where
-    K: 'static,
     T: ParameterValueType,
 {
     type Err = io::Error;

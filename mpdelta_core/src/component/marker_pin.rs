@@ -1,10 +1,8 @@
 use crate::common::mixed_fraction::MixedFraction;
-use crate::ptr::{StaticPointer, StaticPointerCow, StaticPointerOwned};
-use crate::time::{AtomicTimelineTime, TimelineTime};
-use qcell::TCell;
 use serde::{Deserialize, Serialize};
-use std::hash::Hash;
-use std::sync::atomic;
+use std::borrow::Borrow;
+use std::hash::{Hash, Hasher};
+use uuid::Uuid;
 
 /// コンポーネントの始点からの時間
 /// \[0.0, ∞)
@@ -12,15 +10,16 @@ use std::sync::atomic;
 #[cfg_attr(any(feature = "proptest", test), derive(proptest_derive::Arbitrary))]
 pub struct MarkerTime(MixedFraction);
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MarkerPin {
-    cached_timeline_time: AtomicTimelineTime,
+    id: MarkerPinId,
     locked_component_time: Option<MarkerTime>,
 }
 
-pub type MarkerPinHandle<K> = StaticPointer<TCell<K, MarkerPin>>;
-pub type MarkerPinHandleOwned<K> = StaticPointerOwned<TCell<K, MarkerPin>>;
-pub type MarkerPinHandleCow<K> = StaticPointerCow<TCell<K, MarkerPin>>;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct MarkerPinId {
+    id: Uuid,
+}
 
 impl MarkerTime {
     pub const ZERO: MarkerTime = MarkerTime(MixedFraction::ZERO);
@@ -34,27 +33,38 @@ impl MarkerTime {
     }
 }
 
+impl Hash for MarkerPin {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.id.hash(state);
+    }
+}
+
+impl Borrow<MarkerPinId> for MarkerPin {
+    fn borrow(&self) -> &MarkerPinId {
+        self.id()
+    }
+}
+
+impl<'a> Borrow<MarkerPinId> for &'a MarkerPin {
+    fn borrow(&self) -> &MarkerPinId {
+        self.id()
+    }
+}
+
 impl MarkerPin {
-    pub fn new(timeline_time: TimelineTime, component_time: MarkerTime) -> MarkerPin {
+    pub fn new(id: Uuid, component_time: MarkerTime) -> MarkerPin {
         MarkerPin {
-            cached_timeline_time: timeline_time.into(),
+            id: MarkerPinId::new(id),
             locked_component_time: Some(component_time),
         }
     }
 
-    pub fn new_unlocked(timeline_time: TimelineTime) -> MarkerPin {
-        MarkerPin {
-            cached_timeline_time: timeline_time.into(),
-            locked_component_time: None,
-        }
+    pub fn new_unlocked(id: Uuid) -> MarkerPin {
+        MarkerPin { id: MarkerPinId::new(id), locked_component_time: None }
     }
 
-    pub fn cached_timeline_time(&self) -> TimelineTime {
-        self.cached_timeline_time.load(atomic::Ordering::Acquire)
-    }
-
-    pub fn cache_timeline_time(&self, time: TimelineTime) {
-        self.cached_timeline_time.store(time, atomic::Ordering::Release);
+    pub fn id(&self) -> &MarkerPinId {
+        &self.id
     }
 
     pub fn locked_component_time(&self) -> Option<MarkerTime> {
@@ -63,5 +73,11 @@ impl MarkerPin {
 
     pub fn set_locked_component_time(&mut self, time: Option<MarkerTime>) {
         self.locked_component_time = time;
+    }
+}
+
+impl MarkerPinId {
+    fn new(id: Uuid) -> MarkerPinId {
+        MarkerPinId { id }
     }
 }

@@ -1,6 +1,7 @@
 use crate::component::instance::ComponentInstance;
 use crate::component::parameter::ParameterValueType;
 use crate::component::processor::ComponentProcessorWrapper;
+use crate::core::IdGenerator;
 use crate::ptr::StaticPointer;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -56,8 +57,8 @@ impl<'a> ComponentClassIdentifier<'a> {
 }
 
 #[async_trait]
-pub trait ComponentClass<K, T: ParameterValueType>: Send + Sync {
+pub trait ComponentClass<T: ParameterValueType>: Send + Sync {
     fn identifier(&self) -> ComponentClassIdentifier;
-    fn processor(&self) -> ComponentProcessorWrapper<K, T>;
-    async fn instantiate(&self, this: &StaticPointer<RwLock<dyn ComponentClass<K, T>>>) -> ComponentInstance<K, T>;
+    fn processor(&self) -> ComponentProcessorWrapper<T>;
+    async fn instantiate(&self, this: &StaticPointer<RwLock<dyn ComponentClass<T>>>, id: &dyn IdGenerator) -> ComponentInstance<T>;
 }

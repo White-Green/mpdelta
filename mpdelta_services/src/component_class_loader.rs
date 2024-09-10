@@ -9,12 +9,12 @@ use tokio::sync::RwLock;
 pub struct TemporaryComponentClassLoader;
 
 #[async_trait]
-impl<K, T: ParameterValueType> ComponentClassLoader<K, T> for TemporaryComponentClassLoader {
-    async fn get_available_component_classes(&self) -> Cow<[StaticPointer<RwLock<dyn ComponentClass<K, T>>>]> {
+impl<T: ParameterValueType> ComponentClassLoader<T> for TemporaryComponentClassLoader {
+    async fn get_available_component_classes(&self) -> Cow<[StaticPointer<RwLock<dyn ComponentClass<T>>>]> {
         Cow::Borrowed(&[])
     }
 
-    async fn component_class_by_identifier(&self, _identifier: ComponentClassIdentifier<'_>) -> Option<StaticPointer<RwLock<dyn ComponentClass<K, T>>>> {
+    async fn component_class_by_identifier(&self, _identifier: ComponentClassIdentifier<'_>) -> Option<StaticPointer<RwLock<dyn ComponentClass<T>>>> {
         None
     }
 }

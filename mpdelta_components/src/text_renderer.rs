@@ -11,18 +11,18 @@ use glam::{Mat4, Vec4};
 use lyon_tessellation::math::Point as LyonPoint;
 use lyon_tessellation::path::{ControlPointId, EndpointId, IdEvent, PositionStore};
 use lyon_tessellation::{BuffersBuilder, FillOptions, FillTessellator, FillVertex, FillVertexConstructor, LineJoin, StrokeOptions, StrokeTessellator, StrokeVertex, StrokeVertexConstructor, VertexBuffers};
-use mpdelta_core::common::mixed_fraction::MixedFraction;
 use mpdelta_core::component::class::{ComponentClass, ComponentClassIdentifier};
 use mpdelta_core::component::instance::ComponentInstance;
 use mpdelta_core::component::marker_pin::{MarkerPin, MarkerTime};
 use mpdelta_core::component::parameter::value::{DynEditableSelfValue, EasingValue, LinearEasing};
 use mpdelta_core::component::parameter::{ImageRequiredParams, Parameter, ParameterNullableValue, ParameterSelect, ParameterType, ParameterValueRaw, ParameterValueType, VariableParameterPriority, VariableParameterValue};
 use mpdelta_core::component::processor::{ComponentProcessor, ComponentProcessorNative, ComponentProcessorWrapper, NativeProcessorInput, NativeProcessorRequest};
-use mpdelta_core::ptr::{StaticPointer, StaticPointerOwned};
+use mpdelta_core::core::IdGenerator;
+use mpdelta_core::ptr::StaticPointer;
 use mpdelta_core::time::TimelineTime;
-use mpdelta_core::time_split_value;
+use mpdelta_core::time_split_value_persistent;
 use mpdelta_core_vulkano::ImageType;
-use qcell::TCell;
+use rpds::Vector;
 use shader_font_rendering::{Constant, FontVertex, GlyphStyle};
 use smallvec::{smallvec, SmallVec};
 use std::borrow::Cow;
@@ -65,15 +65,15 @@ use vulkano::sync::{GpuFuture, HostAccessError};
 mod rich_text;
 mod shaping;
 
-pub struct TextRendererClass<K, T: ParameterValueType> {
-    processor: ComponentProcessorWrapper<K, T>,
+pub struct TextRendererClass<T: ParameterValueType> {
+    processor: ComponentProcessorWrapper<T>,
 }
 
-impl<K, T> TextRendererClass<K, T>
+impl<T> TextRendererClass<T>
 where
     T: ParameterValueType<Image = ImageType>,
 {
-    pub fn new(device: &Arc<Device>, queue: &Arc<Queue>, memory_allocator: &Arc<StandardMemoryAllocator>) -> TextRendererClass<K, T> {
+    pub fn new(device: &Arc<Device>, queue: &Arc<Queue>, memory_allocator: &Arc<StandardMemoryAllocator>) -> TextRendererClass<T> {
         TextRendererClass {
             processor: ComponentProcessorWrapper::Native(Arc::new(TextRenderer::new(device, queue, memory_allocator))),
         }
@@ -81,7 +81,7 @@ where
 }
 
 #[async_trait]
-impl<K, T> ComponentClass<K, T> for TextRendererClass<K, T>
+impl<T> ComponentClass<T> for TextRendererClass<T>
 where
     T: ParameterValueType<Image = ImageType>,
 {
@@ -93,26 +93,28 @@ where
         }
     }
 
-    fn processor(&self) -> ComponentProcessorWrapper<K, T> {
+    fn processor(&self) -> ComponentProcessorWrapper<T> {
         self.processor.clone()
     }
 
-    async fn instantiate(&self, this: &StaticPointer<RwLock<dyn ComponentClass<K, T>>>) -> ComponentInstance<K, T> {
-        let left = StaticPointerOwned::new(TCell::new(MarkerPin::new(TimelineTime::ZERO, MarkerTime::ZERO)));
-        let right = StaticPointerOwned::new(TCell::new(MarkerPin::new_unlocked(TimelineTime::new(MixedFraction::from_integer(1)))));
-        let image_required_params = ImageRequiredParams::new_default(StaticPointerOwned::reference(&left), StaticPointerOwned::reference(&right));
-        let string_param = time_split_value![StaticPointerOwned::reference(&left).clone(), Some(EasingValue::new(DynEditableSelfValue(String::new()), Arc::new(LinearEasing))), StaticPointerOwned::reference(&right).clone()];
+    async fn instantiate(&self, this: &StaticPointer<RwLock<dyn ComponentClass<T>>>, id: &dyn IdGenerator) -> ComponentInstance<T> {
+        let left = MarkerPin::new(id.generate_new(), MarkerTime::ZERO);
+        let right = MarkerPin::new_unlocked(id.generate_new());
+        let image_required_params = ImageRequiredParams::new_default(left.id(), right.id());
+        let string_param = time_split_value_persistent![*left.id(), Some(EasingValue::new(DynEditableSelfValue(String::new()), Arc::new(LinearEasing))), *right.id()];
         ComponentInstance::builder(this.clone(), left, right, Vec::new(), self.processor.clone())
             .image_required_params(image_required_params)
             .variable_parameters(
                 vec![("text".to_owned(), Parameter::String(()))],
-                vec![VariableParameterValue {
+                [VariableParameterValue {
                     params: ParameterNullableValue::String(string_param),
-                    components: vec![],
+                    components: Vector::new_sync(),
                     priority: VariableParameterPriority::PrioritizeManually,
-                }],
+                }]
+                .into_iter()
+                .collect(),
             )
-            .build()
+            .build(id)
     }
 }
 
@@ -233,7 +235,7 @@ impl TextRenderer {
 }
 
 #[async_trait]
-impl<K, T> ComponentProcessor<K, T> for TextRenderer
+impl<T> ComponentProcessor<T> for TextRenderer
 where
     T: ParameterValueType<Image = ImageType>,
 {
@@ -278,7 +280,7 @@ macro_rules! get_or_create_buffer {
 }
 
 #[async_trait]
-impl<K, T> ComponentProcessorNative<K, T> for TextRenderer
+impl<T> ComponentProcessorNative<T> for TextRenderer
 where
     T: ParameterValueType<Image = ImageType>,
 {
@@ -864,7 +866,7 @@ mod tests {
             ..VulkanoConfig::default()
         });
         let renderer = TextRenderer::new(context.device(), context.graphics_queue(), context.memory_allocator());
-        let Parameter::Image(ImageType(image)) = ComponentProcessorNative::<(), T>::process(
+        let Parameter::Image(ImageType(image)) = ComponentProcessorNative::<T>::process(
             &renderer,
             NativeProcessorInput {
                 fixed_parameters: &[],

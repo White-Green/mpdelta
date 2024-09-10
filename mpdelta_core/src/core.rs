@@ -1,5 +1,5 @@
 use crate::component::class::{ComponentClass, ComponentClassIdentifier};
-use crate::component::instance::ComponentInstanceHandle;
+use crate::component::instance::{ComponentInstance, ComponentInstanceId};
 use crate::component::parameter::value::{DynEditableEasingValueIdentifier, DynEditableEasingValueManager, DynEditableSingleValueIdentifier, DynEditableSingleValueManager, Easing, EasingIdentifier};
 use crate::component::parameter::ParameterValueType;
 use crate::edit::{InstanceEditCommand, InstanceEditEvent, RootComponentEditCommand, RootComponentEditEvent};
@@ -104,15 +104,15 @@ where
 }
 
 #[async_trait]
-pub trait ProjectSerializer<K: 'static, T: ParameterValueType>: Send + Sync {
+pub trait ProjectSerializer<T: ParameterValueType>: Send + Sync {
     type SerializeError: Error + Send + 'static;
     type DeserializeError: Error + Send + 'static;
-    async fn serialize_project(&self, project: &ProjectHandle<K, T>, out: impl Write + Send) -> Result<(), Self::SerializeError>;
-    async fn deserialize_project(&self, data: impl Read + Send) -> Result<ProjectHandleOwned<K, T>, Self::DeserializeError>;
+    async fn serialize_project(&self, project: &ProjectHandle<T>, out: impl Write + Send) -> Result<(), Self::SerializeError>;
+    async fn deserialize_project(&self, data: impl Read + Send) -> Result<ProjectHandleOwned<T>, Self::DeserializeError>;
 }
 
 #[async_trait]
-pub trait ProjectLoader<K: 'static, T: ParameterValueType>: Send + Sync {
+pub trait ProjectLoader<T: ParameterValueType>: Send + Sync {
     type Err: Error + Send + 'static;
     type ProjectRead<'a>: Read + Send + 'a
     where
@@ -121,14 +121,14 @@ pub trait ProjectLoader<K: 'static, T: ParameterValueType>: Send + Sync {
 }
 
 #[async_trait]
-pub trait ProjectMemory<K: 'static, T: ParameterValueType>: Send + Sync {
-    fn default_project(&self) -> ProjectHandle<K, T>;
+pub trait ProjectMemory<T: ParameterValueType>: Send + Sync {
+    fn default_project(&self) -> ProjectHandle<T>;
     async fn contains(&self, path: &Path) -> bool {
         self.get_loaded_project(path).await.is_some()
     }
-    async fn insert_new_project(&self, path: Option<&Path>, project: ProjectHandleOwned<K, T>);
-    async fn get_loaded_project(&self, path: &Path) -> Option<ProjectHandle<K, T>>;
-    async fn all_loaded_projects(&self) -> Cow<[ProjectHandle<K, T>]>;
+    async fn insert_new_project(&self, path: Option<&Path>, project: ProjectHandleOwned<T>);
+    async fn get_loaded_project(&self, path: &Path) -> Option<ProjectHandle<T>>;
+    async fn all_loaded_projects(&self) -> Cow<[ProjectHandle<T>]>;
 }
 
 #[derive(Debug, Error)]
@@ -140,18 +140,17 @@ pub enum LoadProjectError<PLErr, PSErr> {
 }
 
 #[async_trait]
-impl<K, T: ParameterValueType, T0, PS, PL, T3, PM, T5, T6, T7, T8, T9, T10> LoadProjectUsecase<K, T> for MPDeltaCore<T0, PS, PL, T3, PM, T5, T6, T7, T8, T9, T10>
+impl<T: ParameterValueType, T0, PS, PL, T3, PM, T5, T6, T7, T8, T9, T10> LoadProjectUsecase<T> for MPDeltaCore<T0, PS, PL, T3, PM, T5, T6, T7, T8, T9, T10>
 where
     Self: Send + Sync,
-    K: 'static,
-    PS: ProjectSerializer<K, T>,
-    PL: ProjectLoader<K, T>,
-    PM: ProjectMemory<K, T>,
-    T5: RootComponentClassMemory<K, T>,
+    PS: ProjectSerializer<T>,
+    PL: ProjectLoader<T>,
+    PM: ProjectMemory<T>,
+    T5: RootComponentClassMemory<T>,
 {
     type Err = LoadProjectError<PL::Err, PS::DeserializeError>;
 
-    async fn load_project(&self, path: impl AsRef<Path> + Send + Sync) -> Result<ProjectHandle<K, T>, Self::Err> {
+    async fn load_project(&self, path: impl AsRef<Path> + Send + Sync) -> Result<ProjectHandle<T>, Self::Err> {
         let path = path.as_ref();
         match self.project_memory.get_loaded_project(path).await {
             Some(project) => Ok(project),
@@ -167,7 +166,7 @@ where
 }
 
 #[async_trait]
-pub trait ProjectWriter<K: 'static, T: ParameterValueType>: Send + Sync {
+pub trait ProjectWriter<T: ParameterValueType>: Send + Sync {
     type Err: Error + Send + 'static;
     type ProjectWrite<'a>: Write + Send + 'a
     where
@@ -184,30 +183,28 @@ pub enum WriteProjectError<PWErr, PSErr> {
 }
 
 #[async_trait]
-impl<K, T: ParameterValueType, T0, PS, T2, PW, T4, T5, T6, T7, T8, T9, T10> WriteProjectUsecase<K, T> for MPDeltaCore<T0, PS, T2, PW, T4, T5, T6, T7, T8, T9, T10>
+impl<T: ParameterValueType, T0, PS, T2, PW, T4, T5, T6, T7, T8, T9, T10> WriteProjectUsecase<T> for MPDeltaCore<T0, PS, T2, PW, T4, T5, T6, T7, T8, T9, T10>
 where
     Self: Send + Sync,
-    K: 'static,
-    PS: ProjectSerializer<K, T>,
-    PW: ProjectWriter<K, T>,
+    PS: ProjectSerializer<T>,
+    PW: ProjectWriter<T>,
 {
     type Err = WriteProjectError<PW::Err, PS::SerializeError>;
 
-    async fn write_project(&self, project: &ProjectHandle<K, T>, path: impl AsRef<Path> + Send + Sync) -> Result<(), Self::Err> {
+    async fn write_project(&self, project: &ProjectHandle<T>, path: impl AsRef<Path> + Send + Sync) -> Result<(), Self::Err> {
         let out = self.project_writer.write_project(path.as_ref()).await.map_err(WriteProjectError::ProjectWriterError)?;
         self.project_serializer.serialize_project(project, out).await.map_err(WriteProjectError::ProjectSerializeError)
     }
 }
 
 #[async_trait]
-impl<K, T: ParameterValueType, ID, T1, T2, T3, PM, T5, T6, T7, T8, T9, T10> NewProjectUsecase<K, T> for MPDeltaCore<ID, T1, T2, T3, PM, T5, T6, T7, T8, T9, T10>
+impl<T: ParameterValueType, ID, T1, T2, T3, PM, T5, T6, T7, T8, T9, T10> NewProjectUsecase<T> for MPDeltaCore<ID, T1, T2, T3, PM, T5, T6, T7, T8, T9, T10>
 where
     Self: Send + Sync,
-    K: 'static,
     ID: IdGenerator,
-    PM: ProjectMemory<K, T>,
+    PM: ProjectMemory<T>,
 {
-    async fn new_project(&self) -> ProjectHandle<K, T> {
+    async fn new_project(&self) -> ProjectHandle<T> {
         let project = Project::new_empty(self.id_generator.generate_new());
         let pointer = StaticPointerOwned::reference(&project).clone();
         self.project_memory.insert_new_project(None, project).await;
@@ -216,27 +213,26 @@ where
 }
 
 #[async_trait]
-pub trait RootComponentClassMemory<K, T: ParameterValueType>: Send + Sync {
-    async fn insert_new_root_component_class(&self, parent: Option<&ProjectHandle<K, T>>, root_component_class: RootComponentClassHandleOwned<K, T>);
-    async fn set_parent(&self, root_component_class: &RootComponentClassHandle<K, T>, parent: Option<&ProjectHandle<K, T>>);
-    async fn search_by_parent(&self, parent: &ProjectHandle<K, T>) -> Cow<[RootComponentClassHandle<K, T>]>;
-    async fn get_parent_project(&self, path: &RootComponentClassHandle<K, T>) -> Option<ProjectHandle<K, T>>;
-    async fn all_loaded_root_component_classes(&self) -> Cow<[RootComponentClassHandle<K, T>]>;
+pub trait RootComponentClassMemory<T: ParameterValueType>: Send + Sync {
+    async fn insert_new_root_component_class(&self, parent: Option<&ProjectHandle<T>>, root_component_class: RootComponentClassHandleOwned<T>);
+    async fn set_parent(&self, root_component_class: &RootComponentClassHandle<T>, parent: Option<&ProjectHandle<T>>);
+    async fn search_by_parent(&self, parent: &ProjectHandle<T>) -> Cow<[RootComponentClassHandle<T>]>;
+    async fn get_parent_project(&self, path: &RootComponentClassHandle<T>) -> Option<ProjectHandle<T>>;
+    async fn all_loaded_root_component_classes(&self) -> Cow<[RootComponentClassHandle<T>]>;
 }
 
 #[async_trait]
-impl<K, T: ParameterValueType, ID, T1, T2, T3, PM, RM, T6, T7, T8, T9, T10> NewRootComponentClassUsecase<K, T> for MPDeltaCore<ID, T1, T2, T3, PM, RM, T6, T7, T8, T9, T10>
+impl<T: ParameterValueType, ID, T1, T2, T3, PM, RM, T6, T7, T8, T9, T10> NewRootComponentClassUsecase<T> for MPDeltaCore<ID, T1, T2, T3, PM, RM, T6, T7, T8, T9, T10>
 where
     Self: Send + Sync,
-    K: 'static,
     ID: IdGenerator,
-    PM: ProjectMemory<K, T>,
-    RM: RootComponentClassMemory<K, T>,
+    PM: ProjectMemory<T>,
+    RM: RootComponentClassMemory<T>,
 {
-    async fn new_root_component_class(&self) -> RootComponentClassHandle<K, T> {
+    async fn new_root_component_class(&self) -> RootComponentClassHandle<T> {
         let project = self.project_memory.default_project();
         let project_id = project.upgrade().unwrap().read().await.id();
-        let root_component_class = RootComponentClass::new_empty(self.id_generator.generate_new(), project.clone(), project_id);
+        let root_component_class = RootComponentClass::new_empty(self.id_generator.generate_new(), project.clone(), project_id, &self.id_generator);
         let pointer = StaticPointerOwned::reference(&root_component_class).clone();
         self.root_component_class_memory.insert_new_root_component_class(None, root_component_class).await;
         pointer
@@ -244,52 +240,51 @@ where
 }
 
 #[async_trait]
-impl<K, T: ParameterValueType, T0, T1, T2, T3, T4, RM, T6, T7, T8, T9, T10> SetOwnerForRootComponentClassUsecase<K, T> for MPDeltaCore<T0, T1, T2, T3, T4, RM, T6, T7, T8, T9, T10>
+impl<T: ParameterValueType, T0, T1, T2, T3, T4, RM, T6, T7, T8, T9, T10> SetOwnerForRootComponentClassUsecase<T> for MPDeltaCore<T0, T1, T2, T3, T4, RM, T6, T7, T8, T9, T10>
 where
     Self: Send + Sync,
-    RM: RootComponentClassMemory<K, T>,
+    RM: RootComponentClassMemory<T>,
 {
-    async fn set_owner_for_root_component_class(&self, component: &RootComponentClassHandle<K, T>, owner: &ProjectHandle<K, T>) {
+    async fn set_owner_for_root_component_class(&self, component: &RootComponentClassHandle<T>, owner: &ProjectHandle<T>) {
         self.root_component_class_memory.set_parent(component, Some(owner)).await;
     }
 }
 
 #[async_trait]
-impl<K, T: ParameterValueType, T0, T1, T2, T3, PM, T5, T6, T7, T8, T9, T10> GetLoadedProjectsUsecase<K, T> for MPDeltaCore<T0, T1, T2, T3, PM, T5, T6, T7, T8, T9, T10>
+impl<T: ParameterValueType, T0, T1, T2, T3, PM, T5, T6, T7, T8, T9, T10> GetLoadedProjectsUsecase<T> for MPDeltaCore<T0, T1, T2, T3, PM, T5, T6, T7, T8, T9, T10>
 where
     Self: Send + Sync,
-    K: 'static,
-    PM: ProjectMemory<K, T>,
+    PM: ProjectMemory<T>,
 {
-    async fn get_loaded_projects(&self) -> Cow<[ProjectHandle<K, T>]> {
+    async fn get_loaded_projects(&self) -> Cow<[ProjectHandle<T>]> {
         self.project_memory.all_loaded_projects().await
     }
 }
 
 #[async_trait]
-impl<K, T: ParameterValueType, T0, T1, T2, T3, T4, RM, T6, T7, T8, T9, T10> GetRootComponentClassesUsecase<K, T> for MPDeltaCore<T0, T1, T2, T3, T4, RM, T6, T7, T8, T9, T10>
+impl<T: ParameterValueType, T0, T1, T2, T3, T4, RM, T6, T7, T8, T9, T10> GetRootComponentClassesUsecase<T> for MPDeltaCore<T0, T1, T2, T3, T4, RM, T6, T7, T8, T9, T10>
 where
     Self: Send + Sync,
-    RM: RootComponentClassMemory<K, T>,
+    RM: RootComponentClassMemory<T>,
 {
-    async fn get_root_component_classes(&self, project: &ProjectHandle<K, T>) -> Cow<[RootComponentClassHandle<K, T>]> {
+    async fn get_root_component_classes(&self, project: &ProjectHandle<T>) -> Cow<[RootComponentClassHandle<T>]> {
         self.root_component_class_memory.search_by_parent(project).await
     }
 }
 
 #[async_trait]
-pub trait ComponentClassLoader<K, T: ParameterValueType>: Send + Sync {
-    async fn get_available_component_classes(&self) -> Cow<[StaticPointer<RwLock<dyn ComponentClass<K, T>>>]>;
-    async fn component_class_by_identifier(&self, identifier: ComponentClassIdentifier<'_>) -> Option<StaticPointer<RwLock<dyn ComponentClass<K, T>>>>;
+pub trait ComponentClassLoader<T: ParameterValueType>: Send + Sync {
+    async fn get_available_component_classes(&self) -> Cow<[StaticPointer<RwLock<dyn ComponentClass<T>>>]>;
+    async fn component_class_by_identifier(&self, identifier: ComponentClassIdentifier<'_>) -> Option<StaticPointer<RwLock<dyn ComponentClass<T>>>>;
 }
 
-impl<K, T, O> ComponentClassLoader<K, T> for O
+impl<T, O> ComponentClassLoader<T> for O
 where
     T: ParameterValueType,
     O: Deref + Send + Sync,
-    O::Target: ComponentClassLoader<K, T>,
+    O::Target: ComponentClassLoader<T>,
 {
-    fn get_available_component_classes<'life0, 'async_trait>(&'life0 self) -> Pin<Box<dyn Future<Output = Cow<[StaticPointer<RwLock<dyn ComponentClass<K, T>>>]>> + Send + 'async_trait>>
+    fn get_available_component_classes<'life0, 'async_trait>(&'life0 self) -> Pin<Box<dyn Future<Output = Cow<[StaticPointer<RwLock<dyn ComponentClass<T>>>]>> + Send + 'async_trait>>
     where
         Self: 'async_trait,
         'life0: 'async_trait,
@@ -297,7 +292,7 @@ where
         self.deref().get_available_component_classes()
     }
 
-    fn component_class_by_identifier<'life0, 'life1, 'async_trait>(&'life0 self, identifier: ComponentClassIdentifier<'life1>) -> Pin<Box<dyn Future<Output = Option<StaticPointer<RwLock<dyn ComponentClass<K, T>>>>> + Send + 'async_trait>>
+    fn component_class_by_identifier<'life0, 'life1, 'async_trait>(&'life0 self, identifier: ComponentClassIdentifier<'life1>) -> Pin<Box<dyn Future<Output = Option<StaticPointer<RwLock<dyn ComponentClass<T>>>>> + Send + 'async_trait>>
     where
         Self: 'async_trait,
         'life0: 'async_trait,
@@ -385,119 +380,114 @@ where
 }
 
 #[async_trait]
-impl<K, T: ParameterValueType, T0, T1, T2, T3, T4, T5, CL, T7, T8, T9, T10> GetAvailableComponentClassesUsecase<K, T> for MPDeltaCore<T0, T1, T2, T3, T4, T5, CL, T7, T8, T9, T10>
+impl<T: ParameterValueType, T0, T1, T2, T3, T4, T5, CL, T7, T8, T9, T10> GetAvailableComponentClassesUsecase<T> for MPDeltaCore<T0, T1, T2, T3, T4, T5, CL, T7, T8, T9, T10>
 where
     Self: Send + Sync,
-    CL: ComponentClassLoader<K, T>,
+    CL: ComponentClassLoader<T>,
 {
-    async fn get_available_component_classes(&self) -> Cow<[StaticPointer<RwLock<dyn ComponentClass<K, T>>>]> {
+    async fn get_available_component_classes(&self) -> Cow<[StaticPointer<RwLock<dyn ComponentClass<T>>>]> {
         self.component_class_loader.get_available_component_classes().await
     }
 }
 
 #[async_trait]
-pub trait ComponentRendererBuilder<K, T: ParameterValueType>: Send + Sync {
+pub trait ComponentRendererBuilder<T: ParameterValueType>: Send + Sync {
     type Err: Error + Send + 'static;
     type Renderer: RealtimeComponentRenderer<T> + Send + Sync + 'static;
-    async fn create_renderer(&self, component: &ComponentInstanceHandle<K, T>) -> Result<Self::Renderer, Self::Err>;
+    async fn create_renderer(&self, component: ComponentInstance<T>) -> Result<Self::Renderer, Self::Err>;
 }
 
 #[async_trait]
-impl<K, T: ParameterValueType, T0, T1, T2, T3, T4, T5, T6, CR, T8, T9, T10> RealtimeRenderComponentUsecase<K, T> for MPDeltaCore<T0, T1, T2, T3, T4, T5, T6, CR, T8, T9, T10>
+impl<T: ParameterValueType, T0, T1, T2, T3, T4, T5, T6, CR, T8, T9, T10> RealtimeRenderComponentUsecase<T> for MPDeltaCore<T0, T1, T2, T3, T4, T5, T6, CR, T8, T9, T10>
 where
     Self: Send + Sync,
-    K: 'static,
-    ComponentInstanceHandle<K, T>: Sync,
-    CR: ComponentRendererBuilder<K, T>,
+    ComponentInstance<T>: Sync,
+    CR: ComponentRendererBuilder<T>,
 {
     type Err = CR::Err;
     type Renderer = CR::Renderer;
 
-    async fn render_component(&self, component: &ComponentInstanceHandle<K, T>) -> Result<Self::Renderer, Self::Err> {
+    async fn render_component(&self, component: ComponentInstance<T>) -> Result<Self::Renderer, Self::Err> {
         self.component_renderer_builder.create_renderer(component).await
     }
 }
 
-pub trait ComponentEncoder<K, T: ParameterValueType, Encoder>: Send + Sync {
+pub trait ComponentEncoder<T: ParameterValueType, Encoder>: Send + Sync {
     type Err: Error + Send + 'static;
-    fn render_and_encode<'life0, 'life1, 'async_trait>(&'life0 self, component: &'life1 ComponentInstanceHandle<K, T>, encoder: Encoder) -> impl Future<Output = Result<(), Self::Err>> + Send + 'async_trait
+    fn render_and_encode<'life0, 'async_trait>(&'life0 self, component: ComponentInstance<T>, encoder: Encoder) -> impl Future<Output = Result<(), Self::Err>> + Send + 'async_trait
     where
-        'life0: 'async_trait,
-        'life1: 'async_trait;
+        'life0: 'async_trait;
 }
 
-impl<K, T: ParameterValueType, T0, T1, T2, T3, T4, T5, T6, T7, VE, T9, T10, Encoder> RenderWholeComponentUsecase<K, T, Encoder> for MPDeltaCore<T0, T1, T2, T3, T4, T5, T6, T7, VE, T9, T10>
+impl<T: ParameterValueType, T0, T1, T2, T3, T4, T5, T6, T7, VE, T9, T10, Encoder> RenderWholeComponentUsecase<T, Encoder> for MPDeltaCore<T0, T1, T2, T3, T4, T5, T6, T7, VE, T9, T10>
 where
     Self: Send + Sync,
-    VE: ComponentEncoder<K, T, Encoder>,
+    VE: ComponentEncoder<T, Encoder>,
 {
     type Err = VE::Err;
 
-    fn render_and_encode<'life0, 'life1, 'async_trait>(&'life0 self, component: &'life1 ComponentInstanceHandle<K, T>, encoder: Encoder) -> impl Future<Output = Result<(), Self::Err>> + Send + 'async_trait
+    fn render_and_encode<'life0, 'async_trait>(&'life0 self, component: ComponentInstance<T>, encoder: Encoder) -> impl Future<Output = Result<(), Self::Err>> + Send + 'async_trait
     where
         'life0: 'async_trait,
-        'life1: 'async_trait,
     {
         self.video_encoder.render_and_encode(component, encoder)
     }
 }
 
-pub trait EditEventListener<K, T: ParameterValueType>: Send + Sync {
-    fn on_edit(&self, target: &RootComponentClassHandle<K, T>, event: RootComponentEditEvent<K, T>);
-    fn on_edit_instance(&self, root: &RootComponentClassHandle<K, T>, target: &ComponentInstanceHandle<K, T>, command: InstanceEditEvent<K, T>);
+pub trait EditEventListener<T: ParameterValueType>: Send + Sync {
+    fn on_edit(&self, target: &RootComponentClassHandle<T>, event: RootComponentEditEvent);
+    fn on_edit_instance(&self, root: &RootComponentClassHandle<T>, target: &ComponentInstanceId, command: InstanceEditEvent<T>);
 }
 
-impl<K, T: ParameterValueType, O> EditEventListener<K, T> for O
+impl<T: ParameterValueType, O> EditEventListener<T> for O
 where
     O: Deref + Send + Sync,
-    O::Target: EditEventListener<K, T>,
+    O::Target: EditEventListener<T>,
 {
-    fn on_edit(&self, target: &RootComponentClassHandle<K, T>, event: RootComponentEditEvent<K, T>) {
+    fn on_edit(&self, target: &RootComponentClassHandle<T>, event: RootComponentEditEvent) {
         self.deref().on_edit(target, event)
     }
 
-    fn on_edit_instance(&self, root: &RootComponentClassHandle<K, T>, target: &ComponentInstanceHandle<K, T>, command: InstanceEditEvent<K, T>) {
+    fn on_edit_instance(&self, root: &RootComponentClassHandle<T>, target: &ComponentInstanceId, command: InstanceEditEvent<T>) {
         self.deref().on_edit_instance(root, target, command)
     }
 }
 
 #[async_trait]
-pub trait Editor<K, T: ParameterValueType>: Send + Sync {
+pub trait Editor<T: ParameterValueType>: Send + Sync {
     type Log: Send + Sync;
     type Err: Error + Send + 'static;
     type EditEventListenerGuard: Send + Sync + 'static;
-    fn add_edit_event_listener(&self, listener: impl EditEventListener<K, T> + 'static) -> Self::EditEventListenerGuard;
-    async fn edit(&self, target: &RootComponentClassHandle<K, T>, command: RootComponentEditCommand<K, T>) -> Result<Self::Log, Self::Err>;
-    async fn edit_instance(&self, root: &RootComponentClassHandle<K, T>, target: &ComponentInstanceHandle<K, T>, command: InstanceEditCommand<K, T>) -> Result<Self::Log, Self::Err>;
+    fn add_edit_event_listener(&self, listener: impl EditEventListener<T> + 'static) -> Self::EditEventListenerGuard;
+    async fn edit(&self, target: &RootComponentClassHandle<T>, command: RootComponentEditCommand<T>) -> Result<Self::Log, Self::Err>;
+    async fn edit_instance(&self, root: &RootComponentClassHandle<T>, target: &ComponentInstanceId, command: InstanceEditCommand<T>) -> Result<Self::Log, Self::Err>;
     async fn edit_reverse(&self, log: &Self::Log);
     async fn edit_by_log(&self, log: &Self::Log);
 }
 
 #[async_trait]
-pub trait EditHistory<K, T: ParameterValueType, Log>: Send + Sync {
-    async fn push_history(&self, root: &RootComponentClassHandle<K, T>, target: Option<&ComponentInstanceHandle<K, T>>, log: Log);
-    async fn undo(&self, root: &RootComponentClassHandle<K, T>, target: Option<&ComponentInstanceHandle<K, T>>) -> Option<Arc<Log>>;
-    async fn redo(&self, root: &RootComponentClassHandle<K, T>, target: Option<&ComponentInstanceHandle<K, T>>) -> Option<Arc<Log>>;
+pub trait EditHistory<T: ParameterValueType, Log>: Send + Sync {
+    async fn push_history(&self, root: &RootComponentClassHandle<T>, target: Option<&ComponentInstanceId>, log: Log);
+    async fn undo(&self, root: &RootComponentClassHandle<T>, target: Option<&ComponentInstanceId>) -> Option<Arc<Log>>;
+    async fn redo(&self, root: &RootComponentClassHandle<T>, target: Option<&ComponentInstanceId>) -> Option<Arc<Log>>;
 }
 
 #[async_trait]
-impl<K, T: ParameterValueType, T0, T1, T2, T3, T4, T5, T6, T7, T8, ED, HS> EditUsecase<K, T> for MPDeltaCore<T0, T1, T2, T3, T4, T5, T6, T7, T8, ED, HS>
+impl<T: ParameterValueType, T0, T1, T2, T3, T4, T5, T6, T7, T8, ED, HS> EditUsecase<T> for MPDeltaCore<T0, T1, T2, T3, T4, T5, T6, T7, T8, ED, HS>
 where
     Self: Send + Sync,
-    K: 'static,
-    ComponentInstanceHandle<K, T>: Sync,
-    ED: Editor<K, T>,
-    HS: EditHistory<K, T, ED::Log>,
+    ED: Editor<T>,
+    HS: EditHistory<T, ED::Log>,
 {
     type Err = ED::Err;
 
-    async fn edit(&self, target: &RootComponentClassHandle<K, T>, command: RootComponentEditCommand<K, T>) -> Result<(), Self::Err> {
+    async fn edit(&self, target: &RootComponentClassHandle<T>, command: RootComponentEditCommand<T>) -> Result<(), Self::Err> {
         let log = self.editor.edit(target, command).await?;
         self.edit_history.push_history(target, None, log).await;
         Ok(())
     }
 
-    async fn edit_instance(&self, root: &RootComponentClassHandle<K, T>, target: &ComponentInstanceHandle<K, T>, command: InstanceEditCommand<K, T>) -> Result<(), Self::Err> {
+    async fn edit_instance(&self, root: &RootComponentClassHandle<T>, target: &ComponentInstanceId, command: InstanceEditCommand<T>) -> Result<(), Self::Err> {
         let log = self.editor.edit_instance(root, target, command).await?;
         self.edit_history.push_history(root, Some(target), log).await;
         Ok(())
@@ -505,30 +495,26 @@ where
 }
 
 #[async_trait]
-impl<K, T: ParameterValueType, T0, T1, T2, T3, T4, T5, T6, T7, T8, ED, T10> SubscribeEditEventUsecase<K, T> for MPDeltaCore<T0, T1, T2, T3, T4, T5, T6, T7, T8, ED, T10>
+impl<T: ParameterValueType, T0, T1, T2, T3, T4, T5, T6, T7, T8, ED, T10> SubscribeEditEventUsecase<T> for MPDeltaCore<T0, T1, T2, T3, T4, T5, T6, T7, T8, ED, T10>
 where
     Self: Send + Sync,
-    K: 'static,
-    ComponentInstanceHandle<K, T>: Sync,
-    ED: Editor<K, T>,
+    ED: Editor<T>,
 {
     type EditEventListenerGuard = ED::EditEventListenerGuard;
 
-    fn add_edit_event_listener(&self, listener: impl EditEventListener<K, T> + 'static) -> Self::EditEventListenerGuard {
+    fn add_edit_event_listener(&self, listener: impl EditEventListener<T> + 'static) -> Self::EditEventListenerGuard {
         self.editor.add_edit_event_listener(listener)
     }
 }
 
 #[async_trait]
-impl<K, T: ParameterValueType, T0, T1, T2, T3, T4, T5, T6, T7, T8, ED, HS> UndoUsecase<K, T> for MPDeltaCore<T0, T1, T2, T3, T4, T5, T6, T7, T8, ED, HS>
+impl<T: ParameterValueType, T0, T1, T2, T3, T4, T5, T6, T7, T8, ED, HS> UndoUsecase<T> for MPDeltaCore<T0, T1, T2, T3, T4, T5, T6, T7, T8, ED, HS>
 where
     Self: Send + Sync,
-    K: 'static,
-    ComponentInstanceHandle<K, T>: Sync,
-    ED: Editor<K, T>,
-    HS: EditHistory<K, T, ED::Log>,
+    ED: Editor<T>,
+    HS: EditHistory<T, ED::Log>,
 {
-    async fn undo(&self, component: &RootComponentClassHandle<K, T>) -> bool {
+    async fn undo(&self, component: &RootComponentClassHandle<T>) -> bool {
         if let Some(log) = self.edit_history.undo(component, None).await {
             self.editor.edit_reverse(&log).await;
             true
@@ -537,7 +523,7 @@ where
         }
     }
 
-    async fn undo_instance(&self, root: &RootComponentClassHandle<K, T>, target: &ComponentInstanceHandle<K, T>) -> bool {
+    async fn undo_instance(&self, root: &RootComponentClassHandle<T>, target: &ComponentInstanceId) -> bool {
         if let Some(log) = self.edit_history.undo(root, Some(target)).await {
             self.editor.edit_reverse(&log).await;
             true
@@ -548,15 +534,13 @@ where
 }
 
 #[async_trait]
-impl<K, T: ParameterValueType, T0, T1, T2, T3, T4, T5, T6, T7, T8, ED, HS> RedoUsecase<K, T> for MPDeltaCore<T0, T1, T2, T3, T4, T5, T6, T7, T8, ED, HS>
+impl<T: ParameterValueType, T0, T1, T2, T3, T4, T5, T6, T7, T8, ED, HS> RedoUsecase<T> for MPDeltaCore<T0, T1, T2, T3, T4, T5, T6, T7, T8, ED, HS>
 where
     Self: Send + Sync,
-    K: 'static,
-    ComponentInstanceHandle<K, T>: Sync,
-    ED: Editor<K, T>,
-    HS: EditHistory<K, T, ED::Log>,
+    ED: Editor<T>,
+    HS: EditHistory<T, ED::Log>,
 {
-    async fn redo(&self, component: &RootComponentClassHandle<K, T>) -> bool {
+    async fn redo(&self, component: &RootComponentClassHandle<T>) -> bool {
         if let Some(log) = self.edit_history.redo(component, None).await {
             self.editor.edit_by_log(&log).await;
             true
@@ -565,7 +549,7 @@ where
         }
     }
 
-    async fn redo_instance(&self, root: &RootComponentClassHandle<K, T>, target: &ComponentInstanceHandle<K, T>) -> bool {
+    async fn redo_instance(&self, root: &RootComponentClassHandle<T>, target: &ComponentInstanceId) -> bool {
         if let Some(log) = self.edit_history.redo(root, Some(target)).await {
             self.editor.edit_by_log(&log).await;
             true

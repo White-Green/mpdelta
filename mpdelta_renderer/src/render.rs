@@ -4,43 +4,41 @@ use cgmath::Vector3;
 use futures::{stream, StreamExt, TryStreamExt};
 use moka::future::Cache;
 use mpdelta_core::common::mixed_fraction::MixedFraction;
-use mpdelta_core::component::instance::ComponentInstanceHandle;
-use mpdelta_core::component::marker_pin::{MarkerPinHandleOwned, MarkerTime};
+use mpdelta_core::component::instance::ComponentInstance;
+use mpdelta_core::component::marker_pin::{MarkerPin, MarkerPinId, MarkerTime};
 use mpdelta_core::component::parameter::value::DynEditableSingleValueMarker;
 use mpdelta_core::component::parameter::{
     AbstractFile, AudioRequiredParams, AudioRequiredParamsFixed, ImageRequiredParams, ImageRequiredParamsFixed, ImageRequiredParamsTransform, ImageRequiredParamsTransformFixed, Opacity, Parameter, ParameterType, ParameterValueRaw, ParameterValueType, VariableParameterValue,
 };
-use mpdelta_core::component::processor::{CacheKey, ComponentProcessorWrapper, ComponentsLinksPair, NativeProcessorInput};
+use mpdelta_core::component::processor::{CacheKey, ComponentProcessorWrapper, NativeProcessorInput};
 use mpdelta_core::time::TimelineTime;
-use qcell::TCellOwner;
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use std::any::Any;
 use std::collections::HashMap;
 use std::future::Future;
 use std::marker::PhantomData;
-use std::ops::{Deref, Range};
+use std::ops::Range;
 use std::sync::Arc;
 use std::{convert, future, iter, mem, panic};
 use tokio::runtime::Handle;
 
 mod evaluate_parameter;
 
-pub(crate) struct Renderer<K: 'static, T: ParameterValueType, ImageCombinerBuilder, AudioCombinerBuilder> {
+pub(crate) struct Renderer<T: ParameterValueType, ImageCombinerBuilder, AudioCombinerBuilder> {
     runtime: Handle,
-    component: ComponentInstanceHandle<K, T>,
+    component: ComponentInstance<T>,
     image_combiner_builder: Arc<ImageCombinerBuilder>,
     audio_combiner_builder: Arc<AudioCombinerBuilder>,
     cache: Cache<Box<dyn CacheKey>, Arc<dyn Any + Send + Sync>>,
 }
 
-impl<K, T, ImageCombinerBuilder, AudioCombinerBuilder> Renderer<K, T, ImageCombinerBuilder, AudioCombinerBuilder>
+impl<T, ImageCombinerBuilder, AudioCombinerBuilder> Renderer<T, ImageCombinerBuilder, AudioCombinerBuilder>
 where
-    K: 'static,
     T: ParameterValueType,
     ImageCombinerBuilder: CombinerBuilder<T::Image, Request = ImageCombinerRequest, Param = ImageCombinerParam> + 'static,
     AudioCombinerBuilder: CombinerBuilder<T::Audio, Request = AudioCombinerRequest, Param = AudioCombinerParam> + 'static,
 {
-    pub(crate) fn new(runtime: Handle, component: ComponentInstanceHandle<K, T>, image_combiner_builder: Arc<ImageCombinerBuilder>, audio_combiner_builder: Arc<AudioCombinerBuilder>) -> Self {
+    pub(crate) fn new(runtime: Handle, component: ComponentInstance<T>, image_combiner_builder: Arc<ImageCombinerBuilder>, audio_combiner_builder: Arc<AudioCombinerBuilder>) -> Self {
         Renderer {
             runtime,
             component,
@@ -50,10 +48,9 @@ where
         }
     }
 
-    pub(crate) fn render(&self, at: usize, ty: ParameterType, key: Arc<impl Deref<Target = TCellOwner<K>> + Send + Sync + 'static>) -> impl Future<Output = RenderResult<ParameterValueRaw<T::Image, T::Audio>, K, T>> + Send + 'static {
+    pub(crate) fn render(&self, at: usize, ty: ParameterType) -> impl Future<Output = RenderResult<ParameterValueRaw<T::Image, T::Audio>>> + Send + 'static {
         let ctx = RenderContext {
             runtime: self.runtime.clone(),
-            key,
             image_combiner_builder: Arc::clone(&self.image_combiner_builder),
             audio_combiner_builder: Arc::clone(&self.audio_combiner_builder),
             cache: self.cache.clone(),
@@ -61,18 +58,16 @@ where
         };
         let component = self.component.clone();
         async move {
-            render_inner(&component, TimelineTime::new(MixedFraction::from_fraction(at as i64, 60)) /* TODO: */, &ty, &ctx).await.map(into_parameter_value_fixed)
+            let right = TimelineTime::new(component.marker_right().locked_component_time().unwrap().value());
+            let time_map = HashMap::from([(*component.marker_left().id(), TimelineTime::ZERO), (*component.marker_right().id(), right)]);
+            render_inner(&component, TimelineTime::new(MixedFraction::from_fraction(at as i64, 60)) /* TODO: */, &ty, &ctx, &Arc::new(time_map)).await.map(into_parameter_value_fixed)
         }
     }
 
-    pub(crate) fn calc_natural_length<'a>(&self, key: impl Deref<Target = TCellOwner<K>> + Send + 'a) -> impl Future<Output = Result<Option<MarkerTime>, RenderError<K, T>>> + Send + 'a {
+    pub(crate) fn calc_natural_length<'a>(&self) -> impl Future<Output = Result<Option<MarkerTime>, RenderError>> + Send + 'a {
         let component = self.component.clone();
         let render_cache = self.cache.clone();
         async move {
-            let Some(component) = component.upgrade() else {
-                return Err(RenderError::InvalidComponent(component.clone()));
-            };
-            let component = component.ro(&key);
             let fixed_parameters = component
                 .fixed_parameters()
                 .iter()
@@ -109,20 +104,18 @@ where
     }
 }
 
-struct RenderContext<Key, T, ImageCombinerBuilder, AudioCombinerBuilder> {
+struct RenderContext<T, ImageCombinerBuilder, AudioCombinerBuilder> {
     runtime: Handle,
-    key: Arc<Key>,
     image_combiner_builder: Arc<ImageCombinerBuilder>,
     audio_combiner_builder: Arc<AudioCombinerBuilder>,
     cache: Cache<Box<dyn CacheKey>, Arc<dyn Any + Send + Sync>>,
     _phantom: PhantomData<T>,
 }
 
-impl<Key, T, ImageCombinerBuilder, AudioCombinerBuilder> Clone for RenderContext<Key, T, ImageCombinerBuilder, AudioCombinerBuilder> {
+impl<T, ImageCombinerBuilder, AudioCombinerBuilder> Clone for RenderContext<T, ImageCombinerBuilder, AudioCombinerBuilder> {
     fn clone(&self) -> Self {
         let RenderContext {
             runtime,
-            key,
             image_combiner_builder,
             audio_combiner_builder,
             cache,
@@ -130,7 +123,6 @@ impl<Key, T, ImageCombinerBuilder, AudioCombinerBuilder> Clone for RenderContext
         } = self;
         RenderContext {
             runtime: runtime.clone(),
-            key: Arc::clone(key),
             image_combiner_builder: Arc::clone(image_combiner_builder),
             audio_combiner_builder: Arc::clone(audio_combiner_builder),
             cache: cache.clone(),
@@ -203,24 +195,20 @@ where
 }
 
 #[allow(clippy::manual_async_fn)]
-fn render_inner<'a, K, T, Key, ImageCombinerBuilder, AudioCombinerBuilder>(
-    component_handle: &'a ComponentInstanceHandle<K, T>,
+fn render_inner<'a, T, ImageCombinerBuilder, AudioCombinerBuilder>(
+    component: &'a ComponentInstance<T>,
     at: TimelineTime,
     ty: &'a ParameterType,
-    ctx: &'a RenderContext<Key, T, ImageCombinerBuilder, AudioCombinerBuilder>,
-) -> impl Future<Output = RenderResult<Parameter<RenderOutput<T::Image, T::Audio>>, K, T>> + Send + 'a
+    ctx: &'a RenderContext<T, ImageCombinerBuilder, AudioCombinerBuilder>,
+    timeline_time: &'a Arc<HashMap<MarkerPinId, TimelineTime>>,
+) -> impl Future<Output = RenderResult<Parameter<RenderOutput<T::Image, T::Audio>>>> + Send + 'a
 where
-    K: 'static,
     T: ParameterValueType,
-    Key: Deref<Target = TCellOwner<K>> + Send + Sync + 'static,
+    ComponentInstance<T>: Clone,
     ImageCombinerBuilder: CombinerBuilder<T::Image, Request = ImageCombinerRequest, Param = ImageCombinerParam> + 'static,
     AudioCombinerBuilder: CombinerBuilder<T::Audio, Request = AudioCombinerRequest, Param = AudioCombinerParam> + 'static,
 {
     async move {
-        let Some(component) = component_handle.upgrade() else {
-            return Err(RenderError::InvalidComponent(component_handle.clone()));
-        };
-        let component = component.ro(&ctx.key);
         let fixed_parameters = component
             .fixed_parameters()
             .iter()
@@ -243,27 +231,24 @@ where
             let variable_parameters = ctx
                 .runtime
                 .spawn_blocking({
-                    let component_handle = component_handle.clone();
+                    let component = component.clone();
                     let ctx = ctx.clone();
+                    let timeline_time = Arc::clone(timeline_time);
                     let cancellation_token = cancellation_guard.token();
                     move || {
-                        let Some(component) = component_handle.upgrade() else {
-                            return Err(RenderError::InvalidComponent(component_handle.clone()));
-                        };
-                        let component = component.ro(&ctx.key);
                         let variable_parameters = component.variable_parameters();
                         let variable_parameters_type = component.variable_parameters_type();
                         if variable_parameters.len() != variable_parameters_type.len() {
                             return Err(RenderError::InvalidVariableParameter {
-                                component: component_handle.clone(),
+                                component: *component.id(),
                                 index: variable_parameters.len().min(variable_parameters_type.len()),
                             });
                         }
-                        variable_parameters
+                        variable_parameters_type
                             .par_iter()
-                            .zip(variable_parameters_type)
                             .enumerate()
-                            .map(|(i, (param, (_, ty)))| evaluate_parameter::evaluate_parameter(param, ty, at, &ctx, &cancellation_token).unwrap_or_else(|| Err(RenderError::InvalidVariableParameter { component: component_handle.clone(), index: i })))
+                            .map(|(i, (_, ty))| (i, &variable_parameters[i], ty))
+                            .map(|(i, param, ty)| evaluate_parameter::evaluate_parameter(param, ty, at, &ctx, &timeline_time, &cancellation_token).unwrap_or_else(|| Err(RenderError::InvalidVariableParameter { component: *component.id(), index: i })))
                             .try_fold(Vec::new, |mut acc, result| {
                                 acc.push(result?);
                                 Ok(acc)
@@ -295,110 +280,93 @@ where
             } = component.image_required_params().unwrap();
             let cancellation_guard = CancellationGuard::new();
             let cancellation_token = cancellation_guard.token();
-            let eval_at = |value: &VariableParameterValue<_, _, _>| evaluate_parameter::evaluate_parameter_f64(value, at, ctx, &cancellation_token).unwrap().map(|result| result.into_real_number().unwrap());
-            let transform = match transform {
+            let eval_at = |value: &VariableParameterValue<_>| evaluate_parameter::evaluate_parameter_f64(value, at, ctx, timeline_time, &cancellation_token).unwrap().map(|result| result.into_real_number().unwrap());
+            let transform = match &**transform {
                 ImageRequiredParamsTransform::Params {
-                    size: Vector3 { x: size_x, y: size_y, z: size_z },
-                    scale: Vector3 { x: scale_x, y: scale_y, z: scale_z },
-                    translate: Vector3 { x: translate_x, y: translate_y, z: translate_z },
+                    size,
+                    scale,
+                    translate,
                     rotate,
-                    scale_center: Vector3 {
-                        x: scale_center_x,
-                        y: scale_center_y,
-                        z: scale_center_z,
-                    },
-                    rotate_center: Vector3 {
-                        x: rotate_center_x,
-                        y: rotate_center_y,
-                        z: rotate_center_z,
-                    },
+                    scale_center,
+                    rotate_center,
                 } => ImageRequiredParamsTransformFixed::Params {
                     size: Vector3 {
-                        x: eval_at(size_x)?,
-                        y: eval_at(size_y)?,
-                        z: eval_at(size_z)?,
+                        x: eval_at(&size.x)?,
+                        y: eval_at(&size.y)?,
+                        z: eval_at(&size.z)?,
                     },
                     scale: Vector3 {
-                        x: eval_at(scale_x)?,
-                        y: eval_at(scale_y)?,
-                        z: eval_at(scale_z)?,
+                        x: eval_at(&scale.x)?,
+                        y: eval_at(&scale.y)?,
+                        z: eval_at(&scale.z)?,
                     },
                     translate: Vector3 {
-                        x: eval_at(translate_x)?,
-                        y: eval_at(translate_y)?,
-                        z: eval_at(translate_z)?,
+                        x: eval_at(&translate.x)?,
+                        y: eval_at(&translate.y)?,
+                        z: eval_at(&translate.z)?,
                     },
-                    rotate: evaluate_parameter::evaluate_time_split_value_at(rotate, at, &ctx.key).unwrap()?,
+                    rotate: evaluate_parameter::evaluate_time_split_value_at(rotate, at, timeline_time).unwrap()?,
                     scale_center: Vector3 {
-                        x: eval_at(scale_center_x)?,
-                        y: eval_at(scale_center_y)?,
-                        z: eval_at(scale_center_z)?,
+                        x: eval_at(&scale_center.x)?,
+                        y: eval_at(&scale_center.y)?,
+                        z: eval_at(&scale_center.z)?,
                     },
                     rotate_center: Vector3 {
-                        x: eval_at(rotate_center_x)?,
-                        y: eval_at(rotate_center_y)?,
-                        z: eval_at(rotate_center_z)?,
+                        x: eval_at(&rotate_center.x)?,
+                        y: eval_at(&rotate_center.y)?,
+                        z: eval_at(&rotate_center.z)?,
                     },
                 },
-                ImageRequiredParamsTransform::Free {
-                    left_top: Vector3 { x: left_top_x, y: left_top_y, z: left_top_z },
-                    right_top: Vector3 { x: right_top_x, y: right_top_y, z: right_top_z },
-                    left_bottom: Vector3 { x: left_bottom_x, y: left_bottom_y, z: left_bottom_z },
-                    right_bottom: Vector3 {
-                        x: right_bottom_x,
-                        y: right_bottom_y,
-                        z: right_bottom_z,
-                    },
-                } => ImageRequiredParamsTransformFixed::Free {
+                ImageRequiredParamsTransform::Free { left_top, right_top, left_bottom, right_bottom } => ImageRequiredParamsTransformFixed::Free {
                     left_top: Vector3 {
-                        x: eval_at(left_top_x)?,
-                        y: eval_at(left_top_y)?,
-                        z: eval_at(left_top_z)?,
+                        x: eval_at(&left_top.x)?,
+                        y: eval_at(&left_top.y)?,
+                        z: eval_at(&left_top.z)?,
                     },
                     right_top: Vector3 {
-                        x: eval_at(right_top_x)?,
-                        y: eval_at(right_top_y)?,
-                        z: eval_at(right_top_z)?,
+                        x: eval_at(&right_top.x)?,
+                        y: eval_at(&right_top.y)?,
+                        z: eval_at(&right_top.z)?,
                     },
                     left_bottom: Vector3 {
-                        x: eval_at(left_bottom_x)?,
-                        y: eval_at(left_bottom_y)?,
-                        z: eval_at(left_bottom_z)?,
+                        x: eval_at(&left_bottom.x)?,
+                        y: eval_at(&left_bottom.y)?,
+                        z: eval_at(&left_bottom.z)?,
                     },
                     right_bottom: Vector3 {
-                        x: eval_at(right_bottom_x)?,
-                        y: eval_at(right_bottom_y)?,
-                        z: eval_at(right_bottom_z)?,
+                        x: eval_at(&right_bottom.x)?,
+                        y: eval_at(&right_bottom.y)?,
+                        z: eval_at(&right_bottom.z)?,
                     },
                 },
             };
-            Ok::<_, RenderError<K, T>>(ImageRequiredParamsFixed {
+            Ok::<_, RenderError>(ImageRequiredParamsFixed {
                 transform,
                 background_color,
-                opacity: Opacity::new(evaluate_parameter::evaluate_time_split_value_at(opacity, at, &ctx.key).unwrap()?).unwrap_or(Opacity::OPAQUE),
-                blend_mode: evaluate_parameter::evaluate_time_split_value_at(blend_mode, at, &ctx.key).unwrap()?,
-                composite_operation: evaluate_parameter::evaluate_time_split_value_at(composite_operation, at, &ctx.key).unwrap()?,
+                opacity: Opacity::new(evaluate_parameter::evaluate_time_split_value_at(opacity, at, timeline_time).unwrap()?).unwrap_or(Opacity::OPAQUE),
+                blend_mode: evaluate_parameter::evaluate_time_split_value_at(blend_mode, at, timeline_time).unwrap()?,
+                composite_operation: evaluate_parameter::evaluate_time_split_value_at(composite_operation, at, timeline_time).unwrap()?,
             })
         };
         let _audio_required_params = || {
             let AudioRequiredParams { volume } = component.audio_required_params().unwrap();
             let cancellation_guard = CancellationGuard::new();
             let cancellation_token = cancellation_guard.token();
-            Ok::<_, RenderError<K, T>>(AudioRequiredParamsFixed {
+            Ok::<_, RenderError>(AudioRequiredParamsFixed {
                 volume: volume
                     .iter()
-                    .map(|volume| evaluate_parameter::evaluate_parameter_f64(volume, at, ctx, &cancellation_token).unwrap().map(|result| result.into_real_number().unwrap()))
+                    .map(|volume| evaluate_parameter::evaluate_parameter_f64(volume, at, ctx, timeline_time, &cancellation_token).unwrap().map(|result| result.into_real_number().unwrap()))
                     .collect::<Result<Vec<_>, _>>()?,
             })
         };
-        let time_map = TimeMap::new(component.marker_left(), component.markers(), component.marker_right(), &ctx.key)?;
+        let time_map = TimeMap::new(component.marker_left(), component.markers(), component.marker_right(), timeline_time)?;
 
         // これは再生位置によらずAudioだけはCombinerに読ませるための特殊処理(できれば消したい)
         let internal_at = if ty.equals_type(&ParameterType::Audio(())) {
             TimelineTime::ZERO
         } else {
             time_map.map(at).ok_or_else(|| RenderError::RenderTargetTimeOutOfRange {
-                component: component_handle.clone(),
+                component: *component.id(),
                 range: time_map.left()..time_map.right(),
                 at,
             })?
@@ -452,27 +420,30 @@ where
                 result
             }
             ComponentProcessorWrapper::Component(processor) => {
-                let ComponentsLinksPair { components, links, left, right } = processor.process(&fixed_parameters, &[], &[/* TODO */], component.variable_parameters_type()).await;
-                mpdelta_differential::collect_cached_time(&components, &links, &left, &right, &ctx.key)?;
+                let pair = processor.process(&fixed_parameters, &[], &[/* TODO */], component.variable_parameters_type()).await;
+                let timeline_time_inner = mpdelta_differential::collect_cached_time(&*pair)?;
+                let timeline_time_inner = Arc::new(timeline_time_inner);
                 match ty {
                     ParameterType::None => Ok(Parameter::None),
                     ParameterType::Image(_) => {
-                        let image = stream::iter(components)
-                            .map(|component| {
+                        let image = stream::iter(pair.components_dyn())
+                            .map(assume_general_lifetime(|component: &ComponentInstance<T>| {
                                 ctx.runtime
                                     .spawn({
+                                        let component = component.clone();
                                         let ty = ty.clone();
-                                        let ctx: RenderContext<_, _, _, _> = ctx.clone();
+                                        let ctx: RenderContext<_, _, _> = ctx.clone();
+                                        let timeline_time_inner = Arc::clone(&timeline_time_inner);
                                         async move {
-                                            match render_inner(&component, internal_at, &ty, &ctx).await {
+                                            match render_inner(&component, internal_at, &ty, &ctx, &timeline_time_inner).await {
                                                 Err(RenderError::NotProvided) => None,
-                                                Err(RenderError::RenderTargetTimeOutOfRange { component: c, .. }) if &c == component.ptr() => None,
+                                                Err(RenderError::RenderTargetTimeOutOfRange { component: c, .. }) if &c == component.id() => None,
                                                 other => Some((other, component)),
                                             }
                                         }
                                     })
                                     .auto_cancel()
-                            })
+                            }))
                             .buffered(10)
                             .map(|join_result| join_result.unwrap_or_else(|err| panic::resume_unwind(err.into_panic())))
                             .filter_map(future::ready)
@@ -480,7 +451,7 @@ where
                             .try_fold(ctx.image_combiner_builder.new_combiner(ImageSizeRequest { width: 1920., height: 1080. }), |mut combiner, (result, component)| {
                                 let Parameter::Image((image, image_required_params)) = result else {
                                     return future::ready(Err(RenderError::OutputTypeMismatch {
-                                        component: component.reference(),
+                                        component: *component.id(),
                                         expect: ty.select(),
                                         actual: result.select(),
                                     }));
@@ -493,25 +464,27 @@ where
                         Ok(Parameter::Image((image, image_required_params()?)))
                     }
                     ParameterType::Audio(_) => {
-                        let left = component.marker_left().ro(&ctx.key).cached_timeline_time();
-                        let right = component.marker_right().ro(&ctx.key).cached_timeline_time();
+                        let left = timeline_time[component.marker_left().id()];
+                        let right = timeline_time[component.marker_right().id()];
                         let length = right - left;
-                        let image = stream::iter(components)
-                            .map(|component| {
+                        let image = stream::iter(pair.components_dyn())
+                            .map(assume_general_lifetime(|component: &ComponentInstance<T>| {
                                 ctx.runtime
                                     .spawn({
+                                        let component = component.clone();
                                         let ty = ty.clone();
                                         let ctx = ctx.clone();
+                                        let timeline_time_inner = Arc::clone(&timeline_time_inner);
                                         async move {
-                                            match render_inner(&component, internal_at, &ty, &ctx).await {
+                                            match render_inner(&component, internal_at, &ty, &ctx, &timeline_time_inner).await {
                                                 Err(RenderError::NotProvided) => None,
-                                                Err(RenderError::RenderTargetTimeOutOfRange { component: c, .. }) if &c == component.ptr() => None,
+                                                Err(RenderError::RenderTargetTimeOutOfRange { component: c, .. }) if &c == component.id() => None,
                                                 other => Some((other, component)),
                                             }
                                         }
                                     })
                                     .auto_cancel()
-                            })
+                            }))
                             .buffered(10)
                             .map(|join_result| join_result.unwrap_or_else(|err| panic::resume_unwind(err.into_panic())))
                             .filter_map(future::ready)
@@ -519,7 +492,7 @@ where
                             .try_fold(ctx.audio_combiner_builder.new_combiner(length), |mut combiner, (result, component)| {
                                 let Parameter::Audio((audio, audio_required_params)) = result else {
                                     return future::ready(Err(RenderError::OutputTypeMismatch {
-                                        component: component.reference(),
+                                        component: *component.id(),
                                         expect: ty.select(),
                                         actual: result.select(),
                                     }));
@@ -531,22 +504,24 @@ where
                             .collect();
                         Ok(Parameter::Audio((image, time_map.clone())))
                     }
-                    ParameterType::Binary(_) | ParameterType::String(_) | ParameterType::Integer(_) | ParameterType::RealNumber(_) | ParameterType::Boolean(_) | ParameterType::Dictionary(_) | ParameterType::Array(_) => stream::iter(components.into_iter().rev())
-                        .map(|component| {
+                    ParameterType::Binary(_) | ParameterType::String(_) | ParameterType::Integer(_) | ParameterType::RealNumber(_) | ParameterType::Boolean(_) | ParameterType::Dictionary(_) | ParameterType::Array(_) => stream::iter(pair.components_dyn().rev())
+                        .map(assume_general_lifetime(|component: &ComponentInstance<T>| {
                             ctx.runtime
                                 .spawn({
+                                    let component = component.clone();
                                     let ty = ty.clone();
                                     let ctx = ctx.clone();
+                                    let timeline_time_inner = Arc::clone(&timeline_time_inner);
                                     async move {
-                                        match render_inner(&component, internal_at, &ty, &ctx).await {
+                                        match render_inner(&component, internal_at, &ty, &ctx, &timeline_time_inner).await {
                                             Err(RenderError::NotProvided) => None,
-                                            Err(RenderError::RenderTargetTimeOutOfRange { component: c, .. }) if &c == component.ptr() => None,
+                                            Err(RenderError::RenderTargetTimeOutOfRange { component: c, .. }) if &c == component.id() => None,
                                             other => Some(other),
                                         }
                                     }
                                 })
                                 .auto_cancel()
-                        })
+                        }))
                         .buffered(10)
                         .map(|join_result| join_result.unwrap_or_else(|err| panic::resume_unwind(err.into_panic())))
                         .filter_map(future::ready)
@@ -564,6 +539,13 @@ where
     }
 }
 
+fn assume_general_lifetime<T, U, F>(f: F) -> F
+where
+    F: for<'a> FnMut(&'a T) -> U,
+{
+    f
+}
+
 #[derive(Debug, Clone)]
 pub struct TimeMap {
     left: TimelineTime,
@@ -572,17 +554,10 @@ pub struct TimeMap {
 }
 
 impl TimeMap {
-    pub fn new<K, T: ParameterValueType>(left: &MarkerPinHandleOwned<K>, markers: &[MarkerPinHandleOwned<K>], right: &MarkerPinHandleOwned<K>, key: &TCellOwner<K>) -> RenderResult<TimeMap, K, T> {
-        let markers = iter::once(left)
-            .chain(markers.iter())
-            .chain(iter::once(right))
-            .filter_map(|marker| {
-                let marker = marker.ro(key);
-                Some((marker.cached_timeline_time(), marker.locked_component_time()?))
-            })
-            .collect::<Vec<_>>();
-        let left = left.ro(key).cached_timeline_time();
-        let right = right.ro(key).cached_timeline_time();
+    pub fn new(left: &MarkerPin, markers: &[MarkerPin], right: &MarkerPin, timeline_time: &HashMap<MarkerPinId, TimelineTime>) -> RenderResult<TimeMap> {
+        let markers = iter::once(left).chain(markers.iter()).chain(iter::once(right)).filter_map(|marker| Some((timeline_time[marker.id()], marker.locked_component_time()?))).collect::<Vec<_>>();
+        let left = timeline_time[left.id()];
+        let right = timeline_time[right.id()];
         Ok(TimeMap { left, right, markers })
     }
 
@@ -705,57 +680,57 @@ mod tests {
     use assert_matches::assert_matches;
     use mpdelta_core::component::marker_pin::MarkerPin;
     use mpdelta_core::mfrac;
-    use mpdelta_core::ptr::StaticPointerOwned;
-    use qcell::TCell;
-
-    struct TestParameterValueType;
-
-    impl ParameterValueType for TestParameterValueType {
-        type Image = ();
-        type Audio = ();
-        type Binary = ();
-        type String = ();
-        type Integer = ();
-        type RealNumber = ();
-        type Boolean = ();
-        type Dictionary = ();
-        type Array = ();
-        type ComponentClass = ();
-    }
+    use mpdelta_core_test_util::TestIdGenerator;
 
     #[test]
     fn test_time_map() {
-        struct K;
-        let key = TCellOwner::new();
-        fn time_map_for_test(markers: &[MarkerPinHandleOwned<K>], key: &TCellOwner<K>, at: TimelineTime) -> Option<TimelineTime> {
+        let id = TestIdGenerator::new();
+        fn time_map_for_test((markers, time_map): &(Vec<MarkerPin>, HashMap<MarkerPinId, TimelineTime>), at: TimelineTime) -> Option<TimelineTime> {
             assert!(markers.len() >= 2);
-            let [left, markers @ .., right] = markers else { unreachable!() };
-            TimeMap::new::<K, TestParameterValueType>(left, markers, right, key).ok()?.map(at)
+            let [left, markers @ .., right] = markers.as_slice() else { unreachable!() };
+            TimeMap::new(left, markers, right, time_map).ok()?.map(at)
         }
-        macro_rules! marker {
-            ($t:expr$(,)?) => {
-                StaticPointerOwned::new(TCell::new(MarkerPin::new_unlocked(TimelineTime::new($t))))
-            };
-            ($t:expr, $m:expr$(,)?) => {
-                StaticPointerOwned::new(TCell::new(MarkerPin::new(TimelineTime::new($t), MarkerTime::new($m).unwrap())))
-            };
+        macro_rules! markers {
+            ($($markers:expr),*$(,)?) => {
+                {
+                    let mut markers = Vec::new();
+                    let mut time_map = HashMap::new();
+                    macro_rules! marker {
+                        ($t:expr) => {
+                            let marker_pin_id = ::mpdelta_core::core::IdGenerator::generate_new(&id);
+                            let marker_pin = MarkerPin::new_unlocked(marker_pin_id);
+                            time_map.insert(*marker_pin.id(), TimelineTime::new($t));
+                            markers.push(marker_pin);
+                        };
+                        ($t:expr, $m:expr) => {
+                            let marker_pin_id = ::mpdelta_core::core::IdGenerator::generate_new(&id);
+                            let marker_pin = MarkerPin::new(marker_pin_id, MarkerTime::new($m).unwrap());
+                            time_map.insert(*marker_pin.id(), TimelineTime::new($t));
+                            markers.push(marker_pin);
+                        };
+                    }
+                    $($markers;)*
+                    (markers, time_map)
+                }
+            }
         }
-        let markers = [marker!(mfrac!(3)), marker!(mfrac!(4)), marker!(mfrac!(5)), marker!(mfrac!(6))];
-        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(mfrac!(3, 0, 10))), Some(v) if (v.value() - mfrac!(0, 0, 10)) == MixedFraction::ZERO);
-        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(mfrac!(3, 5, 10))), Some(v) if (v.value() - mfrac!(0, 5, 10)) == MixedFraction::ZERO);
-        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(mfrac!(5, 0, 10))), Some(v) if (v.value() - mfrac!(2, 0, 10)) == MixedFraction::ZERO);
-        let markers = [marker!(mfrac!(3)), marker!(mfrac!(4)), marker!(mfrac!(5), mfrac!(10)), marker!(mfrac!(6))];
-        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(mfrac!(3, 0, 10))), Some(v) if (v.value() - mfrac!(8, 0, 10)) == MixedFraction::ZERO);
-        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(mfrac!(3, 5, 10))), Some(v) if (v.value() - mfrac!(8, 5, 10)) == MixedFraction::ZERO);
-        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(mfrac!(5, 0, 10))), Some(v) if (v.value() - mfrac!(10, 0, 10)) == MixedFraction::ZERO);
-        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(mfrac!(5, 5, 10))), Some(v) if (v.value() - mfrac!(10, 5, 10)) == MixedFraction::ZERO);
-        let markers = [marker!(mfrac!(3)), marker!(mfrac!(4), mfrac!(8)), marker!(mfrac!(5), mfrac!(10)), marker!(mfrac!(6))];
-        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(mfrac!(3, 0, 10))), Some(v) if (v.value() - mfrac!(6, 0, 10)) == MixedFraction::ZERO);
-        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(mfrac!(3, 5, 10))), Some(v) if (v.value() - mfrac!(7, 0, 10)) == MixedFraction::ZERO);
-        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(mfrac!(4, 5, 10))), Some(v) if (v.value() - mfrac!(9, 0, 10)) == MixedFraction::ZERO);
-        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(mfrac!(5, 0, 10))), Some(v) if (v.value() - mfrac!(10, 0, 10)) == MixedFraction::ZERO);
-        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(mfrac!(5, 5, 10))), Some(v) if (v.value() - mfrac!(11, 0, 10)) == MixedFraction::ZERO);
-        let markers = [
+
+        let markers = markers![marker!(mfrac!(3)), marker!(mfrac!(4)), marker!(mfrac!(5)), marker!(mfrac!(6))];
+        assert_matches!(time_map_for_test(&markers, TimelineTime::new(mfrac!(3, 0, 10))), Some(v) if (v.value() - mfrac!(0, 0, 10)) == MixedFraction::ZERO);
+        assert_matches!(time_map_for_test(&markers, TimelineTime::new(mfrac!(3, 5, 10))), Some(v) if (v.value() - mfrac!(0, 5, 10)) == MixedFraction::ZERO);
+        assert_matches!(time_map_for_test(&markers, TimelineTime::new(mfrac!(5, 0, 10))), Some(v) if (v.value() - mfrac!(2, 0, 10)) == MixedFraction::ZERO);
+        let markers = markers![marker!(mfrac!(3)), marker!(mfrac!(4)), marker!(mfrac!(5), mfrac!(10)), marker!(mfrac!(6))];
+        assert_matches!(time_map_for_test(&markers, TimelineTime::new(mfrac!(3, 0, 10))), Some(v) if (v.value() - mfrac!(8, 0, 10)) == MixedFraction::ZERO);
+        assert_matches!(time_map_for_test(&markers, TimelineTime::new(mfrac!(3, 5, 10))), Some(v) if (v.value() - mfrac!(8, 5, 10)) == MixedFraction::ZERO);
+        assert_matches!(time_map_for_test(&markers, TimelineTime::new(mfrac!(5, 0, 10))), Some(v) if (v.value() - mfrac!(10, 0, 10)) == MixedFraction::ZERO);
+        assert_matches!(time_map_for_test(&markers, TimelineTime::new(mfrac!(5, 5, 10))), Some(v) if (v.value() - mfrac!(10, 5, 10)) == MixedFraction::ZERO);
+        let markers = markers![marker!(mfrac!(3)), marker!(mfrac!(4), mfrac!(8)), marker!(mfrac!(5), mfrac!(10)), marker!(mfrac!(6))];
+        assert_matches!(time_map_for_test(&markers, TimelineTime::new(mfrac!(3, 0, 10))), Some(v) if (v.value() - mfrac!(6, 0, 10)) == MixedFraction::ZERO);
+        assert_matches!(time_map_for_test(&markers, TimelineTime::new(mfrac!(3, 5, 10))), Some(v) if (v.value() - mfrac!(7, 0, 10)) == MixedFraction::ZERO);
+        assert_matches!(time_map_for_test(&markers, TimelineTime::new(mfrac!(4, 5, 10))), Some(v) if (v.value() - mfrac!(9, 0, 10)) == MixedFraction::ZERO);
+        assert_matches!(time_map_for_test(&markers, TimelineTime::new(mfrac!(5, 0, 10))), Some(v) if (v.value() - mfrac!(10, 0, 10)) == MixedFraction::ZERO);
+        assert_matches!(time_map_for_test(&markers, TimelineTime::new(mfrac!(5, 5, 10))), Some(v) if (v.value() - mfrac!(11, 0, 10)) == MixedFraction::ZERO);
+        let markers = markers![
             marker!(mfrac!(3)),
             marker!(mfrac!(4), mfrac!(8)),
             marker!(mfrac!(5), mfrac!(10)),
@@ -764,54 +739,69 @@ mod tests {
             marker!(mfrac!(8)),
             marker!(mfrac!(10), mfrac!(10)),
         ];
-        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(mfrac!(3, 0, 10))), Some(v) if (v.value() - mfrac!(6, 0, 10)) == MixedFraction::ZERO);
-        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(mfrac!(3, 5, 10))), Some(v) if (v.value() - mfrac!(7, 0, 10)) == MixedFraction::ZERO);
-        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(mfrac!(4, 5, 10))), Some(v) if (v.value() - mfrac!(9, 0, 10)) == MixedFraction::ZERO);
-        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(mfrac!(5, 0, 10))), Some(v) if (v.value() - mfrac!(10, 0, 10)) == MixedFraction::ZERO);
-        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(mfrac!(6, 0, 10))), Some(v) if (v.value() - mfrac!(11, 5, 10)) == MixedFraction::ZERO);
-        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(mfrac!(7, 0, 10))), Some(v) if (v.value() - mfrac!(13, 0, 10)) == MixedFraction::ZERO);
-        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(mfrac!(8, 0, 10))), Some(v) if (v.value() - mfrac!(12, 0, 10)) == MixedFraction::ZERO);
-        assert_matches!(time_map_for_test(&markers, &key, TimelineTime::new(mfrac!(10, 0, 10))), Some(v) if (v.value() - mfrac!(10, 0, 10)) == MixedFraction::ZERO);
+        assert_matches!(time_map_for_test(&markers, TimelineTime::new(mfrac!(3, 0, 10))), Some(v) if (v.value() - mfrac!(6, 0, 10)) == MixedFraction::ZERO);
+        assert_matches!(time_map_for_test(&markers, TimelineTime::new(mfrac!(3, 5, 10))), Some(v) if (v.value() - mfrac!(7, 0, 10)) == MixedFraction::ZERO);
+        assert_matches!(time_map_for_test(&markers, TimelineTime::new(mfrac!(4, 5, 10))), Some(v) if (v.value() - mfrac!(9, 0, 10)) == MixedFraction::ZERO);
+        assert_matches!(time_map_for_test(&markers, TimelineTime::new(mfrac!(5, 0, 10))), Some(v) if (v.value() - mfrac!(10, 0, 10)) == MixedFraction::ZERO);
+        assert_matches!(time_map_for_test(&markers, TimelineTime::new(mfrac!(6, 0, 10))), Some(v) if (v.value() - mfrac!(11, 5, 10)) == MixedFraction::ZERO);
+        assert_matches!(time_map_for_test(&markers, TimelineTime::new(mfrac!(7, 0, 10))), Some(v) if (v.value() - mfrac!(13, 0, 10)) == MixedFraction::ZERO);
+        assert_matches!(time_map_for_test(&markers, TimelineTime::new(mfrac!(8, 0, 10))), Some(v) if (v.value() - mfrac!(12, 0, 10)) == MixedFraction::ZERO);
+        assert_matches!(time_map_for_test(&markers, TimelineTime::new(mfrac!(10, 0, 10))), Some(v) if (v.value() - mfrac!(10, 0, 10)) == MixedFraction::ZERO);
     }
 
     #[test]
     fn test_time_map_range_iter() {
-        struct K;
-        let key = TCellOwner::new();
-        fn time_map_for_test(markers: &[MarkerPinHandleOwned<K>], key: &TCellOwner<K>, start: TimelineTime) -> Vec<TimeMapSegment> {
+        let id = TestIdGenerator::new();
+        fn time_map_for_test((markers, time_map): &(Vec<MarkerPin>, HashMap<MarkerPinId, TimelineTime>), at: TimelineTime) -> Vec<TimeMapSegment> {
             assert!(markers.len() >= 2);
-            let [left, markers @ .., right] = markers else { unreachable!() };
-            TimeMap::new::<K, TestParameterValueType>(left, markers, right, key).unwrap().map_range_iter(start).collect()
+            let [left, markers @ .., right] = markers.as_slice() else { unreachable!() };
+            TimeMap::new(left, markers, right, time_map).unwrap().map_range_iter(at).collect()
+        }
+        macro_rules! markers {
+            ($($markers:expr),*$(,)?) => {
+                {
+                    let mut markers = Vec::new();
+                    let mut time_map = HashMap::new();
+                    macro_rules! marker {
+                        ($t:expr) => {
+                            let marker_pin_id = ::mpdelta_core::core::IdGenerator::generate_new(&id);
+                            let marker_pin = MarkerPin::new_unlocked(marker_pin_id);
+                            time_map.insert(*marker_pin.id(), TimelineTime::new($t));
+                            markers.push(marker_pin);
+                        };
+                        ($t:expr, $m:expr) => {
+                            let marker_pin_id = ::mpdelta_core::core::IdGenerator::generate_new(&id);
+                            let marker_pin = MarkerPin::new(marker_pin_id, MarkerTime::new($m).unwrap());
+                            time_map.insert(*marker_pin.id(), TimelineTime::new($t));
+                            markers.push(marker_pin);
+                        };
+                    }
+                    $($markers;)*
+                    (markers, time_map)
+                }
+            }
         }
         macro_rules! t {
             ($($t:tt)*) => {
                 TimelineTime::new(mfrac!($($t)*))
             }
         }
-        macro_rules! marker {
-            ($t:expr$(,)?) => {
-                StaticPointerOwned::new(TCell::new(MarkerPin::new_unlocked(TimelineTime::new($t))))
-            };
-            ($t:expr, $m:expr$(,)?) => {
-                StaticPointerOwned::new(TCell::new(MarkerPin::new(TimelineTime::new($t), MarkerTime::new($m).unwrap())))
-            };
-        }
-        let markers = [marker!(mfrac!(3)), marker!(mfrac!(4)), marker!(mfrac!(5)), marker!(mfrac!(6))];
-        assert_eq!(time_map_for_test(&markers, &key, t!(3, 0, 10)), vec![TimeMapSegment::new(t!(3)..t!(6), t!(3)..t!(6), t!(0)..t!(3))]);
-        assert_eq!(time_map_for_test(&markers, &key, t!(3, 5, 10)), vec![TimeMapSegment::new(t!(3)..t!(6), t!(3)..t!(6), t!(0)..t!(3))]);
-        assert_eq!(time_map_for_test(&markers, &key, t!(5, 0, 10)), vec![TimeMapSegment::new(t!(3)..t!(6), t!(3)..t!(6), t!(0)..t!(3))]);
-        let markers = [marker!(mfrac!(3)), marker!(mfrac!(4)), marker!(mfrac!(5), mfrac!(10)), marker!(mfrac!(6))];
-        assert_eq!(time_map_for_test(&markers, &key, t!(3, 0, 10)), vec![TimeMapSegment::new(t!(3)..t!(6), t!(3)..t!(6), t!(8)..t!(11))]);
-        assert_eq!(time_map_for_test(&markers, &key, t!(3, 5, 10)), vec![TimeMapSegment::new(t!(3)..t!(6), t!(3)..t!(6), t!(8)..t!(11))]);
-        assert_eq!(time_map_for_test(&markers, &key, t!(5, 0, 10)), vec![TimeMapSegment::new(t!(3)..t!(6), t!(3)..t!(6), t!(8)..t!(11))]);
-        assert_eq!(time_map_for_test(&markers, &key, t!(5, 5, 10)), vec![TimeMapSegment::new(t!(3)..t!(6), t!(3)..t!(6), t!(8)..t!(11))]);
-        let markers = [marker!(mfrac!(3)), marker!(mfrac!(4), mfrac!(8)), marker!(mfrac!(5), mfrac!(10)), marker!(mfrac!(6))];
-        assert_eq!(time_map_for_test(&markers, &key, t!(3, 0, 10)), vec![TimeMapSegment::new(t!(3)..t!(6), t!(4)..t!(5), t!(8)..t!(10))]);
-        assert_eq!(time_map_for_test(&markers, &key, t!(3, 5, 10)), vec![TimeMapSegment::new(t!(3)..t!(6), t!(4)..t!(5), t!(8)..t!(10))]);
-        assert_eq!(time_map_for_test(&markers, &key, t!(4, 5, 10)), vec![TimeMapSegment::new(t!(3)..t!(6), t!(4)..t!(5), t!(8)..t!(10))]);
-        assert_eq!(time_map_for_test(&markers, &key, t!(5, 0, 10)), vec![TimeMapSegment::new(t!(3)..t!(6), t!(4)..t!(5), t!(8)..t!(10))]);
-        assert_eq!(time_map_for_test(&markers, &key, t!(5, 5, 10)), vec![TimeMapSegment::new(t!(3)..t!(6), t!(4)..t!(5), t!(8)..t!(10))]);
-        let markers = [
+        let markers = markers![marker!(mfrac!(3)), marker!(mfrac!(4)), marker!(mfrac!(5)), marker!(mfrac!(6))];
+        assert_eq!(time_map_for_test(&markers, t!(3, 0, 10)), vec![TimeMapSegment::new(t!(3)..t!(6), t!(3)..t!(6), t!(0)..t!(3))]);
+        assert_eq!(time_map_for_test(&markers, t!(3, 5, 10)), vec![TimeMapSegment::new(t!(3)..t!(6), t!(3)..t!(6), t!(0)..t!(3))]);
+        assert_eq!(time_map_for_test(&markers, t!(5, 0, 10)), vec![TimeMapSegment::new(t!(3)..t!(6), t!(3)..t!(6), t!(0)..t!(3))]);
+        let markers = markers![marker!(mfrac!(3)), marker!(mfrac!(4)), marker!(mfrac!(5), mfrac!(10)), marker!(mfrac!(6))];
+        assert_eq!(time_map_for_test(&markers, t!(3, 0, 10)), vec![TimeMapSegment::new(t!(3)..t!(6), t!(3)..t!(6), t!(8)..t!(11))]);
+        assert_eq!(time_map_for_test(&markers, t!(3, 5, 10)), vec![TimeMapSegment::new(t!(3)..t!(6), t!(3)..t!(6), t!(8)..t!(11))]);
+        assert_eq!(time_map_for_test(&markers, t!(5, 0, 10)), vec![TimeMapSegment::new(t!(3)..t!(6), t!(3)..t!(6), t!(8)..t!(11))]);
+        assert_eq!(time_map_for_test(&markers, t!(5, 5, 10)), vec![TimeMapSegment::new(t!(3)..t!(6), t!(3)..t!(6), t!(8)..t!(11))]);
+        let markers = markers![marker!(mfrac!(3)), marker!(mfrac!(4), mfrac!(8)), marker!(mfrac!(5), mfrac!(10)), marker!(mfrac!(6))];
+        assert_eq!(time_map_for_test(&markers, t!(3, 0, 10)), vec![TimeMapSegment::new(t!(3)..t!(6), t!(4)..t!(5), t!(8)..t!(10))]);
+        assert_eq!(time_map_for_test(&markers, t!(3, 5, 10)), vec![TimeMapSegment::new(t!(3)..t!(6), t!(4)..t!(5), t!(8)..t!(10))]);
+        assert_eq!(time_map_for_test(&markers, t!(4, 5, 10)), vec![TimeMapSegment::new(t!(3)..t!(6), t!(4)..t!(5), t!(8)..t!(10))]);
+        assert_eq!(time_map_for_test(&markers, t!(5, 0, 10)), vec![TimeMapSegment::new(t!(3)..t!(6), t!(4)..t!(5), t!(8)..t!(10))]);
+        assert_eq!(time_map_for_test(&markers, t!(5, 5, 10)), vec![TimeMapSegment::new(t!(3)..t!(6), t!(4)..t!(5), t!(8)..t!(10))]);
+        let markers = markers![
             marker!(mfrac!(3)),
             marker!(mfrac!(4), mfrac!(8)),
             marker!(mfrac!(5), mfrac!(10)),
@@ -821,7 +811,7 @@ mod tests {
             marker!(mfrac!(10), mfrac!(10)),
         ];
         assert_eq!(
-            time_map_for_test(&markers, &key, t!(3, 0, 10)),
+            time_map_for_test(&markers, t!(3, 0, 10)),
             vec![
                 TimeMapSegment::new(t!(3)..t!(5), t!(4)..t!(5), t!(8)..t!(10)),
                 TimeMapSegment::new(t!(5)..t!(7), t!(5)..t!(7), t!(10)..t!(13)),
@@ -829,7 +819,7 @@ mod tests {
             ]
         );
         assert_eq!(
-            time_map_for_test(&markers, &key, t!(3, 5, 10)),
+            time_map_for_test(&markers, t!(3, 5, 10)),
             vec![
                 TimeMapSegment::new(t!(3)..t!(5), t!(4)..t!(5), t!(8)..t!(10)),
                 TimeMapSegment::new(t!(5)..t!(7), t!(5)..t!(7), t!(10)..t!(13)),
@@ -837,24 +827,18 @@ mod tests {
             ]
         );
         assert_eq!(
-            time_map_for_test(&markers, &key, t!(4, 5, 10)),
+            time_map_for_test(&markers, t!(4, 5, 10)),
             vec![
                 TimeMapSegment::new(t!(3)..t!(5), t!(4)..t!(5), t!(8)..t!(10)),
                 TimeMapSegment::new(t!(5)..t!(7), t!(5)..t!(7), t!(10)..t!(13)),
                 TimeMapSegment::new(t!(7)..t!(10), t!(7)..t!(10), t!(13)..t!(10)),
             ]
         );
-        assert_eq!(
-            time_map_for_test(&markers, &key, t!(5, 0, 10)),
-            vec![TimeMapSegment::new(t!(3)..t!(7), t!(5)..t!(7), t!(10)..t!(13)), TimeMapSegment::new(t!(7)..t!(10), t!(7)..t!(10), t!(13)..t!(10))]
-        );
-        assert_eq!(
-            time_map_for_test(&markers, &key, t!(6, 0, 10)),
-            vec![TimeMapSegment::new(t!(3)..t!(7), t!(5)..t!(7), t!(10)..t!(13)), TimeMapSegment::new(t!(7)..t!(10), t!(7)..t!(10), t!(13)..t!(10))]
-        );
-        assert_eq!(time_map_for_test(&markers, &key, t!(7, 0, 10)), vec![TimeMapSegment::new(t!(3)..t!(10), t!(7)..t!(10), t!(13)..t!(10))]);
-        assert_eq!(time_map_for_test(&markers, &key, t!(8, 0, 10)), vec![TimeMapSegment::new(t!(3)..t!(10), t!(7)..t!(10), t!(13)..t!(10))]);
-        assert_eq!(time_map_for_test(&markers, &key, t!(10, 0, 10)), vec![TimeMapSegment::new(t!(3)..t!(10), t!(7)..t!(10), t!(13)..t!(10))]);
+        assert_eq!(time_map_for_test(&markers, t!(5, 0, 10)), vec![TimeMapSegment::new(t!(3)..t!(7), t!(5)..t!(7), t!(10)..t!(13)), TimeMapSegment::new(t!(7)..t!(10), t!(7)..t!(10), t!(13)..t!(10))]);
+        assert_eq!(time_map_for_test(&markers, t!(6, 0, 10)), vec![TimeMapSegment::new(t!(3)..t!(7), t!(5)..t!(7), t!(10)..t!(13)), TimeMapSegment::new(t!(7)..t!(10), t!(7)..t!(10), t!(13)..t!(10))]);
+        assert_eq!(time_map_for_test(&markers, t!(7, 0, 10)), vec![TimeMapSegment::new(t!(3)..t!(10), t!(7)..t!(10), t!(13)..t!(10))]);
+        assert_eq!(time_map_for_test(&markers, t!(8, 0, 10)), vec![TimeMapSegment::new(t!(3)..t!(10), t!(7)..t!(10), t!(13)..t!(10))]);
+        assert_eq!(time_map_for_test(&markers, t!(10, 0, 10)), vec![TimeMapSegment::new(t!(3)..t!(10), t!(7)..t!(10), t!(13)..t!(10))]);
     }
 
     #[test]

@@ -11,23 +11,22 @@ use tokio::sync::RwLock;
 use uuid::Uuid;
 
 #[derive(Debug)]
-struct ProjectData<K: 'static, T: ParameterValueType> {
+struct ProjectData<T: ParameterValueType> {
     path: Option<PathBuf>,
-    project: ProjectHandleOwned<K, T>,
+    project: ProjectHandleOwned<T>,
 }
 
 #[derive(Debug)]
-pub struct InMemoryProjectStore<K: 'static, T: ParameterValueType> {
-    default_project: ProjectHandleOwned<K, T>,
-    store: RwLock<Vec<ProjectData<K, T>>>,
+pub struct InMemoryProjectStore<T: ParameterValueType> {
+    default_project: ProjectHandleOwned<T>,
+    store: RwLock<Vec<ProjectData<T>>>,
 }
 
-impl<K, T> InMemoryProjectStore<K, T>
+impl<T> InMemoryProjectStore<T>
 where
-    K: 'static,
     T: ParameterValueType,
 {
-    pub fn new() -> InMemoryProjectStore<K, T> {
+    pub fn new() -> InMemoryProjectStore<T> {
         InMemoryProjectStore {
             default_project: Project::new_empty(Uuid::nil()),
             store: RwLock::new(Vec::new()),
@@ -35,9 +34,8 @@ where
     }
 }
 
-impl<K, T> Default for InMemoryProjectStore<K, T>
+impl<T> Default for InMemoryProjectStore<T>
 where
-    K: 'static,
     T: ParameterValueType,
 {
     fn default() -> Self {
@@ -46,35 +44,33 @@ where
 }
 
 #[async_trait]
-impl<K, T> ProjectMemory<K, T> for InMemoryProjectStore<K, T>
+impl<T> ProjectMemory<T> for InMemoryProjectStore<T>
 where
-    K: 'static,
     T: ParameterValueType,
 {
-    fn default_project(&self) -> ProjectHandle<K, T> {
+    fn default_project(&self) -> ProjectHandle<T> {
         StaticPointerOwned::reference(&self.default_project).clone()
     }
 
-    async fn insert_new_project(&self, path: Option<&Path>, project: ProjectHandleOwned<K, T>) {
+    async fn insert_new_project(&self, path: Option<&Path>, project: ProjectHandleOwned<T>) {
         self.store.write().await.push(ProjectData { path: path.map(Path::to_path_buf), project });
     }
 
-    async fn get_loaded_project(&self, path: &Path) -> Option<ProjectHandle<K, T>> {
+    async fn get_loaded_project(&self, path: &Path) -> Option<ProjectHandle<T>> {
         self.store.read().await.iter().find_map(|ProjectData { path: p, project }| (p.as_ref().map(AsRef::as_ref) == Some(path)).then(|| StaticPointerOwned::reference(project).clone()))
     }
 
-    async fn all_loaded_projects(&self) -> Cow<[ProjectHandle<K, T>]> {
+    async fn all_loaded_projects(&self) -> Cow<[ProjectHandle<T>]> {
         Cow::Owned(self.store.read().await.iter().map(|ProjectData { project, .. }| project).chain(iter::once(&self.default_project)).map(StaticPointerOwned::reference).cloned().collect())
     }
 }
 
 #[async_trait]
-impl<K, T> RootComponentClassMemory<K, T> for InMemoryProjectStore<K, T>
+impl<T> RootComponentClassMemory<T> for InMemoryProjectStore<T>
 where
-    K: 'static,
     T: ParameterValueType,
 {
-    async fn insert_new_root_component_class(&self, parent: Option<&ProjectHandle<K, T>>, root_component_class: RootComponentClassHandleOwned<K, T>) {
+    async fn insert_new_root_component_class(&self, parent: Option<&ProjectHandle<T>>, root_component_class: RootComponentClassHandleOwned<T>) {
         if let Some(project) = parent {
             if let Some(project_ref) = project.upgrade() {
                 project_ref.write().await.add_child(project, root_component_class).await;
@@ -84,8 +80,8 @@ where
         }
     }
 
-    async fn set_parent(&self, root_component_class: &RootComponentClassHandle<K, T>, parent: Option<&ProjectHandle<K, T>>) {
-        async fn set_parent<K: 'static, T: ParameterValueType>(component: &RootComponentClassWithLock<K, T>, root_component_class: &RootComponentClassHandle<K, T>, project: &ProjectWithLock<K, T>, project_handle: &ProjectHandle<K, T>) {
+    async fn set_parent(&self, root_component_class: &RootComponentClassHandle<T>, parent: Option<&ProjectHandle<T>>) {
+        async fn set_parent<T: ParameterValueType>(component: &RootComponentClassWithLock<T>, root_component_class: &RootComponentClassHandle<T>, project: &ProjectWithLock<T>, project_handle: &ProjectHandle<T>) {
             loop {
                 let component_read_guard = component.read().await;
                 let current_parent = component_read_guard.parent();
@@ -115,7 +111,7 @@ where
         }
     }
 
-    async fn search_by_parent(&self, parent: &ProjectHandle<K, T>) -> Cow<[RootComponentClassHandle<K, T>]> {
+    async fn search_by_parent(&self, parent: &ProjectHandle<T>) -> Cow<[RootComponentClassHandle<T>]> {
         let Some(project) = parent.upgrade() else {
             return Cow::Borrowed(&[]);
         };
@@ -123,7 +119,7 @@ where
         Cow::Owned(project.children().iter().map(StaticPointerOwned::reference).cloned().collect())
     }
 
-    async fn get_parent_project(&self, root_component_class: &RootComponentClassHandle<K, T>) -> Option<ProjectHandle<K, T>> {
+    async fn get_parent_project(&self, root_component_class: &RootComponentClassHandle<T>) -> Option<ProjectHandle<T>> {
         let root_component_class = root_component_class.upgrade()?;
         let root_component_class = root_component_class.read().await;
         let parent = root_component_class.parent();
@@ -134,7 +130,7 @@ where
         }
     }
 
-    async fn all_loaded_root_component_classes(&self) -> Cow<[RootComponentClassHandle<K, T>]> {
+    async fn all_loaded_root_component_classes(&self) -> Cow<[RootComponentClassHandle<T>]> {
         Cow::Owned(
             stream::iter(self.store.read().await.iter().map(|ProjectData { project, .. }| project).chain(iter::once(&self.default_project)))
                 .fold(Vec::new(), |mut acc, project| async {

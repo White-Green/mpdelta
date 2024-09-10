@@ -7,5 +7,5 @@ authors = { workspace = true }
 [dependencies]
 async-trait = { workspace = true }
 mpdelta_core = { workspace = true }
-qcell = { workspace = true }
 tokio = { workspace = true }
+uuid = { workspace = true }

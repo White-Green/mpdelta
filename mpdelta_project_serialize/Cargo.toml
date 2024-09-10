@@ -14,8 +14,8 @@ erased-serde = { workspace = true }
 futures = { workspace = true, features = ["alloc"] }
 mpdelta_core = { workspace = true }
 mpdelta_differential = { workspace = true }
-qcell = { workspace = true }
 rayon = { workspace = true }
+rpds = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }

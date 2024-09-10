@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use mpdelta_core::component::instance::ComponentInstanceHandle;
+use mpdelta_core::component::instance::ComponentInstanceId;
 use mpdelta_core::component::parameter::ParameterValueType;
 use mpdelta_core::core::EditHistory;
 use mpdelta_core::project::RootComponentClassHandle;
@@ -41,38 +41,36 @@ impl<Key: Hash + Eq, Log> HistoryStore<Key, Log> {
     }
 }
 
-type HistoryKey<K, T> = (RootComponentClassHandle<K, T>, Option<ComponentInstanceHandle<K, T>>);
+type HistoryKey<T> = (RootComponentClassHandle<T>, Option<ComponentInstanceId>);
 
-pub struct InMemoryEditHistoryStore<K: 'static, T: ParameterValueType, Log> {
-    store: Mutex<HistoryStore<HistoryKey<K, T>, Arc<Log>>>,
+pub struct InMemoryEditHistoryStore<T: ParameterValueType, Log> {
+    store: Mutex<HistoryStore<HistoryKey<T>, Arc<Log>>>,
 }
 
-impl<K, T, Log> InMemoryEditHistoryStore<K, T, Log>
+impl<T, Log> InMemoryEditHistoryStore<T, Log>
 where
-    K: 'static,
     T: ParameterValueType,
 {
-    pub fn new(max_history: usize) -> InMemoryEditHistoryStore<K, T, Log> {
+    pub fn new(max_history: usize) -> InMemoryEditHistoryStore<T, Log> {
         InMemoryEditHistoryStore { store: Mutex::new(HistoryStore::new(max_history)) }
     }
 }
 
 #[async_trait]
-impl<K, T, Log> EditHistory<K, T, Log> for InMemoryEditHistoryStore<K, T, Log>
+impl<T, Log> EditHistory<T, Log> for InMemoryEditHistoryStore<T, Log>
 where
-    K: 'static,
     T: ParameterValueType,
     Log: Send + Sync,
 {
-    async fn push_history(&self, root: &RootComponentClassHandle<K, T>, target: Option<&ComponentInstanceHandle<K, T>>, log: Log) {
+    async fn push_history(&self, root: &RootComponentClassHandle<T>, target: Option<&ComponentInstanceId>, log: Log) {
         self.store.lock().await.push_history((root.clone(), target.cloned()), Arc::new(log));
     }
 
-    async fn undo(&self, root: &RootComponentClassHandle<K, T>, target: Option<&ComponentInstanceHandle<K, T>>) -> Option<Arc<Log>> {
+    async fn undo(&self, root: &RootComponentClassHandle<T>, target: Option<&ComponentInstanceId>) -> Option<Arc<Log>> {
         self.store.lock().await.pop_undo(&(root.clone(), target.cloned())).cloned()
     }
 
-    async fn redo(&self, root: &RootComponentClassHandle<K, T>, target: Option<&ComponentInstanceHandle<K, T>>) -> Option<Arc<Log>> {
+    async fn redo(&self, root: &RootComponentClassHandle<T>, target: Option<&ComponentInstanceId>) -> Option<Arc<Log>> {
         self.store.lock().await.pop_redo(&(root.clone(), target.cloned())).cloned()
     }
 }

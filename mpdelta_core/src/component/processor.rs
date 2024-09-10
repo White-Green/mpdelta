@@ -1,7 +1,7 @@
 use crate::component::class::ComponentClass;
-use crate::component::instance::ComponentInstanceHandleCow;
-use crate::component::link::MarkerLinkHandleCow;
-use crate::component::marker_pin::{MarkerPinHandleCow, MarkerTime};
+use crate::component::instance::ComponentInstance;
+use crate::component::link::MarkerLink;
+use crate::component::marker_pin::{MarkerPin, MarkerTime};
 use crate::component::parameter::{Parameter, ParameterSelect, ParameterType, ParameterValueRaw, ParameterValueType};
 use crate::ptr::StaticPointer;
 use crate::time::TimelineTime;
@@ -15,21 +15,101 @@ use std::pin::Pin;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-pub struct ComponentsLinksPair<K: 'static, T: ParameterValueType> {
-    pub components: Vec<ComponentInstanceHandleCow<K, T>>,
-    pub links: Vec<MarkerLinkHandleCow<K>>,
-    pub left: MarkerPinHandleCow<K>,
-    pub right: MarkerPinHandleCow<K>,
+pub trait ComponentsLinksPair<T>: Send + Sync
+where
+    T: ParameterValueType,
+{
+    fn components(&self) -> impl DoubleEndedIterator<Item = &'_ ComponentInstance<T>> + Send + Sync + '_
+    where
+        Self: Sized;
+    fn components_dyn(&self) -> Box<dyn DoubleEndedIterator<Item = &'_ ComponentInstance<T>> + Send + Sync + '_>;
+    fn links(&self) -> impl DoubleEndedIterator<Item = &'_ MarkerLink> + Send + Sync + '_
+    where
+        Self: Sized;
+    fn links_dyn(&self) -> Box<dyn DoubleEndedIterator<Item = &'_ MarkerLink> + Send + Sync + '_>;
+    fn left(&self) -> &MarkerPin;
+    fn right(&self) -> &MarkerPin;
 }
 
-pub enum ComponentProcessorWrapper<K, T: ParameterValueType> {
-    Native(Arc<dyn ComponentProcessorNativeDyn<K, T>>),
-    Component(Arc<dyn ComponentProcessorComponent<K, T>>),
-    GatherNative(Arc<dyn ComponentProcessorGatherNative<K, T>>),
-    GatherComponent(Arc<dyn ComponentProcessorGatherComponent<K, T>>),
+impl<'a, T, C> ComponentsLinksPair<T> for &'a C
+where
+    T: ParameterValueType,
+    C: ComponentsLinksPair<T>,
+{
+    fn components(&self) -> impl DoubleEndedIterator<Item = &ComponentInstance<T>> + Send + Sync + '_
+    where
+        Self: Sized,
+    {
+        C::components(self)
+    }
+
+    fn components_dyn(&self) -> Box<dyn DoubleEndedIterator<Item = &ComponentInstance<T>> + Send + Sync + '_> {
+        C::components_dyn(self)
+    }
+
+    fn links(&self) -> impl DoubleEndedIterator<Item = &MarkerLink> + Send + Sync + '_
+    where
+        Self: Sized,
+    {
+        C::links(self)
+    }
+
+    fn links_dyn(&self) -> Box<dyn DoubleEndedIterator<Item = &MarkerLink> + Send + Sync + '_> {
+        C::links_dyn(self)
+    }
+
+    fn left(&self) -> &MarkerPin {
+        C::left(self)
+    }
+
+    fn right(&self) -> &MarkerPin {
+        C::right(self)
+    }
 }
 
-impl<K, T> Clone for ComponentProcessorWrapper<K, T>
+impl<'a, T> ComponentsLinksPair<T> for &'a dyn ComponentsLinksPair<T>
+where
+    T: ParameterValueType,
+{
+    fn components(&self) -> impl DoubleEndedIterator<Item = &ComponentInstance<T>> + Send + Sync + '_
+    where
+        Self: Sized,
+    {
+        (*self).components_dyn()
+    }
+
+    fn components_dyn(&self) -> Box<dyn DoubleEndedIterator<Item = &ComponentInstance<T>> + Send + Sync + '_> {
+        (*self).components_dyn()
+    }
+
+    fn links(&self) -> impl DoubleEndedIterator<Item = &MarkerLink> + Send + Sync + '_
+    where
+        Self: Sized,
+    {
+        (*self).links_dyn()
+    }
+
+    fn links_dyn(&self) -> Box<dyn DoubleEndedIterator<Item = &MarkerLink> + Send + Sync + '_> {
+        (*self).links_dyn()
+    }
+
+    fn left(&self) -> &MarkerPin {
+        (*self).left()
+    }
+
+    fn right(&self) -> &MarkerPin {
+        (*self).right()
+    }
+}
+
+pub enum ComponentProcessorWrapper<T: ParameterValueType> {
+    Native(Arc<dyn ComponentProcessorNativeDyn<T>>),
+    Component(Arc<dyn ComponentProcessorComponent<T>>),
+    GatherNative(Arc<dyn ComponentProcessorGatherNative<T>>),
+    GatherComponent(Arc<dyn ComponentProcessorGatherComponent<T>>),
+}
+
+impl<T> Clone for ComponentProcessorWrapper<T>
 where
     T: ParameterValueType,
 {
@@ -43,7 +123,7 @@ where
     }
 }
 
-impl<K, T: ParameterValueType> ComponentProcessor<K, T> for ComponentProcessorWrapper<K, T> {
+impl<T: ParameterValueType> ComponentProcessor<T> for ComponentProcessorWrapper<T> {
     fn fixed_parameter_types<'life0, 'async_trait>(&'life0 self) -> Pin<Box<dyn Future<Output = &'life0 [(String, ParameterType)]> + Send + 'async_trait>>
     where
         Self: 'async_trait,
@@ -73,38 +153,38 @@ impl<K, T: ParameterValueType> ComponentProcessor<K, T> for ComponentProcessorWr
     }
 }
 
-impl<K, T> From<Arc<dyn ComponentProcessorNativeDyn<K, T>>> for ComponentProcessorWrapper<K, T>
+impl<T> From<Arc<dyn ComponentProcessorNativeDyn<T>>> for ComponentProcessorWrapper<T>
 where
     T: ParameterValueType,
 {
-    fn from(value: Arc<dyn ComponentProcessorNativeDyn<K, T>>) -> ComponentProcessorWrapper<K, T> {
+    fn from(value: Arc<dyn ComponentProcessorNativeDyn<T>>) -> ComponentProcessorWrapper<T> {
         ComponentProcessorWrapper::Native(value)
     }
 }
 
-impl<K, T> From<Arc<dyn ComponentProcessorComponent<K, T>>> for ComponentProcessorWrapper<K, T>
+impl<T> From<Arc<dyn ComponentProcessorComponent<T>>> for ComponentProcessorWrapper<T>
 where
     T: ParameterValueType,
 {
-    fn from(value: Arc<dyn ComponentProcessorComponent<K, T>>) -> ComponentProcessorWrapper<K, T> {
+    fn from(value: Arc<dyn ComponentProcessorComponent<T>>) -> ComponentProcessorWrapper<T> {
         ComponentProcessorWrapper::Component(value)
     }
 }
 
-impl<K, T> From<Arc<dyn ComponentProcessorGatherNative<K, T>>> for ComponentProcessorWrapper<K, T>
+impl<T> From<Arc<dyn ComponentProcessorGatherNative<T>>> for ComponentProcessorWrapper<T>
 where
     T: ParameterValueType,
 {
-    fn from(value: Arc<dyn ComponentProcessorGatherNative<K, T>>) -> ComponentProcessorWrapper<K, T> {
+    fn from(value: Arc<dyn ComponentProcessorGatherNative<T>>) -> ComponentProcessorWrapper<T> {
         ComponentProcessorWrapper::GatherNative(value)
     }
 }
 
-impl<K, T> From<Arc<dyn ComponentProcessorGatherComponent<K, T>>> for ComponentProcessorWrapper<K, T>
+impl<T> From<Arc<dyn ComponentProcessorGatherComponent<T>>> for ComponentProcessorWrapper<T>
 where
     T: ParameterValueType,
 {
-    fn from(value: Arc<dyn ComponentProcessorGatherComponent<K, T>>) -> ComponentProcessorWrapper<K, T> {
+    fn from(value: Arc<dyn ComponentProcessorGatherComponent<T>>) -> ComponentProcessorWrapper<T> {
         ComponentProcessorWrapper::GatherComponent(value)
     }
 }
@@ -116,7 +196,7 @@ dyn_hash::hash_trait_object!(CacheKey);
 impl<T> CacheKey for T where T: Send + Sync + DynEq + DynHash + 'static {}
 
 #[async_trait]
-pub trait ComponentProcessor<K, T: ParameterValueType>: Send + Sync {
+pub trait ComponentProcessor<T: ParameterValueType>: Send + Sync {
     async fn fixed_parameter_types(&self) -> &[(String, ParameterType)];
     async fn update_variable_parameter(&self, fixed_params: &[ParameterValueRaw<T::Image, T::Audio>], variable_parameters: &mut Vec<(String, ParameterType)>);
 }
@@ -154,7 +234,7 @@ impl ParameterValueType for NativeProcessorRequest {
 }
 
 #[async_trait]
-pub trait ComponentProcessorNative<K, T: ParameterValueType>: ComponentProcessor<K, T> {
+pub trait ComponentProcessorNative<T: ParameterValueType>: ComponentProcessor<T> {
     type WholeComponentCacheKey: Send + Sync + Eq + Hash + 'static;
     type WholeComponentCacheValue: Send + Sync + 'static;
     type FramedCacheKey: Send + Sync + Eq + Hash + 'static;
@@ -174,7 +254,7 @@ pub trait ComponentProcessorNative<K, T: ParameterValueType>: ComponentProcessor
 }
 
 #[async_trait]
-pub trait ComponentProcessorNativeDyn<K, T: ParameterValueType>: ComponentProcessor<K, T> {
+pub trait ComponentProcessorNativeDyn<T: ParameterValueType>: ComponentProcessor<T> {
     fn whole_component_cache_key(&self, fixed_parameters: &[ParameterValueRaw<T::Image, T::Audio>]) -> Option<Box<dyn CacheKey>>;
     fn framed_cache_key(&self, parameters: NativeProcessorInput<'_, T>, time: TimelineTime, output_type: Parameter<ParameterSelect>) -> Option<Box<dyn CacheKey>>;
     async fn natural_length(&self, fixed_params: &[ParameterValueRaw<T::Image, T::Audio>], cache: &mut Option<Arc<dyn Any + Send + Sync>>) -> Option<MarkerTime>;
@@ -183,10 +263,10 @@ pub trait ComponentProcessorNativeDyn<K, T: ParameterValueType>: ComponentProces
 }
 
 #[async_trait]
-impl<K, T, P> ComponentProcessorNativeDyn<K, T> for P
+impl<T, P> ComponentProcessorNativeDyn<T> for P
 where
     T: ParameterValueType,
-    P: ComponentProcessorNative<K, T> + 'static,
+    P: ComponentProcessorNative<T> + 'static,
 {
     fn whole_component_cache_key(&self, fixed_parameters: &[ParameterValueRaw<T::Image, T::Audio>]) -> Option<Box<dyn CacheKey>> {
         let key = P::whole_component_cache_key(self, fixed_parameters)?;
@@ -231,31 +311,107 @@ where
 }
 
 #[async_trait]
-pub trait ComponentProcessorComponent<K, T: ParameterValueType>: ComponentProcessor<K, T> {
+pub trait ComponentProcessorComponent<T: ParameterValueType>: ComponentProcessor<T> {
     async fn natural_length(&self, fixed_params: &[ParameterValueRaw<T::Image, T::Audio>]) -> MarkerTime;
     async fn process(
         &self,
         fixed_parameters: &[ParameterValueRaw<T::Image, T::Audio>],
-        fixed_parameters_component: &[StaticPointer<RwLock<dyn ComponentClass<K, T>>>],
-        variable_parameters: &[StaticPointer<RwLock<dyn ComponentClass<K, T>>>],
+        fixed_parameters_component: &[StaticPointer<RwLock<dyn ComponentClass<T>>>],
+        variable_parameters: &[StaticPointer<RwLock<dyn ComponentClass<T>>>],
         variable_parameter_type: &[(String, ParameterType)],
-    ) -> ComponentsLinksPair<K, T>;
+    ) -> Arc<dyn ComponentsLinksPair<T>>;
 }
 
 // TODO:
 #[async_trait]
-pub trait ComponentProcessorGatherNative<K, T: ParameterValueType>: ComponentProcessor<K, T> {
+pub trait ComponentProcessorGatherNative<T: ParameterValueType>: ComponentProcessor<T> {
     fn supports_output_type(&self, out: Parameter<ParameterSelect>) -> bool;
     async fn process(&self) -> ();
 }
 
 #[async_trait]
-pub trait ComponentProcessorGatherComponent<K, T: ParameterValueType>: ComponentProcessor<K, T> {
+pub trait ComponentProcessorGatherComponent<T: ParameterValueType>: ComponentProcessor<T> {
     async fn process(
         &self,
         fixed_parameters: &[ParameterValueRaw<T::Image, T::Audio>],
-        fixed_parameters_component: &[StaticPointer<RwLock<dyn ComponentClass<K, T>>>],
-        variable_parameters: &[StaticPointer<RwLock<dyn ComponentClass<K, T>>>],
+        fixed_parameters_component: &[StaticPointer<RwLock<dyn ComponentClass<T>>>],
+        variable_parameters: &[StaticPointer<RwLock<dyn ComponentClass<T>>>],
         variable_parameter_type: &[(String, ParameterType)],
-    ) -> ComponentsLinksPair<K, T>;
+    ) -> Arc<dyn ComponentsLinksPair<T>>;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use uuid::Uuid;
+
+    struct T;
+
+    impl ParameterValueType for T {
+        type Image = ();
+        type Audio = ();
+        type Binary = ();
+        type String = ();
+        type Integer = ();
+        type RealNumber = ();
+        type Boolean = ();
+        type Dictionary = ();
+        type Array = ();
+        type ComponentClass = ();
+    }
+
+    #[test]
+    fn test_components_links_pair() {
+        struct TestComponentsLinksPair {
+            left: MarkerPin,
+            right: MarkerPin,
+        }
+        impl ComponentsLinksPair<T> for TestComponentsLinksPair {
+            fn components(&self) -> impl DoubleEndedIterator<Item = &'_ ComponentInstance<T>> + Send + Sync + '_
+            where
+                Self: Sized,
+            {
+                [].into_iter()
+            }
+
+            fn components_dyn(&self) -> Box<dyn DoubleEndedIterator<Item = &'_ ComponentInstance<T>> + Send + Sync + '_> {
+                Box::new(self.components())
+            }
+
+            fn links(&self) -> impl DoubleEndedIterator<Item = &'_ MarkerLink> + Send + Sync + '_
+            where
+                Self: Sized,
+            {
+                [].into_iter()
+            }
+
+            fn links_dyn(&self) -> Box<dyn DoubleEndedIterator<Item = &'_ MarkerLink> + Send + Sync + '_> {
+                Box::new(self.links())
+            }
+
+            fn left(&self) -> &MarkerPin {
+                &self.left
+            }
+
+            fn right(&self) -> &MarkerPin {
+                &self.right
+            }
+        }
+
+        fn test<C: ComponentsLinksPair<T>>(c: C) {
+            assert_eq!(c.components().count(), 0);
+            assert_eq!(c.components_dyn().count(), 0);
+            assert_eq!(c.links().count(), 0);
+            assert_eq!(c.links_dyn().count(), 0);
+            c.left();
+            c.right();
+        }
+        let pair = TestComponentsLinksPair {
+            left: MarkerPin::new_unlocked(Uuid::nil()),
+            right: MarkerPin::new_unlocked(Uuid::nil()),
+        };
+        test::<&TestComponentsLinksPair>(&pair);
+        test::<&dyn ComponentsLinksPair<T>>(&pair);
+        test::<TestComponentsLinksPair>(pair);
+    }
 }

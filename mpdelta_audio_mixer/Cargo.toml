@@ -12,4 +12,4 @@ mpdelta_renderer = { workspace = true }
 smallvec = { workspace = true }
 
 [dev-dependencies]
-qcell = { workspace = true }
+mpdelta_core_test_util = { workspace = true }

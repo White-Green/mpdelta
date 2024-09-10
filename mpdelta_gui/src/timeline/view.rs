@@ -16,11 +16,10 @@ use std::{convert, mem};
 mod range_max;
 mod widgets;
 
-pub struct Timeline<K, T, VM>
+pub struct Timeline<T, VM>
 where
-    K: 'static,
     T: ParameterValueType,
-    VM: TimelineViewModel<K, T>,
+    VM: TimelineViewModel<T>,
 {
     view_model: Arc<VM>,
     timeline_rect: Rect,
@@ -29,11 +28,11 @@ where
     component_top_buf: Vec<RangeMax<OrderedFloat<f64>, f32>>,
     pulling_pin: Option<(VM::MarkerPinHandle, Pos2)>,
     context_menu_opened_pos: (f64, f32),
-    _phantom: PhantomData<(K, T)>,
+    _phantom: PhantomData<T>,
 }
 
-impl<K: 'static, T: ParameterValueType, VM: TimelineViewModel<K, T>> Timeline<K, T, VM> {
-    pub fn new(view_model: Arc<VM>) -> Timeline<K, T, VM> {
+impl<T: ParameterValueType, VM: TimelineViewModel<T>> Timeline<T, VM> {
+    pub fn new(view_model: Arc<VM>) -> Timeline<T, VM> {
         Timeline {
             view_model,
             timeline_rect: Rect::from_x_y_ranges(0.0..=0.0, 0.0..=30.0),
@@ -208,7 +207,6 @@ mod tests {
         const TEST_OUTPUT_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../test_output/", env!("CARGO_PKG_NAME"));
         let test_output_dir = Path::new(TEST_OUTPUT_DIR);
         tokio::fs::create_dir_all(test_output_dir).await.unwrap();
-        struct K;
         struct T;
         impl ParameterValueType for T {
             type Image = ();
@@ -223,7 +221,7 @@ mod tests {
             type ComponentClass = ();
         }
         struct VM;
-        impl TimelineViewModel<K, T> for VM {
+        impl TimelineViewModel<T> for VM {
             fn component_length(&self) -> Option<MarkerTime> {
                 None
             }

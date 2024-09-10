@@ -5,6 +5,7 @@ edition = { workspace = true }
 authors = { workspace = true }
 
 [dependencies]
+arc-swap = { workspace = true }
 async-trait = { workspace = true }
 cgmath = { workspace = true }
 dyn-eq = { workspace = true }
@@ -14,7 +15,7 @@ futures = { workspace = true }
 num = { workspace = true }
 proptest = { workspace = true, optional = true }
 proptest-derive = { workspace = true, optional = true }
-qcell = { workspace = true }
+rpds = { workspace = true }
 serde = { workspace = true }
 serde_repr = { workspace = true }
 thiserror = { workspace = true }

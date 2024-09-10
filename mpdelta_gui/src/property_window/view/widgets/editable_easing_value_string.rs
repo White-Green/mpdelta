@@ -1,11 +1,13 @@
 use egui::epaint::{PathShape, RectShape};
 use egui::scroll_area::ScrollBarVisibility;
 use egui::{CursorIcon, Id, Pos2, Rect, ScrollArea, Sense, Shape, TextEdit, Ui, Vec2};
-use mpdelta_core::common::time_split_value::TimeSplitValue;
+use mpdelta_core::component::marker_pin::MarkerPin;
 use mpdelta_core::component::parameter::value::{EasingValue, EasingValueEdit};
+use mpdelta_core::component::parameter::PinSplitValue;
+use mpdelta_core::project::TimelineTimeOfPin;
 use std::hash::Hash;
 use std::iter;
-use std::ops::{Bound, Range};
+use std::ops::Range;
 
 #[derive(Debug, Clone)]
 struct InnerState {
@@ -57,18 +59,20 @@ pub enum EasingValueStringEditEvent {
     UpdateValue { value_index: usize, value: String },
 }
 
-pub struct EasingValueEditorString<'a, H, F> {
+pub struct EasingValueEditorString<'a, P, H, F> {
     pub id: H,
     pub time_range: Range<f64>,
-    pub times: &'a [f64],
-    pub value: &'a mut TimeSplitValue<usize, Option<EasingValue<String>>>,
+    pub all_pins: &'a [MarkerPin],
+    pub times: &'a P,
+    pub value: &'a mut PinSplitValue<Option<EasingValue<String>>>,
     pub point_per_second: f64,
     pub scroll_offset: &'a mut f32,
     pub update: F,
 }
 
-impl<'a, H, F> EasingValueEditorString<'a, H, F>
+impl<'a, P, H, F> EasingValueEditorString<'a, P, H, F>
 where
+    P: TimelineTimeOfPin,
     H: Hash,
     F: FnMut(EasingValueStringEditEvent) + 'a,
 {
@@ -76,6 +80,7 @@ where
         let EasingValueEditorString {
             id,
             time_range,
+            all_pins,
             times,
             value,
             point_per_second,
@@ -96,29 +101,29 @@ where
             let plot_area_rect = whole_rect.with_min_y(whole_rect.top() + slider_width * 3.).with_max_y(whole_rect.bottom() - slider_width);
             let time_map = glam::Mat2::from_cols(glam::Vec2::new(time_range.start as f32, time_range.end as f32), glam::Vec2::new(1., 1.)).inverse() * glam::Vec2::new(plot_area_rect.left(), plot_area_rect.right());
             {
-                let &[left, ref center @ .., right] = times else {
-                    unreachable!();
-                };
-                let left_position = glam::Vec2::new(left as f32, 1.).dot(time_map);
+                let left = times.time_of_pin(value.get_time(0).unwrap().1).unwrap().value().into_f64() as f32;
+                let left_position = glam::Vec2::new(left, 1.).dot(time_map);
                 let response = ui.interact(Rect::from_x_y_ranges(left_position..=left_position + slider_width * 2., whole_rect.top()..=whole_rect.top() + slider_width * 3.), id.with(("pin_head", 0usize)), Sense::click());
                 if response.clicked() {
                     update(EasingValueStringEditEvent::FlipPin(0));
                 }
-                for (i, &time) in center.iter().enumerate() {
-                    let x = glam::Vec2::new(time as f32, 1.).dot(time_map);
-                    let response = ui.interact(Rect::from_x_y_ranges(x - slider_width * 2.0..=x + slider_width * 2., whole_rect.top()..=whole_rect.top() + slider_width * 3.), id.with(("pin_head", i + 1)), Sense::click());
+                for i in 1..value.len_time() - 1 {
+                    let time = times.time_of_pin(value.get_time(i).unwrap().1).unwrap().value().into_f64() as f32;
+                    let x = glam::Vec2::new(time, 1.).dot(time_map);
+                    let response = ui.interact(Rect::from_x_y_ranges(x - slider_width * 2.0..=x + slider_width * 2., whole_rect.top()..=whole_rect.top() + slider_width * 3.), id.with(("pin_head", i)), Sense::click());
                     if response.clicked() {
-                        update(EasingValueStringEditEvent::FlipPin(i + 1));
+                        update(EasingValueStringEditEvent::FlipPin(i));
                     }
                 }
-                let right_position = glam::Vec2::new(right as f32, 1.).dot(time_map);
+                let right = times.time_of_pin(value.get_time(value.len_time() - 1).unwrap().1).unwrap().value().into_f64() as f32;
+                let right_position = glam::Vec2::new(right, 1.).dot(time_map);
                 let response = ui.interact(
                     Rect::from_x_y_ranges(right_position - slider_width * 2.0..=right_position, whole_rect.top()..=whole_rect.top() + slider_width * 3.),
-                    id.with(("pin_head", center.len() + 1)),
+                    id.with(("pin_head", value.len_time() - 1)),
                     Sense::click(),
                 );
                 if response.clicked() {
-                    update(EasingValueStringEditEvent::FlipPin(center.len() + 1));
+                    update(EasingValueStringEditEvent::FlipPin(value.len_time() - 1));
                 }
             }
             {
@@ -134,10 +139,14 @@ where
                 ui.data_mut(|data| data.insert_temp::<InnerState>(id, state.into()));
             }
 
+            let mut pins = all_pins;
             let background_pin = (0..value.len_value())
                 .flat_map(|i| {
-                    let (&left, _, &right) = value.get_value(i).unwrap();
-                    times[(Bound::Excluded(left), Bound::Excluded(right))].iter().copied()
+                    let (_, _, right) = value.get_value(i).unwrap();
+                    let right = pins.iter().position(|p| p.id() == right).unwrap();
+                    let (head, tail) = pins.split_at(right);
+                    pins = tail;
+                    head[1..].iter().map(|p| times.time_of_pin(p.id()).unwrap().value().into_f64())
                 })
                 .flat_map(|time| {
                     let base_position = glam::Vec2::new(time as f32, 1.).dot(time_map);
@@ -169,8 +178,8 @@ where
                 });
 
             let foreground_pin = (0..value.len_time()).map(|i| {
-                let (left, &time, right) = value.get_time(i).unwrap();
-                let base_time_pixel = glam::Vec2::new(times[time] as f32, 1.).dot(time_map);
+                let (left, time, right) = value.get_time(i).unwrap();
+                let base_time_pixel = glam::Vec2::new(times.time_of_pin(time).unwrap().value().into_f64() as f32, 1.).dot(time_map);
 
                 match (left.and_then(Option::as_ref), right.and_then(Option::as_ref)) {
                     (Some(_), Some(_)) => Shape::Path(PathShape {
@@ -225,9 +234,10 @@ where
             let update_state = {
                 let mut update_state = None;
                 for i in 0..value.len_value() {
-                    let (&left, value, &right) = value.get_value_mut(i).unwrap();
-                    let left = glam::Vec2::new(times[left] as f32, 1.).dot(time_map);
-                    let right = glam::Vec2::new(times[right] as f32, 1.).dot(time_map);
+                    let (&left, _, &right) = value.get_value(i).unwrap();
+                    let value = value.get_value_mut(i).unwrap();
+                    let left = glam::Vec2::new(times.time_of_pin(&left).unwrap().value().into_f64() as f32, 1.).dot(time_map);
+                    let right = glam::Vec2::new(times.time_of_pin(&right).unwrap().value().into_f64() as f32, 1.).dot(time_map);
                     if let Some(EasingValue { value, .. }) = value {
                         let result = value.edit_value(|s: &mut String| {
                             let s_clone = s.clone();
@@ -260,8 +270,13 @@ mod tests {
     use super::*;
     use egui::Visuals;
     use egui_image_renderer::FileFormat;
+    use mpdelta_core::common::mixed_fraction::MixedFraction;
     use mpdelta_core::component::parameter::value::{DynEditableSelfValue, LinearEasing};
-    use mpdelta_core::time_split_value;
+    use mpdelta_core::core::IdGenerator;
+    use mpdelta_core::time::TimelineTime;
+    use mpdelta_core::time_split_value_persistent;
+    use mpdelta_core_test_util::TestIdGenerator;
+    use std::collections::HashMap;
     use std::io::Cursor;
     use std::path::Path;
     use std::sync::Arc;
@@ -271,23 +286,31 @@ mod tests {
         const TEST_OUTPUT_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../test_output/", env!("CARGO_PKG_NAME"));
         let test_output_dir = Path::new(TEST_OUTPUT_DIR);
         tokio::fs::create_dir_all(test_output_dir).await.unwrap();
+        let id = TestIdGenerator::new();
         macro_rules! create_editor {
             ($editor:ident) => {
-                let times = [1., 2., 3., 4., 5.];
-                let mut value = time_split_value!(
-                    0,
+                let all_pins = [
+                    MarkerPin::new_unlocked(id.generate_new()),
+                    MarkerPin::new_unlocked(id.generate_new()),
+                    MarkerPin::new_unlocked(id.generate_new()),
+                    MarkerPin::new_unlocked(id.generate_new()),
+                    MarkerPin::new_unlocked(id.generate_new()),
+                ];
+                let mut value = time_split_value_persistent!(
+                    *all_pins[0].id(),
                     Some(EasingValue::new(DynEditableSelfValue("string1".to_owned()), Arc::new(LinearEasing))),
-                    1,
+                    *all_pins[1].id(),
                     None,
-                    2,
+                    *all_pins[2].id(),
                     Some(EasingValue::new(DynEditableSelfValue("string2".to_owned()), Arc::new(LinearEasing))),
-                    4,
+                    *all_pins[4].id(),
                 );
                 let mut scroll_offset = 0.;
                 let $editor = EasingValueEditorString {
                     id: "editor",
                     time_range: 1.0..5.0,
-                    times: &times,
+                    all_pins: &all_pins,
+                    times: &HashMap::from_iter(all_pins.iter().enumerate().map(|(i, p)| (*p.id(), TimelineTime::new(MixedFraction::from_integer(i as i32))))),
                     value: &mut value,
                     point_per_second: 150.,
                     scroll_offset: &mut scroll_offset,

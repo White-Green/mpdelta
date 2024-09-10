@@ -1,13 +1,12 @@
 use crate::property_window::view::widgets::editable_easing_value_f64::{EasingValueEditorF64, EasingValueF64EditEvent, Side};
 use crate::property_window::view::widgets::editable_easing_value_string::{EasingValueEditorString, EasingValueStringEditEvent};
-use crate::property_window::viewmodel::{ImageRequiredParamsTransformForEdit, ParametersEditSet, PropertyWindowViewModel, TimeSplitValueEditCopy, ValueWithEditCopy, WithName};
+use crate::property_window::viewmodel::{ParametersEditSet, PropertyWindowViewModel, WithName};
 use cgmath::Vector3;
 use egui::scroll_area::ScrollBarVisibility;
 use egui::style::ScrollStyle;
 use egui::{ScrollArea, Sense, Ui, Vec2};
-use mpdelta_core::common::time_split_value::TimeSplitValue;
 use mpdelta_core::component::parameter::value::{EasingValue, EasingValueEdit, SingleValueEdit};
-use mpdelta_core::component::parameter::{Parameter, ParameterValueFixed, ParameterValueType, PinSplitValue, VariableParameterValue};
+use mpdelta_core::component::parameter::{ImageRequiredParamsTransform, Parameter, ParameterValueFixed, ParameterValueType, PinSplitValue, VariableParameterValue};
 use smallvec::SmallVec;
 use std::marker::PhantomData;
 use std::path::PathBuf;
@@ -16,17 +15,17 @@ use std::{iter, mem};
 
 mod widgets;
 
-pub struct PropertyWindow<K, T, VM> {
+pub struct PropertyWindow<T, VM> {
     view_model: Arc<VM>,
     scroll_offset: f32,
-    _phantom: PhantomData<(K, T)>,
+    _phantom: PhantomData<T>,
 }
 
 fn extend_fn<T, E: Extend<T>>(e: &mut E) -> impl FnMut(T) + '_ {
     move |t| e.extend(iter::once(t))
 }
 
-fn edit_value_f64_by_event<K>(translate_x: &mut PinSplitValue<K, Option<EasingValue<f64>>>, tx: &mut TimeSplitValue<usize, Option<EasingValue<f64>>>, edit_events: SmallVec<[EasingValueF64EditEvent; 1]>) -> bool {
+fn edit_value_f64_by_event(translate_x: &mut PinSplitValue<Option<EasingValue<f64>>>, edit_events: SmallVec<[EasingValueF64EditEvent; 1]>) -> bool {
     let mut edited = false;
     for edit in edit_events {
         let (slot, side, value) = match edit {
@@ -35,11 +34,11 @@ fn edit_value_f64_by_event<K>(translate_x: &mut PinSplitValue<K, Option<EasingVa
                 continue;
             }
             EasingValueF64EditEvent::MoveValueTemporary { value_index, side, value } => {
-                let Some((_, Some(slot), _)) = tx.get_value_mut(value_index) else { unreachable!() };
+                let Some(Some(slot)) = translate_x.get_value_mut(value_index) else { unreachable!() };
                 (slot, side, value)
             }
             EasingValueF64EditEvent::MoveValue { value_index, side, value } => {
-                let Some((_, Some(slot), _)) = translate_x.get_value_mut(value_index) else { unreachable!() };
+                let Some(Some(slot)) = translate_x.get_value_mut(value_index) else { unreachable!() };
                 edited = true;
                 (slot, side, value)
             }
@@ -57,10 +56,7 @@ fn edit_value_f64_by_event<K>(translate_x: &mut PinSplitValue<K, Option<EasingVa
     edited
 }
 
-fn edit_value_string_by_event<K, T>(edit_copy: &mut TimeSplitValueEditCopy<K, T, Option<EasingValue<String>>>, edit_events: SmallVec<[EasingValueStringEditEvent; 1]>) -> bool
-where
-    T: ParameterValueType,
-{
+fn edit_value_string_by_event(slot: &mut PinSplitValue<Option<EasingValue<String>>>, edit_events: SmallVec<[EasingValueStringEditEvent; 1]>) -> bool {
     let mut edited = false;
     for edit in edit_events {
         let (slot, value) = match edit {
@@ -69,10 +65,7 @@ where
                 continue;
             }
             EasingValueStringEditEvent::UpdateValue { value_index, value } => {
-                let Parameter::String(slot) = &mut edit_copy.value.params else {
-                    continue;
-                };
-                let Some((_, Some(slot), _)) = slot.get_value_mut(value_index) else { unreachable!() };
+                let Some(Some(slot)) = slot.get_value_mut(value_index) else { unreachable!() };
                 edited = true;
                 (slot, value)
             }
@@ -82,8 +75,8 @@ where
     edited
 }
 
-impl<K: 'static, T: ParameterValueType, VM: PropertyWindowViewModel<K, T>> PropertyWindow<K, T, VM> {
-    pub fn new(view_model: Arc<VM>) -> PropertyWindow<K, T, VM> {
+impl<T: ParameterValueType, VM: PropertyWindowViewModel<T>> PropertyWindow<T, VM> {
+    pub fn new(view_model: Arc<VM>) -> PropertyWindow<T, VM> {
         PropertyWindow { view_model, scroll_offset: 0., _phantom: PhantomData }
     }
 
@@ -96,6 +89,7 @@ impl<K: 'static, T: ParameterValueType, VM: PropertyWindowViewModel<K, T>> Prope
         ui.allocate_ui_at_rect(rect, |ui| {
             self.view_model.parameters(|parameters| {
                 if let Some(ParametersEditSet {
+                    all_pins,
                     image_required_params,
                     fixed_params,
                     variable_params,
@@ -108,130 +102,112 @@ impl<K: 'static, T: ParameterValueType, VM: PropertyWindowViewModel<K, T>> Prope
                         .show(ui, |ui| {
                             let mut edited = false;
                             if let Some(image_required_params) = image_required_params {
-                                if let ImageRequiredParamsTransformForEdit::Params {
-                                    size:
-                                        Vector3 {
-                                            x: ValueWithEditCopy {
-                                                value: VariableParameterValue { params: size_x, .. },
-                                                edit_copy: zx,
-                                            },
-                                            y: ValueWithEditCopy {
-                                                value: VariableParameterValue { params: size_y, .. },
-                                                edit_copy: zy,
-                                            },
-                                            ..
-                                        },
-                                    scale:
-                                        Vector3 {
-                                            x: ValueWithEditCopy {
-                                                value: VariableParameterValue { params: scale_x, .. },
-                                                edit_copy: sx,
-                                            },
-                                            y: ValueWithEditCopy {
-                                                value: VariableParameterValue { params: scale_y, .. },
-                                                edit_copy: sy,
-                                            },
-                                            ..
-                                        },
-                                    translate:
-                                        Vector3 {
-                                            x: ValueWithEditCopy {
-                                                value: VariableParameterValue { params: translate_x, .. },
-                                                edit_copy: tx,
-                                            },
-                                            y: ValueWithEditCopy {
-                                                value: VariableParameterValue { params: translate_y, .. },
-                                                edit_copy: ty,
-                                            },
-                                            ..
-                                        },
-                                    ..
-                                } = &mut image_required_params.transform
-                                {
+                                if let ImageRequiredParamsTransform::Params { size, scale, translate, .. } = Arc::make_mut(&mut image_required_params.transform) {
+                                    let Vector3 {
+                                        x: VariableParameterValue { params: size_x, .. },
+                                        y: VariableParameterValue { params: size_y, .. },
+                                        ..
+                                    } = Arc::make_mut(size);
+                                    let Vector3 {
+                                        x: VariableParameterValue { params: scale_x, .. },
+                                        y: VariableParameterValue { params: scale_y, .. },
+                                        ..
+                                    } = Arc::make_mut(scale);
+                                    let Vector3 {
+                                        x: VariableParameterValue { params: translate_x, .. },
+                                        y: VariableParameterValue { params: translate_y, .. },
+                                        ..
+                                    } = Arc::make_mut(translate);
                                     ui.label("position - X");
                                     let mut edit_events = SmallVec::<[_; 1]>::new();
                                     EasingValueEditorF64 {
                                         id: "position - X",
                                         time_range: instance_range.clone(),
+                                        all_pins,
                                         times: pin_times.as_ref(),
-                                        value: tx,
+                                        value: translate_x,
                                         value_range: -3.0..3.0,
                                         point_per_second,
                                         scroll_offset: &mut self.scroll_offset,
                                         update: extend_fn(&mut edit_events),
                                     }
                                     .show(ui);
-                                    edited |= edit_value_f64_by_event(translate_x, tx, edit_events);
+                                    edited |= edit_value_f64_by_event(translate_x, edit_events);
                                     let mut edit_events = SmallVec::<[_; 1]>::new();
                                     ui.label("position - Y");
                                     EasingValueEditorF64 {
                                         id: "position - Y",
                                         time_range: instance_range.clone(),
+                                        all_pins,
                                         times: pin_times.as_ref(),
-                                        value: ty,
+                                        value: translate_y,
                                         value_range: -3.0..3.0,
                                         point_per_second,
                                         scroll_offset: &mut self.scroll_offset,
                                         update: extend_fn(&mut edit_events),
                                     }
                                     .show(ui);
-                                    edited |= edit_value_f64_by_event(translate_y, ty, edit_events);
+                                    edited |= edit_value_f64_by_event(translate_y, edit_events);
                                     let mut edit_events = SmallVec::<[_; 1]>::new();
                                     ui.label("size - X");
                                     EasingValueEditorF64 {
                                         id: "size - X",
                                         time_range: instance_range.clone(),
+                                        all_pins,
                                         times: pin_times.as_ref(),
-                                        value: zx,
+                                        value: size_x,
                                         value_range: 0.0..2.0,
                                         point_per_second,
                                         scroll_offset: &mut self.scroll_offset,
                                         update: extend_fn(&mut edit_events),
                                     }
                                     .show(ui);
-                                    edited |= edit_value_f64_by_event(size_x, zx, edit_events);
+                                    edited |= edit_value_f64_by_event(size_x, edit_events);
                                     let mut edit_events = SmallVec::<[_; 1]>::new();
                                     ui.label("size - Y");
                                     EasingValueEditorF64 {
                                         id: "size - Y",
                                         time_range: instance_range.clone(),
+                                        all_pins,
                                         times: pin_times.as_ref(),
-                                        value: zy,
+                                        value: size_y,
                                         value_range: 0.0..2.0,
                                         point_per_second,
                                         scroll_offset: &mut self.scroll_offset,
                                         update: extend_fn(&mut edit_events),
                                     }
                                     .show(ui);
-                                    edited |= edit_value_f64_by_event(size_y, zy, edit_events);
+                                    edited |= edit_value_f64_by_event(size_y, edit_events);
                                     let mut edit_events = SmallVec::<[_; 1]>::new();
                                     ui.label("scale - X");
                                     EasingValueEditorF64 {
                                         id: "scale - X",
                                         time_range: instance_range.clone(),
+                                        all_pins,
                                         times: pin_times.as_ref(),
-                                        value: sx,
+                                        value: scale_x,
                                         value_range: 0.0..2.0,
                                         point_per_second,
                                         scroll_offset: &mut self.scroll_offset,
                                         update: extend_fn(&mut edit_events),
                                     }
                                     .show(ui);
-                                    edited |= edit_value_f64_by_event(scale_x, sx, edit_events);
+                                    edited |= edit_value_f64_by_event(scale_x, edit_events);
                                     let mut edit_events = SmallVec::<[_; 1]>::new();
                                     ui.label("scale - Y");
                                     EasingValueEditorF64 {
                                         id: "scale - Y",
                                         time_range: instance_range.clone(),
+                                        all_pins,
                                         times: pin_times.as_ref(),
-                                        value: sy,
+                                        value: scale_y,
                                         value_range: 0.0..2.0,
                                         point_per_second,
                                         scroll_offset: &mut self.scroll_offset,
                                         update: extend_fn(&mut edit_events),
                                     }
                                     .show(ui);
-                                    edited |= edit_value_f64_by_event(scale_y, sy, edit_events);
+                                    edited |= edit_value_f64_by_event(scale_y, edit_events);
                                 }
                                 if edited {
                                     self.view_model.updated_image_required_params(image_required_params);
@@ -294,7 +270,7 @@ impl<K: 'static, T: ParameterValueType, VM: PropertyWindowViewModel<K, T>> Prope
                             let mut edited = false;
                             for WithName { name, value } in variable_params.as_mut().iter_mut() {
                                 ui.label(name.clone());
-                                match value {
+                                match &mut value.params {
                                     Parameter::None => {}
                                     Parameter::Image(_value) => {}
                                     Parameter::Audio(_value) => {}
@@ -304,8 +280,9 @@ impl<K: 'static, T: ParameterValueType, VM: PropertyWindowViewModel<K, T>> Prope
                                         EasingValueEditorString {
                                             id: name,
                                             time_range: instance_range.clone(),
+                                            all_pins,
                                             times: pin_times.as_ref(),
-                                            value: &mut value.edit_copy,
+                                            value,
                                             point_per_second,
                                             scroll_offset: &mut self.scroll_offset,
                                             update: extend_fn(&mut edit_events),
@@ -344,16 +321,18 @@ impl<K: 'static, T: ParameterValueType, VM: PropertyWindowViewModel<K, T>> Prope
 #[cfg(test)]
 mod tests {
     use crate::property_window::view::PropertyWindow;
-    use crate::property_window::viewmodel::{ImageRequiredParamsForEdit, MarkerPinTimeMap, NullableValueForEdit, ParametersEditSet, PropertyWindowViewModel, WithName};
+    use crate::property_window::viewmodel::{ParametersEditSet, PropertyWindowViewModel, WithName};
     use egui::Visuals;
     use egui_image_renderer::FileFormat;
-    use mpdelta_core::component::marker_pin::{MarkerPin, MarkerPinHandleOwned, MarkerTime};
+    use mpdelta_core::component::marker_pin::{MarkerPin, MarkerPinId, MarkerTime};
     use mpdelta_core::component::parameter::value::{DynEditableEasingValue, DynEditableSelfValue, DynEditableSingleValue, EasingValue, LinearEasing};
-    use mpdelta_core::component::parameter::{ImageRequiredParams, Parameter, ParameterNullableValue, ParameterValueFixed, ParameterValueType, VariableParameterPriority, VariableParameterValue};
-    use mpdelta_core::ptr::StaticPointerOwned;
+    use mpdelta_core::component::parameter::{ImageRequiredParams, ParameterNullableValue, ParameterValueFixed, ParameterValueType, VariableParameterPriority, VariableParameterValue};
+    use mpdelta_core::core::IdGenerator;
     use mpdelta_core::time::TimelineTime;
-    use mpdelta_core::{mfrac, time_split_value};
-    use qcell::{TCell, TCellOwner};
+    use mpdelta_core::{mfrac, time_split_value_persistent};
+    use mpdelta_core_test_util::TestIdGenerator;
+    use rpds::Vector;
+    use std::collections::HashMap;
     use std::io::Cursor;
     use std::ops::Range;
     use std::path::Path;
@@ -364,7 +343,6 @@ mod tests {
         const TEST_OUTPUT_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../test_output/", env!("CARGO_PKG_NAME"));
         let test_output_dir = Path::new(TEST_OUTPUT_DIR);
         tokio::fs::create_dir_all(test_output_dir).await.unwrap();
-        struct K;
         struct T;
         impl ParameterValueType for T {
             type Image = ();
@@ -379,48 +357,43 @@ mod tests {
             type ComponentClass = ();
         }
         struct VM {
-            params: Mutex<Option<ParametersEditSet<K, T>>>,
+            params: Mutex<Option<ParametersEditSet<T, HashMap<MarkerPinId, TimelineTime>>>>,
         }
-        impl PropertyWindowViewModel<K, T> for VM {
+        impl PropertyWindowViewModel<T> for VM {
             fn selected_instance_at(&self) -> Range<f64> {
                 0.0..1.0
             }
 
-            fn parameters<R>(&self, f: impl FnOnce(Option<&mut ParametersEditSet<K, T>>) -> R) -> R {
+            type TimeMap = HashMap<MarkerPinId, TimelineTime>;
+
+            fn parameters<R>(&self, f: impl FnOnce(Option<&mut ParametersEditSet<T, Self::TimeMap>>) -> R) -> R {
                 f(self.params.lock().unwrap().as_mut())
             }
 
-            fn updated_image_required_params(&self, _image_required_params: &ImageRequiredParamsForEdit<K, T>) {}
+            fn updated_image_required_params(&self, _image_required_params: &ImageRequiredParams) {}
             fn updated_fixed_params(&self, _fixed_params: &[WithName<ParameterValueFixed<(), ()>>]) {}
-            fn updated_variable_params(&self, _variable_params: &[WithName<Parameter<NullableValueForEdit<K, T>>>]) {}
+            fn updated_variable_params(&self, _variable_params: &[WithName<VariableParameterValue<ParameterNullableValue<T>>>]) {}
         }
-        let owner = TCellOwner::new();
-        let left = MarkerPinHandleOwned::new(TCell::new(MarkerPin::new(TimelineTime::new(mfrac!(0)), MarkerTime::new(mfrac!(0)).unwrap())));
-        let right = MarkerPinHandleOwned::new(TCell::new(MarkerPin::new(TimelineTime::new(mfrac!(1)), MarkerTime::new(mfrac!(1)).unwrap())));
-        let image_required_params = ImageRequiredParams::new_default(StaticPointerOwned::reference(&left), StaticPointerOwned::reference(&right));
+        let id = TestIdGenerator::new();
+        let left = MarkerPin::new(id.generate_new(), MarkerTime::new(mfrac!(0)).unwrap());
+        let right = MarkerPin::new(id.generate_new(), MarkerTime::new(mfrac!(1)).unwrap());
+        let image_required_params = ImageRequiredParams::new_default(left.id(), right.id());
         let variable_params = [(
             "VariableParam1",
             VariableParameterValue {
-                params: ParameterNullableValue::String(time_split_value![
-                    StaticPointerOwned::reference(&left).clone(),
-                    Some(EasingValue::new(DynEditableEasingValue::new(DynEditableSelfValue("String Value".to_owned())), Arc::new(LinearEasing))),
-                    StaticPointerOwned::reference(&right).clone()
-                ]),
-                components: vec![],
+                params: ParameterNullableValue::String(time_split_value_persistent![*left.id(), Some(EasingValue::new(DynEditableEasingValue::new(DynEditableSelfValue("String Value".to_owned())), Arc::new(LinearEasing))), *right.id()]),
+                components: Vector::new_sync(),
                 priority: VariableParameterPriority::PrioritizeManually,
             },
         )];
-        let mut builder = MarkerPinTimeMap::builder(&owner);
-        builder.insert_by_image_required_params(&image_required_params);
-        let pin_time_map = builder.build();
-        let image_required_params = ImageRequiredParamsForEdit::from_image_required_params(image_required_params, &pin_time_map);
-        let variable_params = variable_params.into_iter().map(|(s, v)| WithName::new(s.to_owned(), NullableValueForEdit::from_variable_parameter_value(v, &pin_time_map))).collect::<Box<[_]>>();
+        let variable_params = variable_params.into_iter().map(|(s, v)| WithName::new(s.to_owned(), v)).collect::<Box<[_]>>();
         let mut window = PropertyWindow::new(Arc::new(VM {
             params: Mutex::new(Some(ParametersEditSet {
+                all_pins: Box::new([left.clone(), right.clone()]),
                 image_required_params: Some(image_required_params),
                 fixed_params: Box::new([WithName::new("FixedParam1".to_owned(), ParameterValueFixed::String(DynEditableSingleValue::new(DynEditableSelfValue("String Value".to_owned()))))]),
                 variable_params,
-                pin_times: pin_time_map.times.into_boxed_slice(),
+                pin_times: Arc::new(HashMap::from([(*left.id(), TimelineTime::new(mfrac!(0))), (*right.id(), TimelineTime::new(mfrac!(1)))])),
             })),
         }));
         let mut output = Cursor::new(Vec::new());

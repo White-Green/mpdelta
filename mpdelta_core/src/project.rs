@@ -1,68 +1,73 @@
 use crate::common::mixed_fraction::MixedFraction;
-use crate::common::time_split_value::TimeSplitValue;
+use crate::common::time_split_value_persistent::TimeSplitValuePersistent;
 use crate::component::class::{ComponentClass, ComponentClassIdentifier};
-use crate::component::instance::{ComponentInstance, ComponentInstanceHandle, ComponentInstanceHandleOwned};
-use crate::component::link::{MarkerLinkHandle, MarkerLinkHandleOwned};
-use crate::component::marker_pin::{MarkerPin, MarkerPinHandle, MarkerPinHandleOwned, MarkerTime};
+use crate::component::instance::{ComponentInstance, ComponentInstanceId};
+use crate::component::link::MarkerLink;
+use crate::component::marker_pin::{MarkerPin, MarkerPinId, MarkerTime};
 use crate::component::parameter::value::{DynEditableLerpEasingValue, EasingValue, LinearEasing};
 use crate::component::parameter::{AudioRequiredParams, ImageRequiredParams, ImageRequiredParamsTransform, ParameterType, ParameterValueRaw, ParameterValueType, VariableParameterValue};
 use crate::component::processor::{ComponentProcessor, ComponentProcessorComponent, ComponentProcessorWrapper, ComponentsLinksPair};
+use crate::core::IdGenerator;
 use crate::ptr::{StaticPointer, StaticPointerCow, StaticPointerOwned};
 use crate::time::TimelineTime;
+use arc_swap::ArcSwap;
 use async_trait::async_trait;
 use cgmath::{One, Quaternion, Vector3};
-use qcell::TCell;
+use rpds::{HashTrieMap, HashTrieMapSync, HashTrieSetSync, Vector, VectorSync};
 use std::borrow::Cow;
+use std::collections::HashMap;
 use std::fmt::{Debug, Formatter};
 use std::hash::{Hash, Hasher};
-use std::ops::Deref;
+use std::iter;
+use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
-use tokio::sync::{OwnedRwLockReadGuard, OwnedRwLockWriteGuard, RwLock, RwLockReadGuard, RwLockWriteGuard};
+use thiserror::Error;
+use tokio::sync::{Mutex, MutexGuard, RwLock};
 use uuid::Uuid;
 
 #[derive(Debug)]
-pub struct Project<K: 'static, T: ParameterValueType> {
+pub struct Project<T: ParameterValueType> {
     id: Uuid,
-    children: Vec<RootComponentClassHandleOwned<K, T>>,
+    children: Vec<RootComponentClassHandleOwned<T>>,
 }
 
-pub type ProjectWithLock<K, T> = RwLock<Project<K, T>>;
-pub type ProjectHandle<K, T> = StaticPointer<ProjectWithLock<K, T>>;
-pub type ProjectHandleOwned<K, T> = StaticPointerOwned<ProjectWithLock<K, T>>;
-pub type ProjectHandleCow<K, T> = StaticPointerCow<ProjectWithLock<K, T>>;
+pub type ProjectWithLock<T> = RwLock<Project<T>>;
+pub type ProjectHandle<T> = StaticPointer<ProjectWithLock<T>>;
+pub type ProjectHandleOwned<T> = StaticPointerOwned<ProjectWithLock<T>>;
+pub type ProjectHandleCow<T> = StaticPointerCow<ProjectWithLock<T>>;
 
-impl<K, T: ParameterValueType> PartialEq for Project<K, T> {
+impl<T: ParameterValueType> PartialEq for Project<T> {
     fn eq(&self, other: &Self) -> bool {
         self.id == other.id
     }
 }
 
-impl<K, T: ParameterValueType> Eq for Project<K, T> {}
+impl<T: ParameterValueType> Eq for Project<T> {}
 
-impl<K, T: ParameterValueType> Hash for Project<K, T> {
+impl<T: ParameterValueType> Hash for Project<T> {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.id.hash(state)
     }
 }
 
-impl<K, T: ParameterValueType> Project<K, T> {
+impl<T: ParameterValueType> Project<T> {
     pub fn id(&self) -> Uuid {
         self.id
     }
 
-    pub fn new_empty(id: Uuid) -> ProjectHandleOwned<K, T> {
+    pub fn new_empty(id: Uuid) -> ProjectHandleOwned<T> {
         StaticPointerOwned::new(RwLock::new(Project { id, children: Vec::new() }))
     }
 
-    pub fn with_children(id: Uuid, children: impl IntoIterator<Item = RootComponentClassHandleOwned<K, T>>) -> ProjectHandleOwned<K, T> {
+    pub fn with_children(id: Uuid, children: impl IntoIterator<Item = RootComponentClassHandleOwned<T>>) -> ProjectHandleOwned<T> {
         StaticPointerOwned::new(RwLock::new(Project { id, children: children.into_iter().collect() }))
     }
 
-    pub fn children(&self) -> &Vec<RootComponentClassHandleOwned<K, T>> {
+    pub fn children(&self) -> &Vec<RootComponentClassHandleOwned<T>> {
         &self.children
     }
 
-    pub async fn add_child(&mut self, this: &ProjectHandle<K, T>, child: RootComponentClassHandleOwned<K, T>) {
+    pub async fn add_child(&mut self, this: &ProjectHandle<T>, child: RootComponentClassHandleOwned<T>) {
         let mut child_guard = child.write().await;
         child_guard.parent = this.clone();
         child_guard.parent_id = self.id;
@@ -70,7 +75,7 @@ impl<K, T: ParameterValueType> Project<K, T> {
         self.children.push(child);
     }
 
-    pub async fn add_children(&mut self, this: &ProjectHandle<K, T>, children: impl IntoIterator<Item = RootComponentClassHandleOwned<K, T>>) {
+    pub async fn add_children(&mut self, this: &ProjectHandle<T>, children: impl IntoIterator<Item = RootComponentClassHandleOwned<T>>) {
         for child in children {
             let mut child_guard = child.write().await;
             child_guard.parent = this.clone();
@@ -80,21 +85,43 @@ impl<K, T: ParameterValueType> Project<K, T> {
         }
     }
 
-    pub fn remove_child(&mut self, child: &RootComponentClassHandle<K, T>) -> Option<RootComponentClassHandleOwned<K, T>> {
+    pub fn remove_child(&mut self, child: &RootComponentClassHandle<T>) -> Option<RootComponentClassHandleOwned<T>> {
         let index = self.children.iter().position(|c| c == child)?;
         Some(self.children.remove(index))
     }
 }
 
-pub struct RootComponentClassItem<K: 'static, T: ParameterValueType> {
-    left: MarkerPinHandleOwned<K>,
-    right: MarkerPinHandleOwned<K>,
-    component: Vec<ComponentInstanceHandleOwned<K, T>>,
-    link: Vec<MarkerLinkHandleOwned<K>>,
+pub struct RootComponentClassItem<T: ParameterValueType> {
+    left: MarkerPin,
+    right: MarkerPin,
+    components: HashTrieMapSync<ComponentInstanceId, ComponentInstance<T>>,
+    components_sorted: VectorSync<ComponentInstanceId>,
+    links: HashTrieMapSync<[MarkerPinId; 2], MarkerLink>,
+    links_sorted: VectorSync<[MarkerPinId; 2]>,
+    link_map: HashTrieMapSync<MarkerPinId, HashTrieSetSync<MarkerPinId>>,
+    pin_time_map: Arc<HashMap<MarkerPinId, TimelineTime>>,
     length: MarkerTime,
 }
 
-impl<K, T: ParameterValueType> Debug for RootComponentClassItem<K, T> {
+pub struct RootComponentClassItemViewBase<'a> {
+    length: &'a mut MarkerTime,
+}
+
+pub struct RootComponentClassItemViewStructure<'a, T: ParameterValueType> {
+    left: &'a mut MarkerPin,
+    right: &'a mut MarkerPin,
+    components: &'a mut HashTrieMapSync<ComponentInstanceId, ComponentInstance<T>>,
+    components_sorted: &'a mut VectorSync<ComponentInstanceId>,
+    links: &'a mut HashTrieMapSync<[MarkerPinId; 2], MarkerLink>,
+    links_sorted: &'a mut VectorSync<[MarkerPinId; 2]>,
+    link_map: &'a mut HashTrieMapSync<MarkerPinId, HashTrieSetSync<MarkerPinId>>,
+}
+
+pub struct RootComponentClassItemViewTimeMap<'a> {
+    pin_time_map: &'a HashMap<MarkerPinId, TimelineTime>,
+}
+
+impl<T: ParameterValueType> Debug for RootComponentClassItem<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         struct DebugFn<F>(F);
         impl<F: for<'a> Fn(&mut Formatter<'a>) -> std::fmt::Result> Debug for DebugFn<F> {
@@ -103,32 +130,159 @@ impl<K, T: ParameterValueType> Debug for RootComponentClassItem<K, T> {
             }
         }
         f.debug_struct("RootComponentClassItem")
-            .field("left", StaticPointerOwned::reference(&self.left))
-            .field("right", StaticPointerOwned::reference(&self.right))
-            .field("component", &DebugFn(|f: &mut Formatter| f.debug_list().entries(self.component.iter().map(StaticPointerOwned::reference)).finish()))
-            .field("link", &DebugFn(|f: &mut Formatter| f.debug_list().entries(self.link.iter().map(StaticPointerOwned::reference)).finish()))
+            .field("left", &self.left)
+            .field("right", &self.right)
+            .field("components", &DebugFn(|f: &mut Formatter| f.debug_list().entries(self.components.keys()).finish()))
+            .field("links", &DebugFn(|f: &mut Formatter| f.debug_list().entries(self.links.values()).finish()))
+            .field("length", &self.length)
             .finish_non_exhaustive()
     }
 }
 
-impl<K, T: ParameterValueType> RootComponentClassItem<K, T> {
-    pub fn left(&self) -> &MarkerPinHandleOwned<K> {
+impl<T: ParameterValueType> Clone for RootComponentClassItem<T> {
+    fn clone(&self) -> Self {
+        let RootComponentClassItem {
+            left,
+            right,
+            components,
+            components_sorted,
+            links,
+            links_sorted,
+            link_map,
+            pin_time_map,
+            length,
+        } = self;
+        RootComponentClassItem {
+            left: left.clone(),
+            right: right.clone(),
+            components: components.clone(),
+            components_sorted: components_sorted.clone(),
+            links: links.clone(),
+            links_sorted: links_sorted.clone(),
+            link_map: link_map.clone(),
+            pin_time_map: pin_time_map.clone(),
+            length: *length,
+        }
+    }
+}
+
+impl<T: ParameterValueType> ComponentsLinksPair<T> for RootComponentClassItem<T> {
+    fn components(&self) -> impl DoubleEndedIterator<Item = &ComponentInstance<T>> + Send + Sync + '_
+    where
+        Self: Sized,
+    {
+        self.iter_components()
+    }
+
+    fn components_dyn(&self) -> Box<dyn DoubleEndedIterator<Item = &ComponentInstance<T>> + Send + Sync + '_> {
+        Box::new(self.iter_components())
+    }
+
+    fn links(&self) -> impl DoubleEndedIterator<Item = &MarkerLink> + Send + Sync + '_
+    where
+        Self: Sized,
+    {
+        self.iter_links()
+    }
+
+    fn links_dyn(&self) -> Box<dyn DoubleEndedIterator<Item = &MarkerLink> + Send + Sync + '_> {
+        Box::new(self.iter_links())
+    }
+
+    fn left(&self) -> &MarkerPin {
         &self.left
     }
-    pub fn right(&self) -> &MarkerPinHandleOwned<K> {
+
+    fn right(&self) -> &MarkerPin {
         &self.right
     }
-    pub fn component(&self) -> &[ComponentInstanceHandleOwned<K, T>] {
-        &self.component
+}
+
+#[derive(Debug, Error)]
+#[error("Not found")]
+pub struct NotFound;
+
+impl<T: ParameterValueType> RootComponentClassItem<T> {
+    pub fn view(&mut self) -> (RootComponentClassItemViewBase, RootComponentClassItemViewStructure<T>, RootComponentClassItemViewTimeMap) {
+        let RootComponentClassItem {
+            left,
+            right,
+            components,
+            components_sorted,
+            links,
+            links_sorted,
+            link_map,
+            pin_time_map,
+            length,
+        } = self;
+        (
+            RootComponentClassItemViewBase { length },
+            RootComponentClassItemViewStructure {
+                left,
+                right,
+                components,
+                components_sorted,
+                links,
+                links_sorted,
+                link_map,
+            },
+            RootComponentClassItemViewTimeMap { pin_time_map },
+        )
     }
-    pub fn component_mut(&mut self) -> &mut Vec<ComponentInstanceHandleOwned<K, T>> {
-        &mut self.component
+    pub fn left(&self) -> &MarkerPin {
+        &self.left
     }
-    pub fn link(&self) -> &[MarkerLinkHandleOwned<K>] {
-        &self.link
+    pub fn left_mut(&mut self) -> &mut MarkerPin {
+        &mut self.left
     }
-    pub fn link_mut(&mut self) -> &mut Vec<MarkerLinkHandleOwned<K>> {
-        &mut self.link
+    pub fn right(&self) -> &MarkerPin {
+        &self.right
+    }
+    pub fn right_mut(&mut self) -> &mut MarkerPin {
+        &mut self.right
+    }
+    pub fn iter_components(&self) -> impl DoubleEndedIterator<Item = &ComponentInstance<T>> {
+        self.components_sorted.iter().filter_map(|id| self.components.get(id))
+    }
+    pub fn component(&self, id: &ComponentInstanceId) -> Option<&ComponentInstance<T>> {
+        self.components.get(id)
+    }
+    pub fn component_mut(&mut self, id: &ComponentInstanceId) -> Option<&mut ComponentInstance<T>> {
+        self.components.get_mut(id)
+    }
+    pub fn add_component(&mut self, component: ComponentInstance<T>) {
+        self.view().1.add_component(component);
+    }
+    pub fn insert_component_within(&mut self, component: &ComponentInstanceId, index: usize) -> Result<(), NotFound> {
+        self.view().1.insert_component_within(component, index)
+    }
+    pub fn remove_component(&mut self, id: &ComponentInstanceId) -> Result<(), NotFound> {
+        self.view().1.remove_component(id)
+    }
+    pub fn iter_links(&self) -> impl DoubleEndedIterator<Item = &MarkerLink> {
+        self.links_sorted.iter().filter_map(|key| self.links.get(key))
+    }
+    pub fn iter_link_connecting(&self, pin: MarkerPinId) -> impl Iterator<Item = &MarkerLink> + '_ {
+        self.link_map.get(&pin).into_iter().flat_map(move |pins| pins.iter().filter_map(move |p| self.link(pin, *p)))
+    }
+    pub fn link(&self, pin1: MarkerPinId, pin2: MarkerPinId) -> Option<&MarkerLink> {
+        let mut key = [pin1, pin2];
+        key.sort_unstable();
+        self.links.get(&key)
+    }
+    pub fn link_mut(&mut self, pin1: MarkerPinId, pin2: MarkerPinId) -> Option<&mut MarkerLink> {
+        let mut key = [pin1, pin2];
+        key.sort_unstable();
+        self.links.get_mut(&key)
+    }
+    pub fn add_link(&mut self, link: MarkerLink) {
+        self.view().1.add_link(link);
+    }
+    pub fn remove_link(&mut self, pin1: MarkerPinId, pin2: MarkerPinId) {
+        self.view().1.remove_link(pin1, pin2);
+    }
+    pub fn time_of_pin(&self, pin: &MarkerPinId) -> Option<TimelineTime> {
+        self.pin_time_map.get(pin).copied()
     }
     pub fn length(&self) -> MarkerTime {
         self.length
@@ -138,30 +292,209 @@ impl<K, T: ParameterValueType> RootComponentClassItem<K, T> {
     }
 }
 
-#[derive(Debug)]
-struct RootComponentClassItemWrapper<K: 'static, T: ParameterValueType>(Arc<RwLock<RootComponentClassItem<K, T>>>);
+impl<'a> RootComponentClassItemViewBase<'a> {
+    pub fn length(&self) -> &MarkerTime {
+        self.length
+    }
+    pub fn set_length(&mut self, length: MarkerTime) {
+        *self.length = length;
+    }
+}
 
-impl<K: 'static, T: ParameterValueType> Clone for RootComponentClassItemWrapper<K, T> {
+impl<'a, T> RootComponentClassItemViewStructure<'a, T>
+where
+    T: ParameterValueType,
+{
+    pub fn left(&self) -> &MarkerPin {
+        self.left
+    }
+    pub fn left_mut(&mut self) -> &mut MarkerPin {
+        self.left
+    }
+    pub fn right(&self) -> &MarkerPin {
+        self.right
+    }
+    pub fn right_mut(&mut self) -> &mut MarkerPin {
+        self.right
+    }
+    pub fn iter_components(&self) -> impl DoubleEndedIterator<Item = &ComponentInstance<T>> {
+        self.components_sorted.iter().filter_map(|id| self.components.get(id))
+    }
+    pub fn component(&self, id: &ComponentInstanceId) -> Option<&ComponentInstance<T>> {
+        self.components.get(id)
+    }
+    pub fn component_mut(&mut self, id: &ComponentInstanceId) -> Option<&mut ComponentInstance<T>> {
+        self.components.get_mut(id)
+    }
+    pub fn add_component(&mut self, component: ComponentInstance<T>) {
+        self.components_sorted.push_back_mut(*component.id());
+        self.components.insert_mut(*component.id(), component);
+    }
+    pub fn insert_component_within(&mut self, component: &ComponentInstanceId, index: usize) -> Result<(), NotFound> {
+        if !self.components.contains_key(component) {
+            return Err(NotFound);
+        }
+        let mut iter = self.components_sorted.iter().filter(|&c| self.components.contains_key(c) && c != component).cloned();
+        let mut components_sorted = VectorSync::from_iter(iter.by_ref().take(index).chain(iter::once(*component)));
+        components_sorted.extend(iter);
+        *self.components_sorted = components_sorted;
+        Ok(())
+    }
+    pub fn remove_component(&mut self, id: &ComponentInstanceId) -> Result<(), NotFound> {
+        let component = self.components.get(id).ok_or(NotFound)?;
+        [component.marker_left(), component.marker_right()].into_iter().chain(component.markers()).for_each(|pin| {
+            let Some(other_pins) = self.link_map.get(pin.id()).cloned() else {
+                return;
+            };
+            other_pins.iter().for_each(|p| {
+                self.link_map.get_mut(p).unwrap().remove_mut(pin.id());
+                let mut k = [*pin.id(), *p];
+                k.sort_unstable();
+                self.links.remove_mut(&k);
+            });
+            self.link_map.remove_mut(pin.id());
+        });
+        self.components.remove_mut(id);
+        if self.components_sorted.len() * 2 < self.components.size() {
+            let components_sorted = self.components_sorted.iter().copied().filter(|id| self.components.contains_key(id)).collect();
+            *self.components_sorted = components_sorted;
+        }
+        if self.links_sorted.len() * 2 < self.links.size() {
+            let links_sorted = self.links_sorted.iter().copied().filter(|key| self.links.contains_key(key)).collect();
+            *self.links_sorted = links_sorted;
+        }
+        Ok(())
+    }
+    pub fn iter_links(&self) -> impl DoubleEndedIterator<Item = &MarkerLink> {
+        self.links_sorted.iter().filter_map(|key| self.links.get(key))
+    }
+    pub fn iter_link_connecting(&self, pin: MarkerPinId) -> impl Iterator<Item = &MarkerLink> + '_ {
+        self.link_map.get(&pin).into_iter().flat_map(move |pins| pins.iter().filter_map(move |p| self.link(pin, *p)))
+    }
+    pub fn link(&self, pin1: MarkerPinId, pin2: MarkerPinId) -> Option<&MarkerLink> {
+        let mut key = [pin1, pin2];
+        key.sort_unstable();
+        self.links.get(&key)
+    }
+    pub fn link_mut(&mut self, pin1: MarkerPinId, pin2: MarkerPinId) -> Option<&mut MarkerLink> {
+        let mut key = [pin1, pin2];
+        key.sort_unstable();
+        self.links.get_mut(&key)
+    }
+    pub fn add_link(&mut self, link: MarkerLink) {
+        let from_id = *link.from();
+        let to_id = *link.to();
+        let mut key = [from_id, to_id];
+        key.sort_unstable();
+        self.links_sorted.push_back_mut(key);
+        self.links.insert_mut(key, link);
+        if let Some(map) = self.link_map.get_mut(&from_id) {
+            map.insert_mut(to_id);
+        } else {
+            self.link_map.insert_mut(from_id, HashTrieSetSync::from_iter(iter::once(to_id)));
+        }
+        if let Some(map) = self.link_map.get_mut(&to_id) {
+            map.insert_mut(from_id);
+        } else {
+            self.link_map.insert_mut(to_id, HashTrieSetSync::from_iter(iter::once(from_id)));
+        }
+    }
+    pub fn remove_link(&mut self, pin1: MarkerPinId, pin2: MarkerPinId) {
+        let mut key = [pin1, pin2];
+        key.sort_unstable();
+        self.links.remove_mut(&key);
+        self.link_map.get_mut(&pin1).unwrap().remove_mut(&pin2);
+        self.link_map.get_mut(&pin2).unwrap().remove_mut(&pin1);
+        if self.links_sorted.len() * 2 < self.links.size() {
+            let links_sorted = self.links_sorted.iter().copied().filter(|key| self.links.contains_key(key)).collect();
+            *self.links_sorted = links_sorted;
+        }
+    }
+}
+
+impl<'a> RootComponentClassItemViewTimeMap<'a> {
+    pub fn time_of_pin(&self, pin: &MarkerPinId) -> Option<TimelineTime> {
+        self.pin_time_map.get(pin).copied()
+    }
+}
+
+pub trait TimelineTimeOfPin {
+    fn time_of_pin(&self, pin: &MarkerPinId) -> Option<TimelineTime>;
+}
+
+impl<T: ParameterValueType> TimelineTimeOfPin for RootComponentClassItem<T> {
+    fn time_of_pin(&self, pin: &MarkerPinId) -> Option<TimelineTime> {
+        self.pin_time_map.get(pin).copied()
+    }
+}
+
+impl<'a> TimelineTimeOfPin for RootComponentClassItemViewTimeMap<'a> {
+    fn time_of_pin(&self, pin: &MarkerPinId) -> Option<TimelineTime> {
+        self.pin_time_map.get(pin).copied()
+    }
+}
+
+impl TimelineTimeOfPin for HashMap<MarkerPinId, TimelineTime> {
+    fn time_of_pin(&self, pin: &MarkerPinId) -> Option<TimelineTime> {
+        self.get(pin).copied()
+    }
+}
+
+#[derive(Debug)]
+struct RootComponentClassItemWrapper<T: ParameterValueType>(Arc<ArcSwap<RootComponentClassItem<T>>>);
+
+impl<T: ParameterValueType> Clone for RootComponentClassItemWrapper<T> {
     fn clone(&self) -> Self {
         RootComponentClassItemWrapper(Arc::clone(&self.0))
     }
 }
 
 #[derive(Debug)]
-pub struct RootComponentClass<K: 'static, T: ParameterValueType> {
+pub struct RootComponentClass<T: ParameterValueType> {
     id: Uuid,
-    parent: ProjectHandle<K, T>,
+    parent: ProjectHandle<T>,
     parent_id: Uuid,
-    item: RootComponentClassItemWrapper<K, T>,
+    item_write_lock: Mutex<()>,
+    item: RootComponentClassItemWrapper<T>,
 }
 
-pub type RootComponentClassWithLock<K, T> = RwLock<RootComponentClass<K, T>>;
-pub type RootComponentClassHandle<K, T> = StaticPointer<RootComponentClassWithLock<K, T>>;
-pub type RootComponentClassHandleOwned<K, T> = StaticPointerOwned<RootComponentClassWithLock<K, T>>;
-pub type RootComponentClassHandleCow<K, T> = StaticPointerCow<RootComponentClassWithLock<K, T>>;
+pub struct RootComponentClassItemWrite<'a, T: ParameterValueType> {
+    _guard: MutexGuard<'a, ()>,
+    slot: &'a RootComponentClassItemWrapper<T>,
+    item: Arc<RootComponentClassItem<T>>,
+}
+
+impl<'a, T> RootComponentClassItemWrite<'a, T>
+where
+    T: ParameterValueType,
+{
+    pub fn commit_changes(mut this: Self, time_map: impl Into<Arc<HashMap<MarkerPinId, TimelineTime>>>) {
+        Arc::make_mut(&mut this.item).pin_time_map = time_map.into();
+        this.slot.0.store(this.item);
+    }
+}
+
+impl<'a, T: ParameterValueType> Deref for RootComponentClassItemWrite<'a, T> {
+    type Target = RootComponentClassItem<T>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.item
+    }
+}
+
+impl<'a, T: ParameterValueType> DerefMut for RootComponentClassItemWrite<'a, T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        Arc::make_mut(&mut self.item)
+    }
+}
+
+pub type RootComponentClassWithLock<T> = RwLock<RootComponentClass<T>>;
+pub type RootComponentClassHandle<T> = StaticPointer<RootComponentClassWithLock<T>>;
+pub type RootComponentClassHandleOwned<T> = StaticPointerOwned<RootComponentClassWithLock<T>>;
+pub type RootComponentClassHandleCow<T> = StaticPointerCow<RootComponentClassWithLock<T>>;
 
 #[async_trait]
-impl<K, T: ParameterValueType + 'static> ComponentClass<K, T> for RootComponentClass<K, T> {
+impl<T: ParameterValueType + 'static> ComponentClass<T> for RootComponentClass<T> {
     fn identifier(&self) -> ComponentClassIdentifier {
         ComponentClassIdentifier {
             namespace: Cow::Borrowed("mpdelta"),
@@ -170,66 +503,50 @@ impl<K, T: ParameterValueType + 'static> ComponentClass<K, T> for RootComponentC
         }
     }
 
-    fn processor(&self) -> ComponentProcessorWrapper<K, T> {
+    fn processor(&self) -> ComponentProcessorWrapper<T> {
         ComponentProcessorWrapper::Component(Arc::new(self.item.clone()))
     }
 
-    async fn instantiate(&self, this: &StaticPointer<RwLock<dyn ComponentClass<K, T>>>) -> ComponentInstance<K, T> {
-        let guard = self.item.0.read().await;
-        let marker_left = StaticPointerOwned::new(TCell::new(MarkerPin::new(TimelineTime::ZERO, MarkerTime::ZERO)));
-        let marker_right = StaticPointerOwned::new(TCell::new(MarkerPin::new(TimelineTime::new(guard.length.value()), guard.length)));
-        let one = TimeSplitValue::new(
-            StaticPointerOwned::reference(&marker_left).clone(),
-            Some(EasingValue::new(DynEditableLerpEasingValue((1., 1.)), Arc::new(LinearEasing))),
-            StaticPointerOwned::reference(&marker_right).clone(),
-        );
+    async fn instantiate(&self, this: &StaticPointer<RwLock<dyn ComponentClass<T>>>, id: &dyn IdGenerator) -> ComponentInstance<T> {
+        let guard = self.item.0.load();
+        let marker_left = MarkerPin::new(id.generate_new(), MarkerTime::ZERO);
+        let marker_right = MarkerPin::new(id.generate_new(), guard.length);
+        let one = TimeSplitValuePersistent::new(*marker_left.id(), Some(EasingValue::new(DynEditableLerpEasingValue((1., 1.)), Arc::new(LinearEasing))), *marker_right.id());
         let one_value = VariableParameterValue::new(one);
-        let zero = VariableParameterValue::new(TimeSplitValue::new(
-            StaticPointerOwned::reference(&marker_left).clone(),
-            Some(EasingValue::new(DynEditableLerpEasingValue((0., 0.)), Arc::new(LinearEasing))),
-            StaticPointerOwned::reference(&marker_right).clone(),
-        ));
+        let one_vector3 = Arc::new(Vector3 {
+            x: one_value.clone(),
+            y: one_value.clone(),
+            z: one_value.clone(),
+        });
+        let zero = VariableParameterValue::new(TimeSplitValuePersistent::new(*marker_left.id(), Some(EasingValue::new(DynEditableLerpEasingValue((0., 0.)), Arc::new(LinearEasing))), *marker_right.id()));
+        let zero_vector3 = Arc::new(Vector3 { x: zero.clone(), y: zero.clone(), z: zero });
         let image_required_params = ImageRequiredParams {
-            transform: ImageRequiredParamsTransform::Params {
-                size: Vector3 {
-                    x: one_value.clone(),
-                    y: one_value.clone(),
-                    z: one_value.clone(),
-                },
-                scale: Vector3 {
-                    x: one_value.clone(),
-                    y: one_value.clone(),
-                    z: one_value.clone(),
-                },
-                translate: Vector3 { x: zero.clone(), y: zero.clone(), z: zero.clone() },
-                rotate: TimeSplitValue::new(
-                    StaticPointerOwned::reference(&marker_left).clone(),
-                    EasingValue::new(DynEditableLerpEasingValue((Quaternion::one(), Quaternion::one())), Arc::new(LinearEasing)),
-                    StaticPointerOwned::reference(&marker_right).clone(),
-                ),
-                scale_center: Vector3 { x: zero.clone(), y: zero.clone(), z: zero.clone() },
-                rotate_center: Vector3 { x: zero.clone(), y: zero.clone(), z: zero },
-            },
+            transform: Arc::new(ImageRequiredParamsTransform::Params {
+                size: one_vector3.clone(),
+                scale: one_vector3,
+                translate: zero_vector3.clone(),
+                rotate: Arc::new(TimeSplitValuePersistent::new(*marker_left.id(), EasingValue::new(DynEditableLerpEasingValue((Quaternion::one(), Quaternion::one())), Arc::new(LinearEasing)), *marker_right.id())),
+                scale_center: zero_vector3.clone(),
+                rotate_center: zero_vector3,
+            }),
             background_color: [0; 4],
-            opacity: TimeSplitValue::new(
-                StaticPointerOwned::reference(&marker_left).clone(),
-                EasingValue::new(DynEditableLerpEasingValue((1., 1.)), Arc::new(LinearEasing)),
-                StaticPointerOwned::reference(&marker_right).clone(),
-            ),
-            blend_mode: TimeSplitValue::new(StaticPointerOwned::reference(&marker_left).clone(), Default::default(), StaticPointerOwned::reference(&marker_right).clone()),
-            composite_operation: TimeSplitValue::new(StaticPointerOwned::reference(&marker_left).clone(), Default::default(), StaticPointerOwned::reference(&marker_right).clone()),
+            opacity: TimeSplitValuePersistent::new(*marker_left.id(), EasingValue::new(DynEditableLerpEasingValue((1., 1.)), Arc::new(LinearEasing)), *marker_right.id()),
+            blend_mode: TimeSplitValuePersistent::new(*marker_left.id(), Default::default(), *marker_right.id()),
+            composite_operation: TimeSplitValuePersistent::new(*marker_left.id(), Default::default(), *marker_right.id()),
         };
-        let audio_required_params = AudioRequiredParams { volume: vec![one_value.clone(), one_value] };
-        let processor = Arc::new(self.item.clone()) as Arc<dyn ComponentProcessorComponent<K, T>>;
+        let audio_required_params = AudioRequiredParams {
+            volume: Vector::from_iter([one_value.clone(), one_value]),
+        };
+        let processor = Arc::new(self.item.clone()) as Arc<dyn ComponentProcessorComponent<T>>;
         ComponentInstance::builder(this.clone(), marker_left, marker_right, Vec::new(), processor)
             .image_required_params(image_required_params)
             .audio_required_params(audio_required_params)
-            .build()
+            .build(id)
     }
 }
 
 #[async_trait]
-impl<K, T: ParameterValueType> ComponentProcessor<K, T> for RootComponentClassItemWrapper<K, T> {
+impl<T: ParameterValueType> ComponentProcessor<T> for RootComponentClassItemWrapper<T> {
     async fn fixed_parameter_types(&self) -> &[(String, ParameterType)] {
         &[]
     }
@@ -240,68 +557,56 @@ impl<K, T: ParameterValueType> ComponentProcessor<K, T> for RootComponentClassIt
 }
 
 #[async_trait]
-impl<K, T: ParameterValueType> ComponentProcessorComponent<K, T> for RootComponentClassItemWrapper<K, T> {
+impl<T: ParameterValueType> ComponentProcessorComponent<T> for RootComponentClassItemWrapper<T> {
     async fn natural_length(&self, _: &[ParameterValueRaw<T::Image, T::Audio>]) -> MarkerTime {
-        let guard = self.0.read().await;
+        let guard = self.0.load();
         guard.length
     }
 
     async fn process(
         &self,
         _fixed_parameters: &[ParameterValueRaw<T::Image, T::Audio>],
-        _fixed_parameters_component: &[StaticPointer<RwLock<dyn ComponentClass<K, T>>>],
-        _variable_parameters: &[StaticPointer<RwLock<dyn ComponentClass<K, T>>>],
+        _fixed_parameters_component: &[StaticPointer<RwLock<dyn ComponentClass<T>>>],
+        _variable_parameters: &[StaticPointer<RwLock<dyn ComponentClass<T>>>],
         _variable_parameter_type: &[(String, ParameterType)],
-    ) -> ComponentsLinksPair<K, T> {
-        let guard = self.0.read().await;
-        let components = guard.component.iter().map(Into::into).collect::<Vec<_>>();
-        let links = guard.link.iter().map(Into::into).collect::<Vec<_>>();
-        let left = StaticPointerCow::Reference(StaticPointerOwned::reference(&guard.left).clone());
-        let right = StaticPointerCow::Reference(StaticPointerOwned::reference(&guard.right).clone());
-        ComponentsLinksPair { components, links, left, right }
+    ) -> Arc<dyn ComponentsLinksPair<T>> {
+        self.0.load_full()
     }
 }
 
-impl<K, T: ParameterValueType> PartialEq for RootComponentClass<K, T> {
+impl<T: ParameterValueType> PartialEq for RootComponentClass<T> {
     fn eq(&self, other: &Self) -> bool {
         self.id == other.id
     }
 }
 
-impl<K, T: ParameterValueType> Eq for RootComponentClass<K, T> {}
+impl<T: ParameterValueType> Eq for RootComponentClass<T> {}
 
-impl<K, T: ParameterValueType> Hash for RootComponentClass<K, T> {
+impl<T: ParameterValueType> Hash for RootComponentClass<T> {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.id.hash(state)
     }
 }
 
-impl<K, T: ParameterValueType> RootComponentClass<K, T> {
-    pub fn new_empty(id: Uuid, parent: ProjectHandle<K, T>, parent_id: Uuid) -> RootComponentClassHandleOwned<K, T> {
+impl<T: ParameterValueType> RootComponentClass<T> {
+    pub fn new_empty(id: Uuid, parent: ProjectHandle<T>, parent_id: Uuid, id_generator: &(impl IdGenerator + ?Sized)) -> RootComponentClassHandleOwned<T> {
+        let left = MarkerPin::new(id_generator.generate_new(), MarkerTime::new(MixedFraction::ZERO).unwrap());
+        let right = MarkerPin::new(id_generator.generate_new(), MarkerTime::new(MixedFraction::from_integer(10)).unwrap());
+        let pin_time_map = Arc::new(HashMap::from([(*left.id(), TimelineTime::ZERO), (*right.id(), TimelineTime::new(MixedFraction::from_integer(10)))]));
         StaticPointerOwned::new(RwLock::new(RootComponentClass {
             id,
             parent,
             parent_id,
-            item: RootComponentClassItemWrapper(Arc::new(RwLock::new(RootComponentClassItem {
-                left: StaticPointerOwned::new(TCell::new(MarkerPin::new(TimelineTime::new(MixedFraction::ZERO), MarkerTime::new(MixedFraction::ZERO).unwrap()))),
-                right: StaticPointerOwned::new(TCell::new(MarkerPin::new(TimelineTime::new(MixedFraction::from_integer(10)), MarkerTime::new(MixedFraction::from_integer(10)).unwrap()))),
-                component: Vec::new(),
-                link: Vec::new(),
-                length: MarkerTime::new(MixedFraction::from_integer(10)).unwrap(),
-            }))),
-        }))
-    }
-
-    pub fn with_item(id: Uuid, parent: ProjectHandle<K, T>, parent_id: Uuid, component: Vec<ComponentInstanceHandleOwned<K, T>>, link: Vec<MarkerLinkHandleOwned<K>>) -> RootComponentClassHandleOwned<K, T> {
-        StaticPointerOwned::new(RwLock::new(RootComponentClass {
-            id,
-            parent,
-            parent_id,
-            item: RootComponentClassItemWrapper(Arc::new(RwLock::new(RootComponentClassItem {
-                left: StaticPointerOwned::new(TCell::new(MarkerPin::new(TimelineTime::new(MixedFraction::ZERO), MarkerTime::new(MixedFraction::ZERO).unwrap()))),
-                right: StaticPointerOwned::new(TCell::new(MarkerPin::new(TimelineTime::new(MixedFraction::from_integer(10)), MarkerTime::new(MixedFraction::from_integer(10)).unwrap()))),
-                component,
-                link,
+            item_write_lock: Mutex::new(()),
+            item: RootComponentClassItemWrapper(Arc::new(ArcSwap::from_pointee(RootComponentClassItem {
+                left,
+                right,
+                components: HashTrieMap::new_sync(),
+                components_sorted: Vector::new_sync(),
+                links: HashTrieMap::new_sync(),
+                links_sorted: Vector::new_sync(),
+                link_map: HashTrieMap::new_sync(),
+                pin_time_map,
                 length: MarkerTime::new(MixedFraction::from_integer(10)).unwrap(),
             }))),
         }))
@@ -311,39 +616,25 @@ impl<K, T: ParameterValueType> RootComponentClass<K, T> {
         self.id
     }
 
-    pub async fn get(&self) -> RwLockReadGuard<'_, RootComponentClassItem<K, T>> {
-        self.item.0.read().await
+    pub fn get(&self) -> impl Deref<Target = Arc<RootComponentClassItem<T>>> + '_ {
+        self.item.0.load()
     }
 
-    pub async fn get_owned(&self) -> OwnedRwLockReadGuard<RootComponentClassItem<K, T>> {
-        Arc::clone(&self.item.0).read_owned().await
+    pub async fn get_mut(&self) -> RootComponentClassItemWrite<T> {
+        let _guard = self.item_write_lock.lock().await;
+        let item = self.item.0.load_full();
+        RootComponentClassItemWrite { _guard, slot: &self.item, item }
     }
 
-    pub async fn get_mut(&self) -> RwLockWriteGuard<'_, RootComponentClassItem<K, T>> {
-        self.item.0.write().await
+    pub fn left(&self) -> MarkerPin {
+        self.item.0.load().left.clone()
     }
 
-    pub async fn get_owned_mut(&self) -> OwnedRwLockWriteGuard<RootComponentClassItem<K, T>> {
-        Arc::clone(&self.item.0).write_owned().await
+    pub fn right(&self) -> MarkerPin {
+        self.item.0.load().right.clone()
     }
 
-    pub async fn left(&self) -> impl Deref<Target = MarkerPinHandle<K>> + '_ {
-        RwLockReadGuard::map(self.item.0.read().await, |guard| StaticPointerOwned::reference(&guard.left))
-    }
-
-    pub async fn right(&self) -> impl Deref<Target = MarkerPinHandle<K>> + '_ {
-        RwLockReadGuard::map(self.item.0.read().await, |guard| StaticPointerOwned::reference(&guard.right))
-    }
-
-    pub async fn components(&self) -> impl Deref<Target = [impl AsRef<ComponentInstanceHandle<K, T>>]> + '_ {
-        RwLockReadGuard::map(self.item.0.read().await, |guard| guard.component.as_ref())
-    }
-
-    pub async fn links(&self) -> impl Deref<Target = [impl AsRef<MarkerLinkHandle<K>>]> + '_ {
-        RwLockReadGuard::map(self.item.0.read().await, |guard| guard.link.as_ref())
-    }
-
-    pub fn parent(&self) -> &ProjectHandle<K, T> {
+    pub fn parent(&self) -> &ProjectHandle<T> {
         &self.parent
     }
 }

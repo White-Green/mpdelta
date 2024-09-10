@@ -208,10 +208,10 @@ where
 mod tests {
     use super::*;
     use mpdelta_core::component::marker_pin::{MarkerPin, MarkerTime};
-    use mpdelta_core::component::parameter::ParameterValueType;
+    use mpdelta_core::core::IdGenerator;
     use mpdelta_core::mfrac;
-    use mpdelta_core::ptr::StaticPointerOwned;
-    use qcell::{TCell, TCellOwner};
+    use mpdelta_core_test_util::TestIdGenerator;
+    use std::collections::HashMap;
 
     #[derive(Clone)]
     struct ConstantAudio {
@@ -248,40 +248,33 @@ mod tests {
         }
     }
 
-    struct TestParameterValueType;
-
-    impl ParameterValueType for TestParameterValueType {
-        type Image = ();
-        type Audio = ();
-        type Binary = ();
-        type String = ();
-        type Integer = ();
-        type RealNumber = ();
-        type Boolean = ();
-        type Dictionary = ();
-        type Array = ();
-        type ComponentClass = ();
-    }
-
     #[test]
     fn test_audio_mix() {
-        struct K;
-        let key = TCellOwner::new();
+        let id = TestIdGenerator::new();
         macro_rules! time_map {
-            ($($m:expr),+$(,)?) => {
+            ($($markers:expr),+$(,)?) => {
                 {
-                    let [left, markers @ .., right] = &[$($m),+];
-                    TimeMap::new::<K, TestParameterValueType>(left, markers, right, &key).unwrap()
+                    let mut time = HashMap::new();
+                    macro_rules! marker {
+                        ($t:expr) => {
+                            {
+                                let pin = MarkerPin::new_unlocked(id.generate_new(), );
+                                time.insert(*pin.id(), TimelineTime::new($t));
+                                pin
+                            }
+                        };
+                        ($t:expr, $m:expr) => {
+                            {
+                                let pin = MarkerPin::new(id.generate_new(), MarkerTime::new($m).unwrap());
+                                time.insert(*pin.id(), TimelineTime::new($t));
+                                pin
+                            }
+                        };
+                    }
+                    let [left, markers @ .., right] = &[$($markers),+];
+                    TimeMap::new(left, markers, right, &time).unwrap()
                 }
             }
-        }
-        macro_rules! marker {
-            ($t:expr$(,)?) => {
-                StaticPointerOwned::new(TCell::new(MarkerPin::new_unlocked(TimelineTime::new($t))))
-            };
-            ($t:expr, $m:expr$(,)?) => {
-                StaticPointerOwned::new(TCell::new(MarkerPin::new(TimelineTime::new($t), MarkerTime::new($m).unwrap())))
-            };
         }
         let mut mixer = MPDeltaAudioMixer::new(TimelineTime::new(MixedFraction::from_integer(10)));
         mixer.add(AudioType::new(ConstantAudio::new(1., 2, 24000, None)), time_map![marker!(mfrac!(1), mfrac!(0)), marker!(mfrac!(2))]);
@@ -307,23 +300,31 @@ mod tests {
 
     #[test]
     fn test_audio_mix_reverse() {
-        struct K;
-        let key = TCellOwner::new();
+        let id = TestIdGenerator::new();
         macro_rules! time_map {
-            ($($m:expr),+$(,)?) => {
+            ($($markers:expr),+$(,)?) => {
                 {
-                    let [left, markers @ .., right] = &[$($m),+];
-                    TimeMap::new::<K, TestParameterValueType>(left, markers, right, &key).unwrap()
+                    let mut time = HashMap::new();
+                    macro_rules! marker {
+                        ($t:expr) => {
+                            {
+                                let pin = MarkerPin::new_unlocked(id.generate_new(), );
+                                time.insert(*pin.id(), TimelineTime::new($t));
+                                pin
+                            }
+                        };
+                        ($t:expr, $m:expr) => {
+                            {
+                                let pin = MarkerPin::new(id.generate_new(), MarkerTime::new($m).unwrap());
+                                time.insert(*pin.id(), TimelineTime::new($t));
+                                pin
+                            }
+                        };
+                    }
+                    let [left, markers @ .., right] = &[$($markers),+];
+                    TimeMap::new(left, markers, right, &time).unwrap()
                 }
             }
-        }
-        macro_rules! marker {
-            ($t:expr$(,)?) => {
-                StaticPointerOwned::new(TCell::new(MarkerPin::new_unlocked(TimelineTime::new($t))))
-            };
-            ($t:expr, $m:expr$(,)?) => {
-                StaticPointerOwned::new(TCell::new(MarkerPin::new(TimelineTime::new($t), MarkerTime::new($m).unwrap())))
-            };
         }
         let mut mixer = MPDeltaAudioMixer::new(TimelineTime::new(MixedFraction::from_integer(10)));
         mixer.add(AudioType::new(ConstantAudio::new(1., 2, 24000, None)), time_map![marker!(mfrac!(1), mfrac!(0)), marker!(mfrac!(2))]);
@@ -349,23 +350,31 @@ mod tests {
 
     #[test]
     fn test_audio_mix_stop() {
-        struct K;
-        let key = TCellOwner::new();
+        let id = TestIdGenerator::new();
         macro_rules! time_map {
-            ($($m:expr),+$(,)?) => {
+            ($($markers:expr),+$(,)?) => {
                 {
-                    let [left, markers @ .., right] = &[$($m),+];
-                    TimeMap::new::<K, TestParameterValueType>(left, markers, right, &key).unwrap()
+                    let mut time = HashMap::new();
+                    macro_rules! marker {
+                        ($t:expr) => {
+                            {
+                                let pin = MarkerPin::new_unlocked(id.generate_new(), );
+                                time.insert(*pin.id(), TimelineTime::new($t));
+                                pin
+                            }
+                        };
+                        ($t:expr, $m:expr) => {
+                            {
+                                let pin = MarkerPin::new(id.generate_new(), MarkerTime::new($m).unwrap());
+                                time.insert(*pin.id(), TimelineTime::new($t));
+                                pin
+                            }
+                        };
+                    }
+                    let [left, markers @ .., right] = &[$($markers),+];
+                    TimeMap::new(left, markers, right, &time).unwrap()
                 }
             }
-        }
-        macro_rules! marker {
-            ($t:expr$(,)?) => {
-                StaticPointerOwned::new(TCell::new(MarkerPin::new_unlocked(TimelineTime::new($t))))
-            };
-            ($t:expr, $m:expr$(,)?) => {
-                StaticPointerOwned::new(TCell::new(MarkerPin::new(TimelineTime::new($t), MarkerTime::new($m).unwrap())))
-            };
         }
         let mut mixer = MPDeltaAudioMixer::new(TimelineTime::new(MixedFraction::from_integer(10)));
         mixer.add(AudioType::new(ConstantAudio::new(1., 2, 24000, None)), time_map![marker!(mfrac!(1), mfrac!(0)), marker!(mfrac!(2))]);

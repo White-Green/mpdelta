@@ -418,12 +418,12 @@ mod tests {
                 let (integer, numerator) = duration.deconstruct_with_round(60);
                 for n in 0..numerator {
                     let time = TimelineTime::new(MixedFraction::new(integer, n, 60));
-                    video_reader.read_image_at(time).save(output_dir.join(&format!("frame{integer:04}_{n:02}.png"))).unwrap();
+                    video_reader.read_image_at(time).save(output_dir.join(format!("frame{integer:04}_{n:02}.png"))).unwrap();
                 }
                 for i in (0..integer).rev() {
                     for n in (0..60).rev() {
                         let time = TimelineTime::new(MixedFraction::new(i, n, 60));
-                        video_reader.read_image_at(time).save(output_dir.join(&format!("frame{i:04}_{n:02}.png"))).unwrap();
+                        video_reader.read_image_at(time).save(output_dir.join(format!("frame{i:04}_{n:02}.png"))).unwrap();
                     }
                 }
             } else {

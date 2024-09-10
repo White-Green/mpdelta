@@ -2,20 +2,18 @@ use crate::heartbeat::{HeartbeatController, HeartbeatMonitor};
 use crate::lazy_init::LazyInit;
 use crate::render::Renderer;
 use arc_swap::ArcSwap;
-use archery::ArcTK;
 use async_trait::async_trait;
 use crossbeam_utils::atomic::AtomicCell;
 use futures::FutureExt;
-use mpdelta_core::component::instance::ComponentInstanceHandle;
-use mpdelta_core::component::link::MarkerLinkHandle;
-use mpdelta_core::component::marker_pin::{MarkerPinHandle, MarkerTime};
+use mpdelta_core::component::instance::{ComponentInstance, ComponentInstanceId};
+use mpdelta_core::component::link::MarkerLink;
+use mpdelta_core::component::marker_pin::{MarkerPinId, MarkerTime};
 use mpdelta_core::component::parameter::{ImageRequiredParamsFixed, Parameter, ParameterSelect, ParameterType, ParameterValueType};
 use mpdelta_core::core::{ComponentEncoder, ComponentRendererBuilder};
 use mpdelta_core::time::TimelineTime;
 use mpdelta_core::usecase::RealtimeComponentRenderer;
 use mpdelta_differential::CollectCachedTimeError;
-use qcell::TCellOwner;
-use rpds::RedBlackTreeMap;
+use rpds::{RedBlackTreeMap, RedBlackTreeMapSync};
 use std::convert::Infallible;
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
@@ -27,11 +25,13 @@ use thiserror::Error;
 use tokio::runtime::Handle;
 use tokio::sync::mpsc::error::SendError;
 use tokio::sync::mpsc::UnboundedSender;
-use tokio::sync::{oneshot, RwLock};
+use tokio::sync::oneshot;
 
 mod heartbeat;
 mod lazy_init;
 mod render;
+#[cfg(test)]
+mod tests;
 mod thread_cancel;
 
 pub use render::{TimeMap, TimeMapSegment};
@@ -61,44 +61,40 @@ impl Error for DynError {
     }
 }
 
-pub struct MPDeltaRendererBuilder<K: 'static, C, ImageCombinerBuilder, AudioCombinerBuilder> {
+pub struct MPDeltaRendererBuilder<C, ImageCombinerBuilder, AudioCombinerBuilder> {
     controller_builder: Arc<C>,
     image_combiner_builder: Arc<ImageCombinerBuilder>,
     audio_combiner_builder: Arc<AudioCombinerBuilder>,
-    key: Arc<RwLock<TCellOwner<K>>>,
     runtime: Handle,
 }
 
-impl<K, C, ImageCombinerBuilder, AudioCombinerBuilder> MPDeltaRendererBuilder<K, C, ImageCombinerBuilder, AudioCombinerBuilder> {
-    pub fn new(image_combiner_builder: Arc<ImageCombinerBuilder>, controller_builder: Arc<C>, audio_combiner_builder: Arc<AudioCombinerBuilder>, key: Arc<RwLock<TCellOwner<K>>>, runtime: Handle) -> MPDeltaRendererBuilder<K, C, ImageCombinerBuilder, AudioCombinerBuilder> {
+impl<C, ImageCombinerBuilder, AudioCombinerBuilder> MPDeltaRendererBuilder<C, ImageCombinerBuilder, AudioCombinerBuilder> {
+    pub fn new(image_combiner_builder: Arc<ImageCombinerBuilder>, controller_builder: Arc<C>, audio_combiner_builder: Arc<AudioCombinerBuilder>, runtime: Handle) -> MPDeltaRendererBuilder<C, ImageCombinerBuilder, AudioCombinerBuilder> {
         MPDeltaRendererBuilder {
             controller_builder,
             image_combiner_builder,
             audio_combiner_builder,
-            key,
             runtime,
         }
     }
 }
 
 #[async_trait]
-impl<K, T, C, ImageCombinerBuilder, AudioCombinerBuilder> ComponentRendererBuilder<K, T> for MPDeltaRendererBuilder<K, C, ImageCombinerBuilder, AudioCombinerBuilder>
+impl<T, C, ImageCombinerBuilder, AudioCombinerBuilder> ComponentRendererBuilder<T> for MPDeltaRendererBuilder<C, ImageCombinerBuilder, AudioCombinerBuilder>
 where
-    K: Send + Sync + 'static,
     T: ParameterValueType + 'static,
     C: MPDeltaRenderingControllerBuilder + 'static,
     ImageCombinerBuilder: CombinerBuilder<T::Image, Request = ImageCombinerRequest, Param = ImageCombinerParam> + 'static,
     AudioCombinerBuilder: CombinerBuilder<T::Audio, Request = AudioCombinerRequest, Param = AudioCombinerParam> + 'static,
 {
     type Err = Infallible;
-    type Renderer = MPDeltaRenderer<K, T, C, ImageCombinerBuilder, AudioCombinerBuilder>;
+    type Renderer = MPDeltaRenderer<T, C, ImageCombinerBuilder, AudioCombinerBuilder>;
 
-    async fn create_renderer(&self, component: &ComponentInstanceHandle<K, T>) -> Result<Self::Renderer, Self::Err> {
+    async fn create_renderer(&self, component: ComponentInstance<T>) -> Result<Self::Renderer, Self::Err> {
         let component_natural_length = Arc::new(AtomicCell::new(None));
         let (controller, loop_heartbeat) = heartbeat::heartbeat();
         let images = Arc::new(ArcSwap::new(Arc::new(RedBlackTreeMap::new_sync())));
         let (sender, future) = rendering_loop(
-            Arc::clone(&self.key),
             component.clone(),
             Arc::clone(&component_natural_length),
             &*self.controller_builder,
@@ -110,8 +106,7 @@ where
         );
         self.runtime.spawn(future);
         Ok(MPDeltaRenderer {
-            key: Arc::clone(&self.key),
-            component: component.clone(),
+            component,
             component_natural_length,
             controller_builder: Arc::clone(&self.controller_builder),
             image_combiner_builder: Arc::clone(&self.image_combiner_builder),
@@ -125,19 +120,16 @@ where
 }
 
 #[derive(Error)]
-pub enum EncodeError<K: 'static, T: ParameterValueType, E> {
+pub enum EncodeError<E> {
     #[error("render error: {0}")]
-    RenderError(#[from] RenderError<K, T>),
+    RenderError(#[from] RenderError),
     #[error("encoder error: {0}")]
     EncoderError(E),
 }
 
-impl<K, T, E> Debug for EncodeError<K, T, E>
+impl<E> Debug for EncodeError<E>
 where
-    K: 'static,
-    T: ParameterValueType,
     E: Debug,
-    RenderError<K, T>: Debug,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -147,32 +139,29 @@ where
     }
 }
 
-impl<K, T, C, ImageCombinerBuilder, AudioCombinerBuilder, Encoder> ComponentEncoder<K, T, Encoder> for MPDeltaRendererBuilder<K, C, ImageCombinerBuilder, AudioCombinerBuilder>
+impl<T, C, ImageCombinerBuilder, AudioCombinerBuilder, Encoder> ComponentEncoder<T, Encoder> for MPDeltaRendererBuilder<C, ImageCombinerBuilder, AudioCombinerBuilder>
 where
-    K: Send + Sync + 'static,
     T: ParameterValueType + 'static,
     C: MPDeltaRenderingControllerBuilder + 'static,
     ImageCombinerBuilder: CombinerBuilder<T::Image, Request = ImageCombinerRequest, Param = ImageCombinerParam> + 'static,
     AudioCombinerBuilder: CombinerBuilder<T::Audio, Request = AudioCombinerRequest, Param = AudioCombinerParam> + 'static,
     Encoder: VideoEncoderBuilder<T::Image, T::Audio> + 'static,
 {
-    type Err = EncodeError<K, T, Encoder::Err>;
+    type Err = EncodeError<Encoder::Err>;
 
-    async fn render_and_encode<'life0, 'life1, 'async_trait>(&'life0 self, component: &'life1 ComponentInstanceHandle<K, T>, mut encoder: Encoder) -> Result<(), Self::Err>
+    async fn render_and_encode<'life0, 'async_trait>(&'life0 self, component: ComponentInstance<T>, mut encoder: Encoder) -> Result<(), Self::Err>
     where
         'life0: 'async_trait,
-        'life1: 'async_trait,
     {
         let mut encoder = encoder.build().map_err(EncodeError::EncoderError)?;
         let renderer = Arc::new(Renderer::new(self.runtime.clone(), component.clone(), Arc::clone(&self.image_combiner_builder), Arc::clone(&self.audio_combiner_builder)));
-        let key = Arc::new(Arc::clone(&self.key).read_owned().await);
-        let length = renderer.calc_natural_length(&**key).await?;
+        let length = renderer.calc_natural_length().await?;
         if encoder.requires_audio() {
-            match renderer.render(0, ParameterType::Audio(()), Arc::clone(&key)).await {
+            match renderer.render(0, ParameterType::Audio(())).await {
                 Ok(Parameter::Audio(value)) => encoder.set_audio(value),
                 Ok(other) => {
                     return Err(RenderError::OutputTypeMismatch {
-                        component: component.clone(),
+                        component: *component.id(),
                         expect: Parameter::Audio(()),
                         actual: other.select(),
                     }
@@ -187,11 +176,11 @@ where
                 i as usize * 60 + n as usize
             });
             for f in 0..length_frames {
-                match renderer.render(f, ParameterType::Image(()), Arc::clone(&key)).await {
+                match renderer.render(f, ParameterType::Image(())).await {
                     Ok(Parameter::Image(value)) => encoder.push_frame(value),
                     Ok(other) => {
                         return Err(RenderError::OutputTypeMismatch {
-                            component: component.clone(),
+                            component: *component.id(),
                             expect: Parameter::Image(()),
                             actual: other.select(),
                         }
@@ -290,9 +279,9 @@ where
     }
 }
 
-enum RenderingMessage<K: 'static, T: ParameterValueType> {
+enum RenderingMessage<T: ParameterValueType> {
     RequestRenderFrame { frame: usize },
-    RequestConstructAudio { ret: oneshot::Sender<RenderResult<T::Audio, K, T>> },
+    RequestConstructAudio { ret: oneshot::Sender<RenderResult<T::Audio>> },
 }
 
 pub enum RenderingControllerItem {
@@ -309,23 +298,21 @@ pub trait MPDeltaRenderingController: Send + Sync + 'static {
     fn on_request_render(&self, frame: usize);
 }
 
-type Images<K, T> = RedBlackTreeMap<usize, LazyInit<Result<<T as ParameterValueType>::Image, RenderError<K, T>>>, ArcTK>;
+type Images<T> = RedBlackTreeMapSync<usize, LazyInit<Result<<T as ParameterValueType>::Image, RenderError>>>;
 
 // TODO: あとでなんとかするかも
 #[allow(clippy::too_many_arguments)]
-fn rendering_loop<K, T, C, ImageCombinerBuilder, AudioCombinerBuilder>(
-    key: Arc<RwLock<TCellOwner<K>>>,
-    component: ComponentInstanceHandle<K, T>,
+fn rendering_loop<T, C, ImageCombinerBuilder, AudioCombinerBuilder>(
+    component: ComponentInstance<T>,
     component_natural_length: Arc<AtomicCell<Option<MarkerTime>>>,
     controller_builder: &C,
     image_combiner_builder: Arc<ImageCombinerBuilder>,
     audio_combiner_builder: Arc<AudioCombinerBuilder>,
     runtime: Handle,
     heartbeat_controller: HeartbeatController,
-    images: Arc<ArcSwap<Images<K, T>>>,
-) -> (UnboundedSender<RenderingMessage<K, T>>, impl Future<Output = ()> + Send + 'static)
+    images: Arc<ArcSwap<Images<T>>>,
+) -> (UnboundedSender<RenderingMessage<T>>, impl Future<Output = ()> + Send + 'static)
 where
-    K: 'static + Send + Sync,
     T: ParameterValueType + 'static,
     C: MPDeltaRenderingControllerBuilder,
     ImageCombinerBuilder: CombinerBuilder<T::Image, Request = ImageCombinerRequest, Param = ImageCombinerParam> + 'static,
@@ -343,13 +330,11 @@ where
         let _heartbeat_controller = heartbeat_controller;
         let calc_natural_length = || {
             let renderer = Arc::clone(&renderer);
-            let key = Arc::clone(&key);
-            runtime.spawn(key.read_owned().then(move |key| renderer.calc_natural_length(key)))
+            runtime.spawn(renderer.calc_natural_length())
         };
         let mut fut = calc_natural_length();
         loop {
             tokio::select! {
-                biased;
                 result = &mut fut => {
                     match result {
                         Ok(Ok(natural_length)) => {
@@ -367,12 +352,11 @@ where
                         RenderingMessage::RequestConstructAudio {ret} => {
                             let renderer = Arc::clone(&renderer);
                             let component = component.clone();
-                            let key = Arc::clone(&key);
                             runtime.spawn(async move {
-                                let result = match renderer.render(0, ParameterType::Audio(()), Arc::new(key.read_owned().await)).await {
+                                let result = match renderer.render(0, ParameterType::Audio(())).await {
                                     Ok(Parameter::Audio(value)) => Ok(value),
-                                    Ok(value) => Err(RenderError::OutputTypeMismatch{
-                                        component,
+                                    Ok(value) => Err(RenderError::OutputTypeMismatch {
+                                        component: *component.id(),
                                         expect: Parameter::Audio(()),
                                         actual: value.select(),
                                     }),
@@ -387,13 +371,12 @@ where
                     match message {
                         RenderingControllerItem::RequestRender {frame} => {
                             let renderer = Arc::clone(&renderer);
-                            let component = component.clone();
-                            let key = Arc::clone(&key);
-                            let result = LazyInit::new(key.read_owned().then(move |key| renderer.render(frame, ParameterType::Image(()), Arc::new(key)))
-                                    .map(|result| match result {
+                            let component_id = *component.id();
+                            let result = LazyInit::new(renderer.render(frame, ParameterType::Image(()))
+                                    .map(move |result| match result {
                                         Ok(Parameter::Image(value)) => Ok(value),
                                         Ok(value) => Err(RenderError::OutputTypeMismatch {
-                                            component,
+                                          component: component_id,
                                             expect: Parameter::Image(()),
                                             actual: value.select(),
                                         }),
@@ -415,59 +398,50 @@ where
     (sender, future)
 }
 
-pub struct MPDeltaRenderer<K: 'static, T: ParameterValueType, C, ImageCombinerBuilder, AudioCombinerBuilder> {
-    key: Arc<RwLock<TCellOwner<K>>>,
-    component: ComponentInstanceHandle<K, T>,
+pub struct MPDeltaRenderer<T: ParameterValueType, C, ImageCombinerBuilder, AudioCombinerBuilder> {
+    component: ComponentInstance<T>,
     component_natural_length: Arc<AtomicCell<Option<MarkerTime>>>,
     controller_builder: Arc<C>,
     image_combiner_builder: Arc<ImageCombinerBuilder>,
     audio_combiner_builder: Arc<AudioCombinerBuilder>,
     runtime: Handle,
-    images: Arc<ArcSwap<Images<K, T>>>,
+    images: Arc<ArcSwap<Images<T>>>,
     loop_heartbeat: StdRwLock<HeartbeatMonitor>,
-    loop_sender: ArcSwap<UnboundedSender<RenderingMessage<K, T>>>,
+    loop_sender: ArcSwap<UnboundedSender<RenderingMessage<T>>>,
 }
 
 #[derive(Error)]
-pub enum RenderError<K: 'static, T: ParameterValueType> {
+pub enum RenderError {
     #[error("invalid component: {0:?}")]
-    InvalidComponent(ComponentInstanceHandle<K, T>),
+    InvalidComponent(ComponentInstanceId),
     #[error("the output type by {component:?} is mismatch; expected: {expect:?}, but got {actual:?}")]
-    OutputTypeMismatch {
-        component: ComponentInstanceHandle<K, T>,
-        expect: Parameter<ParameterSelect>,
-        actual: Parameter<ParameterSelect>,
-    },
+    OutputTypeMismatch { component: ComponentInstanceId, expect: Parameter<ParameterSelect>, actual: Parameter<ParameterSelect> },
     #[error("invalid link graph")]
     InvalidLinkGraph,
     #[error("invalid marker: {0:?}")]
-    InvalidMarker(MarkerPinHandle<K>),
+    InvalidMarker(MarkerPinId),
     #[error("invalid marker: {0:?}")]
-    InvalidMarkerLink(MarkerLinkHandle<K>),
+    InvalidMarkerLink(MarkerLink),
     #[error("{index}-th variable parameter of {component:?} is invalid")]
-    InvalidVariableParameter { component: ComponentInstanceHandle<K, T>, index: usize },
+    InvalidVariableParameter { component: ComponentInstanceId, index: usize },
     #[error("time {at:?} is out of range {range:?}")]
-    RenderTargetTimeOutOfRange { component: ComponentInstanceHandle<K, T>, range: Range<TimelineTime>, at: TimelineTime },
+    RenderTargetTimeOutOfRange { component: ComponentInstanceId, range: Range<TimelineTime>, at: TimelineTime },
     #[error("required type value is not provided")]
     NotProvided,
     #[error("timeout")]
     Timeout,
 }
 
-pub type RenderResult<Ok, K, T> = Result<Ok, RenderError<K, T>>;
+pub type RenderResult<Ok> = Result<Ok, RenderError>;
 
-impl<K, T: ParameterValueType> From<CollectCachedTimeError<K, T>> for RenderError<K, T> {
-    fn from(value: CollectCachedTimeError<K, T>) -> Self {
-        match value {
-            CollectCachedTimeError::InvalidComponentInstance(component) => RenderError::InvalidComponent(component),
-            CollectCachedTimeError::InvalidMarkerLink(link) => RenderError::InvalidMarkerLink(link),
-            CollectCachedTimeError::InvalidMarker(pin) => RenderError::InvalidMarker(pin),
-            CollectCachedTimeError::InvalidLinkGraph => RenderError::InvalidLinkGraph,
-        }
+impl From<CollectCachedTimeError> for RenderError {
+    fn from(_: CollectCachedTimeError) -> Self {
+        // TODO:
+        RenderError::InvalidLinkGraph
     }
 }
 
-impl<K, T: ParameterValueType> Debug for RenderError<K, T> {
+impl Debug for RenderError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             RenderError::InvalidComponent(c) => f.debug_tuple("InvalidComponent").field(c).finish(),
@@ -483,39 +457,34 @@ impl<K, T: ParameterValueType> Debug for RenderError<K, T> {
     }
 }
 
-impl<K, T: ParameterValueType> Clone for RenderError<K, T> {
+impl Clone for RenderError {
     fn clone(&self) -> Self {
         match self {
-            RenderError::InvalidComponent(handle) => RenderError::InvalidComponent(handle.clone()),
+            RenderError::InvalidComponent(handle) => RenderError::InvalidComponent(*handle),
             RenderError::OutputTypeMismatch { component, expect, actual } => RenderError::OutputTypeMismatch {
-                component: component.clone(),
+                component: *component,
                 expect: *expect,
                 actual: *actual,
             },
             RenderError::InvalidLinkGraph => RenderError::InvalidLinkGraph,
-            RenderError::InvalidMarker(handle) => RenderError::InvalidMarker(handle.clone()),
+            RenderError::InvalidMarker(handle) => RenderError::InvalidMarker(*handle),
             RenderError::InvalidMarkerLink(handle) => RenderError::InvalidMarkerLink(handle.clone()),
-            RenderError::InvalidVariableParameter { component, index } => RenderError::InvalidVariableParameter { component: component.clone(), index: *index },
-            RenderError::RenderTargetTimeOutOfRange { component, range, at } => RenderError::RenderTargetTimeOutOfRange {
-                component: component.clone(),
-                range: range.clone(),
-                at: *at,
-            },
+            RenderError::InvalidVariableParameter { component, index } => RenderError::InvalidVariableParameter { component: *component, index: *index },
+            RenderError::RenderTargetTimeOutOfRange { component, range, at } => RenderError::RenderTargetTimeOutOfRange { component: *component, range: range.clone(), at: *at },
             RenderError::NotProvided => RenderError::NotProvided,
             RenderError::Timeout => RenderError::Timeout,
         }
     }
 }
 
-impl<K, T, C, ImageCombinerBuilder, AudioCombinerBuilder> RealtimeComponentRenderer<T> for MPDeltaRenderer<K, T, C, ImageCombinerBuilder, AudioCombinerBuilder>
+impl<T, C, ImageCombinerBuilder, AudioCombinerBuilder> RealtimeComponentRenderer<T> for MPDeltaRenderer<T, C, ImageCombinerBuilder, AudioCombinerBuilder>
 where
-    K: Send + Sync,
     T: ParameterValueType + 'static,
     C: MPDeltaRenderingControllerBuilder + 'static,
     ImageCombinerBuilder: CombinerBuilder<T::Image, Request = ImageCombinerRequest, Param = ImageCombinerParam> + 'static,
     AudioCombinerBuilder: CombinerBuilder<T::Audio, Request = AudioCombinerRequest, Param = AudioCombinerParam> + 'static,
 {
-    type Err = RenderError<K, T>;
+    type Err = RenderError;
 
     fn get_component_length(&self) -> Option<MarkerTime> {
         self.component_natural_length.load()
@@ -529,9 +498,7 @@ where
                 return result;
             }
             let (heartbeat_controller, new_monitor) = heartbeat::heartbeat();
-            dbg!();
             let (new_loop_sender, fut) = rendering_loop(
-                Arc::clone(&self.key),
                 self.component.clone(),
                 Arc::clone(&self.component_natural_length),
                 &*self.controller_builder,
@@ -569,7 +536,6 @@ where
                         let (heartbeat_controller, new_monitor) = heartbeat::heartbeat();
                         dbg!();
                         let (new_loop_sender, fut) = rendering_loop(
-                            Arc::clone(&self.key),
                             self.component.clone(),
                             Arc::clone(&self.component_natural_length),
                             &*self.controller_builder,

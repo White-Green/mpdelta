@@ -85,132 +85,43 @@ where
     if connected_subgraph.len() > 1 {
         let mut pin_data_slice = &pin_data[2..];
         let mut pin_handle = Vec::new();
-        let mut used = vec![false; connected_subgraph.len()];
-        let mut row_indices = vec![0];
-        let mut column_indices = vec![0];
-        let mut values = vec![1.];
-        let mut time_diff = vec![0.];
-        let mut assume_pin_difference = |pin1: &PinData, pin2: &PinData, diff: MixedFraction| {
-            let diff = (diff + pin1.time_from_base.value() - pin2.time_from_base.value()).into_f64();
-            column_indices.extend([pin2.subtree_index, pin1.subtree_index]);
-            row_indices.extend([time_diff.len(); 2]);
-            values.extend([1., -1.]);
-            time_diff.push(diff);
-        };
+        let mut group_count = vec![0; connected_subgraph.len()];
+        let mut solver = LSMSolver::new(connected_subgraph.len());
+        solver.assume_pin_at(&pin_data[0], MixedFraction::ZERO);
+        if connected_subgraph[pin_data[1].subtree_index].connected_node_count == 1 {
+            solver.assume_pin_at(&pin_data[1], components_and_links.right().locked_component_time().map_or(MixedFraction::from_integer(10), |t| t.value()));
+        }
         for component in components_and_links.components() {
-            pin_handle.clear();
-            pin_handle.extend(iter::once(component.marker_left()).chain(component.markers()).chain(iter::once(component.marker_right())));
             let (pins, tail) = pin_data_slice.split_at(component.markers().len() + 2);
             pin_data_slice = tail;
-            used.fill(false);
-            for (i, pin) in pins.iter().enumerate() {
-                let current_subtree_index = pin.subtree_index;
-                if used[current_subtree_index] || pin_handle[i].locked_component_time().is_none() {
+            pin_handle.clear();
+            pin_handle.extend(iter::once(component.marker_left()).chain(component.markers()).chain(iter::once(component.marker_right())).zip(pins).filter(|(p, _)| p.locked_component_time().is_some()));
+            group_count.fill(0);
+            pin_handle.iter().for_each(|(_, p)| group_count[p.subtree_index] += 1);
+            for w in pin_handle.windows(2) {
+                let (left_pin, left_data) = w[0];
+                let (right_pin, right_data) = w[1];
+                if group_count[left_data.subtree_index] > 1 || group_count[right_data.subtree_index] > 1 {
                     continue;
                 }
-                used[current_subtree_index] = true;
-                let base_time = pin_handle[i].locked_component_time().unwrap();
-                if let Some((right_index, right_pin)) = pins[i..].iter().enumerate().skip(1).find_map(|(j, p)| (p.subtree_index == current_subtree_index && pin_handle[j].locked_component_time().is_some()).then_some((j + i, p))) {
-                    let mut right = pin_handle[right_index].locked_component_time().unwrap();
-                    let time_ratio = (right_pin.time_from_base - pin.time_from_base).value() / (right.value() - base_time.value());
-                    let time_ratio = if time_ratio.signum() < 0 { -time_ratio } else { time_ratio };
-                    for (j, p) in pins[..i].iter().enumerate() {
-                        if current_subtree_index == p.subtree_index {
-                            continue;
-                        }
-                        let Some(t) = pin_handle[j].locked_component_time() else {
-                            continue;
-                        };
-                        let diff = base_time.value() - t.value();
-                        let diff = if diff.signum() < 0 { -diff } else { diff };
-                        assume_pin_difference(pin, p, diff * time_ratio);
-                    }
-                    let mut time_ratio = time_ratio;
-                    let mut right_index = right_index;
-                    let mut right_pin = right_pin;
-                    let mut pin = pin;
-                    let mut i = i;
-                    let mut base_time = base_time;
-                    while i < pins.len() {
-                        for (j, p) in pins[i..right_index].iter().enumerate().skip(1).map(|(j, p)| (j + i, p)) {
-                            if pin.subtree_index == p.subtree_index {
-                                continue;
-                            }
-                            let Some(t) = pin_handle[j].locked_component_time() else {
-                                continue;
-                            };
-                            let diff = base_time.value() - t.value();
-                            let diff = if diff.signum() < 0 { -diff } else { diff };
-                            assume_pin_difference(pin, p, diff * time_ratio);
-                        }
-                        i = right_index;
-                        pin = right_pin;
-                        if i == pins.len() {
-                            break;
-                        }
-                        base_time = pin_handle[i].locked_component_time().unwrap();
-                        if let Some((ri, rp)) = pins[i..].iter().enumerate().skip(1).find_map(|(j, p)| (p.subtree_index == current_subtree_index && pin_handle[j].locked_component_time().is_some()).then_some((j + i, p))) {
-                            right_index = ri;
-                            right_pin = rp;
-                            right = pin_handle[right_index].locked_component_time().unwrap();
-                            time_ratio = {
-                                let time_ratio = (right_pin.time_from_base - pin.time_from_base).value() / (right.value() - base_time.value());
-                                if time_ratio.signum() < 0 {
-                                    -time_ratio
-                                } else {
-                                    time_ratio
-                                }
-                            };
-                        } else {
-                            right_index = pins.len();
-                        };
-                    }
-                } else {
-                    let mut used = vec![false; connected_subgraph.len()];
-                    for (j, p) in pins[..i].iter().enumerate() {
-                        if current_subtree_index == p.subtree_index || used[p.subtree_index] {
-                            continue;
-                        }
-                        let Some(t) = pin_handle[j].locked_component_time() else {
-                            continue;
-                        };
-                        used[p.subtree_index] = true;
-                        let diff = base_time.value() - t.value();
-                        let diff = if (j < i) == (diff.signum() < 0) { diff } else { -diff };
-                        assume_pin_difference(pin, p, diff);
-                    }
-                    used.fill(false);
-                    for (j, p) in pins[i..].iter().enumerate().skip(1).map(|(j, p)| (j + i, p)) {
-                        if current_subtree_index == p.subtree_index || used[p.subtree_index] {
-                            continue;
-                        }
-                        let Some(t) = pin_handle[j].locked_component_time() else {
-                            continue;
-                        };
-                        used[p.subtree_index] = true;
-                        let diff = base_time.value() - t.value();
-                        let diff = if (j < i) == (diff.signum() < 0) { diff } else { -diff };
-                        assume_pin_difference(pin, p, diff);
-                    }
+                let diff = right_pin.locked_component_time().unwrap().value() - left_pin.locked_component_time().unwrap().value();
+                solver.assume_pin_difference(left_data, right_data, diff);
+            }
+            for w in pin_handle.windows(3) {
+                let (left_pin, left_data) = w[0];
+                let (middle_pin, middle_data) = w[1];
+                let (right_pin, right_data) = w[2];
+                if left_data.subtree_index == middle_data.subtree_index && middle_data.subtree_index == right_data.subtree_index {
+                    continue;
                 }
+                let diff1 = middle_pin.locked_component_time().unwrap().value() - left_pin.locked_component_time().unwrap().value();
+                let diff2 = right_pin.locked_component_time().unwrap().value() - middle_pin.locked_component_time().unwrap().value();
+                solver.assume_pin_difference3(left_data, middle_data, right_data, diff1, diff2);
             }
         }
-        if connected_subgraph[pin_data[1].subtree_index].connected_node_count == 1 {
-            column_indices.push(pin_data[1].subtree_index);
-            row_indices.push(time_diff.len());
-            values.push(1.);
-            time_diff.push(components_and_links.right().locked_component_time().map_or(10., |t| t.value().into_f64()));
-        }
-        let a = CsMatrix::from_triplet(time_diff.len(), connected_subgraph.len(), &row_indices, &column_indices, &values);
-        let b = DVector::from_data(VecStorage::new(Dyn(time_diff.len()), Const::<1>, time_diff));
+        let times = solver.solve().ok_or(CollectCachedTimeError::FailedToSolve)?;
 
-        let a_transpose = a.transpose();
-        let mut right = OMatrix::from(&a_transpose * &CsMatrix::from(b));
-        let solve_succeed = QR::new(OMatrix::from(&a_transpose * &a)).solve_mut(&mut right);
-        if !solve_succeed {
-            return Err(CollectCachedTimeError::FailedToSolve);
-        }
-        connected_subgraph.iter_mut().zip(right.iter().copied()).for_each(|(subgraph, time)| {
+        connected_subgraph.iter_mut().zip(times).for_each(|(subgraph, time)| {
             subgraph.base_time = TimelineTime::new(MixedFraction::from_f64(time));
         });
     }
@@ -222,6 +133,91 @@ where
         .map(|(pin_handle, pin)| (*pin_handle.id(), connected_subgraph[pin.subtree_index].base_time + pin.time_from_base))
         .collect();
     Ok(timeline_time)
+}
+
+struct LSMSolver {
+    cols: usize,
+    a_row_indices: Vec<usize>,
+    a_column_indices: Vec<usize>,
+    a_values: Vec<f64>,
+    b_values: Vec<f64>,
+}
+
+impl LSMSolver {
+    fn new(subgraph_count: usize) -> LSMSolver {
+        LSMSolver {
+            cols: subgraph_count,
+            a_row_indices: Vec::new(),
+            a_column_indices: Vec::new(),
+            a_values: Vec::new(),
+            b_values: Vec::new(),
+        }
+    }
+
+    fn assume_pin_at(&mut self, pin: &PinData, time: MixedFraction) {
+        self.a_column_indices.push(pin.subtree_index);
+        self.a_row_indices.push(self.b_values.len());
+        self.a_values.push(1.);
+        self.b_values.push((time - pin.time_from_base.value()).into_f64());
+    }
+
+    fn assume_pin_difference(&mut self, pin1: &PinData, pin2: &PinData, diff: MixedFraction) {
+        let diff = (diff.abs() + pin1.time_from_base.value() - pin2.time_from_base.value()).into_f64();
+        self.a_column_indices.extend([pin2.subtree_index, pin1.subtree_index]);
+        self.a_row_indices.extend([self.b_values.len(); 2]);
+        self.a_values.extend([1., -1.]);
+        self.b_values.push(diff);
+    }
+
+    fn assume_pin_difference3(&mut self, pin1: &PinData, pin2: &PinData, pin3: &PinData, diff1: MixedFraction, diff2: MixedFraction) {
+        if pin1.subtree_index == pin2.subtree_index && pin2.subtree_index == pin3.subtree_index {
+            return;
+        }
+        let diff1 = diff1.abs();
+        let diff2 = diff2.abs();
+        let diff_sum = diff1 + diff2;
+        if diff_sum == MixedFraction::ZERO {
+            self.assume_pin_difference(pin1, pin3, MixedFraction::ZERO);
+            self.assume_pin_difference(pin2, pin3, MixedFraction::ZERO);
+            return;
+        }
+        // pin2 - pin1 ~ diff1 / (diff1 + diff2) * (pin3 - pin1)
+        // pin2 - pin1 ~ diff1 / (diff1 + diff2) * pin3 - diff1 / (diff1 + diff2) * pin1
+        // -diff2 / (diff1 + diff2) * pin1 + pin2 - diff1 / (diff1 + diff2) * pin3 ~ 0
+        // -diff2 / (diff1 + diff2) * pin1.base_time + pin2.base_time - diff1 / (diff1 + diff2) * pin3.base_time ~ diff2 / (diff1 + diff2) * pin1.time_from_base - pin2.time_from_base + diff1 / (diff1 + diff2) * pin3.time_from_base
+        let mut pins = [(pin1.subtree_index, -diff2 / (diff1 + diff2)), (pin2.subtree_index, MixedFraction::ONE), (pin3.subtree_index, -diff1 / (diff1 + diff2))];
+        pins.sort_by_key(|&(i, _)| i);
+        match pins {
+            [(p1, d1), (p2, d2), (p3, d3)] if p1 == p2 => {
+                self.a_column_indices.extend([p2, p3]);
+                self.a_row_indices.extend([self.b_values.len(); 2]);
+                self.a_values.extend([(d1 + d2).into_f64(), d3.into_f64()]);
+            }
+            [(p1, d1), (p2, d2), (p3, d3)] if p2 == p3 => {
+                self.a_column_indices.extend([p1, p2]);
+                self.a_row_indices.extend([self.b_values.len(); 2]);
+                self.a_values.extend([d1.into_f64(), (d2 + d3).into_f64()]);
+            }
+            [(p1, d1), (p2, d2), (p3, d3)] => {
+                self.a_column_indices.extend([p1, p2, p3]);
+                self.a_row_indices.extend([self.b_values.len(); 3]);
+                self.a_values.extend([d1.into_f64(), d2.into_f64(), d3.into_f64()]);
+            }
+        }
+        self.b_values.push((diff2 / (diff1 + diff2) * pin1.time_from_base.value() - pin2.time_from_base.value() + diff1 / (diff1 + diff2) * pin3.time_from_base.value()).into_f64());
+    }
+
+    fn solve(self) -> Option<Vec<f64>> {
+        let a = CsMatrix::from_triplet(self.b_values.len(), self.cols, &self.a_row_indices, &self.a_column_indices, &self.a_values);
+        let b = DVector::from_data(VecStorage::new(Dyn(self.b_values.len()), Const::<1>, self.b_values));
+        let a_transpose = a.transpose();
+        let mut right = OMatrix::from(&a_transpose * &CsMatrix::from(b));
+        let solve_succeed = QR::new(OMatrix::from(&a_transpose * &a)).solve_mut(&mut right);
+        if !solve_succeed {
+            return None;
+        }
+        Some(right.data.into())
+    }
 }
 
 #[derive(Debug)]
@@ -286,9 +282,13 @@ impl UnionFind {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use mpdelta_core::component::link::MarkerLink;
     use mpdelta_core::mfrac;
     use mpdelta_core::project::RootComponentClassItemWrite;
     use mpdelta_core_test_util::{assert_eq_root_component_class, root_component_class, TestIdGenerator};
+    use std::array;
+    use std::collections::BTreeMap;
+    use std::fmt::Formatter;
 
     struct T;
 
@@ -303,6 +303,78 @@ mod tests {
         type Dictionary = ();
         type Array = ();
         type ComponentClass = ();
+    }
+
+    #[tokio::test]
+    async fn test_collect_cached_time_all() {
+        let id = TestIdGenerator::new();
+        root_component_class! {
+            custom_differential: |_| Ok::<_, ()>(HashMap::new());
+            target; <T>; id;
+            left: left,
+            right: right,
+            components: [
+                {
+                    markers: [
+                        marker!(locked: 0) => p0,
+                        marker!(locked: 1) => p1,
+                        marker!(locked: 2) => p2,
+                        marker!(locked: 3) => p3,
+                        marker!(locked: 4) => p4,
+                    ]
+                },
+            ],
+            links: [],
+        }
+        let answer = BTreeMap::from([
+            (left, TimelineTime::new(mfrac!(0))),
+            (p0, TimelineTime::new(mfrac!(0))),
+            (p1, TimelineTime::new(mfrac!(1))),
+            (p2, TimelineTime::new(mfrac!(2))),
+            (p3, TimelineTime::new(mfrac!(3))),
+            (p4, TimelineTime::new(mfrac!(4))),
+            (right, TimelineTime::new(mfrac!(10))),
+        ]);
+        struct CompactDebug<'a, K, V>(&'a BTreeMap<K, V>);
+        impl<'a, K, V> Debug for CompactDebug<'a, K, V>
+        where
+            K: Debug,
+            V: Debug,
+        {
+            fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+                writeln!(f, "{{")?;
+                for (k, v) in self.0 {
+                    writeln!(f, "    {k:?}: {v:?}")?;
+                }
+                write!(f, "}}")
+            }
+        }
+        const LEN: usize = 5;
+        let markers: [_; LEN] = [p0, p1, p2, p3, p4];
+        let root_component_class = target.read().await;
+        let mut err = 0;
+        for state in 0..LEN.pow(LEN as u32 + 1) {
+            let [combination @ .., base_pin] = array::from_fn::<_, { LEN + 1 }, _>(|i| (state / LEN.pow(i as u32)) % LEN);
+            let mut root_component_class = root_component_class.get_mut().await;
+            for i in 0..LEN {
+                let mut iter = combination.iter().enumerate().filter_map(|(j, &group_id)| (group_id == i).then_some(j));
+                let Some(base) = iter.next() else {
+                    continue;
+                };
+                for p in iter {
+                    root_component_class.add_link(MarkerLink::new(markers[base], markers[p], TimelineTime::new(MixedFraction::from_integer((p - base) as i32))));
+                }
+            }
+            root_component_class.add_link(MarkerLink::new(left, markers[base_pin], TimelineTime::new(MixedFraction::from_integer(base_pin as i32))));
+            let time_map = collect_cached_time(&*root_component_class).unwrap();
+            let time_map = BTreeMap::from_iter(time_map);
+            if time_map != answer {
+                err += 1;
+                eprintln!("{combination:?} {base_pin}");
+                eprintln!("{:?}", CompactDebug(&time_map));
+            }
+        }
+        assert_eq!(err, 0, "{err} / {} error", LEN.pow(LEN as u32 + 1));
     }
 
     #[tokio::test]
@@ -506,113 +578,155 @@ mod tests {
         RootComponentClassItemWrite::commit_changes(root.get_mut().await, expect_timeline_time);
         assert_eq_root_component_class(&target, &expect).await;
 
-        // TODO:
-        // root_component_class! {
-        //     custom_differential: collect_cached_time;
-        //     target; <T>; id;
-        //     left: left,
-        //     right: right,
-        //     components: [
-        //         { markers: [marker!(locked: 0) => l1, marker!(locked: 1) => m, marker!(locked: 3) => r1] },
-        //     ],
-        //     links: [
-        //         left = 2 => m,
-        //         m = 1 => r1,
-        //     ],
-        // }
-        // root_component_class! {
-        //     custom_differential: |_| Ok::<_, ()>(HashMap::new());
-        //     expect; <T>; id;
-        //     left: left,
-        //     right: right,
-        //     components: [
-        //         { markers: [marker!(locked: 0) => l1, marker!(locked: 1) => m, marker!(locked: 3) => r1] },
-        //     ],
-        //     links: [
-        //         left = 2 => m,
-        //         m = 1 => r1,
-        //     ],
-        // }
-        // let expect_timeline_time = HashMap::from([
-        //     (left, TimelineTime::new(mfrac!(0))),
-        //     (l1, TimelineTime::new(mfrac!(3, 2))),
-        //     (m, TimelineTime::new(mfrac!(2))),
-        //     (r1, TimelineTime::new(mfrac!(3))),
-        //     (right, TimelineTime::new(mfrac!(10))),
-        // ]);
-        // let root = expect.read().await;
-        // RootComponentClassItemWrite::commit_changes(root.get_mut().await, expect_timeline_time);
-        // assert_eq_root_component_class(&target, &expect).await;
-        //
-        // root_component_class! {
-        //     custom_differential: collect_cached_time;
-        //     target; <T>; id;
-        //     left: left,
-        //     right: right,
-        //     components: [
-        //         { markers: [marker!(locked: 0) => l1, marker!(locked: 1) => m, marker!() => r1] },
-        //     ],
-        //     links: [
-        //         left = 1 => l1,
-        //         l1 = 2 => m,
-        //         l1 = 3 => r1,
-        //     ],
-        // }
-        // root_component_class! {
-        //     custom_differential: |_| Ok::<_, ()>(HashMap::new());
-        //     expect; <T>; id;
-        //     left: left,
-        //     right: right,
-        //     components: [
-        //         { markers: [marker!(locked: 0) => l1, marker!(locked: 1) => m, marker!() => r1] },
-        //     ],
-        //     links: [
-        //         left = 1 => l1,
-        //         l1 = 2 => m,
-        //         l1 = 3 => r1,
-        //     ],
-        // }
-        // let expect_timeline_time = HashMap::from([]);
-        // let root = expect.read().await;
-        // RootComponentClassItemWrite::commit_changes(root.get_mut().await, expect_timeline_time);
-        // assert_eq_root_component_class(&target, &expect).await;
-        //
-        // root_component_class! {
-        //     custom_differential: collect_cached_time;
-        //     target; <T>; id;
-        //     left: left,
-        //     right: right,
-        //     components: [
-        //         { markers: [marker!(locked: 0) => l1, marker!(locked: 1) => m1, marker!(locked: 2) => m2, marker!(locked: 0) => r1] },
-        //     ],
-        //     links: [
-        //         left = 2 => m2,
-        //         m1 = 3 => r1,
-        //     ],
-        // }
-        // root_component_class! {
-        //     custom_differential: |_| Ok::<_, ()>(HashMap::new());
-        //     expect; <T>; id;
-        //     left: left,
-        //     right: right,
-        //     components: [
-        //         { markers: [marker!(locked: 0) => l1, marker!(locked: 1) => m1, marker!(locked: 2) => m2, marker!(locked: 0) => r1] },
-        //     ],
-        //     links: [
-        //         left = 2 => m2,
-        //         m1 = 3 => r1,
-        //     ],
-        // }
-        // let expect_timeline_time = HashMap::from([
-        //     (left, TimelineTime::new(mfrac!(0))),
-        //     (l1, TimelineTime::new(mfrac!(0))),
-        //     (m1, TimelineTime::new(mfrac!(1))),
-        //     (m2, TimelineTime::new(mfrac!(2))),
-        //     (r1, TimelineTime::new(mfrac!(4))),
-        //     (right, TimelineTime::new(mfrac!(10))),
-        // ]);
-        // let root = expect.read().await;
-        // RootComponentClassItemWrite::commit_changes(root.get_mut().await, expect_timeline_time);
-        // assert_eq_root_component_class(&target, &expect).await;
+        root_component_class! {
+            custom_differential: collect_cached_time;
+            target; <T>; id;
+            left: left,
+            right: right,
+            components: [
+                { markers: [marker!(locked: 0) => l1, marker!(locked: 1) => m, marker!(locked: 3) => r1] },
+            ],
+            links: [
+                left = 2 => m,
+                m = 1 => r1,
+            ],
+        }
+        root_component_class! {
+            custom_differential: |_| Ok::<_, ()>(HashMap::new());
+            expect; <T>; id;
+            left: left,
+            right: right,
+            components: [
+                { markers: [marker!(locked: 0) => l1, marker!(locked: 1) => m, marker!(locked: 3) => r1] },
+            ],
+            links: [
+                left = 2 => m,
+                m = 1 => r1,
+            ],
+        }
+        let expect_timeline_time = HashMap::from([
+            (left, TimelineTime::new(mfrac!(0))),
+            (l1, TimelineTime::new(mfrac!(3, 2))),
+            (m, TimelineTime::new(mfrac!(2))),
+            (r1, TimelineTime::new(mfrac!(3))),
+            (right, TimelineTime::new(mfrac!(10))),
+        ]);
+        let root = expect.read().await;
+        RootComponentClassItemWrite::commit_changes(root.get_mut().await, expect_timeline_time);
+        assert_eq_root_component_class(&target, &expect).await;
+
+        root_component_class! {
+            custom_differential: collect_cached_time;
+            target; <T>; id;
+            left: left,
+            right: right,
+            components: [
+                { markers: [marker!(locked: 0) => l1, marker!(locked: 1) => m, marker!() => r1] },
+            ],
+            links: [
+                left = 1 => l1,
+                l1 = 2 => m,
+                l1 = 3 => r1,
+            ],
+        }
+        root_component_class! {
+            custom_differential: |_| Ok::<_, ()>(HashMap::new());
+            expect; <T>; id;
+            left: left,
+            right: right,
+            components: [
+                { markers: [marker!(locked: 0) => l1, marker!(locked: 1) => m, marker!() => r1] },
+            ],
+            links: [
+                left = 1 => l1,
+                l1 = 2 => m,
+                l1 = 3 => r1,
+            ],
+        }
+        let expect_timeline_time = HashMap::from([
+            (left, TimelineTime::new(mfrac!(0))),
+            (l1, TimelineTime::new(mfrac!(1))),
+            (m, TimelineTime::new(mfrac!(3))),
+            (r1, TimelineTime::new(mfrac!(4))),
+            (right, TimelineTime::new(mfrac!(10))),
+        ]);
+        let root = expect.read().await;
+        RootComponentClassItemWrite::commit_changes(root.get_mut().await, expect_timeline_time);
+        assert_eq_root_component_class(&target, &expect).await;
+
+        root_component_class! {
+            custom_differential: collect_cached_time;
+            target; <T>; id;
+            left: left,
+            right: right,
+            components: [
+                { markers: [marker!(locked: 0) => l1, marker!(locked: 1) => m1, marker!(locked: 2) => m2, marker!(locked: 0) => r1] },
+            ],
+            links: [
+                left = 2 => m2,
+                m1 = 3 => r1,
+            ],
+        }
+        root_component_class! {
+            custom_differential: |_| Ok::<_, ()>(HashMap::new());
+            expect; <T>; id;
+            left: left,
+            right: right,
+            components: [
+                { markers: [marker!(locked: 0) => l1, marker!(locked: 1) => m1, marker!(locked: 2) => m2, marker!(locked: 0) => r1] },
+            ],
+            links: [
+                left = 2 => m2,
+                m1 = 3 => r1,
+            ],
+        }
+        let expect_timeline_time = HashMap::from([
+            (left, TimelineTime::new(mfrac!(0))),
+            (l1, TimelineTime::new(mfrac!(0))),
+            (m1, TimelineTime::new(mfrac!(1))),
+            (m2, TimelineTime::new(mfrac!(2))),
+            (r1, TimelineTime::new(mfrac!(4))),
+            (right, TimelineTime::new(mfrac!(10))),
+        ]);
+        let root = expect.read().await;
+        RootComponentClassItemWrite::commit_changes(root.get_mut().await, expect_timeline_time);
+        assert_eq_root_component_class(&target, &expect).await;
+
+        root_component_class! {
+            custom_differential: collect_cached_time;
+            target; <T>; id;
+            left: left,
+            right: right,
+            components: [
+                { markers: [marker!(locked: 0) => l1, marker!() => m, marker!(locked: 2) => r1] },
+            ],
+            links: [
+                left = 1 => l1,
+                l1 = 1 => m,
+            ],
+        }
+        root_component_class! {
+            custom_differential: |_| Ok::<_, ()>(HashMap::new());
+            expect; <T>; id;
+            left: left,
+            right: right,
+            components: [
+                { markers: [marker!(locked: 0) => l1, marker!() => m, marker!(locked: 2) => r1] },
+            ],
+            links: [
+                left = 1 => l1,
+                l1 = 1 => m,
+            ],
+        }
+        let expect_timeline_time = HashMap::from([
+            (left, TimelineTime::new(mfrac!(0))),
+            (l1, TimelineTime::new(mfrac!(1))),
+            (m, TimelineTime::new(mfrac!(2))),
+            (r1, TimelineTime::new(mfrac!(3))),
+            (right, TimelineTime::new(mfrac!(10))),
+        ]);
+        let root = expect.read().await;
+        RootComponentClassItemWrite::commit_changes(root.get_mut().await, expect_timeline_time);
+        assert_eq_root_component_class(&target, &expect).await;
     }
 }

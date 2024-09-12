@@ -349,7 +349,6 @@ mod tests {
                 write!(f, "}}")
             }
         }
-        eprintln!("{:?}", CompactDebug(&answer));
         const LEN: usize = 5;
         let markers: [_; LEN] = [p0, p1, p2, p3, p4];
         let root_component_class = target.read().await;
@@ -373,9 +372,6 @@ mod tests {
                 err += 1;
                 eprintln!("{combination:?} {base_pin}");
                 eprintln!("{:?}", CompactDebug(&time_map));
-                if err > 0 {
-                    panic!();
-                }
             }
         }
         assert_eq!(err, 0, "{err} / {} error", LEN.pow(LEN as u32 + 1));

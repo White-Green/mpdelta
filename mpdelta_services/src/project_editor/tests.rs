@@ -250,12 +250,12 @@ async fn test_lock_marker_pin() {
             l1 = 3 => r1,
         ],
     }
-    editor.edit_instance(edit_target.as_ref(), &c1, InstanceEditCommand::LockMarkerPin(m)).await.unwrap_err();
+    editor.edit_instance(edit_target.as_ref(), &c1, InstanceEditCommand::LockMarkerPin(m)).await.unwrap();
     root_component_class! {
         expect; <T>; id;
         left: left,
         components: [
-            { markers: [marker!(locked: 0) => l1, marker!() => m, marker!(locked: 2) => r1] }; c1,
+            { markers: [marker!(locked: 0) => l1, marker!(locked: mfrac!(1, 1, 3)) => m, marker!(locked: 2) => r1] }; c1,
         ],
         links: [
             left = 1 => l1,

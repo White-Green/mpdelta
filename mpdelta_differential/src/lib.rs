@@ -97,7 +97,7 @@ where
             pin_handle.clear();
             pin_handle.extend(iter::once(component.marker_left()).chain(component.markers()).chain(iter::once(component.marker_right())).zip(pins).filter(|(p, _)| p.locked_component_time().is_some()));
             group_count.fill(0);
-            pins.iter().for_each(|p| group_count[p.subtree_index] += 1);
+            pin_handle.iter().for_each(|(_, p)| group_count[p.subtree_index] += 1);
             for w in pin_handle.windows(2) {
                 let (left_pin, left_data) = w[0];
                 let (right_pin, right_data) = w[1];
@@ -686,6 +686,43 @@ mod tests {
             (m1, TimelineTime::new(mfrac!(1))),
             (m2, TimelineTime::new(mfrac!(2))),
             (r1, TimelineTime::new(mfrac!(4))),
+            (right, TimelineTime::new(mfrac!(10))),
+        ]);
+        let root = expect.read().await;
+        RootComponentClassItemWrite::commit_changes(root.get_mut().await, expect_timeline_time);
+        assert_eq_root_component_class(&target, &expect).await;
+
+        root_component_class! {
+            custom_differential: collect_cached_time;
+            target; <T>; id;
+            left: left,
+            right: right,
+            components: [
+                { markers: [marker!(locked: 0) => l1, marker!() => m, marker!(locked: 2) => r1] },
+            ],
+            links: [
+                left = 1 => l1,
+                l1 = 1 => m,
+            ],
+        }
+        root_component_class! {
+            custom_differential: |_| Ok::<_, ()>(HashMap::new());
+            expect; <T>; id;
+            left: left,
+            right: right,
+            components: [
+                { markers: [marker!(locked: 0) => l1, marker!() => m, marker!(locked: 2) => r1] },
+            ],
+            links: [
+                left = 1 => l1,
+                l1 = 1 => m,
+            ],
+        }
+        let expect_timeline_time = HashMap::from([
+            (left, TimelineTime::new(mfrac!(0))),
+            (l1, TimelineTime::new(mfrac!(1))),
+            (m, TimelineTime::new(mfrac!(2))),
+            (r1, TimelineTime::new(mfrac!(3))),
             (right, TimelineTime::new(mfrac!(10))),
         ]);
         let root = expect.read().await;

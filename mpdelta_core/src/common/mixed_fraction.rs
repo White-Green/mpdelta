@@ -77,7 +77,7 @@ fn round_into(numerator: u64, denominator: u64, target_denominator: u64) -> u64 
 }
 
 #[inline]
-fn round_with_limit_denominator<T>(numerator: T, denominator: T, max_denominator: T) -> (T, T)
+fn round_with_limit_denominator<T>(numerator: T, denominator: T, max_denominator: T) -> (bool, T, T)
 where
     T: Integer + Copy,
 {
@@ -97,10 +97,11 @@ where
         unreachable!()
     };
     let k = (max_denominator - d0) / d1;
-    if (d + d) * (d0 + k * d1) <= denominator {
-        (n1, d1)
+    let (n, d) = if (d + d) * (d0 + k * d1) <= denominator { (n1, d1) } else { (n0 + k * n1, d0 + k * d1) };
+    if n == d {
+        (true, T::zero(), T::one())
     } else {
-        (n0 + k * n1, d0 + k * d1)
+        (false, n, d)
     }
 }
 
@@ -161,7 +162,11 @@ impl MixedFraction {
         }
         let integer = value.trunc();
         let fract = value.fract();
-        let (integer, fract) = if fract < 0. { (integer - 1., fract + 2.) } else { (integer, fract + 1.) };
+        let (mut integer, mut fract) = if fract < 0. { (integer - 1., fract + 2.) } else { (integer, fract + 1.) };
+        if fract >= 2. {
+            integer += 1.;
+            fract -= 1.;
+        }
         let integer = integer as i32;
         let integer = validate_integer(integer).unwrap_or(if integer >= 0 { INTEGER_MAX } else { INTEGER_MIN });
         let n = fract.to_bits() & 0x000f_ffff_ffff_ffffu64;
@@ -173,8 +178,14 @@ impl MixedFraction {
             return MixedFraction::new_inner(integer, n as u32, d);
         }
 
-        let (n, d) = round_with_limit_denominator(n, d, FRAC_VALUE_MASK as u64);
-        MixedFraction::new_inner(integer, n as u32, d as u32)
+        let (overflow, n, d) = round_with_limit_denominator(n, d, FRAC_VALUE_MASK as u64);
+        if !overflow {
+            MixedFraction::new_inner(integer, n as u32, d as u32)
+        } else if let Ok(integer) = validate_integer(integer + 1) {
+            MixedFraction::new_inner(integer, n as u32, d as u32)
+        } else {
+            MixedFraction::MAX
+        }
     }
 
     /// Deconstruct MixedFraction(I + N / D) into (I, N, D)
@@ -212,8 +223,14 @@ impl MixedFraction {
         if let Ok(d) = u32::try_from(d).map_err(|_| ()).and_then(validate_denominator) {
             return Some(MixedFraction::new_inner(i, n as u32, d));
         }
-        let (n, d) = round_with_limit_denominator(n, d, FRAC_VALUE_MASK as u64);
-        Some(MixedFraction::new_inner(i, n as u32, d as u32))
+        let (overflow, n, d) = round_with_limit_denominator(n, d, FRAC_VALUE_MASK as u64);
+        if !overflow {
+            Some(MixedFraction::new_inner(i, n as u32, d as u32))
+        } else if let Ok(integer) = validate_integer(i + 1) {
+            Some(MixedFraction::new_inner(integer, n as u32, d as u32))
+        } else {
+            Some(MixedFraction::MAX)
+        }
     }
 
     pub fn saturating_add(self, rhs: MixedFraction) -> MixedFraction {
@@ -237,8 +254,14 @@ impl MixedFraction {
         if let Ok(d) = u32::try_from(d).map_err(|_| ()).and_then(validate_denominator) {
             return Some(MixedFraction::new_inner(i, n as u32, d));
         }
-        let (n, d) = round_with_limit_denominator(n, d, FRAC_VALUE_MASK as u64);
-        Some(MixedFraction::new_inner(i, n as u32, d as u32))
+        let (overflow, n, d) = round_with_limit_denominator(n, d, FRAC_VALUE_MASK as u64);
+        if !overflow {
+            Some(MixedFraction::new_inner(i, n as u32, d as u32))
+        } else if let Ok(integer) = validate_integer(i + 1) {
+            Some(MixedFraction::new_inner(integer, n as u32, d as u32))
+        } else {
+            Some(MixedFraction::MAX)
+        }
     }
 
     pub fn saturating_sub(self, rhs: MixedFraction) -> MixedFraction {
@@ -265,8 +288,14 @@ impl MixedFraction {
         if let Ok(d) = u32::try_from(d).map_err(|_| ()).and_then(validate_denominator) {
             return Some(MixedFraction::new_inner(i, n as u32, d));
         }
-        let (n, d) = round_with_limit_denominator(n, d, FRAC_VALUE_MASK as u64);
-        Some(MixedFraction::new_inner(i, n as u32, d as u32))
+        let (overflow, n, d) = round_with_limit_denominator(n, d, FRAC_VALUE_MASK as u64);
+        if !overflow {
+            Some(MixedFraction::new_inner(i, n as u32, d as u32))
+        } else if let Ok(integer) = validate_integer(i + 1) {
+            Some(MixedFraction::new_inner(integer, n as u32, d as u32))
+        } else {
+            Some(MixedFraction::MAX)
+        }
     }
 
     pub fn saturating_mul(self, rhs: MixedFraction) -> MixedFraction {
@@ -296,8 +325,14 @@ impl MixedFraction {
         if let Ok(d) = u32::try_from(d).map_err(|_| ()).and_then(validate_denominator) {
             return Some(MixedFraction::new_inner(i, n as u32, d));
         }
-        let (n, d) = round_with_limit_denominator(n, d as u128, FRAC_VALUE_MASK as u128);
-        Some(MixedFraction::new_inner(i, n as u32, d as u32))
+        let (overflow, n, d) = round_with_limit_denominator(n, d as u128, FRAC_VALUE_MASK as u128);
+        if !overflow {
+            Some(MixedFraction::new_inner(i, n as u32, d as u32))
+        } else if let Ok(integer) = validate_integer(i + 1) {
+            Some(MixedFraction::new_inner(integer, n as u32, d as u32))
+        } else {
+            Some(MixedFraction::MAX)
+        }
     }
 
     pub fn div_floor(self, rhs: MixedFraction) -> Option<i64> {
@@ -594,6 +629,27 @@ mod tests {
         assert_eq!(MixedFraction::ONE.0, 0x0000_0010_0000_0001);
         assert_eq!(MixedFraction::MIN.0, 0x8000_0000_0000_0001u64 as i64);
         assert_eq!(MixedFraction::MAX.0, 0x7fff_ffff_fffb_ffff);
+    }
+
+    #[test]
+    fn test_mixed_fraction_from_f64() {
+        assert_eq!(MixedFraction::from_f64(0.0), MixedFraction::ZERO);
+        assert_eq!(MixedFraction::from_f64(1.0), MixedFraction::ONE);
+        assert_eq!(MixedFraction::from_f64(-1.0), MixedFraction::from_integer(-1));
+        assert_eq!(MixedFraction::from_f64(0.5), MixedFraction::new(0, 1, 2));
+        assert_eq!(MixedFraction::from_f64(-0.5), MixedFraction::new(-1, 1, 2));
+        assert_eq!(MixedFraction::from_f64(1.75), MixedFraction::new(1, 3, 4));
+        assert_eq!(MixedFraction::from_f64(-1.75), MixedFraction::new(-2, 1, 4));
+        assert_eq!(MixedFraction::from_f64(f64::INFINITY), MixedFraction::MAX);
+        assert_eq!(MixedFraction::from_f64(f64::NEG_INFINITY), MixedFraction::MIN);
+        assert_eq!(MixedFraction::from_f64(f64::NAN), MixedFraction::ZERO);
+        assert_eq!(MixedFraction::from_f64(MixedFraction::new(INTEGER_MAX, FRAC_VALUE_MASK - 1, FRAC_VALUE_MASK).into_f64()), MixedFraction::new(INTEGER_MAX, FRAC_VALUE_MASK - 1, FRAC_VALUE_MASK));
+        assert_eq!(MixedFraction::from_f64(MixedFraction::new(INTEGER_MIN, 1, FRAC_VALUE_MASK).into_f64()), MixedFraction::new(INTEGER_MIN, 1, FRAC_VALUE_MASK));
+        assert_eq!(MixedFraction::from_f64(f64::from_bits(0x3fefffffffffffff)), MixedFraction::ONE); // 0.999...
+        assert_eq!(MixedFraction::from_f64(f64::from_bits(0xbfefffffffffffff)), MixedFraction::from_integer(-1)); // -0.999...
+        assert_eq!(MixedFraction::from_f64(f64::from_bits(0x0010000000000000)), MixedFraction::ZERO); // 0.000...
+        assert_eq!(MixedFraction::from_f64(f64::from_bits(0x8010000000000000)), MixedFraction::ZERO);
+        // -0.000...
     }
 
     #[test]

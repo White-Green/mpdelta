@@ -107,7 +107,8 @@ where
 
             let widget_visuals = ui.visuals().widgets.inactive;
             let slider_width = painter.round_to_pixel(ui.spacing().interact_size.y / 6.);
-            let plot_area_rect = whole_rect.with_min_y(whole_rect.top() + slider_width * 3.).with_max_y(whole_rect.bottom() - slider_width);
+            let text_box_height = 32.0;
+            let plot_area_rect = whole_rect.with_min_y(whole_rect.top() + slider_width * 3.).with_max_y(whole_rect.bottom() - slider_width - text_box_height);
             let time_map = glam::Mat2::from_cols(glam::Vec2::new(time_range.start as f32, time_range.end as f32), glam::Vec2::new(1., 1.)).inverse() * glam::Vec2::new(plot_area_rect.left(), plot_area_rect.right());
             let value_map = glam::Mat2::from_cols(glam::Vec2::new(value_range.start as f32, value_range.end as f32), glam::Vec2::new(1., 1.)).inverse() * glam::Vec2::new(plot_area_rect.bottom(), plot_area_rect.top());
             {
@@ -245,9 +246,9 @@ where
                         }),
                         Shape::Path(PathShape {
                             points: vec![
-                                Pos2::new(base_position - slider_width, whole_rect.bottom() - slider_width),
-                                Pos2::new(base_position, whole_rect.bottom()),
-                                Pos2::new(base_position + slider_width, whole_rect.bottom() - slider_width),
+                                Pos2::new(base_position - slider_width, plot_area_rect.bottom()),
+                                Pos2::new(base_position, plot_area_rect.bottom() + slider_width),
+                                Pos2::new(base_position + slider_width, plot_area_rect.bottom()),
                             ],
                             closed: false,
                             fill: widget_visuals.bg_fill,
@@ -284,9 +285,9 @@ where
                                     Pos2::new(base_time_pixel + slider_width * 2., whole_rect.top()),
                                     Pos2::new(base_time_pixel + slider_width * 2., whole_rect.top() + slider_width * 2.),
                                     Pos2::new(base_time_pixel + slider_width, whole_rect.top() + slider_width * 3.),
-                                    Pos2::new(base_time_pixel + slider_width, whole_rect.bottom() - slider_width),
-                                    Pos2::new(base_time_pixel, whole_rect.bottom()),
-                                    Pos2::new(base_time_pixel - slider_width, whole_rect.bottom() - slider_width),
+                                    Pos2::new(base_time_pixel + slider_width, plot_area_rect.bottom()),
+                                    Pos2::new(base_time_pixel, plot_area_rect.bottom() + slider_width),
+                                    Pos2::new(base_time_pixel - slider_width, plot_area_rect.bottom()),
                                     Pos2::new(base_time_pixel - slider_width, whole_rect.top() + slider_width * 3.),
                                     Pos2::new(base_time_pixel - slider_width * 2., whole_rect.top() + slider_width * 2.),
                                     Pos2::new(base_time_pixel - slider_width * 2., whole_rect.top()),
@@ -328,8 +329,8 @@ where
                                     Pos2::new(base_time_pixel + slider_width * 2., whole_rect.top()),
                                     Pos2::new(base_time_pixel + slider_width * 2., whole_rect.top() + slider_width * 2.),
                                     Pos2::new(base_time_pixel + slider_width, whole_rect.top() + slider_width * 3.),
-                                    Pos2::new(base_time_pixel + slider_width, whole_rect.bottom() - slider_width),
-                                    Pos2::new(base_time_pixel, whole_rect.bottom()),
+                                    Pos2::new(base_time_pixel + slider_width, plot_area_rect.bottom()),
+                                    Pos2::new(base_time_pixel, plot_area_rect.bottom() + slider_width),
                                 ],
                                 closed: true,
                                 fill: widget_visuals.bg_fill,
@@ -358,8 +359,8 @@ where
                                     Pos2::new(base_time_pixel - slider_width * 2., whole_rect.top()),
                                     Pos2::new(base_time_pixel - slider_width * 2., whole_rect.top() + slider_width * 2.),
                                     Pos2::new(base_time_pixel - slider_width, whole_rect.top() + slider_width * 3.),
-                                    Pos2::new(base_time_pixel - slider_width, whole_rect.bottom() - slider_width),
-                                    Pos2::new(base_time_pixel, whole_rect.bottom()),
+                                    Pos2::new(base_time_pixel - slider_width, plot_area_rect.bottom()),
+                                    Pos2::new(base_time_pixel, plot_area_rect.bottom() + slider_width),
                                 ],
                                 closed: true,
                                 fill: widget_visuals.bg_fill,

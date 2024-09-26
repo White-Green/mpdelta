@@ -13,7 +13,10 @@ pub trait StaticCow<T> {
 pub struct Reference<'a, T>(pub &'a T);
 
 impl<'a, T: Clone> StaticCow<T> for Reference<'a, T> {
-    type Cloned<'b> = Reference<'b, T> where Self: 'b;
+    type Cloned<'b>
+        = Reference<'b, T>
+    where
+        Self: 'b;
 
     fn clone(&self) -> Self::Cloned<'_> {
         Reference(self.0)
@@ -32,7 +35,10 @@ impl<'a, T: Clone> StaticCow<T> for Reference<'a, T> {
 pub struct Owned<T>(pub T);
 
 impl<T: Clone> StaticCow<T> for Owned<T> {
-    type Cloned<'a> = Reference<'a, T> where Self: 'a;
+    type Cloned<'a>
+        = Reference<'a, T>
+    where
+        Self: 'a;
 
     fn clone(&self) -> Self::Cloned<'_> {
         Reference(&self.0)
@@ -48,7 +54,10 @@ impl<T: Clone> StaticCow<T> for Owned<T> {
 }
 
 impl<'a, T: Clone> StaticCow<T> for Cow<'a, T> {
-    type Cloned<'b> = Reference<'b, T> where Self: 'b;
+    type Cloned<'b>
+        = Reference<'b, T>
+    where
+        Self: 'b;
 
     fn clone(&self) -> Self::Cloned<'_> {
         Reference(self)

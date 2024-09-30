@@ -61,6 +61,10 @@ impl<T> ComponentClass<T> for FfmpegMultimediaLoaderClass
 where
     T: ParameterValueType<Image = ImageType, Audio = AudioType>,
 {
+    fn human_readable_identifier(&self) -> &str {
+        "MultiMedia Loader (FFmpeg)"
+    }
+
     fn identifier(&self) -> ComponentClassIdentifier {
         ComponentClassIdentifier {
             namespace: Cow::Borrowed("mpdelta"),

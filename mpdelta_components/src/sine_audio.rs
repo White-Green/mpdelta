@@ -26,6 +26,10 @@ impl SineAudio {
 
 #[async_trait]
 impl<T: ParameterValueType<Audio = AudioType>> ComponentClass<T> for SineAudio {
+    fn human_readable_identifier(&self) -> &str {
+        "SineAudio"
+    }
+
     fn identifier(&self) -> ComponentClassIdentifier {
         ComponentClassIdentifier {
             namespace: Cow::Borrowed("mpdelta"),

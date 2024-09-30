@@ -495,6 +495,10 @@ pub type RootComponentClassHandleCow<T> = StaticPointerCow<RootComponentClassWit
 
 #[async_trait]
 impl<T: ParameterValueType + 'static> ComponentClass<T> for RootComponentClass<T> {
+    fn human_readable_identifier(&self) -> &str {
+        "RootComponentClass"
+    }
+
     fn identifier(&self) -> ComponentClassIdentifier {
         ComponentClassIdentifier {
             namespace: Cow::Borrowed("mpdelta"),

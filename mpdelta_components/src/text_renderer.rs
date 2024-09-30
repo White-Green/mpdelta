@@ -85,6 +85,10 @@ impl<T> ComponentClass<T> for TextRendererClass<T>
 where
     T: ParameterValueType<Image = ImageType>,
 {
+    fn human_readable_identifier(&self) -> &str {
+        "Text"
+    }
+
     fn identifier(&self) -> ComponentClassIdentifier {
         ComponentClassIdentifier {
             namespace: Cow::Borrowed("mpdelta"),

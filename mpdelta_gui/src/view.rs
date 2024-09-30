@@ -13,6 +13,7 @@ use mpdelta_core::component::parameter::ParameterValueType;
 use std::sync::Arc;
 
 pub trait Gui<T> {
+    fn init(&mut self, ctx: &Context);
     fn ui(&mut self, ctx: &Context, image: &mut impl ImageRegister<T>);
 }
 
@@ -53,6 +54,16 @@ where
     TTimelineViewModel: TimelineViewModel<T>,
     TPropertyWindowViewModel: PropertyWindowViewModel<T>,
 {
+    fn init(&mut self, ctx: &Context) {
+        let mut fonts = egui::FontDefinitions::default();
+
+        let font_name = "BIZUDPGothic".to_owned();
+        fonts.font_data.insert(font_name.clone(), egui::FontData::from_static(include_bytes!("../fonts/BIZ_UDPGothic/BIZUDPGothic-Regular.ttf")));
+        fonts.families.entry(egui::FontFamily::Proportional).or_default().insert(0, font_name);
+
+        ctx.set_fonts(fonts);
+    }
+
     fn ui(&mut self, ctx: &Context, image: &mut impl ImageRegister<T::Image>) {
         self.view_model.render_frame(|| {
             egui::TopBottomPanel::top("menu").show(ctx, |ui| {

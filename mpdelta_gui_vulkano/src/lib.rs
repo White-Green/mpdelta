@@ -61,6 +61,8 @@ impl<T: Gui<ImageType> + 'static> MPDeltaGUIVulkano<T> {
         let renderer = windows.get_renderer_mut(window).unwrap();
         let mut vulkano_gui = egui_winit_vulkano::Gui::new(&event_loop, renderer.surface(), Arc::clone(context.graphics_queue()), Format::B8G8R8A8_UNORM, GuiConfig::default());
 
+        gui.init(&vulkano_gui.context());
+
         event_loop.run(move |event, _, control_flow| {
             let renderer = windows.get_renderer_mut(window).unwrap();
             match event {

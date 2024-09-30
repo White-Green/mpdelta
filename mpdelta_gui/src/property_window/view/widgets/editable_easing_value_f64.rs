@@ -8,6 +8,7 @@ use mpdelta_core::project::TimelineTimeOfPin;
 use std::hash::Hash;
 use std::iter;
 use std::ops::Range;
+use std::sync::{Arc, Mutex};
 
 #[derive(Debug, Clone)]
 struct InnerState {
@@ -107,7 +108,8 @@ where
 
             let widget_visuals = ui.visuals().widgets.inactive;
             let slider_width = painter.round_to_pixel(ui.spacing().interact_size.y / 6.);
-            let plot_area_rect = whole_rect.with_min_y(whole_rect.top() + slider_width * 3.).with_max_y(whole_rect.bottom() - slider_width);
+            let text_box_height = 8.;
+            let plot_area_rect = whole_rect.with_min_y(whole_rect.top() + slider_width * 3.).with_max_y(whole_rect.bottom() - slider_width - text_box_height);
             let time_map = glam::Mat2::from_cols(glam::Vec2::new(time_range.start as f32, time_range.end as f32), glam::Vec2::new(1., 1.)).inverse() * glam::Vec2::new(plot_area_rect.left(), plot_area_rect.right());
             let value_map = glam::Mat2::from_cols(glam::Vec2::new(value_range.start as f32, value_range.end as f32), glam::Vec2::new(1., 1.)).inverse() * glam::Vec2::new(plot_area_rect.bottom(), plot_area_rect.top());
             {
@@ -245,9 +247,9 @@ where
                         }),
                         Shape::Path(PathShape {
                             points: vec![
-                                Pos2::new(base_position - slider_width, whole_rect.bottom() - slider_width),
-                                Pos2::new(base_position, whole_rect.bottom()),
-                                Pos2::new(base_position + slider_width, whole_rect.bottom() - slider_width),
+                                Pos2::new(base_position - slider_width, plot_area_rect.bottom()),
+                                Pos2::new(base_position, plot_area_rect.bottom() + slider_width),
+                                Pos2::new(base_position + slider_width, plot_area_rect.bottom()),
                             ],
                             closed: false,
                             fill: widget_visuals.bg_fill,
@@ -284,9 +286,9 @@ where
                                     Pos2::new(base_time_pixel + slider_width * 2., whole_rect.top()),
                                     Pos2::new(base_time_pixel + slider_width * 2., whole_rect.top() + slider_width * 2.),
                                     Pos2::new(base_time_pixel + slider_width, whole_rect.top() + slider_width * 3.),
-                                    Pos2::new(base_time_pixel + slider_width, whole_rect.bottom() - slider_width),
-                                    Pos2::new(base_time_pixel, whole_rect.bottom()),
-                                    Pos2::new(base_time_pixel - slider_width, whole_rect.bottom() - slider_width),
+                                    Pos2::new(base_time_pixel + slider_width, plot_area_rect.bottom()),
+                                    Pos2::new(base_time_pixel, plot_area_rect.bottom() + slider_width),
+                                    Pos2::new(base_time_pixel - slider_width, plot_area_rect.bottom()),
                                     Pos2::new(base_time_pixel - slider_width, whole_rect.top() + slider_width * 3.),
                                     Pos2::new(base_time_pixel - slider_width * 2., whole_rect.top() + slider_width * 2.),
                                     Pos2::new(base_time_pixel - slider_width * 2., whole_rect.top()),
@@ -328,8 +330,8 @@ where
                                     Pos2::new(base_time_pixel + slider_width * 2., whole_rect.top()),
                                     Pos2::new(base_time_pixel + slider_width * 2., whole_rect.top() + slider_width * 2.),
                                     Pos2::new(base_time_pixel + slider_width, whole_rect.top() + slider_width * 3.),
-                                    Pos2::new(base_time_pixel + slider_width, whole_rect.bottom() - slider_width),
-                                    Pos2::new(base_time_pixel, whole_rect.bottom()),
+                                    Pos2::new(base_time_pixel + slider_width, plot_area_rect.bottom()),
+                                    Pos2::new(base_time_pixel, plot_area_rect.bottom() + slider_width),
                                 ],
                                 closed: true,
                                 fill: widget_visuals.bg_fill,
@@ -358,8 +360,8 @@ where
                                     Pos2::new(base_time_pixel - slider_width * 2., whole_rect.top()),
                                     Pos2::new(base_time_pixel - slider_width * 2., whole_rect.top() + slider_width * 2.),
                                     Pos2::new(base_time_pixel - slider_width, whole_rect.top() + slider_width * 3.),
-                                    Pos2::new(base_time_pixel - slider_width, whole_rect.bottom() - slider_width),
-                                    Pos2::new(base_time_pixel, whole_rect.bottom()),
+                                    Pos2::new(base_time_pixel - slider_width, plot_area_rect.bottom()),
+                                    Pos2::new(base_time_pixel, plot_area_rect.bottom() + slider_width),
                                 ],
                                 closed: true,
                                 fill: widget_visuals.bg_fill,
@@ -407,6 +409,54 @@ where
                 .chain(segment_lines)
                 .chain(foreground_pin);
             painter.extend(shapes);
+
+            let value_string_buffer_id = id.with("value_string_buffer");
+            let value_string_buffer = ui.data(|data| {
+                data.get_temp::<Arc<Mutex<Box<[String]>>>>(value_string_buffer_id).filter(|buffers| buffers.lock().unwrap().len() == value.len_value() * 2).unwrap_or_else(|| {
+                    Arc::new(Mutex::new(
+                        (0..value.len_value())
+                            .flat_map(|i| {
+                                if let (_, Some(value), _) = value.get_value(i).unwrap() {
+                                    [value.get_value(0.).to_string(), value.get_value(1.).to_string()]
+                                } else {
+                                    [String::new(), String::new()]
+                                }
+                            })
+                            .collect(),
+                    ))
+                })
+            });
+            {
+                let mut value_string_buffer = value_string_buffer.lock().unwrap();
+                for (value_index, buffer) in (0..value.len_value()).zip(value_string_buffer.chunks_mut(2)) {
+                    let (left_pin, Some(_), right_pin) = value.get_value(value_index).unwrap() else {
+                        continue;
+                    };
+                    let left_time = times.time_of_pin(left_pin).unwrap().value().into_f64();
+                    let right_time = times.time_of_pin(right_pin).unwrap().value().into_f64();
+                    let left_pixel = glam::Vec2::new(left_time as f32, 1.).dot(time_map);
+                    let right_pixel = glam::Vec2::new(right_time as f32, 1.).dot(time_map);
+                    let [left_buffer, right_buffer] = buffer else { unreachable!() };
+                    let text_box_width = 32.;
+                    ui.allocate_ui_at_rect(Rect::from_min_max(Pos2::new(left_pixel, plot_area_rect.bottom() + slider_width), Pos2::new(left_pixel + text_box_width, plot_area_rect.bottom() + text_box_height)), |ui| {
+                        if ui.text_edit_singleline(left_buffer).changed() {
+                            let Ok(value) = left_buffer.parse() else {
+                                return;
+                            };
+                            update(EasingValueF64EditEvent::MoveValue { value_index, side: Side::Left, value });
+                        };
+                    });
+                    ui.allocate_ui_at_rect(Rect::from_min_max(Pos2::new(right_pixel - text_box_width, plot_area_rect.bottom() + slider_width), Pos2::new(right_pixel, plot_area_rect.bottom() + text_box_height)), |ui| {
+                        if ui.text_edit_singleline(right_buffer).changed() {
+                            let Ok(value) = right_buffer.parse() else {
+                                return;
+                            };
+                            update(EasingValueF64EditEvent::MoveValue { value_index, side: Side::Right, value });
+                        }
+                    });
+                }
+            }
+            ui.data_mut(|data| data.insert_temp::<Arc<Mutex<Box<[String]>>>>(value_string_buffer_id, value_string_buffer));
         });
         *scroll_offset = scroll_area_output.state.offset.x;
     }

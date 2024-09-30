@@ -59,6 +59,10 @@ impl Rectangle {
 
 #[async_trait]
 impl<T: ParameterValueType<Image = ImageType>> ComponentClass<T> for RectangleClass {
+    fn human_readable_identifier(&self) -> &str {
+        "Rectangle"
+    }
+
     fn identifier(&self) -> ComponentClassIdentifier {
         ComponentClassIdentifier {
             namespace: Cow::Borrowed("mpdelta"),

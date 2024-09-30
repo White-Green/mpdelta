@@ -58,6 +58,7 @@ impl<'a> ComponentClassIdentifier<'a> {
 
 #[async_trait]
 pub trait ComponentClass<T: ParameterValueType>: Send + Sync {
+    fn human_readable_identifier(&self) -> &str;
     fn identifier(&self) -> ComponentClassIdentifier;
     fn processor(&self) -> ComponentProcessorWrapper<T>;
     async fn instantiate(&self, this: &StaticPointer<RwLock<dyn ComponentClass<T>>>, id: &dyn IdGenerator) -> ComponentInstance<T>;

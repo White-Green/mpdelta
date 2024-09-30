@@ -39,6 +39,10 @@ impl<T> ComponentClass<T> for NoopComponentClass
 where
     T: ParameterValueType,
 {
+    fn human_readable_identifier(&self) -> &str {
+        "Noop"
+    }
+
     fn identifier(&self) -> ComponentClassIdentifier {
         unimplemented!()
     }

@@ -171,8 +171,8 @@ impl<T: ParameterValueType, VM: TimelineViewModel<T>> Timeline<T, VM> {
                         self.context_menu_opened_pos = (point_to_time(pointer_pos.x), pointer_pos.y);
                     }
                     self.view_model.component_classes(|ComponentClassDataList { list }| {
-                        for ComponentClassData { handle } in list {
-                            if ui.button("add").clicked() {
+                        for ComponentClassData { name, handle } in list {
+                            if ui.button(format!("add {name}")).clicked() {
                                 self.view_model.add_component_instance(handle.clone());
                                 ui.close_menu();
                             }

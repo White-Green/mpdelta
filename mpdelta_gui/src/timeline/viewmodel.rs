@@ -5,7 +5,7 @@ use crate::viewmodel::ViewModelParams;
 use arc_swap::{ArcSwap, ArcSwapOption};
 use crossbeam_utils::atomic::AtomicCell;
 use egui::Pos2;
-use futures::FutureExt;
+use futures::{stream, FutureExt, StreamExt};
 use mpdelta_async_runtime::{AsyncRuntime, JoinHandleWrapper};
 use mpdelta_core::common::mixed_fraction::MixedFraction;
 use mpdelta_core::component::class::ComponentClass;
@@ -66,7 +66,7 @@ pub struct ComponentInstanceData<InstanceHandle, PinHandle> {
 pub type DefaultComponentInstanceData = ComponentInstanceData<ComponentInstanceId, MarkerPinId>;
 
 impl DefaultComponentInstanceData {
-    fn new<T>(component: &ComponentInstance<T>, i: usize, pin_map: &mut HashMap<MarkerPinId, ComponentInstanceId>, root: &RootComponentClassItem<T>) -> Option<DefaultComponentInstanceData>
+    async fn new<T>(component: &ComponentInstance<T>, i: usize, pin_map: &mut HashMap<MarkerPinId, ComponentInstanceId>, root: &RootComponentClassItem<T>) -> DefaultComponentInstanceData
     where
         T: ParameterValueType,
     {
@@ -95,9 +95,14 @@ impl DefaultComponentInstanceData {
                 render_location: AtomicCell::new(Pos2::default()),
             })
             .collect();
-        Some(ComponentInstanceData {
+        let name = if let Some(component_class) = component.component_class().upgrade() {
+            component_class.read().await.human_readable_identifier().to_string()
+        } else {
+            "** UNKNOWN **".to_string()
+        };
+        ComponentInstanceData {
             handle: *component.id(),
-            name: "TEST".to_string(),
+            name,
             selected: false,
             start_time,
             end_time,
@@ -105,7 +110,7 @@ impl DefaultComponentInstanceData {
             left_pin,
             right_pin,
             pins,
-        })
+        }
     }
 }
 
@@ -184,6 +189,7 @@ pub struct MarkerLinkDataList<LinkHandle, PinHandle, ComponentHandle> {
 pub type DefaultComponentLinkDataList = MarkerLinkDataList<MarkerLink, MarkerPinId, ComponentInstanceId>;
 
 pub struct ComponentClassData<Handle> {
+    pub name: String,
     pub handle: Handle,
 }
 
@@ -191,8 +197,9 @@ impl<T> ComponentClassData<StaticPointer<RwLock<dyn ComponentClass<T>>>>
 where
     T: ParameterValueType,
 {
-    fn new(handle: StaticPointer<RwLock<dyn ComponentClass<T>>>) -> ComponentClassData<StaticPointer<RwLock<dyn ComponentClass<T>>>> {
-        ComponentClassData { handle }
+    async fn new(handle: StaticPointer<RwLock<dyn ComponentClass<T>>>) -> ComponentClassData<StaticPointer<RwLock<dyn ComponentClass<T>>>> {
+        let name = if let Some(handle) = handle.upgrade() { handle.read().await.human_readable_identifier().to_string() } else { "** UNKNOWN **".to_string() };
+        ComponentClassData { name, handle }
     }
 }
 
@@ -486,7 +493,7 @@ impl<T: ParameterValueType> TimelineViewModelImpl<T, (), (), (), (), ()> {
             async move {
                 let available_component_classes = get_available_component_classes.get_available_component_classes().await;
                 component_classes.store(Arc::new(ComponentClassDataList {
-                    list: available_component_classes.iter().cloned().map(ComponentClassData::new).collect(),
+                    list: stream::iter(available_component_classes.iter().cloned()).then(ComponentClassData::new).collect().await,
                 }));
             }
         });
@@ -531,7 +538,11 @@ impl<T: ParameterValueType> TimelineViewModelImpl<T, (), (), (), (), ()> {
         let root_component_class = root_component_class.read().await;
         let root_component_class = root_component_class.get();
         let mut pin_map = HashMap::new();
-        let list = root_component_class.iter_components().enumerate().filter_map(|(i, handle)| ComponentInstanceData::new(handle, i, &mut pin_map, &root_component_class)).collect();
+        let mut list = Vec::new();
+        for (i, handle) in root_component_class.iter_components().enumerate() {
+            let component_instance = ComponentInstanceData::new(handle, i, &mut pin_map, &root_component_class).await;
+            list.push(component_instance);
+        }
         let component_instances_inner = ComponentInstanceDataList { list };
         let component_map = component_instances_inner.list.iter().cloned().map(|component| (component.handle, component)).collect();
         let list = root_component_class.iter_links().filter_map(|handle| MarkerLinkData::new(handle.clone(), &pin_map, &component_map, &root_component_class)).collect();

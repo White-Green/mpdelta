@@ -783,6 +783,7 @@ async fn parse(text: &str) -> (ShapingBuilder<TextData>, Vec<(Arc<Vec<u8>>, u32)
                         return;
                     }
                     (Some(_), None) => {
+                        iter.next();
                         return;
                     }
                     (Some(_), Some(_)) => return,

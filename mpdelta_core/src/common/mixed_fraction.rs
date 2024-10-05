@@ -128,7 +128,7 @@ impl MixedFraction {
         let integer = validate_integer(integer).expect("MixedFraction Validate Error");
         let numerator = validate_numerator(numerator).expect("MixedFraction Validate Error");
         let denominator = validate_denominator(denominator).expect("MixedFraction Validate Error");
-        assert!(numerator < denominator);
+        assert!(numerator < denominator, "numerator({numerator}) >= denominator({denominator})");
         let gcd = numerator.gcd(&denominator);
         let numerator = numerator / gcd;
         let denominator = denominator / gcd;
@@ -401,7 +401,12 @@ impl MixedFraction {
         if d == denominator {
             (i, n)
         } else {
-            (i, round_into(n as u64, d as u64, denominator as u64).try_into().unwrap())
+            let n = round_into(n as u64, d as u64, denominator as u64).try_into().unwrap();
+            if n == denominator {
+                (i + 1, 0)
+            } else {
+                (i, n)
+            }
         }
     }
 
@@ -721,8 +726,10 @@ mod tests {
 
     #[test]
     fn test_mixed_fraction_round() {
+        assert_eq!(MixedFraction::new(0, 1, 6).round_to_denominator(2), MixedFraction::new(0, 0, 1));
         assert_eq!(MixedFraction::new(0, 1, 3).round_to_denominator(2), MixedFraction::new(0, 1, 2));
         assert_eq!(MixedFraction::new(0, 2, 3).round_to_denominator(2), MixedFraction::new(0, 1, 2));
+        assert_eq!(MixedFraction::new(0, 5, 6).round_to_denominator(2), MixedFraction::new(1, 0, 1));
     }
 
     #[test]

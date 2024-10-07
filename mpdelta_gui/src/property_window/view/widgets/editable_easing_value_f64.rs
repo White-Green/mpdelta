@@ -2,7 +2,7 @@ use egui::epaint::{PathShape, RectShape};
 use egui::scroll_area::ScrollBarVisibility;
 use egui::{CursorIcon, Id, PointerButton, Pos2, Rect, ScrollArea, Sense, Shape, Ui, Vec2};
 use mpdelta_core::component::marker_pin::MarkerPin;
-use mpdelta_core::component::parameter::value::EasingValue;
+use mpdelta_core::component::parameter::value::{EasingValue, EasingValueEdit};
 use mpdelta_core::component::parameter::PinSplitValue;
 use mpdelta_core::project::TimelineTimeOfPin;
 use std::hash::Hash;
@@ -60,32 +60,36 @@ pub enum Side {
     Right,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
-pub enum EasingValueF64EditEvent {
-    FlipPin(usize),
-    MoveValueTemporary { value_index: usize, side: Side, value: f64 },
-    MoveValue { value_index: usize, side: Side, value: f64 },
-}
-
-pub struct EasingValueEditorF64<'a, P, H, F> {
+pub struct EasingValueEditorF64<'a, P, H> {
     pub id: H,
     pub time_range: Range<f64>,
     pub all_pins: &'a [MarkerPin],
     pub times: &'a P,
-    pub value: &'a PinSplitValue<Option<EasingValue<f64>>>,
+    pub value: &'a mut PinSplitValue<Option<EasingValue<f64>>>,
     pub value_range: Range<f64>,
     pub point_per_second: f64,
     pub scroll_offset: &'a mut f32,
-    pub update: F,
 }
 
-impl<'a, P, H, F> EasingValueEditorF64<'a, P, H, F>
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum UpdateStatus {
+    NotUpdated,
+    TemporaryUpdated,
+    Updated,
+}
+
+impl UpdateStatus {
+    pub fn is_updated(&self) -> bool {
+        !matches!(self, UpdateStatus::NotUpdated)
+    }
+}
+
+impl<'a, P, H> EasingValueEditorF64<'a, P, H>
 where
     P: TimelineTimeOfPin,
     H: Hash,
-    F: FnMut(EasingValueF64EditEvent) + 'a,
 {
-    pub fn show(self, ui: &mut Ui) {
+    pub fn show(self, ui: &mut Ui) -> UpdateStatus {
         let EasingValueEditorF64 {
             id,
             time_range,
@@ -95,8 +99,8 @@ where
             value_range,
             point_per_second,
             scroll_offset,
-            mut update,
         } = self;
+        let mut updated = UpdateStatus::NotUpdated;
         let id = Id::new(id);
         let scroll_area_output = ScrollArea::horizontal().id_source(id).scroll_offset(Vec2::new(*scroll_offset, 0.)).scroll_bar_visibility(ScrollBarVisibility::AlwaysHidden).show(ui, |ui| {
             let id = ui.make_persistent_id(id);
@@ -113,29 +117,31 @@ where
             let time_map = glam::Mat2::from_cols(glam::Vec2::new(time_range.start as f32, time_range.end as f32), glam::Vec2::new(1., 1.)).inverse() * glam::Vec2::new(plot_area_rect.left(), plot_area_rect.right());
             let value_map = glam::Mat2::from_cols(glam::Vec2::new(value_range.start as f32, value_range.end as f32), glam::Vec2::new(1., 1.)).inverse() * glam::Vec2::new(plot_area_rect.bottom(), plot_area_rect.top());
             {
-                let left = times.time_of_pin(value.get_time(0).unwrap().1).unwrap().value().into_f64() as f32;
+                let [left_pin, mid @ .., right_pin] = all_pins else { panic!() };
+                let left = times.time_of_pin(left_pin.id()).unwrap().value().into_f64() as f32;
                 let left_position = glam::Vec2::new(left, 1.).dot(time_map);
-                let response = ui.interact(Rect::from_x_y_ranges(left_position..=left_position + slider_width * 2., whole_rect.top()..=whole_rect.top() + slider_width * 3.), id.with(("pin_head", 0usize)), Sense::click());
-                if response.clicked() {
-                    update(EasingValueF64EditEvent::FlipPin(0));
-                }
-                for i in 1..value.len_time() - 1 {
-                    let time = times.time_of_pin(value.get_time(i).unwrap().1).unwrap().value().into_f64() as f32;
-                    let x = glam::Vec2::new(time, 1.).dot(time_map);
-                    let response = ui.interact(Rect::from_x_y_ranges(x - slider_width * 2.0..=x + slider_width * 2., whole_rect.top()..=whole_rect.top() + slider_width * 3.), id.with(("pin_head", i)), Sense::click());
-                    if response.clicked() {
-                        update(EasingValueF64EditEvent::FlipPin(i));
-                    }
-                }
-                let right = times.time_of_pin(value.get_time(value.len_time() - 1).unwrap().1).unwrap().value().into_f64() as f32;
+                let right = times.time_of_pin(right_pin.id()).unwrap().value().into_f64() as f32;
                 let right_position = glam::Vec2::new(right, 1.).dot(time_map);
-                let response = ui.interact(
-                    Rect::from_x_y_ranges(right_position - slider_width * 2.0..=right_position, whole_rect.top()..=whole_rect.top() + slider_width * 3.),
-                    id.with(("pin_head", value.len_time() - 1)),
-                    Sense::click(),
-                );
-                if response.clicked() {
-                    update(EasingValueF64EditEvent::FlipPin(value.len_time() - 1));
+                let iter = iter::once((left_pin, left_position..=left_position + slider_width * 2.))
+                    .chain(mid.iter().map(|pin| {
+                        let time = times.time_of_pin(pin.id()).unwrap().value().into_f64() as f32;
+                        let x = glam::Vec2::new(time, 1.).dot(time_map);
+                        (pin, x - slider_width * 2.0..=x + slider_width * 2.)
+                    }))
+                    .chain(iter::once((right_pin, right_position - slider_width * 2.0..=right_position)));
+                let mut value_time_index = 0;
+                for (i, (pin, x_range)) in iter.enumerate() {
+                    let response = ui.interact(Rect::from_x_y_ranges(x_range, whole_rect.top()..=whole_rect.top() + slider_width * 3.), id.with(("pin_head", i)), Sense::click());
+                    if value.get_time(value_time_index).unwrap().1 != pin.id() {
+                        if response.clicked() {
+                            value.split_value_by_clone(value_time_index - 1, *pin.id());
+                            updated = UpdateStatus::Updated;
+                        }
+                    } else if response.clicked() && value.merge_two_values_by_left(value_time_index).is_ok() {
+                        updated = UpdateStatus::Updated;
+                    } else {
+                        value_time_index += 1;
+                    }
                 }
             }
             {
@@ -150,8 +156,7 @@ where
             if state.updated() {
                 ui.data_mut(|data| data.insert_temp::<InnerState>(id, state.into()));
             }
-            let update_state = {
-                let mut update_state = None;
+            {
                 let cursor_y_range = Range {
                     start: glam::Vec2::new(value_range.end as f32, 1.).dot(value_map),
                     end: glam::Vec2::new(value_range.start as f32, 1.).dot(value_map),
@@ -159,65 +164,37 @@ where
                 for i in 0..value.len_value() {
                     let (left, _, right) = value.get_value(i).unwrap();
                     let left_time_position = glam::Vec2::new(times.time_of_pin(left).unwrap().value().into_f64() as f32, 1.).dot(time_map);
+                    let right_time_position = glam::Vec2::new(times.time_of_pin(right).unwrap().value().into_f64() as f32, 1.).dot(time_map);
+
                     let response = ui.interact(Rect::from_x_y_ranges(left_time_position..=left_time_position + slider_width * 2., plot_area_rect.y_range()), id.with(("pin_slider", i, Side::Left)), Sense::click_and_drag());
                     let interact_pointer_pos = response.interact_pointer_pos().map(|Pos2 { y, .. }| y.clamp(cursor_y_range.start, cursor_y_range.end));
                     let update_value = interact_pointer_pos.map(|y| ((y - value_map.y) / value_map.x) as f64);
                     if response.clicked_by(PointerButton::Primary) || response.drag_released_by(PointerButton::Primary) {
-                        assert!(update_state
-                            .replace((
-                                EasingValueF64EditEvent::MoveValue {
-                                    value_index: i,
-                                    side: Side::Left,
-                                    value: update_value.unwrap(),
-                                },
-                                interact_pointer_pos.unwrap()
-                            ))
-                            .is_none());
+                        if let Some(easing_value) = value.get_value_mut(i).unwrap() {
+                            easing_value.value.edit_value::<(f64, f64), _>(|(left, _)| *left = update_value.unwrap()).expect("downcast error");
+                            updated = UpdateStatus::Updated;
+                        }
                     } else if response.dragged_by(PointerButton::Primary) {
-                        assert!(update_state
-                            .replace((
-                                EasingValueF64EditEvent::MoveValueTemporary {
-                                    value_index: i,
-                                    side: Side::Left,
-                                    value: update_value.unwrap(),
-                                },
-                                interact_pointer_pos.unwrap()
-                            ))
-                            .is_none());
+                        if let Some(easing_value) = value.get_value_mut(i).unwrap() {
+                            easing_value.value.edit_value::<(f64, f64), _>(|(left, _)| *left = update_value.unwrap()).expect("downcast error");
+                            updated = UpdateStatus::TemporaryUpdated;
+                        }
                     }
-                    let right_time_position = glam::Vec2::new(times.time_of_pin(right).unwrap().value().into_f64() as f32, 1.).dot(time_map);
                     let response = ui.interact(Rect::from_x_y_ranges(right_time_position - slider_width * 2.0..=right_time_position, plot_area_rect.y_range()), id.with(("pin_slider", i, Side::Right)), Sense::click_and_drag());
                     let interact_pointer_pos = response.interact_pointer_pos().map(|Pos2 { y, .. }| y.clamp(cursor_y_range.start, cursor_y_range.end));
                     let update_value = interact_pointer_pos.map(|y| ((y - value_map.y) / value_map.x) as f64);
                     if response.clicked_by(PointerButton::Primary) || response.drag_released_by(PointerButton::Primary) {
-                        assert!(update_state
-                            .replace((
-                                EasingValueF64EditEvent::MoveValue {
-                                    value_index: i,
-                                    side: Side::Right,
-                                    value: update_value.unwrap(),
-                                },
-                                interact_pointer_pos.unwrap()
-                            ))
-                            .is_none());
+                        if let Some(easing_value) = value.get_value_mut(i).unwrap() {
+                            easing_value.value.edit_value::<(f64, f64), _>(|(_, right)| *right = update_value.unwrap()).expect("downcast error");
+                            updated = UpdateStatus::Updated;
+                        }
                     } else if response.dragged_by(PointerButton::Primary) {
-                        assert!(update_state
-                            .replace((
-                                EasingValueF64EditEvent::MoveValueTemporary {
-                                    value_index: i,
-                                    side: Side::Right,
-                                    value: update_value.unwrap(),
-                                },
-                                interact_pointer_pos.unwrap()
-                            ))
-                            .is_none());
+                        if let Some(easing_value) = value.get_value_mut(i).unwrap() {
+                            easing_value.value.edit_value::<(f64, f64), _>(|(_, right)| *right = update_value.unwrap()).expect("downcast error");
+                            updated = UpdateStatus::TemporaryUpdated;
+                        }
                     }
                 }
-                update_state
-            };
-
-            if let Some((edit, _)) = update_state {
-                update(edit);
             }
 
             let mut pins = all_pins;
@@ -261,19 +238,12 @@ where
             let foreground_pin = (0..value.len_time()).flat_map(|i| {
                 let (left, time, right) = value.get_time(i).unwrap();
                 let base_time_pixel = glam::Vec2::new(times.time_of_pin(time).unwrap().value().into_f64() as f32, 1.).dot(time_map);
-                let (moving_segment_left, moving_segment_right, override_pos) = update_state
-                    .map(|(update_state, pos)| match update_state {
-                        EasingValueF64EditEvent::MoveValueTemporary { value_index, side: Side::Left, .. } | EasingValueF64EditEvent::MoveValue { value_index, side: Side::Left, .. } => (value_index == i, false, pos),
-                        EasingValueF64EditEvent::MoveValueTemporary { value_index, side: Side::Right, .. } | EasingValueF64EditEvent::MoveValue { value_index, side: Side::Right, .. } => (false, value_index + 1 == i, pos),
-                        _ => unreachable!(),
-                    })
-                    .unwrap_or_default();
                 let visuals = ui.visuals();
-                let slider_visuals_pin_right = if moving_segment_left { &visuals.widgets.active } else { &visuals.widgets.inactive };
-                let slider_visuals_pin_left = if moving_segment_right { &visuals.widgets.active } else { &visuals.widgets.inactive };
+                let slider_visuals_pin_right = &visuals.widgets.inactive;
+                let slider_visuals_pin_left = &visuals.widgets.inactive;
 
-                let get_pin_right_position = |value: &EasingValue<f64>| if moving_segment_left { override_pos } else { glam::Vec2::new(value.get_value(0.) as f32, 1.).dot(value_map) };
-                let get_pin_left_position = |value: &EasingValue<f64>| if moving_segment_right { override_pos } else { glam::Vec2::new(value.get_value(1.) as f32, 1.).dot(value_map) };
+                let get_pin_right_position = |value: &EasingValue<f64>| glam::Vec2::new(value.get_value(0.) as f32, 1.).dot(value_map);
+                let get_pin_left_position = |value: &EasingValue<f64>| glam::Vec2::new(value.get_value(1.) as f32, 1.).dot(value_map);
 
                 let pin_shape = match (left.and_then(Option::as_ref), right.and_then(Option::as_ref)) {
                     (Some(left_value), Some(right_value)) => {
@@ -440,18 +410,24 @@ where
                     let text_box_width = 32.;
                     ui.allocate_ui_at_rect(Rect::from_min_max(Pos2::new(left_pixel, plot_area_rect.bottom() + slider_width), Pos2::new(left_pixel + text_box_width, plot_area_rect.bottom() + text_box_height)), |ui| {
                         if ui.text_edit_singleline(left_buffer).changed() {
-                            let Ok(value) = left_buffer.parse() else {
+                            let Ok(update_value) = left_buffer.parse() else {
                                 return;
                             };
-                            update(EasingValueF64EditEvent::MoveValue { value_index, side: Side::Left, value });
+                            if let Some(easing_value) = value.get_value_mut(value_index).unwrap() {
+                                easing_value.value.edit_value::<(f64, f64), _>(|(left, _)| *left = update_value).expect("downcast error");
+                                updated = UpdateStatus::Updated;
+                            }
                         };
                     });
                     ui.allocate_ui_at_rect(Rect::from_min_max(Pos2::new(right_pixel - text_box_width, plot_area_rect.bottom() + slider_width), Pos2::new(right_pixel, plot_area_rect.bottom() + text_box_height)), |ui| {
                         if ui.text_edit_singleline(right_buffer).changed() {
-                            let Ok(value) = right_buffer.parse() else {
+                            let Ok(update_value) = right_buffer.parse() else {
                                 return;
                             };
-                            update(EasingValueF64EditEvent::MoveValue { value_index, side: Side::Right, value });
+                            if let Some(easing_value) = value.get_value_mut(value_index).unwrap() {
+                                easing_value.value.edit_value::<(f64, f64), _>(|(_, right)| *right = update_value).expect("downcast error");
+                                updated = UpdateStatus::Updated;
+                            }
                         }
                     });
                 }
@@ -459,6 +435,7 @@ where
             ui.data_mut(|data| data.insert_temp::<Arc<Mutex<Box<[String]>>>>(value_string_buffer_id, value_string_buffer));
         });
         *scroll_offset = scroll_area_output.state.offset.x;
+        updated
     }
 }
 
@@ -535,7 +512,7 @@ mod tests {
                     MarkerPin::new_unlocked(id.generate_new()),
                     MarkerPin::new_unlocked(id.generate_new()),
                 ];
-                let value = time_split_value_persistent!(
+                let mut value = time_split_value_persistent!(
                     *all_pins[0].id(),
                     Some(EasingValue::new(LinearEasingF64 { start: 0., end: 1. }, Arc::new(Easing1))),
                     *all_pins[1].id(),
@@ -550,11 +527,10 @@ mod tests {
                     time_range: 1.0..5.0,
                     all_pins: &all_pins,
                     times: &HashMap::from_iter(all_pins.iter().enumerate().map(|(i, p)| (*p.id(), TimelineTime::new(MixedFraction::from_integer(i as i32))))),
-                    value: &value,
+                    value: &mut value,
                     value_range: -0.5..1.5,
                     point_per_second: 150.,
                     scroll_offset: &mut scroll_offset,
-                    update: |_| {},
                 };
             };
         }

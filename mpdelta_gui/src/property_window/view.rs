@@ -1,17 +1,16 @@
-use crate::property_window::view::widgets::editable_easing_value_f64::{EasingValueEditorF64, EasingValueF64EditEvent, Side};
-use crate::property_window::view::widgets::editable_easing_value_string::{EasingValueEditorString, EasingValueStringEditEvent};
+use crate::property_window::view::widgets::editable_easing_value_f64::EasingValueEditorF64;
+use crate::property_window::view::widgets::editable_easing_value_string::EasingValueEditorString;
 use crate::property_window::viewmodel::{ParametersEditSet, PropertyWindowViewModel, WithName};
 use cgmath::Vector3;
 use egui::scroll_area::ScrollBarVisibility;
 use egui::style::ScrollStyle;
 use egui::{ScrollArea, Sense, Ui, Vec2};
-use mpdelta_core::component::parameter::value::{EasingValue, EasingValueEdit, SingleValueEdit};
-use mpdelta_core::component::parameter::{ImageRequiredParamsTransform, Parameter, ParameterValueFixed, ParameterValueType, PinSplitValue, VariableParameterValue};
-use smallvec::SmallVec;
+use mpdelta_core::component::parameter::value::SingleValueEdit;
+use mpdelta_core::component::parameter::{ImageRequiredParamsTransform, Parameter, ParameterValueFixed, ParameterValueType, VariableParameterValue};
 use std::marker::PhantomData;
+use std::mem;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::{iter, mem};
 
 mod widgets;
 
@@ -19,60 +18,6 @@ pub struct PropertyWindow<T, VM> {
     view_model: Arc<VM>,
     scroll_offset: f32,
     _phantom: PhantomData<T>,
-}
-
-fn extend_fn<T, E: Extend<T>>(e: &mut E) -> impl FnMut(T) + '_ {
-    move |t| e.extend(iter::once(t))
-}
-
-fn edit_value_f64_by_event(translate_x: &mut PinSplitValue<Option<EasingValue<f64>>>, edit_events: SmallVec<[EasingValueF64EditEvent; 1]>) -> bool {
-    let mut edited = false;
-    for edit in edit_events {
-        let (slot, side, value) = match edit {
-            EasingValueF64EditEvent::FlipPin(_) => {
-                eprintln!("not supported");
-                continue;
-            }
-            EasingValueF64EditEvent::MoveValueTemporary { value_index, side, value } => {
-                let Some(Some(slot)) = translate_x.get_value_mut(value_index) else { unreachable!() };
-                (slot, side, value)
-            }
-            EasingValueF64EditEvent::MoveValue { value_index, side, value } => {
-                let Some(Some(slot)) = translate_x.get_value_mut(value_index) else { unreachable!() };
-                edited = true;
-                (slot, side, value)
-            }
-        };
-        slot.value
-            .edit_value::<(f64, f64), _>(|(left, right)| {
-                let ptr = match side {
-                    Side::Left => left,
-                    Side::Right => right,
-                };
-                *ptr = value;
-            })
-            .unwrap();
-    }
-    edited
-}
-
-fn edit_value_string_by_event(slot: &mut PinSplitValue<Option<EasingValue<String>>>, edit_events: SmallVec<[EasingValueStringEditEvent; 1]>) -> bool {
-    let mut edited = false;
-    for edit in edit_events {
-        let (slot, value) = match edit {
-            EasingValueStringEditEvent::FlipPin(_) => {
-                eprintln!("not supported");
-                continue;
-            }
-            EasingValueStringEditEvent::UpdateValue { value_index, value } => {
-                let Some(Some(slot)) = slot.get_value_mut(value_index) else { unreachable!() };
-                edited = true;
-                (slot, value)
-            }
-        };
-        slot.value.edit_value::<String, _>(|slot| *slot = value).unwrap();
-    }
-    edited
 }
 
 impl<T: ParameterValueType, VM: PropertyWindowViewModel<T>> PropertyWindow<T, VM> {
@@ -119,8 +64,7 @@ impl<T: ParameterValueType, VM: PropertyWindowViewModel<T>> PropertyWindow<T, VM
                                         ..
                                     } = Arc::make_mut(translate);
                                     ui.label("position - X");
-                                    let mut edit_events = SmallVec::<[_; 1]>::new();
-                                    EasingValueEditorF64 {
+                                    edited |= EasingValueEditorF64 {
                                         id: "position - X",
                                         time_range: instance_range.clone(),
                                         all_pins,
@@ -129,13 +73,11 @@ impl<T: ParameterValueType, VM: PropertyWindowViewModel<T>> PropertyWindow<T, VM
                                         value_range: -3.0..3.0,
                                         point_per_second,
                                         scroll_offset: &mut self.scroll_offset,
-                                        update: extend_fn(&mut edit_events),
                                     }
-                                    .show(ui);
-                                    edited |= edit_value_f64_by_event(translate_x, edit_events);
-                                    let mut edit_events = SmallVec::<[_; 1]>::new();
+                                    .show(ui)
+                                    .is_updated();
                                     ui.label("position - Y");
-                                    EasingValueEditorF64 {
+                                    edited |= EasingValueEditorF64 {
                                         id: "position - Y",
                                         time_range: instance_range.clone(),
                                         all_pins,
@@ -144,13 +86,11 @@ impl<T: ParameterValueType, VM: PropertyWindowViewModel<T>> PropertyWindow<T, VM
                                         value_range: -3.0..3.0,
                                         point_per_second,
                                         scroll_offset: &mut self.scroll_offset,
-                                        update: extend_fn(&mut edit_events),
                                     }
-                                    .show(ui);
-                                    edited |= edit_value_f64_by_event(translate_y, edit_events);
-                                    let mut edit_events = SmallVec::<[_; 1]>::new();
+                                    .show(ui)
+                                    .is_updated();
                                     ui.label("size - X");
-                                    EasingValueEditorF64 {
+                                    edited |= EasingValueEditorF64 {
                                         id: "size - X",
                                         time_range: instance_range.clone(),
                                         all_pins,
@@ -159,13 +99,11 @@ impl<T: ParameterValueType, VM: PropertyWindowViewModel<T>> PropertyWindow<T, VM
                                         value_range: 0.0..2.0,
                                         point_per_second,
                                         scroll_offset: &mut self.scroll_offset,
-                                        update: extend_fn(&mut edit_events),
                                     }
-                                    .show(ui);
-                                    edited |= edit_value_f64_by_event(size_x, edit_events);
-                                    let mut edit_events = SmallVec::<[_; 1]>::new();
+                                    .show(ui)
+                                    .is_updated();
                                     ui.label("size - Y");
-                                    EasingValueEditorF64 {
+                                    edited |= EasingValueEditorF64 {
                                         id: "size - Y",
                                         time_range: instance_range.clone(),
                                         all_pins,
@@ -174,13 +112,11 @@ impl<T: ParameterValueType, VM: PropertyWindowViewModel<T>> PropertyWindow<T, VM
                                         value_range: 0.0..2.0,
                                         point_per_second,
                                         scroll_offset: &mut self.scroll_offset,
-                                        update: extend_fn(&mut edit_events),
                                     }
-                                    .show(ui);
-                                    edited |= edit_value_f64_by_event(size_y, edit_events);
-                                    let mut edit_events = SmallVec::<[_; 1]>::new();
+                                    .show(ui)
+                                    .is_updated();
                                     ui.label("scale - X");
-                                    EasingValueEditorF64 {
+                                    edited |= EasingValueEditorF64 {
                                         id: "scale - X",
                                         time_range: instance_range.clone(),
                                         all_pins,
@@ -189,13 +125,11 @@ impl<T: ParameterValueType, VM: PropertyWindowViewModel<T>> PropertyWindow<T, VM
                                         value_range: 0.0..2.0,
                                         point_per_second,
                                         scroll_offset: &mut self.scroll_offset,
-                                        update: extend_fn(&mut edit_events),
                                     }
-                                    .show(ui);
-                                    edited |= edit_value_f64_by_event(scale_x, edit_events);
-                                    let mut edit_events = SmallVec::<[_; 1]>::new();
+                                    .show(ui)
+                                    .is_updated();
                                     ui.label("scale - Y");
-                                    EasingValueEditorF64 {
+                                    edited |= EasingValueEditorF64 {
                                         id: "scale - Y",
                                         time_range: instance_range.clone(),
                                         all_pins,
@@ -204,10 +138,9 @@ impl<T: ParameterValueType, VM: PropertyWindowViewModel<T>> PropertyWindow<T, VM
                                         value_range: 0.0..2.0,
                                         point_per_second,
                                         scroll_offset: &mut self.scroll_offset,
-                                        update: extend_fn(&mut edit_events),
                                     }
-                                    .show(ui);
-                                    edited |= edit_value_f64_by_event(scale_y, edit_events);
+                                    .show(ui)
+                                    .is_updated();
                                 }
                                 if edited {
                                     self.view_model.updated_image_required_params(image_required_params);
@@ -276,8 +209,7 @@ impl<T: ParameterValueType, VM: PropertyWindowViewModel<T>> PropertyWindow<T, VM
                                     Parameter::Audio(_value) => {}
                                     Parameter::Binary(_value) => {}
                                     Parameter::String(value) => {
-                                        let mut edit_events = SmallVec::<[_; 1]>::new();
-                                        EasingValueEditorString {
+                                        edited |= EasingValueEditorString {
                                             id: name,
                                             time_range: instance_range.clone(),
                                             all_pins,
@@ -285,10 +217,9 @@ impl<T: ParameterValueType, VM: PropertyWindowViewModel<T>> PropertyWindow<T, VM
                                             value,
                                             point_per_second,
                                             scroll_offset: &mut self.scroll_offset,
-                                            update: extend_fn(&mut edit_events),
                                         }
-                                        .show(ui);
-                                        edited |= edit_value_string_by_event(value, edit_events);
+                                        .show(ui)
+                                        .is_updated();
                                         continue;
                                     }
                                     Parameter::Integer(_value) => {}

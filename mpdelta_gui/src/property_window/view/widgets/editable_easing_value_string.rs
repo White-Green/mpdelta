@@ -53,13 +53,7 @@ impl From<InnerStateEdit> for InnerState {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
-pub enum EasingValueStringEditEvent {
-    FlipPin(usize),
-    UpdateValue { value_index: usize, value: String },
-}
-
-pub struct EasingValueEditorString<'a, P, H, F> {
+pub struct EasingValueEditorString<'a, P, H> {
     pub id: H,
     pub time_range: Range<f64>,
     pub all_pins: &'a [MarkerPin],
@@ -67,16 +61,26 @@ pub struct EasingValueEditorString<'a, P, H, F> {
     pub value: &'a mut PinSplitValue<Option<EasingValue<String>>>,
     pub point_per_second: f64,
     pub scroll_offset: &'a mut f32,
-    pub update: F,
 }
 
-impl<'a, P, H, F> EasingValueEditorString<'a, P, H, F>
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum UpdateStatus {
+    NotUpdated,
+    Updated,
+}
+
+impl UpdateStatus {
+    pub fn is_updated(&self) -> bool {
+        matches!(self, UpdateStatus::Updated)
+    }
+}
+
+impl<'a, P, H> EasingValueEditorString<'a, P, H>
 where
     P: TimelineTimeOfPin,
     H: Hash,
-    F: FnMut(EasingValueStringEditEvent) + 'a,
 {
-    pub fn show(self, ui: &mut Ui) {
+    pub fn show(self, ui: &mut Ui) -> UpdateStatus {
         let EasingValueEditorString {
             id,
             time_range,
@@ -85,8 +89,8 @@ where
             value,
             point_per_second,
             scroll_offset,
-            mut update,
         } = self;
+        let mut updated = UpdateStatus::NotUpdated;
         let id = Id::new(id);
         let scroll_area_output = ScrollArea::horizontal().id_source(id).scroll_offset(Vec2::new(*scroll_offset, 0.)).scroll_bar_visibility(ScrollBarVisibility::AlwaysHidden).show(ui, |ui| {
             let id = ui.make_persistent_id(id);
@@ -101,29 +105,31 @@ where
             let plot_area_rect = whole_rect.with_min_y(whole_rect.top() + slider_width * 3.).with_max_y(whole_rect.bottom() - slider_width);
             let time_map = glam::Mat2::from_cols(glam::Vec2::new(time_range.start as f32, time_range.end as f32), glam::Vec2::new(1., 1.)).inverse() * glam::Vec2::new(plot_area_rect.left(), plot_area_rect.right());
             {
-                let left = times.time_of_pin(value.get_time(0).unwrap().1).unwrap().value().into_f64() as f32;
+                let [left_pin, mid @ .., right_pin] = all_pins else { panic!() };
+                let left = times.time_of_pin(left_pin.id()).unwrap().value().into_f64() as f32;
                 let left_position = glam::Vec2::new(left, 1.).dot(time_map);
-                let response = ui.interact(Rect::from_x_y_ranges(left_position..=left_position + slider_width * 2., whole_rect.top()..=whole_rect.top() + slider_width * 3.), id.with(("pin_head", 0usize)), Sense::click());
-                if response.clicked() {
-                    update(EasingValueStringEditEvent::FlipPin(0));
-                }
-                for i in 1..value.len_time() - 1 {
-                    let time = times.time_of_pin(value.get_time(i).unwrap().1).unwrap().value().into_f64() as f32;
-                    let x = glam::Vec2::new(time, 1.).dot(time_map);
-                    let response = ui.interact(Rect::from_x_y_ranges(x - slider_width * 2.0..=x + slider_width * 2., whole_rect.top()..=whole_rect.top() + slider_width * 3.), id.with(("pin_head", i)), Sense::click());
-                    if response.clicked() {
-                        update(EasingValueStringEditEvent::FlipPin(i));
-                    }
-                }
-                let right = times.time_of_pin(value.get_time(value.len_time() - 1).unwrap().1).unwrap().value().into_f64() as f32;
+                let right = times.time_of_pin(right_pin.id()).unwrap().value().into_f64() as f32;
                 let right_position = glam::Vec2::new(right, 1.).dot(time_map);
-                let response = ui.interact(
-                    Rect::from_x_y_ranges(right_position - slider_width * 2.0..=right_position, whole_rect.top()..=whole_rect.top() + slider_width * 3.),
-                    id.with(("pin_head", value.len_time() - 1)),
-                    Sense::click(),
-                );
-                if response.clicked() {
-                    update(EasingValueStringEditEvent::FlipPin(value.len_time() - 1));
+                let iter = iter::once((left_pin, left_position..=left_position + slider_width * 2.))
+                    .chain(mid.iter().map(|pin| {
+                        let time = times.time_of_pin(pin.id()).unwrap().value().into_f64() as f32;
+                        let x = glam::Vec2::new(time, 1.).dot(time_map);
+                        (pin, x - slider_width * 2.0..=x + slider_width * 2.)
+                    }))
+                    .chain(iter::once((right_pin, right_position - slider_width * 2.0..=right_position)));
+                let mut value_time_index = 0;
+                for (i, (pin, x_range)) in iter.enumerate() {
+                    let response = ui.interact(Rect::from_x_y_ranges(x_range, whole_rect.top()..=whole_rect.top() + slider_width * 3.), id.with(("pin_head", i)), Sense::click());
+                    if value.get_time(value_time_index).unwrap().1 != pin.id() {
+                        if response.clicked() {
+                            value.split_value_by_clone(value_time_index - 1, *pin.id());
+                            updated = UpdateStatus::Updated;
+                        }
+                    } else if response.clicked() && value.merge_two_values_by_left(value_time_index).is_ok() {
+                        updated = UpdateStatus::Updated;
+                    } else {
+                        value_time_index += 1;
+                    }
                 }
             }
             {
@@ -231,8 +237,7 @@ where
             let shapes = iter::empty().chain(background_pin).chain(iter::once(Shape::Rect(RectShape::new(plot_area_rect, 0., widget_visuals.weak_bg_fill, widget_visuals.bg_stroke)))).chain(foreground_pin);
             painter.extend(shapes);
 
-            let update_state = {
-                let mut update_state = None;
+            {
                 for i in 0..value.len_value() {
                     let (&left, _, &right) = value.get_value(i).unwrap();
                     let value = value.get_value_mut(i).unwrap();
@@ -240,28 +245,21 @@ where
                     let right = glam::Vec2::new(times.time_of_pin(&right).unwrap().value().into_f64() as f32, 1.).dot(time_map);
                     if let Some(EasingValue { value, .. }) = value {
                         let result = value.edit_value(|s: &mut String| {
-                            let s_clone = s.clone();
                             let rect = plot_area_rect.with_min_x(left).with_max_x(right);
-                            ui.allocate_ui_at_rect(rect, |ui| {
-                                TextEdit::multiline(s).min_size(rect.size()).show(ui);
-                            });
-                            (*s != s_clone).then(|| EasingValueStringEditEvent::UpdateValue { value_index: i, value: s.clone() })
+                            let edit_output = ui.allocate_ui_at_rect(rect, |ui| TextEdit::multiline(s).min_size(rect.size()).show(ui).response.changed());
+                            edit_output.inner
                         });
                         match result {
-                            Ok(None) => {}
-                            Ok(Some(update)) => assert!(update_state.replace(update).is_none()),
+                            Ok(false) => {}
+                            Ok(true) => updated = UpdateStatus::Updated,
                             Err(e) => eprintln!("{e}"),
                         }
                     }
                 }
-                update_state
-            };
-
-            if let Some(edit) = update_state {
-                update(edit);
             }
         });
         *scroll_offset = scroll_area_output.state.offset.x;
+        updated
     }
 }
 
@@ -314,7 +312,6 @@ mod tests {
                     value: &mut value,
                     point_per_second: 150.,
                     scroll_offset: &mut scroll_offset,
-                    update: |_| {},
                 };
             };
         }

@@ -62,6 +62,7 @@ pub enum Side {
 
 pub struct EasingValueEditorF64<'a, P, H> {
     pub id: H,
+    pub reset: bool,
     pub time_range: Range<f64>,
     pub all_pins: &'a [MarkerPin],
     pub times: &'a P,
@@ -92,6 +93,7 @@ where
     pub fn show(self, ui: &mut Ui) -> UpdateStatus {
         let EasingValueEditorF64 {
             id,
+            reset,
             time_range,
             all_pins,
             times,
@@ -382,7 +384,7 @@ where
 
             let value_string_buffer_id = id.with("value_string_buffer");
             let value_string_buffer = ui.data(|data| {
-                data.get_temp::<Arc<Mutex<Box<[String]>>>>(value_string_buffer_id).filter(|buffers| buffers.lock().unwrap().len() == value.len_value() * 2).unwrap_or_else(|| {
+                data.get_temp::<Arc<Mutex<Box<[String]>>>>(value_string_buffer_id).filter(|buffers| !reset && buffers.lock().unwrap().len() == value.len_value() * 2).unwrap_or_else(|| {
                     Arc::new(Mutex::new(
                         (0..value.len_value())
                             .flat_map(|i| {
@@ -524,6 +526,7 @@ mod tests {
                 let mut scroll_offset = 0.;
                 let $editor = EasingValueEditorF64 {
                     id: "editor",
+                    reset: false,
                     time_range: 1.0..5.0,
                     all_pins: &all_pins,
                     times: &HashMap::from_iter(all_pins.iter().enumerate().map(|(i, p)| (*p.id(), TimelineTime::new(MixedFraction::from_integer(i as i32))))),

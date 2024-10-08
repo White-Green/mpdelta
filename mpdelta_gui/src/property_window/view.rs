@@ -27,6 +27,7 @@ impl<T: ParameterValueType, VM: PropertyWindowViewModel<T>> PropertyWindow<T, VM
 
     pub fn ui(&mut self, ui: &mut Ui) {
         let id = ui.make_persistent_id("PropertyWindow");
+        let updated_now = self.view_model.is_updated_now();
         let instance_range = self.view_model.selected_instance_at();
         let instance_length = (instance_range.end - instance_range.start) as f32;
         let point_per_second = 320.;
@@ -66,6 +67,7 @@ impl<T: ParameterValueType, VM: PropertyWindowViewModel<T>> PropertyWindow<T, VM
                                     ui.label("position - X");
                                     edited |= EasingValueEditorF64 {
                                         id: "position - X",
+                                        reset: updated_now,
                                         time_range: instance_range.clone(),
                                         all_pins,
                                         times: pin_times.as_ref(),
@@ -79,6 +81,7 @@ impl<T: ParameterValueType, VM: PropertyWindowViewModel<T>> PropertyWindow<T, VM
                                     ui.label("position - Y");
                                     edited |= EasingValueEditorF64 {
                                         id: "position - Y",
+                                        reset: updated_now,
                                         time_range: instance_range.clone(),
                                         all_pins,
                                         times: pin_times.as_ref(),
@@ -92,6 +95,7 @@ impl<T: ParameterValueType, VM: PropertyWindowViewModel<T>> PropertyWindow<T, VM
                                     ui.label("size - X");
                                     edited |= EasingValueEditorF64 {
                                         id: "size - X",
+                                        reset: updated_now,
                                         time_range: instance_range.clone(),
                                         all_pins,
                                         times: pin_times.as_ref(),
@@ -105,6 +109,7 @@ impl<T: ParameterValueType, VM: PropertyWindowViewModel<T>> PropertyWindow<T, VM
                                     ui.label("size - Y");
                                     edited |= EasingValueEditorF64 {
                                         id: "size - Y",
+                                        reset: updated_now,
                                         time_range: instance_range.clone(),
                                         all_pins,
                                         times: pin_times.as_ref(),
@@ -118,6 +123,7 @@ impl<T: ParameterValueType, VM: PropertyWindowViewModel<T>> PropertyWindow<T, VM
                                     ui.label("scale - X");
                                     edited |= EasingValueEditorF64 {
                                         id: "scale - X",
+                                        reset: updated_now,
                                         time_range: instance_range.clone(),
                                         all_pins,
                                         times: pin_times.as_ref(),
@@ -131,6 +137,7 @@ impl<T: ParameterValueType, VM: PropertyWindowViewModel<T>> PropertyWindow<T, VM
                                     ui.label("scale - Y");
                                     edited |= EasingValueEditorF64 {
                                         id: "scale - Y",
+                                        reset: updated_now,
                                         time_range: instance_range.clone(),
                                         all_pins,
                                         times: pin_times.as_ref(),
@@ -291,6 +298,10 @@ mod tests {
             params: Mutex<Option<ParametersEditSet<T, HashMap<MarkerPinId, TimelineTime>>>>,
         }
         impl PropertyWindowViewModel<T> for VM {
+            fn is_updated_now(&self) -> bool {
+                false
+            }
+
             fn selected_instance_at(&self) -> Range<f64> {
                 0.0..1.0
             }

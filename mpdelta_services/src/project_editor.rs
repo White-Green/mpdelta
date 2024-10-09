@@ -355,6 +355,7 @@ where
                 {
                     let mut item = root.get_mut().await;
                     let component = item.component_mut(target_ref).ok_or(ProjectEditError::ComponentInstanceNotFound)?;
+                    let pins = [component.marker_left(), component.marker_right()].into_iter().chain(component.markers()).map(MarkerPin::id).copied().collect::<HashSet<_>>();
                     let slot = component.variable_parameters_mut();
                     if slot.len() != params.len() {
                         return Err(ProjectEditError::ParameterTypeMismatch);
@@ -366,6 +367,33 @@ where
                             if slot.params.select() != value.params.select() {
                                 return Err(ProjectEditError::ParameterTypeMismatch);
                             }
+                            fn all_valid_pins<T>(value: &PinSplitValue<T>, pins: &HashSet<MarkerPinId>) -> Result<(), ProjectEditError> {
+                                if (0..value.len_time()).all(|i| pins.contains(value.get_time(i).unwrap().1)) {
+                                    Ok(())
+                                } else {
+                                    Err(ProjectEditError::MarkerPinNotFound)
+                                }
+                            }
+                            match &value.params {
+                                Parameter::None => {}
+                                Parameter::Image(value) => all_valid_pins(value, &pins)?,
+                                Parameter::Audio(value) => all_valid_pins(value, &pins)?,
+                                Parameter::Binary(value) => all_valid_pins(value, &pins)?,
+                                Parameter::String(value) => all_valid_pins(value, &pins)?,
+                                Parameter::Integer(value) => all_valid_pins(value, &pins)?,
+                                Parameter::RealNumber(value) => all_valid_pins(value, &pins)?,
+                                Parameter::Boolean(value) => all_valid_pins(value, &pins)?,
+                                Parameter::Dictionary(value) => {
+                                    let _: &Never = value;
+                                    unreachable!();
+                                }
+                                Parameter::Array(value) => {
+                                    let _: &Never = value;
+                                    unreachable!();
+                                }
+                                Parameter::ComponentClass(_) => {}
+                            }
+
                             Ok(value.clone())
                         })
                         .collect::<Result<_, _>>()?;
@@ -381,7 +409,58 @@ where
                 {
                     let mut item = root.get_mut().await;
                     let component = item.component_mut(target_ref).ok_or(ProjectEditError::ComponentInstanceNotFound)?;
+                    let pins = [component.marker_left(), component.marker_right()].into_iter().chain(component.markers()).map(MarkerPin::id).copied().collect::<HashSet<_>>();
+                    fn all_valid_pins<T>(value: &PinSplitValue<T>, pins: &HashSet<MarkerPinId>) -> Result<(), ProjectEditError> {
+                        if (0..value.len_time()).all(|i| pins.contains(value.get_time(i).unwrap().1)) {
+                            Ok(())
+                        } else {
+                            Err(ProjectEditError::MarkerPinNotFound)
+                        }
+                    }
+                    fn all_valid_pins3(value: &Vector3Params, pins: &HashSet<MarkerPinId>) -> Result<(), ProjectEditError> {
+                        if (0..value.x.params.len_time()).all(|i| pins.contains(value.x.params.get_time(i).unwrap().1))
+                            && (0..value.y.params.len_time()).all(|i| pins.contains(value.y.params.get_time(i).unwrap().1))
+                            && (0..value.z.params.len_time()).all(|i| pins.contains(value.z.params.get_time(i).unwrap().1))
+                        {
+                            Ok(())
+                        } else {
+                            Err(ProjectEditError::MarkerPinNotFound)
+                        }
+                    }
+                    let ImageRequiredParams {
+                        transform,
+                        background_color: _,
+                        opacity,
+                        blend_mode,
+                        composite_operation,
+                    } = &params;
                     component.set_image_required_params(params.clone());
+                    match &**transform {
+                        ImageRequiredParamsTransform::Params {
+                            size,
+                            scale,
+                            translate,
+                            rotate,
+                            scale_center,
+                            rotate_center,
+                        } => {
+                            all_valid_pins3(size, &pins)?;
+                            all_valid_pins3(scale, &pins)?;
+                            all_valid_pins3(translate, &pins)?;
+                            all_valid_pins(rotate, &pins)?;
+                            all_valid_pins3(scale_center, &pins)?;
+                            all_valid_pins3(rotate_center, &pins)?;
+                        }
+                        ImageRequiredParamsTransform::Free { left_top, right_top, left_bottom, right_bottom } => {
+                            all_valid_pins3(left_top, &pins)?;
+                            all_valid_pins3(right_top, &pins)?;
+                            all_valid_pins3(left_bottom, &pins)?;
+                            all_valid_pins3(right_bottom, &pins)?;
+                        }
+                    }
+                    all_valid_pins(opacity, &pins)?;
+                    all_valid_pins(blend_mode, &pins)?;
+                    all_valid_pins(composite_operation, &pins)?;
 
                     let time_map = mpdelta_differential::collect_cached_time(&*item)?;
                     RootComponentClassItemWrite::commit_changes(item, time_map);

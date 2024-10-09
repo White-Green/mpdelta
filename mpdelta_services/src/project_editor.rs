@@ -7,7 +7,7 @@ use mpdelta_core::common::time_split_value_persistent::TimeSplitValuePersistent;
 use mpdelta_core::component::instance::{ComponentInstance, ComponentInstanceId};
 use mpdelta_core::component::link::MarkerLink;
 use mpdelta_core::component::marker_pin::{MarkerPin, MarkerPinId, MarkerTime};
-use mpdelta_core::component::parameter::{AudioRequiredParams, ImageRequiredParams, ImageRequiredParamsTransform, ParameterNullableValue, ParameterValueType, PinSplitValue, VariableParameterValue};
+use mpdelta_core::component::parameter::{AudioRequiredParams, ImageRequiredParams, ImageRequiredParamsTransform, Never, Parameter, ParameterNullableValue, ParameterValueType, PinSplitValue, SingleChannelVolume, VariableParameterValue, Vector3Params};
 use mpdelta_core::core::{EditEventListener, Editor, IdGenerator};
 use mpdelta_core::edit::{InstanceEditCommand, InstanceEditEvent, RootComponentEditCommand, RootComponentEditEvent};
 use mpdelta_core::project::{RootComponentClassHandle, RootComponentClassItemWrite};
@@ -674,7 +674,138 @@ where
                         item_structure.add_link(link)
                     }
 
-                    item_structure.component_mut(target_ref).unwrap().markers_mut().remove(remove_marker_index);
+                    let target = item_structure.component_mut(target_ref).unwrap();
+                    target.markers_mut().remove(remove_marker_index);
+                    fn remove_pin<T>(value: &mut PinSplitValue<T>, pin: &MarkerPinId) {
+                        'out: for i in 0.. {
+                            loop {
+                                let Some((_, p, _)) = value.get_time(i) else {
+                                    break 'out;
+                                };
+                                if p == pin {
+                                    value.merge_two_values_by_left(i).unwrap();
+                                } else {
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    fn remove_pin3(value: &mut Arc<Vector3Params>, pin: &MarkerPinId) {
+                        'out: for i in 0.. {
+                            loop {
+                                let Some((_, p, _)) = value.x.params.get_time(i) else {
+                                    break 'out;
+                                };
+                                if p == pin {
+                                    Arc::make_mut(value).x.params.merge_two_values_by_left(i).unwrap();
+                                } else {
+                                    break;
+                                }
+                            }
+                        }
+                        'out: for i in 0.. {
+                            loop {
+                                let Some((_, p, _)) = value.y.params.get_time(i) else {
+                                    break 'out;
+                                };
+                                if p == pin {
+                                    Arc::make_mut(value).y.params.merge_two_values_by_left(i).unwrap();
+                                } else {
+                                    break;
+                                }
+                            }
+                        }
+                        'out: for i in 0.. {
+                            loop {
+                                let Some((_, p, _)) = value.y.params.get_time(i) else {
+                                    break 'out;
+                                };
+                                if p == pin {
+                                    Arc::make_mut(value).y.params.merge_two_values_by_left(i).unwrap();
+                                } else {
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    if let Some(params) = target.image_required_params_mut() {
+                        let ImageRequiredParams {
+                            transform,
+                            background_color: _,
+                            opacity,
+                            blend_mode,
+                            composite_operation,
+                        } = params;
+                        match Arc::make_mut(transform) {
+                            ImageRequiredParamsTransform::Params {
+                                size,
+                                scale,
+                                translate,
+                                rotate,
+                                scale_center,
+                                rotate_center,
+                            } => {
+                                remove_pin3(size, &pin);
+                                remove_pin3(scale, &pin);
+                                remove_pin3(translate, &pin);
+                                remove_pin(Arc::make_mut(rotate), &pin);
+                                remove_pin3(scale_center, &pin);
+                                remove_pin3(rotate_center, &pin);
+                            }
+                            ImageRequiredParamsTransform::Free { left_top, right_top, left_bottom, right_bottom } => {
+                                remove_pin3(left_top, &pin);
+                                remove_pin3(right_top, &pin);
+                                remove_pin3(left_bottom, &pin);
+                                remove_pin3(right_bottom, &pin);
+                            }
+                        }
+                        remove_pin(opacity, &pin);
+                        remove_pin(blend_mode, &pin);
+                        remove_pin(composite_operation, &pin);
+                    }
+
+                    if let Some(params) = target.audio_required_params_mut() {
+                        let AudioRequiredParams { volume } = params;
+                        for channel in 0..volume.len() {
+                            let SingleChannelVolume { params, .. } = volume.get_mut(channel).unwrap();
+                            'out: for i in 0.. {
+                                loop {
+                                    let Some((_, p, _)) = params.get_time(i) else {
+                                        break 'out;
+                                    };
+                                    if p == &pin {
+                                        params.merge_two_values_by_left(i).unwrap();
+                                    } else {
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    let params = target.variable_parameters_mut();
+                    for i in 0..params.len() {
+                        let value = params.get_mut(i).unwrap();
+                        match &mut value.params {
+                            Parameter::None => {}
+                            Parameter::Image(value) => remove_pin(value, &pin),
+                            Parameter::Audio(value) => remove_pin(value, &pin),
+                            Parameter::Binary(value) => remove_pin(value, &pin),
+                            Parameter::String(value) => remove_pin(value, &pin),
+                            Parameter::Integer(value) => remove_pin(value, &pin),
+                            Parameter::RealNumber(value) => remove_pin(value, &pin),
+                            Parameter::Boolean(value) => remove_pin(value, &pin),
+                            Parameter::Dictionary(value) => {
+                                let _: &mut Never = value;
+                                unreachable!();
+                            }
+                            Parameter::Array(value) => {
+                                let _: &mut Never = value;
+                                unreachable!();
+                            }
+                            Parameter::ComponentClass(_) => {}
+                        }
+                    }
 
                     let time_map = mpdelta_differential::collect_cached_time(&*item)?;
                     RootComponentClassItemWrite::commit_changes(item, time_map);

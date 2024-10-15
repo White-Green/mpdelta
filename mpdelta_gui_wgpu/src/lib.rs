@@ -169,5 +169,6 @@ where
         let mut renderer = render_state.renderer.write();
         let mut i = I { device, renderer: &mut renderer };
         self.gui.ui(ctx, &mut i);
+        ctx.request_repaint();
     }
 }

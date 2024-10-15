@@ -7,7 +7,6 @@ use mpdelta_gui::view::Gui;
 use mpdelta_gui::ImageRegister;
 use std::sync::Arc;
 use std::time::Instant;
-use vulkano::format::Format as VulkanoFormat;
 use vulkano::image::ImageUsage as VulkanoImageUsage;
 use vulkano::VulkanObject;
 use wgpu::hal::{MemoryFlags as WgpuHalMemoryFlags, TextureUses as WgpuHalTextureUses};
@@ -90,18 +89,16 @@ impl<'a> ImageRegister<ImageType> for WgpuImageRegister<'a> {
         let dimension = wgpu::TextureDimension::D2;
         let sample_count = texture.0.samples().into();
         let mip_level_count = texture.0.mip_levels();
-        let format = vulkano_format_into_wgpu_format(texture.0.format());
-        let view_formats = texture.0.view_formats().iter().copied().map(vulkano_format_into_wgpu_format).collect::<Vec<_>>();
         let hal_descriptor = wgpu::hal::TextureDescriptor {
             label: None,
             size,
             mip_level_count,
             sample_count,
             dimension,
-            format,
+            format: wgpu::TextureFormat::Rgba8UnormSrgb,
             usage: vulkano_usage_into_wgpu_hal_usage(texture.0.usage()),
             memory_flags: vulkano_usage_into_wgpu_memory_flags(texture.0.usage()),
-            view_formats: view_formats.clone(),
+            view_formats: vec![wgpu::TextureFormat::Rgba8UnormSrgb],
         };
         let descriptor = wgpu::TextureDescriptor {
             label: None,
@@ -109,27 +106,20 @@ impl<'a> ImageRegister<ImageType> for WgpuImageRegister<'a> {
             mip_level_count,
             sample_count,
             dimension,
-            format,
+            format: wgpu::TextureFormat::Rgba8UnormSrgb,
             usage: vulkano_usage_into_wgpu_usage(texture.0.usage()),
-            view_formats: &view_formats,
+            view_formats: &[wgpu::TextureFormat::Rgba8UnormSrgb],
         };
         let texture = unsafe {
             let texture = wgpu::hal::vulkan::Device::texture_from_raw(texture.0.handle(), &hal_descriptor, Some(Box::new(texture)));
             self.device.create_texture_from_hal::<wgpu::hal::vulkan::Api>(texture, &descriptor)
         };
         let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-        self.renderer.register_native_texture(self.device, &texture_view, FilterMode::Nearest)
+        self.renderer.register_native_texture(self.device, &texture_view, FilterMode::Linear)
     }
 
     fn unregister_image(&mut self, id: TextureId) {
         self.renderer.free_texture(&id)
-    }
-}
-
-fn vulkano_format_into_wgpu_format(format: VulkanoFormat) -> WgpuTextureFormat {
-    match format {
-        VulkanoFormat::R8G8B8A8_UNORM => WgpuTextureFormat::Rgba8Unorm,
-        _ => unimplemented!(),
     }
 }
 

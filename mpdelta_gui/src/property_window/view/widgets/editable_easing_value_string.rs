@@ -1,6 +1,6 @@
-use egui::epaint::{PathShape, RectShape};
+use egui::epaint::{PathShape, PathStroke, RectShape};
 use egui::scroll_area::ScrollBarVisibility;
-use egui::{CursorIcon, Id, Pos2, Rect, ScrollArea, Sense, Shape, TextEdit, Ui, Vec2};
+use egui::{Color32, CursorIcon, Id, Pos2, Rect, ScrollArea, Sense, Shape, TextEdit, Ui, Vec2};
 use mpdelta_core::component::marker_pin::MarkerPin;
 use mpdelta_core::component::parameter::value::{EasingValue, EasingValueEdit};
 use mpdelta_core::component::parameter::PinSplitValue;
@@ -166,8 +166,21 @@ where
                                 Pos2::new(base_position + slider_width * 2., whole_rect.top() + slider_width * 2.),
                                 Pos2::new(base_position + slider_width, whole_rect.top() + slider_width * 3.),
                             ],
-                            closed: false,
+                            closed: true,
                             fill: widget_visuals.bg_fill,
+                            stroke: PathStroke::NONE,
+                        }),
+                        Shape::Path(PathShape {
+                            points: vec![
+                                Pos2::new(base_position - slider_width, whole_rect.top() + slider_width * 3.),
+                                Pos2::new(base_position - slider_width * 2., whole_rect.top() + slider_width * 2.),
+                                Pos2::new(base_position - slider_width * 2., whole_rect.top()),
+                                Pos2::new(base_position + slider_width * 2., whole_rect.top()),
+                                Pos2::new(base_position + slider_width * 2., whole_rect.top() + slider_width * 2.),
+                                Pos2::new(base_position + slider_width, whole_rect.top() + slider_width * 3.),
+                            ],
+                            closed: false,
+                            fill: Color32::TRANSPARENT,
                             stroke: widget_visuals.fg_stroke.into(),
                         }),
                         Shape::Path(PathShape {
@@ -176,8 +189,18 @@ where
                                 Pos2::new(base_position, whole_rect.bottom()),
                                 Pos2::new(base_position + slider_width, whole_rect.bottom() - slider_width),
                             ],
-                            closed: false,
+                            closed: true,
                             fill: widget_visuals.bg_fill,
+                            stroke: PathStroke::NONE,
+                        }),
+                        Shape::Path(PathShape {
+                            points: vec![
+                                Pos2::new(base_position - slider_width, whole_rect.bottom() - slider_width),
+                                Pos2::new(base_position, whole_rect.bottom()),
+                                Pos2::new(base_position + slider_width, whole_rect.bottom() - slider_width),
+                            ],
+                            closed: false,
+                            fill: Color32::TRANSPARENT,
                             stroke: widget_visuals.fg_stroke.into(),
                         }),
                     ]

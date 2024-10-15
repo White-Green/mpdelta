@@ -1,6 +1,6 @@
-use egui::epaint::{PathShape, RectShape};
+use egui::epaint::{PathShape, PathStroke, RectShape};
 use egui::scroll_area::ScrollBarVisibility;
-use egui::{CursorIcon, Id, PointerButton, Pos2, Rect, ScrollArea, Sense, Shape, Ui, Vec2};
+use egui::{Color32, CursorIcon, Id, PointerButton, Pos2, Rect, ScrollArea, Sense, Shape, Ui, Vec2};
 use mpdelta_core::component::marker_pin::MarkerPin;
 use mpdelta_core::component::parameter::value::{EasingValue, EasingValueEdit};
 use mpdelta_core::component::parameter::PinSplitValue;
@@ -171,7 +171,7 @@ where
                     let response = ui.interact(Rect::from_x_y_ranges(left_time_position..=left_time_position + slider_width * 2., plot_area_rect.y_range()), id.with(("pin_slider", i, Side::Left)), Sense::click_and_drag());
                     let interact_pointer_pos = response.interact_pointer_pos().map(|Pos2 { y, .. }| y.clamp(cursor_y_range.start, cursor_y_range.end));
                     let update_value = interact_pointer_pos.map(|y| ((y - value_map.y) / value_map.x) as f64);
-                    if response.clicked_by(PointerButton::Primary) || response.drag_released_by(PointerButton::Primary) {
+                    if response.clicked_by(PointerButton::Primary) || response.drag_stopped_by(PointerButton::Primary) {
                         if let Some(easing_value) = value.get_value_mut(i).unwrap() {
                             easing_value.value.edit_value::<(f64, f64), _>(|(left, _)| *left = update_value.unwrap()).expect("downcast error");
                             updated = UpdateStatus::Updated;
@@ -185,7 +185,7 @@ where
                     let response = ui.interact(Rect::from_x_y_ranges(right_time_position - slider_width * 2.0..=right_time_position, plot_area_rect.y_range()), id.with(("pin_slider", i, Side::Right)), Sense::click_and_drag());
                     let interact_pointer_pos = response.interact_pointer_pos().map(|Pos2 { y, .. }| y.clamp(cursor_y_range.start, cursor_y_range.end));
                     let update_value = interact_pointer_pos.map(|y| ((y - value_map.y) / value_map.x) as f64);
-                    if response.clicked_by(PointerButton::Primary) || response.drag_released_by(PointerButton::Primary) {
+                    if response.clicked_by(PointerButton::Primary) || response.drag_stopped_by(PointerButton::Primary) {
                         if let Some(easing_value) = value.get_value_mut(i).unwrap() {
                             easing_value.value.edit_value::<(f64, f64), _>(|(_, right)| *right = update_value.unwrap()).expect("downcast error");
                             updated = UpdateStatus::Updated;
@@ -220,9 +220,32 @@ where
                                 Pos2::new(base_position + slider_width * 2., whole_rect.top() + slider_width * 2.),
                                 Pos2::new(base_position + slider_width, whole_rect.top() + slider_width * 3.),
                             ],
-                            closed: false,
+                            closed: true,
                             fill: widget_visuals.bg_fill,
-                            stroke: widget_visuals.fg_stroke,
+                            stroke: PathStroke::NONE,
+                        }),
+                        Shape::Path(PathShape {
+                            points: vec![
+                                Pos2::new(base_position - slider_width, whole_rect.top() + slider_width * 3.),
+                                Pos2::new(base_position - slider_width * 2., whole_rect.top() + slider_width * 2.),
+                                Pos2::new(base_position - slider_width * 2., whole_rect.top()),
+                                Pos2::new(base_position + slider_width * 2., whole_rect.top()),
+                                Pos2::new(base_position + slider_width * 2., whole_rect.top() + slider_width * 2.),
+                                Pos2::new(base_position + slider_width, whole_rect.top() + slider_width * 3.),
+                            ],
+                            closed: false,
+                            fill: Color32::TRANSPARENT,
+                            stroke: widget_visuals.fg_stroke.into(),
+                        }),
+                        Shape::Path(PathShape {
+                            points: vec![
+                                Pos2::new(base_position - slider_width, plot_area_rect.bottom()),
+                                Pos2::new(base_position, plot_area_rect.bottom() + slider_width),
+                                Pos2::new(base_position + slider_width, plot_area_rect.bottom()),
+                            ],
+                            closed: true,
+                            fill: widget_visuals.bg_fill,
+                            stroke: PathStroke::NONE,
                         }),
                         Shape::Path(PathShape {
                             points: vec![
@@ -231,8 +254,8 @@ where
                                 Pos2::new(base_position + slider_width, plot_area_rect.bottom()),
                             ],
                             closed: false,
-                            fill: widget_visuals.bg_fill,
-                            stroke: widget_visuals.fg_stroke,
+                            fill: Color32::TRANSPARENT,
+                            stroke: widget_visuals.fg_stroke.into(),
                         }),
                     ]
                 });
@@ -267,7 +290,7 @@ where
                                 ],
                                 closed: true,
                                 fill: widget_visuals.bg_fill,
-                                stroke: widget_visuals.fg_stroke,
+                                stroke: widget_visuals.fg_stroke.into(),
                             }),
                             Shape::Path(PathShape {
                                 points: vec![
@@ -278,7 +301,7 @@ where
                                 ],
                                 closed,
                                 fill: slider_visuals_pin_left.bg_fill,
-                                stroke: slider_visuals_pin_left.fg_stroke,
+                                stroke: slider_visuals_pin_left.fg_stroke.into(),
                             }),
                             Shape::Path(PathShape {
                                 points: vec![
@@ -289,7 +312,7 @@ where
                                 ],
                                 closed,
                                 fill: slider_visuals_pin_right.bg_fill,
-                                stroke: slider_visuals_pin_right.fg_stroke,
+                                stroke: slider_visuals_pin_right.fg_stroke.into(),
                             }),
                         ]
                     }
@@ -307,7 +330,7 @@ where
                                 ],
                                 closed: true,
                                 fill: widget_visuals.bg_fill,
-                                stroke: widget_visuals.fg_stroke,
+                                stroke: widget_visuals.fg_stroke.into(),
                             }),
                             Shape::Noop,
                             Shape::Path(PathShape {
@@ -319,7 +342,7 @@ where
                                 ],
                                 closed: true,
                                 fill: slider_visuals_pin_right.bg_fill,
-                                stroke: slider_visuals_pin_right.fg_stroke,
+                                stroke: slider_visuals_pin_right.fg_stroke.into(),
                             }),
                         ]
                     }
@@ -337,7 +360,7 @@ where
                                 ],
                                 closed: true,
                                 fill: widget_visuals.bg_fill,
-                                stroke: widget_visuals.fg_stroke,
+                                stroke: widget_visuals.fg_stroke.into(),
                             }),
                             Shape::Path(PathShape {
                                 points: vec![
@@ -348,7 +371,7 @@ where
                                 ],
                                 closed: true,
                                 fill: slider_visuals_pin_left.bg_fill,
-                                stroke: slider_visuals_pin_left.fg_stroke,
+                                stroke: slider_visuals_pin_left.fg_stroke.into(),
                             }),
                             Shape::Noop,
                         ]

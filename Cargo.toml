@@ -24,7 +24,7 @@ members = [
     "mpdelta_differential",
     "mpdelta_gui",
     "mpdelta_gui_audio_player_cpal",
-    "mpdelta_gui_vulkano",
+    "mpdelta_gui_wgpu",
     "mpdelta_multimedia",
     "mpdelta_multimedia_encoder_ffmpeg",
     "mpdelta_project_serialize",
@@ -51,7 +51,7 @@ default-members = [
     "mpdelta_differential",
     "mpdelta_gui",
     "mpdelta_gui_audio_player_cpal",
-    "mpdelta_gui_vulkano",
+    "mpdelta_gui_wgpu",
     "mpdelta_multimedia",
     "mpdelta_multimedia_encoder_ffmpeg",
     "mpdelta_project_serialize",
@@ -69,11 +69,12 @@ authors = ["White-Green"]
 [workspace.dependencies]
 arc-swap = "1.7.1"
 arrayvec = { version = "0.7.6", default-features = false }
+ash = { version = "0.37.3", features = ["linked"] }
 assert_matches = "1.5.0"
 async-trait = "0.1.83"
 bitflags = "2.6.0"
-bytemuck = "1.18.0"
-bytemuck_derive = "1.7.1"
+bytemuck = "1.19.0"
+bytemuck_derive = "1.8.0"
 cgmath = { version = "0.18.0", features = ["serde"] }
 ciborium = "0.2.2"
 cpal = "0.15.3"
@@ -82,14 +83,15 @@ crossbeam-utils = { version = "0.8.20", default-features = false }
 dashmap = "6.1.0"
 dyn-eq = { version = "0.1.3", default-features = false }
 dyn-hash = "0.2.0"
-egui = { version = "0.24.1", default-features = false }
-egui_image_renderer = { git = "https://github.com/White-Green/egui_image_renderer", rev = "34a309bef611dbce4d273bd735c042093fd7e3de" }
-egui_winit_vulkano = { version = "0.27.0", default-features = false }
+eframe = { version = "0.28.1", features = ["wgpu"] }
+egui = { version = "0.28.1", default-features = false }
+egui_image_renderer = { git = "https://github.com/White-Green/egui_image_renderer", rev = "0b9297ac24fccd58cbedcd2863e06f2fa4a2f880" }
+egui-wgpu = { version = "0.28.1" }
 erased-serde = { version = "0.4.5", features = ["alloc"], default-features = false }
-ffmpeg-next = { version = "7.0.4", default-features = false, features = ["format", "software-resampling", "software-scaling"] }
-ffmpeg-sys-next = { version = "7.0.2", default-features = false, features = ["static"] }
+ffmpeg-next = { version = "=7.0.4", default-features = false, features = ["format", "software-resampling", "software-scaling"] }
+ffmpeg-sys-next = { version = "=7.0.2", default-features = false, features = ["static"] }
 font-kit = "0.14.2"
-futures = { version = "0.3.30", default-features = false }
+futures = { version = "0.3.31", default-features = false }
 glam = { version = "0.24.2", features = ["libm"], default-features = false }
 hound = "3.5.1"
 icu_properties = "1.5.1"
@@ -111,7 +113,7 @@ mpdelta_dsp = { path = "mpdelta_common/mpdelta_dsp" }
 mpdelta_ffmpeg = { path = "mpdelta_common/mpdelta_ffmpeg" }
 mpdelta_gui = { path = "mpdelta_gui" }
 mpdelta_gui_audio_player_cpal = { path = "mpdelta_gui_audio_player_cpal" }
-mpdelta_gui_vulkano = { path = "mpdelta_gui_vulkano" }
+mpdelta_gui_wgpu = { path = "mpdelta_gui_wgpu" }
 mpdelta_message_router = { path = "mpdelta_common/mpdelta_message_router" }
 mpdelta_multimedia = { path = "mpdelta_multimedia" }
 mpdelta_multimedia_encoder_ffmpeg = { path = "mpdelta_multimedia_encoder_ffmpeg" }
@@ -137,7 +139,7 @@ shader_builder = { path = "mpdelta_build_utils/shader_builder" }
 smallvec = "1.13"
 spirv-builder = { version = "0.9.0", default-features = false, features = ["use-compiled-tools"] }
 spirv-std = "0.9.0"
-swash = { version = "0.1.18", features = ["scale"], default-features = false }
+swash = { version = "0.1.19", features = ["scale"], default-features = false }
 thiserror = "1.0.64"
 time = "0.3.36"
 tokio = { version = "1.40.0", features = ["fs", "macros", "time"] }
@@ -145,12 +147,18 @@ uuid = { version = "1.10.0", default-features = false }
 vulkano = { version = "0.34.1", default-features = false }
 vulkano-util = "0.34.1"
 vulkano-win = "0.34.0"
-winit = { version = "0.28.7", default-features = false }
+wgpu = { version = "0.20.1", default-features = false, features = ["vulkan-portability", "wgc"] }
+winit = { version = "0.29.15", default-features = false }
 
 [patch.crates-io]
+egui = { git = "https://github.com/White-Green/egui", rev = "02784f706ea8db6dc33126201ff69ea34fc71589" }
+egui-wgpu = { git = "https://github.com/White-Green/egui", rev = "02784f706ea8db6dc33126201ff69ea34fc71589" }
+emath = { git = "https://github.com/White-Green/egui", rev = "02784f706ea8db6dc33126201ff69ea34fc71589" }
+epaint = { git = "https://github.com/White-Green/egui", rev = "02784f706ea8db6dc33126201ff69ea34fc71589" }
 ffmpeg-sys-next = { git = "https://github.com/White-Green/rust-ffmpeg-sys", branch = "ffmpeg7" }
 
 [dependencies]
+ash = { workspace = true }
 async-trait = { workspace = true }
 cpal = { workspace = true }
 futures = { workspace = true }
@@ -162,7 +170,7 @@ mpdelta_core_audio = { workspace = true }
 mpdelta_core_vulkano = { workspace = true }
 mpdelta_gui = { workspace = true }
 mpdelta_gui_audio_player_cpal = { workspace = true }
-mpdelta_gui_vulkano = { workspace = true }
+mpdelta_gui_wgpu = { workspace = true }
 mpdelta_multimedia_encoder_ffmpeg = { workspace = true }
 mpdelta_project_serialize = { workspace = true }
 mpdelta_renderer = { workspace = true }
@@ -171,7 +179,7 @@ mpdelta_services = { workspace = true }
 mpdelta_video_renderer_vulkano = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread"] }
 vulkano = { workspace = true }
-vulkano-util = { workspace = true }
+wgpu = { workspace = true }
 winit = { workspace = true }
 
 [profile.dev]

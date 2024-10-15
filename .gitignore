@@ -17,7 +17,7 @@
 !/mpdelta_differential
 !/mpdelta_gui
 !/mpdelta_gui_audio_player_cpal
-!/mpdelta_gui_vulkano
+!/mpdelta_gui_wgpu
 !/mpdelta_multimedia
 !/mpdelta_multimedia_encoder_ffmpeg
 !/mpdelta_project_serialize

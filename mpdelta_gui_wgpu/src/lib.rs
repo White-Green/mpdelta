@@ -7,8 +7,11 @@ use mpdelta_gui::view::Gui;
 use mpdelta_gui::ImageRegister;
 use std::sync::Arc;
 use std::time::Instant;
+use vulkano::format::Format as VulkanoFormat;
+use vulkano::image::ImageUsage as VulkanoImageUsage;
 use vulkano::VulkanObject;
-use wgpu::{Adapter, Device, Extent3d, FilterMode, Instance, Queue};
+use wgpu::hal::{MemoryFlags as WgpuHalMemoryFlags, TextureUses as WgpuHalTextureUses};
+use wgpu::{Adapter as WgpuAdapter, Device as WgpuDevice, Extent3d, FilterMode, Instance as WgpuInstance, Queue as WgpuQueue, TextureFormat as WgpuTextureFormat, TextureUsages as WgpuTextureUsages};
 use winit::window::WindowId;
 
 #[derive(Debug)]
@@ -26,15 +29,15 @@ pub enum EventResult {
 }
 
 pub struct MPDeltaGUIWgpu<T> {
-    instance: Arc<Instance>,
-    adapter: Arc<Adapter>,
-    device: Arc<Device>,
-    queue: Arc<Queue>,
+    instance: Arc<WgpuInstance>,
+    adapter: Arc<WgpuAdapter>,
+    device: Arc<WgpuDevice>,
+    queue: Arc<WgpuQueue>,
     gui: T,
 }
 
 impl<T: Gui<ImageType> + 'static> MPDeltaGUIWgpu<T> {
-    pub fn new(instance: Arc<Instance>, adapter: Arc<Adapter>, device: Arc<Device>, queue: Arc<Queue>, gui: T) -> MPDeltaGUIWgpu<T> {
+    pub fn new(instance: Arc<WgpuInstance>, adapter: Arc<WgpuAdapter>, device: Arc<WgpuDevice>, queue: Arc<WgpuQueue>, gui: T) -> MPDeltaGUIWgpu<T> {
         MPDeltaGUIWgpu { instance, adapter, device, queue, gui }
     }
 
@@ -66,12 +69,18 @@ where
     }
 }
 
-struct I<'a> {
-    device: &'a Device,
+struct WgpuImageRegister<'a> {
+    device: &'a WgpuDevice,
     renderer: &'a mut egui_wgpu::Renderer,
 }
 
-impl<'a> ImageRegister<ImageType> for I<'a> {
+impl<'a> WgpuImageRegister<'a> {
+    fn new(device: &'a WgpuDevice, renderer: &'a mut egui_wgpu::Renderer) -> WgpuImageRegister<'a> {
+        WgpuImageRegister { device, renderer }
+    }
+}
+
+impl<'a> ImageRegister<ImageType> for WgpuImageRegister<'a> {
     fn register_image(&mut self, texture: ImageType) -> TextureId {
         let size = Extent3d {
             width: texture.0.extent()[0],
@@ -116,11 +125,6 @@ impl<'a> ImageRegister<ImageType> for I<'a> {
         self.renderer.free_texture(&id)
     }
 }
-
-use vulkano::format::Format as VulkanoFormat;
-use vulkano::image::ImageUsage as VulkanoImageUsage;
-use wgpu::hal::{MemoryFlags as WgpuHalMemoryFlags, TextureUses as WgpuHalTextureUses};
-use wgpu::{TextureFormat as WgpuTextureFormat, TextureUsages as WgpuTextureUsages};
 
 fn vulkano_format_into_wgpu_format(format: VulkanoFormat) -> WgpuTextureFormat {
     match format {
@@ -167,8 +171,8 @@ where
         let render_state = frame.wgpu_render_state().unwrap();
         let device = &render_state.device;
         let mut renderer = render_state.renderer.write();
-        let mut i = I { device, renderer: &mut renderer };
-        self.gui.ui(ctx, &mut i);
+        let mut image_register = WgpuImageRegister::new(device, &mut renderer);
+        self.gui.ui(ctx, &mut image_register);
         ctx.request_repaint();
     }
 }

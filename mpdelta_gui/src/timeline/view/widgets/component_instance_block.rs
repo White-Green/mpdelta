@@ -146,7 +146,7 @@ where
         if response.clicked() {
             edit(ComponentInstanceEditEvent::Click);
         }
-        if response.dragged_by(PointerButton::Primary) || response.drag_released_by(PointerButton::Primary) {
+        if response.dragged_by(PointerButton::Primary) || response.drag_stopped_by(PointerButton::Primary) {
             let pointer_pos = response.interact_pointer_pos().unwrap();
             let drag_started = response.drag_started_by(PointerButton::Primary);
             let drag_offset = ui.data_mut(|data| {
@@ -161,7 +161,7 @@ where
             });
             let drag_delta = pointer_pos - drag_offset;
             let new_start_time = point_to_time(drag_delta.x);
-            if response.drag_released_by(PointerButton::Primary) {
+            if response.drag_stopped_by(PointerButton::Primary) {
                 edit(ComponentInstanceEditEvent::MoveWholeBlock { time: new_start_time, top: drag_delta.y });
             } else {
                 edit(ComponentInstanceEditEvent::MoveWholeBlockTemporary { time: new_start_time, top: drag_delta.y });
@@ -198,11 +198,11 @@ where
             )
         }))
         .for_each(|(&MarkerPinData { ref handle, locked, .. }, response)| {
-            let make_event = if response.drag_released_by(PointerButton::Primary) {
+            let make_event = if response.drag_stopped_by(PointerButton::Primary) {
                 ComponentInstanceEditEvent::MovePin(handle, point_to_time(response.interact_pointer_pos().unwrap().x))
             } else if response.dragged_by(PointerButton::Primary) {
                 ComponentInstanceEditEvent::MovePinTemporary(handle, point_to_time(response.interact_pointer_pos().unwrap().x))
-            } else if response.drag_released_by(PointerButton::Middle) {
+            } else if response.drag_stopped_by(PointerButton::Middle) {
                 ComponentInstanceEditEvent::PullLinkReleased(handle, response.interact_pointer_pos().unwrap())
             } else if response.dragged_by(PointerButton::Middle) {
                 ComponentInstanceEditEvent::PullLink(handle, response.interact_pointer_pos().unwrap())

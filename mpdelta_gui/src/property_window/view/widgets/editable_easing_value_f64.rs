@@ -171,7 +171,7 @@ where
                     let response = ui.interact(Rect::from_x_y_ranges(left_time_position..=left_time_position + slider_width * 2., plot_area_rect.y_range()), id.with(("pin_slider", i, Side::Left)), Sense::click_and_drag());
                     let interact_pointer_pos = response.interact_pointer_pos().map(|Pos2 { y, .. }| y.clamp(cursor_y_range.start, cursor_y_range.end));
                     let update_value = interact_pointer_pos.map(|y| ((y - value_map.y) / value_map.x) as f64);
-                    if response.clicked_by(PointerButton::Primary) || response.drag_released_by(PointerButton::Primary) {
+                    if response.clicked_by(PointerButton::Primary) || response.drag_stopped_by(PointerButton::Primary) {
                         if let Some(easing_value) = value.get_value_mut(i).unwrap() {
                             easing_value.value.edit_value::<(f64, f64), _>(|(left, _)| *left = update_value.unwrap()).expect("downcast error");
                             updated = UpdateStatus::Updated;
@@ -185,7 +185,7 @@ where
                     let response = ui.interact(Rect::from_x_y_ranges(right_time_position - slider_width * 2.0..=right_time_position, plot_area_rect.y_range()), id.with(("pin_slider", i, Side::Right)), Sense::click_and_drag());
                     let interact_pointer_pos = response.interact_pointer_pos().map(|Pos2 { y, .. }| y.clamp(cursor_y_range.start, cursor_y_range.end));
                     let update_value = interact_pointer_pos.map(|y| ((y - value_map.y) / value_map.x) as f64);
-                    if response.clicked_by(PointerButton::Primary) || response.drag_released_by(PointerButton::Primary) {
+                    if response.clicked_by(PointerButton::Primary) || response.drag_stopped_by(PointerButton::Primary) {
                         if let Some(easing_value) = value.get_value_mut(i).unwrap() {
                             easing_value.value.edit_value::<(f64, f64), _>(|(_, right)| *right = update_value.unwrap()).expect("downcast error");
                             updated = UpdateStatus::Updated;

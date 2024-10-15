@@ -10,7 +10,7 @@ use std::time::Instant;
 use vulkano::image::ImageUsage as VulkanoImageUsage;
 use vulkano::VulkanObject;
 use wgpu::hal::{MemoryFlags as WgpuHalMemoryFlags, TextureUses as WgpuHalTextureUses};
-use wgpu::{Adapter as WgpuAdapter, Device as WgpuDevice, Extent3d, FilterMode, Instance as WgpuInstance, Queue as WgpuQueue, TextureFormat as WgpuTextureFormat, TextureUsages as WgpuTextureUsages};
+use wgpu::{Adapter as WgpuAdapter, Device as WgpuDevice, Extent3d, FilterMode, Instance as WgpuInstance, Queue as WgpuQueue, TextureUsages as WgpuTextureUsages};
 use winit::window::WindowId;
 
 #[derive(Debug)]

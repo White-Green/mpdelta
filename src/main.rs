@@ -209,6 +209,7 @@ fn main() {
     drop(runtime);
 }
 
+#[allow(unused)]
 struct GpuHandle {
     vulkano_instance: Arc<vulkano::instance::Instance>,
     vulkano_device: Arc<vulkano::device::Device>,
@@ -327,6 +328,7 @@ fn initialize_gpu() -> GpuHandle {
 }
 
 fn instance_extension_into_vec(instance_extensions: InstanceExtensions) -> Vec<&'static CStr> {
+    #[allow(clippy::type_complexity)]
     const EXTENSIONS: &[(fn(&InstanceExtensions) -> bool, &CStr)] = &[
         (|e| e.khr_android_surface, c"VK_KHR_android_surface"),
         (|e| e.khr_device_group_creation, c"VK_KHR_device_group_creation"),

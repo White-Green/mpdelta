@@ -109,8 +109,7 @@ fn main() {
     let GpuHandle {
         vulkano_instance: _,
         vulkano_device,
-        vulkano_graphics_queue,
-        vulkano_compute_queue: _,
+        vulkano_queue,
         vulkano_memory_allocator,
         wgpu_instance,
         wgpu_adapter,
@@ -124,10 +123,10 @@ fn main() {
     let project_memory = Arc::new(InMemoryProjectStore::<ValueType>::new());
     let mut component_class_loader = ComponentClassList::new();
     let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(Arc::clone(&vulkano_device), StandardCommandBufferAllocatorCreateInfo::default()));
-    component_class_loader.add(RectangleClass::new(Arc::clone(&vulkano_graphics_queue), &vulkano_memory_allocator, &command_buffer_allocator));
+    component_class_loader.add(RectangleClass::new(Arc::clone(&vulkano_queue), &vulkano_memory_allocator, &command_buffer_allocator));
     component_class_loader.add(SineAudio::new());
-    component_class_loader.add(FfmpegMultimediaLoaderClass::new(&vulkano_graphics_queue, &vulkano_memory_allocator, &command_buffer_allocator));
-    component_class_loader.add(TextRendererClass::new(&vulkano_device, &vulkano_graphics_queue, &vulkano_memory_allocator));
+    component_class_loader.add(FfmpegMultimediaLoaderClass::new(&vulkano_queue, &vulkano_memory_allocator, &command_buffer_allocator));
+    component_class_loader.add(TextRendererClass::new(&vulkano_device, &vulkano_queue, &vulkano_memory_allocator));
     let component_class_loader = Arc::new(component_class_loader);
     let value_managers = ParameterAllValues::<ValueManagerLoaderTypes> {
         image: Arc::new(InMemoryValueManagerLoader::from_iter([], [])),
@@ -151,7 +150,7 @@ fn main() {
     let easing_manager = Arc::new(InMemoryEasingLoader::from_iter([Arc::new(LinearEasing) as _]));
     let project_serializer = Arc::new(MPDeltaProjectSerializer::new(runtime.handle().clone(), Arc::clone(&id_generator), Arc::clone(&component_class_loader), value_managers, quaternion_manager, easing_manager));
     let component_renderer_builder = Arc::new(MPDeltaRendererBuilder::new(
-        Arc::new(ImageCombinerBuilder::new(Arc::clone(&vulkano_device), Arc::clone(&vulkano_graphics_queue))),
+        Arc::new(ImageCombinerBuilder::new(Arc::clone(&vulkano_device), Arc::clone(&vulkano_queue))),
         Arc::new(LookaheadRenderingControllerBuilder::new()),
         Arc::new(MPDeltaAudioMixerBuilder::new()),
         runtime.handle().clone(),
@@ -181,7 +180,7 @@ fn main() {
         )
         .unwrap(),
     );
-    let encoder_builder = Arc::new(FfmpegEncoderBuilder::new(Arc::clone(&vulkano_device), Arc::clone(&vulkano_graphics_queue), Arc::clone(&vulkano_memory_allocator)));
+    let encoder_builder = Arc::new(FfmpegEncoderBuilder::new(Arc::clone(&vulkano_device), Arc::clone(&vulkano_queue), Arc::clone(&vulkano_memory_allocator)));
     let params = ViewModelParamsImpl {
         runtime: runtime.handle().clone(),
         id: Arc::clone(&id_generator),
@@ -213,8 +212,7 @@ fn main() {
 struct GpuHandle {
     vulkano_instance: Arc<vulkano::instance::Instance>,
     vulkano_device: Arc<vulkano::device::Device>,
-    vulkano_graphics_queue: Arc<vulkano::device::Queue>,
-    vulkano_compute_queue: Arc<vulkano::device::Queue>,
+    vulkano_queue: Arc<vulkano::device::Queue>,
     vulkano_memory_allocator: Arc<vulkano::memory::allocator::StandardMemoryAllocator>,
     wgpu_instance: wgpu::Instance,
     wgpu_adapter: wgpu::Adapter,
@@ -262,31 +260,13 @@ fn initialize_gpu() -> GpuHandle {
             _ => 0,
         })
         .unwrap();
-    let graphics_queue_index = vulkano_physical_device.queue_family_properties().iter().position(|q| q.queue_flags.intersects(QueueFlags::GRAPHICS)).unwrap();
-    let compute_queue_index = vulkano_physical_device
-        .queue_family_properties()
-        .iter()
-        .enumerate()
-        .filter(|&(i, _)| i != graphics_queue_index)
-        .find_map(|(index, q)| q.queue_flags.intersects(QueueFlags::COMPUTE).then_some(index));
+    let queue_index = vulkano_physical_device.queue_family_properties().iter().position(|q| q.queue_flags.contains(QueueFlags::GRAPHICS | QueueFlags::COMPUTE)).unwrap();
 
-    let queue_create_infos = if let Some(compute_queue_index) = compute_queue_index {
-        vec![
-            QueueCreateInfo {
-                queue_family_index: graphics_queue_index as u32,
-                ..Default::default()
-            },
-            QueueCreateInfo {
-                queue_family_index: compute_queue_index as u32,
-                ..Default::default()
-            },
-        ]
-    } else {
-        vec![QueueCreateInfo {
-            queue_family_index: graphics_queue_index as u32,
-            ..Default::default()
-        }]
-    };
+    let queue_create_infos = vec![QueueCreateInfo {
+        queue_family_index: queue_index as u32,
+        queues: vec![0.5; 2],
+        ..Default::default()
+    }];
 
     let (vulkano_device, mut queues) = {
         Device::new(
@@ -300,8 +280,7 @@ fn initialize_gpu() -> GpuHandle {
         )
         .expect("failed to create device")
     };
-    let vulkano_graphics_queue = queues.next().unwrap();
-    let vulkano_compute_queue = if compute_queue_index.is_some() { queues.next().unwrap() } else { vulkano_graphics_queue.clone() };
+    let vulkano_queue = queues.next().unwrap();
 
     let ash_instance = unsafe { ash::Instance::load(entry.static_fn(), vulkano_instance.handle()) };
     let wgpu_hal_instance = unsafe { wgpu::hal::vulkan::Instance::from_raw(entry, ash_instance, u32::try_from(vulkano_instance.api_version()).unwrap(), 0, None, instance_extension_into_vec(instance_extensions), wgpu::InstanceFlags::empty(), false, None).unwrap() };
@@ -311,7 +290,7 @@ fn initialize_gpu() -> GpuHandle {
     let queue_family_index = vulkano_physical_device.queue_family_properties().iter().position(|q| q.queue_flags.contains(QueueFlags::GRAPHICS | QueueFlags::COMPUTE)).unwrap();
     let extensions = wgpu_hal_adapter.adapter.required_device_extensions(wgpu_hal_adapter.features);
     let ash_device = unsafe { ash::Device::load(wgpu_hal_instance.shared_instance().raw_instance().fp_v1_0(), vulkano_device.handle()) };
-    let wgpu_hal_device = unsafe { wgpu_hal_adapter.adapter.device_from_raw(ash_device, false, &extensions, wgpu_hal_adapter.features, queue_family_index as u32, 0).unwrap() };
+    let wgpu_hal_device = unsafe { wgpu_hal_adapter.adapter.device_from_raw(ash_device, false, &extensions, wgpu_hal_adapter.features, queue_family_index as u32, 1).unwrap() };
 
     let wgpu_instance;
     let wgpu_adapter;
@@ -338,8 +317,7 @@ fn initialize_gpu() -> GpuHandle {
     GpuHandle {
         vulkano_instance,
         vulkano_device,
-        vulkano_graphics_queue,
-        vulkano_compute_queue,
+        vulkano_queue,
         vulkano_memory_allocator,
         wgpu_instance,
         wgpu_adapter,

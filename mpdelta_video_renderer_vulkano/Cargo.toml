@@ -15,7 +15,6 @@ shader_composite_operation = { path = "shaders/composite_operation" , version = 
 shader_texture_drawing = { path = "shaders/texture_drawing" , version = "*", features = ["spirv-std"], default-features = false }
 smallvec = { workspace = true }
 vulkano = { workspace = true }
-vulkano-util = { workspace = true }
 
 [build-dependencies]
 shader_builder = { workspace = true }

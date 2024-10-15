@@ -1,14 +1,15 @@
 [package]
-name = "mpdelta_gui_vulkano"
+name = "mpdelta_gui_wgpu"
 version = { workspace = true }
 edition = { workspace = true }
 authors = { workspace = true }
 
 [dependencies]
+eframe = { workspace = true }
 egui = { workspace = true }
-egui_winit_vulkano = { workspace = true }
+egui-wgpu = { workspace = true }
 mpdelta_core_vulkano = { workspace = true }
 mpdelta_gui = { workspace = true }
 vulkano = { workspace = true }
-vulkano-util = { workspace = true }
+wgpu = { workspace = true }
 winit = { workspace = true }

@@ -168,7 +168,7 @@ where
                             ],
                             closed: false,
                             fill: widget_visuals.bg_fill,
-                            stroke: widget_visuals.fg_stroke,
+                            stroke: widget_visuals.fg_stroke.into(),
                         }),
                         Shape::Path(PathShape {
                             points: vec![
@@ -178,7 +178,7 @@ where
                             ],
                             closed: false,
                             fill: widget_visuals.bg_fill,
-                            stroke: widget_visuals.fg_stroke,
+                            stroke: widget_visuals.fg_stroke.into(),
                         }),
                     ]
                 });
@@ -202,7 +202,7 @@ where
                         ],
                         closed: true,
                         fill: widget_visuals.bg_fill,
-                        stroke: widget_visuals.fg_stroke,
+                        stroke: widget_visuals.fg_stroke.into(),
                     }),
                     (None, Some(_)) => Shape::Path(PathShape {
                         points: vec![
@@ -215,7 +215,7 @@ where
                         ],
                         closed: true,
                         fill: widget_visuals.bg_fill,
-                        stroke: widget_visuals.fg_stroke,
+                        stroke: widget_visuals.fg_stroke.into(),
                     }),
                     (Some(_), None) => Shape::Path(PathShape {
                         points: vec![
@@ -228,7 +228,7 @@ where
                         ],
                         closed: true,
                         fill: widget_visuals.bg_fill,
-                        stroke: widget_visuals.fg_stroke,
+                        stroke: widget_visuals.fg_stroke.into(),
                     }),
                     (None, None) => Shape::Noop,
                 }

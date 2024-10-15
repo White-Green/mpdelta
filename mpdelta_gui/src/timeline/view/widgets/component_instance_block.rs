@@ -141,7 +141,7 @@ where
             ]
         }));
         painter.extend(shapes);
-        painter.galley(block_rect.min + Vec2::new(padding, padding), galley);
+        painter.galley(block_rect.min + Vec2::new(padding, padding), galley, widget_visuals.fg_stroke.color);
         let response = ui.allocate_rect(block_rect, Sense::click_and_drag());
         if response.clicked() {
             edit(ComponentInstanceEditEvent::Click);

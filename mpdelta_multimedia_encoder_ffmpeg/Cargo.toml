@@ -19,4 +19,6 @@ mpdelta_multimedia = { workspace = true }
 mpdelta_renderer = { workspace = true }
 thiserror = { workspace = true }
 vulkano = { workspace = true }
+
+[dev-dependencies]
 vulkano-util = { workspace = true }

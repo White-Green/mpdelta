@@ -222,7 +222,7 @@ where
                             ],
                             closed: false,
                             fill: widget_visuals.bg_fill,
-                            stroke: widget_visuals.fg_stroke,
+                            stroke: widget_visuals.fg_stroke.into(),
                         }),
                         Shape::Path(PathShape {
                             points: vec![
@@ -232,7 +232,7 @@ where
                             ],
                             closed: false,
                             fill: widget_visuals.bg_fill,
-                            stroke: widget_visuals.fg_stroke,
+                            stroke: widget_visuals.fg_stroke.into(),
                         }),
                     ]
                 });
@@ -267,7 +267,7 @@ where
                                 ],
                                 closed: true,
                                 fill: widget_visuals.bg_fill,
-                                stroke: widget_visuals.fg_stroke,
+                                stroke: widget_visuals.fg_stroke.into(),
                             }),
                             Shape::Path(PathShape {
                                 points: vec![
@@ -278,7 +278,7 @@ where
                                 ],
                                 closed,
                                 fill: slider_visuals_pin_left.bg_fill,
-                                stroke: slider_visuals_pin_left.fg_stroke,
+                                stroke: slider_visuals_pin_left.fg_stroke.into(),
                             }),
                             Shape::Path(PathShape {
                                 points: vec![
@@ -289,7 +289,7 @@ where
                                 ],
                                 closed,
                                 fill: slider_visuals_pin_right.bg_fill,
-                                stroke: slider_visuals_pin_right.fg_stroke,
+                                stroke: slider_visuals_pin_right.fg_stroke.into(),
                             }),
                         ]
                     }
@@ -307,7 +307,7 @@ where
                                 ],
                                 closed: true,
                                 fill: widget_visuals.bg_fill,
-                                stroke: widget_visuals.fg_stroke,
+                                stroke: widget_visuals.fg_stroke.into(),
                             }),
                             Shape::Noop,
                             Shape::Path(PathShape {
@@ -319,7 +319,7 @@ where
                                 ],
                                 closed: true,
                                 fill: slider_visuals_pin_right.bg_fill,
-                                stroke: slider_visuals_pin_right.fg_stroke,
+                                stroke: slider_visuals_pin_right.fg_stroke.into(),
                             }),
                         ]
                     }
@@ -337,7 +337,7 @@ where
                                 ],
                                 closed: true,
                                 fill: widget_visuals.bg_fill,
-                                stroke: widget_visuals.fg_stroke,
+                                stroke: widget_visuals.fg_stroke.into(),
                             }),
                             Shape::Path(PathShape {
                                 points: vec![
@@ -348,7 +348,7 @@ where
                                 ],
                                 closed: true,
                                 fill: slider_visuals_pin_left.bg_fill,
-                                stroke: slider_visuals_pin_left.fg_stroke,
+                                stroke: slider_visuals_pin_left.fg_stroke.into(),
                             }),
                             Shape::Noop,
                         ]

@@ -12,6 +12,7 @@ use vulkano::command_buffer::allocator::{StandardCommandBufferAllocator, Standar
 use vulkano::command_buffer::{AutoCommandBufferBuilder, ClearColorImageInfo, CommandBufferUsage, PrimaryCommandBufferAbstract, RenderPassBeginInfo, SubpassBeginInfo, SubpassEndInfo};
 use vulkano::descriptor_set::allocator::{StandardDescriptorSetAllocator, StandardDescriptorSetAllocatorCreateInfo};
 use vulkano::descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet};
+use vulkano::device::{Device, Queue};
 use vulkano::format::{ClearColorValue, ClearValue, Format};
 use vulkano::image::sampler::{Sampler, SamplerCreateInfo};
 use vulkano::image::view::{ImageView, ImageViewCreateInfo};
@@ -33,10 +34,10 @@ use vulkano::shader::spirv::bytes_to_words;
 use vulkano::shader::{ShaderModule, ShaderModuleCreateInfo};
 use vulkano::single_pass_renderpass;
 use vulkano::sync::GpuFuture;
-use vulkano_util::context::VulkanoContext;
 
 struct SharedResource {
-    context: Arc<VulkanoContext>,
+    device: Arc<Device>,
+    graphics_queue: Arc<Queue>,
     render_pass: Arc<RenderPass>,
     texture_drawing_pipeline: Arc<GraphicsPipeline>,
     composite_operation_pipeline: Arc<ComputePipeline>,
@@ -46,9 +47,9 @@ struct SharedResource {
 }
 
 impl SharedResource {
-    fn new(context: Arc<VulkanoContext>) -> SharedResource {
+    fn new(device: Arc<Device>, graphics_queue: Arc<Queue>) -> SharedResource {
         let render_pass = single_pass_renderpass!(
-            Arc::clone(context.device()),
+            Arc::clone(&device),
             attachments: {
                 color: {
                     format: Format::R8G8B8A8_UNORM,
@@ -70,13 +71,13 @@ impl SharedResource {
         )
         .unwrap();
         let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
-        let texture_drawing_shader = unsafe { ShaderModule::new(Arc::clone(context.device()), ShaderModuleCreateInfo::new(&bytes_to_words(include_bytes!(concat!(env!("OUT_DIR"), "/texture_drawing.spv"))).unwrap())).unwrap() };
+        let texture_drawing_shader = unsafe { ShaderModule::new(Arc::clone(&device), ShaderModuleCreateInfo::new(&bytes_to_words(include_bytes!(concat!(env!("OUT_DIR"), "/texture_drawing.spv"))).unwrap())).unwrap() };
         let vertex_shader = texture_drawing_shader.entry_point("shader::main_vs").unwrap();
         let fragment_shader = texture_drawing_shader.entry_point("shader::main_fs").unwrap();
         let shader_stages = smallvec![PipelineShaderStageCreateInfo::new(vertex_shader), PipelineShaderStageCreateInfo::new(fragment_shader)];
-        let pipeline_layout = PipelineLayout::new(Arc::clone(context.device()), PipelineDescriptorSetLayoutCreateInfo::from_stages(&shader_stages).into_pipeline_layout_create_info(Arc::clone(context.device())).unwrap()).unwrap();
+        let pipeline_layout = PipelineLayout::new(Arc::clone(&device), PipelineDescriptorSetLayoutCreateInfo::from_stages(&shader_stages).into_pipeline_layout_create_info(Arc::clone(&device)).unwrap()).unwrap();
         let texture_drawing_pipeline = GraphicsPipeline::new(
-            Arc::clone(context.device()),
+            Arc::clone(&device),
             None,
             GraphicsPipelineCreateInfo {
                 stages: shader_stages,
@@ -96,26 +97,27 @@ impl SharedResource {
             },
         )
         .unwrap();
-        let composite_operation_shader = unsafe { ShaderModule::new(Arc::clone(context.device()), ShaderModuleCreateInfo::new(&bytes_to_words(include_bytes!(concat!(env!("OUT_DIR"), "/composite_operation.spv"))).unwrap())).unwrap() };
+        let composite_operation_shader = unsafe { ShaderModule::new(Arc::clone(&device), ShaderModuleCreateInfo::new(&bytes_to_words(include_bytes!(concat!(env!("OUT_DIR"), "/composite_operation.spv"))).unwrap())).unwrap() };
         let compute_shader = composite_operation_shader.entry_point("shader::main").unwrap();
         let composite_operation_pipeline = ComputePipeline::new(
-            Arc::clone(context.device()),
+            Arc::clone(&device),
             None,
             ComputePipelineCreateInfo::stage_layout(
                 PipelineShaderStageCreateInfo::new(compute_shader.clone()),
                 PipelineLayout::new(
-                    Arc::clone(context.device()),
-                    PipelineDescriptorSetLayoutCreateInfo::from_stages(&[PipelineShaderStageCreateInfo::new(compute_shader)]).into_pipeline_layout_create_info(Arc::clone(context.device())).unwrap(),
+                    Arc::clone(&device),
+                    PipelineDescriptorSetLayoutCreateInfo::from_stages(&[PipelineShaderStageCreateInfo::new(compute_shader)]).into_pipeline_layout_create_info(Arc::clone(&device)).unwrap(),
                 )
                 .unwrap(),
             ),
         )
         .unwrap();
-        let efficient_allocator = StandardMemoryAllocator::new_default(Arc::clone(context.device()));
-        let command_buffer_allocator = StandardCommandBufferAllocator::new(Arc::clone(context.device()), StandardCommandBufferAllocatorCreateInfo::default());
-        let descriptor_set_allocator = StandardDescriptorSetAllocator::new(Arc::clone(context.device()), StandardDescriptorSetAllocatorCreateInfo::default());
+        let efficient_allocator = StandardMemoryAllocator::new_default(Arc::clone(&device));
+        let command_buffer_allocator = StandardCommandBufferAllocator::new(Arc::clone(&device), StandardCommandBufferAllocatorCreateInfo::default());
+        let descriptor_set_allocator = StandardDescriptorSetAllocator::new(Arc::clone(&device), StandardDescriptorSetAllocatorCreateInfo::default());
         SharedResource {
-            context,
+            device,
+            graphics_queue,
             render_pass,
             texture_drawing_pipeline,
             composite_operation_pipeline,
@@ -151,8 +153,10 @@ pub struct ImageCombinerBuilder {
 }
 
 impl ImageCombinerBuilder {
-    pub fn new(context: Arc<VulkanoContext>) -> ImageCombinerBuilder {
-        ImageCombinerBuilder { shared: Arc::new(SharedResource::new(context)) }
+    pub fn new(device: Arc<Device>, graphics_queue: Arc<Queue>) -> ImageCombinerBuilder {
+        ImageCombinerBuilder {
+            shared: Arc::new(SharedResource::new(device, graphics_queue)),
+        }
     }
 }
 
@@ -212,7 +216,7 @@ impl Combiner<ImageType> for ImageCombiner {
             },
         )
         .unwrap();
-        let mut builder = AutoCommandBufferBuilder::primary(&shared_resource.command_buffer_allocator, shared_resource.context.graphics_queue().queue_family_index(), CommandBufferUsage::OneTimeSubmit).unwrap();
+        let mut builder = AutoCommandBufferBuilder::primary(&shared_resource.command_buffer_allocator, shared_resource.graphics_queue.queue_family_index(), CommandBufferUsage::OneTimeSubmit).unwrap();
         builder
             .clear_color_image(ClearColorImageInfo {
                 clear_value: ClearColorValue::Float([0., 0., 0., 0.]),
@@ -356,7 +360,7 @@ impl Combiner<ImageType> for ImageCombiner {
                         Arc::clone(&shared_resource.texture_drawing_pipeline.layout().set_layouts()[0]),
                         [
                             WriteDescriptorSet::image_view(0, image_view),
-                            WriteDescriptorSet::sampler(1, Sampler::new(Arc::clone(shared_resource.context.device()), SamplerCreateInfo::simple_repeat_linear_no_mipmap()).unwrap()),
+                            WriteDescriptorSet::sampler(1, Sampler::new(Arc::clone(&shared_resource.device), SamplerCreateInfo::simple_repeat_linear_no_mipmap()).unwrap()),
                         ],
                         [],
                     )
@@ -410,7 +414,7 @@ impl Combiner<ImageType> for ImageCombiner {
                 .unwrap();
             builder.dispatch([div_ceil(image_width, 32), div_ceil(image_height, 32), 1]).unwrap();
         }
-        builder.build().unwrap().execute(Arc::clone(shared_resource.context.graphics_queue())).unwrap().then_signal_fence_and_flush().unwrap().wait(None).unwrap();
+        builder.build().unwrap().execute(Arc::clone(&shared_resource.graphics_queue)).unwrap().then_signal_fence_and_flush().unwrap().wait(None).unwrap();
         ImageType(result_image)
     }
 }
@@ -421,7 +425,7 @@ mod tests {
     use cgmath::{Quaternion, Zero};
     use vulkano::instance::InstanceCreateInfo;
     use vulkano::Version;
-    use vulkano_util::context::VulkanoConfig;
+    use vulkano_util::context::{VulkanoConfig, VulkanoContext};
 
     #[test]
     fn test_image_combiner() {
@@ -456,7 +460,7 @@ mod tests {
             image
         };
 
-        let image_combiner_builder = ImageCombinerBuilder::new(Arc::clone(&context));
+        let image_combiner_builder = ImageCombinerBuilder::new(Arc::clone(context.device()), Arc::clone(context.graphics_queue()));
         let image_combiner = image_combiner_builder.new_combiner(ImageSizeRequest { width: 24., height: 24. });
         image_combiner.collect();
 

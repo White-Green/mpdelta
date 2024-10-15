@@ -31,17 +31,19 @@ use thiserror::Error;
 use vulkano::buffer::{BufferCreateInfo, BufferUsage};
 use vulkano::command_buffer::allocator::{StandardCommandBufferAllocator, StandardCommandBufferAllocatorCreateInfo};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, CopyImageToBufferInfo, PrimaryCommandBufferAbstract};
-use vulkano::memory::allocator::{AllocationCreateInfo, MemoryAllocator, MemoryTypeFilter};
+use vulkano::device::{Device, Queue};
+use vulkano::memory::allocator::{AllocationCreateInfo, MemoryAllocator, MemoryTypeFilter, StandardMemoryAllocator};
 use vulkano::sync::GpuFuture;
-use vulkano_util::context::VulkanoContext;
 
 pub struct FfmpegEncoderBuilder {
-    vulkano_context: Arc<VulkanoContext>,
+    device: Arc<Device>,
+    graphics_queue: Arc<Queue>,
+    memory_allocator: Arc<StandardMemoryAllocator>,
 }
 
 impl FfmpegEncoderBuilder {
-    pub fn new(vulkano_context: Arc<VulkanoContext>) -> FfmpegEncoderBuilder {
-        FfmpegEncoderBuilder { vulkano_context }
+    pub fn new(device: Arc<Device>, graphics_queue: Arc<Queue>, memory_allocator: Arc<StandardMemoryAllocator>) -> FfmpegEncoderBuilder {
+        FfmpegEncoderBuilder { device, graphics_queue, memory_allocator }
     }
 
     pub fn available_video_codec<Encoder: From<FfmpegEncodeSettings<File>>>(self: &Arc<Self>) -> impl IntoIterator<Item = CodecImplement<VideoCodec, Encoder>> {
@@ -137,7 +139,9 @@ impl<Encoder: From<FfmpegEncodeSettings<File>>> MediaCodecImplementHandle<Encode
         let output = OpenOptions::new().write(true).create(true).truncate(true).open(output).unwrap();
         output.set_len(0).unwrap();
         Encoder::from(FfmpegEncodeSettings {
-            vulkano_context: Arc::clone(&self.vulkano_context),
+            device: Arc::clone(&self.device),
+            graphics_queue: Arc::clone(&self.graphics_queue),
+            memory_allocator: Arc::clone(&self.memory_allocator),
             file_format,
             video,
             audio,
@@ -147,7 +151,9 @@ impl<Encoder: From<FfmpegEncodeSettings<File>>> MediaCodecImplementHandle<Encode
 }
 
 pub struct FfmpegEncodeSettings<Output> {
-    vulkano_context: Arc<VulkanoContext>,
+    device: Arc<Device>,
+    graphics_queue: Arc<Queue>,
+    memory_allocator: Arc<StandardMemoryAllocator>,
     file_format: FileFormat,
     video: Option<(VideoCodec, CodecOptions<VideoCodec>)>,
     audio: Option<(AudioCodec, CodecOptions<AudioCodec>)>,
@@ -170,7 +176,15 @@ where
     type Encoder = FfmpegEncoder;
 
     fn build(&mut self) -> Result<Self::Encoder, Self::Err> {
-        let FfmpegEncodeSettings { vulkano_context, file_format, video, audio, output } = self;
+        let FfmpegEncodeSettings {
+            device,
+            graphics_queue,
+            memory_allocator,
+            file_format,
+            video,
+            audio,
+            output,
+        } = self;
         let mut output = mpdelta_ffmpeg::io::Output::builder().file_type(file_format.extension()).build(output.take().unwrap())?;
         let global_header = output.format().flags().contains(format::Flags::GLOBAL_HEADER);
         let mut video_stream = None;
@@ -220,7 +234,7 @@ where
         let requires_audio = audio_stream.is_some();
         let (image_sender, image_receiver) = mpsc::channel();
         let (audio_sender, audio_receiver) = mpsc::channel();
-        let handle = std::thread::spawn(encode_thread(Arc::clone(vulkano_context), output, video_stream, audio_stream, image_receiver, audio_receiver));
+        let handle = std::thread::spawn(encode_thread(Arc::clone(device), Arc::clone(graphics_queue), Arc::clone(memory_allocator), output, video_stream, audio_stream, image_receiver, audio_receiver));
         Ok(FfmpegEncoder {
             requires_image,
             requires_audio,
@@ -241,7 +255,9 @@ where
 }
 
 fn encode_thread<T: Write + Seek + Send + Sync + 'static>(
-    vulkano_context: Arc<VulkanoContext>,
+    device: Arc<Device>,
+    graphics_queue: Arc<Queue>,
+    memory_allocator: Arc<StandardMemoryAllocator>,
     mut output: mpdelta_ffmpeg::io::Output<T>,
     video_stream: Option<(usize, video::Encoder, CodecOptions<VideoCodec>)>,
     audio_stream: Option<(usize, audio::Encoder, CodecOptions<AudioCodec>, bool)>,
@@ -255,7 +271,7 @@ fn encode_thread<T: Write + Seek + Send + Sync + 'static>(
             let mut encoder_native_format_frame = frame::Video::new(encoder.format(), options.width(), options.height());
             let mut format_conversion_context = scaling::Context::get(Pixel::RGBA, options.width(), options.height(), encoder.format(), options.width(), options.height(), scaling::Flags::FAST_BILINEAR).unwrap();
             let buffer = vulkano::buffer::Buffer::new_slice::<[u8; 4]>(
-                Arc::clone(vulkano_context.memory_allocator()) as Arc<dyn MemoryAllocator>,
+                Arc::clone(&memory_allocator) as Arc<dyn MemoryAllocator>,
                 BufferCreateInfo {
                     usage: BufferUsage::TRANSFER_DST,
                     ..BufferCreateInfo::default()
@@ -267,7 +283,7 @@ fn encode_thread<T: Write + Seek + Send + Sync + 'static>(
                 options.width() as u64 * options.height() as u64,
             )
             .unwrap();
-            let command_buffer_allocator = StandardCommandBufferAllocator::new(Arc::clone(vulkano_context.device()), StandardCommandBufferAllocatorCreateInfo::default());
+            let command_buffer_allocator = StandardCommandBufferAllocator::new(Arc::clone(&device), StandardCommandBufferAllocatorCreateInfo::default());
             let mut timestamp = 0;
             let mut image_receiver = Some(image_receiver);
             let stream_time_base = output.stream(id).unwrap().time_base();
@@ -286,7 +302,7 @@ fn encode_thread<T: Write + Seek + Send + Sync + 'static>(
                             let [width, height, _] = image.extent();
                             let mut builder = AutoCommandBufferBuilder::primary(&command_buffer_allocator, 0, CommandBufferUsage::OneTimeSubmit).unwrap();
                             builder.copy_image_to_buffer(CopyImageToBufferInfo::image_buffer(image, buffer.clone())).unwrap();
-                            builder.build().unwrap().execute(Arc::clone(vulkano_context.graphics_queue())).unwrap().then_signal_fence_and_flush().unwrap().wait(None).unwrap();
+                            builder.build().unwrap().execute(Arc::clone(&graphics_queue)).unwrap().then_signal_fence_and_flush().unwrap().wait(None).unwrap();
                             rgba_frame.set_width(width);
                             rgba_frame.set_height(height);
                             rgba_frame.plane_mut(0).copy_from_slice(&buffer.read().unwrap());
@@ -464,7 +480,7 @@ mod tests {
     use vulkano::image::{Image, ImageCreateInfo, ImageUsage};
     use vulkano::instance::InstanceCreateInfo;
     use vulkano::Version;
-    use vulkano_util::context::VulkanoConfig;
+    use vulkano_util::context::{VulkanoConfig, VulkanoContext};
 
     const TEST_VIDEO_LENGTH: f64 = 5.;
     const TEST_VIDEO_FRAME_RATE: f64 = 60.;
@@ -558,7 +574,9 @@ mod tests {
         audio_options.set_bit_rate(192_000);
         audio_options.set_max_bit_rate(192_000);
         let mut encoder = FfmpegEncodeSettings {
-            vulkano_context: Arc::clone(&vulkano_context),
+            device: Arc::clone(vulkano_context.device()),
+            graphics_queue: Arc::clone(vulkano_context.graphics_queue()),
+            memory_allocator: Arc::clone(vulkano_context.memory_allocator()),
             file_format: FileFormat::Mp4,
             video: Some((VideoCodec::H264, video_options)),
             audio: Some((AudioCodec::Aac, audio_options)),
@@ -622,7 +640,9 @@ mod tests {
         audio_options.set_bit_rate(192_000);
         audio_options.set_max_bit_rate(192_000);
         let mut encoder = FfmpegEncodeSettings {
-            vulkano_context: Arc::clone(&vulkano_context),
+            device: Arc::clone(vulkano_context.device()),
+            graphics_queue: Arc::clone(vulkano_context.graphics_queue()),
+            memory_allocator: Arc::clone(vulkano_context.memory_allocator()),
             file_format: FileFormat::Flac,
             video: None,
             audio: Some((AudioCodec::Flac, audio_options)),

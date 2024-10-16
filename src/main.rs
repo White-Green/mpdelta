@@ -265,7 +265,7 @@ fn initialize_gpu() -> GpuHandle {
 
     let queue_create_infos = vec![QueueCreateInfo {
         queue_family_index: queue_index as u32,
-        queues: vec![0.5; 2],
+        queues: vec![0., 1.],
         ..Default::default()
     }];
 

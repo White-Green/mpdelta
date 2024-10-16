@@ -130,7 +130,7 @@ where
             let time_range = time_map.start().max(begin_pos).value()..time_map.end().min(end_pos).value();
             let time_range = round_by_sample_rate(time_range.start)..round_by_sample_rate(time_range.end);
             let audio_range = time_map.map(TimelineTime::new(time_range.start))..time_map.map(TimelineTime::new(time_range.end));
-            let audio_compute_start = audio_range.start.min(audio_range.end);
+            let audio_compute_start = audio_range.start.min(audio_range.end).max(TimelineTime::ZERO);
             let audio_compute_end = audio_range.start.max(audio_range.end);
             let (audio_sample_rate_scaled, _) = (MixedFraction::from_integer(audio_sample_rate as i32) * time_map.scale().abs()).deconstruct_with_round(1);
             let audio_sample_rate_scaled = audio_sample_rate_scaled as u32;
@@ -157,7 +157,9 @@ where
             single_audio_buffer.fill(0.);
             let computed_len = audio.compute_audio(TimelineTime::new(request_begin), single_audio_buffer.slice_mut(..).unwrap());
             let result = single_audio_buffer.slice(..computed_len).unwrap();
-            let default_value = result.get(0).unwrap();
+            let Some(default_value) = result.get(0) else {
+                continue;
+            };
             let leading = result.slice(..default_buffer_len - leading_zeros).unwrap();
             let body = result.slice(default_buffer_len - leading_zeros..).unwrap();
             for (i, resample) in resample.iter_mut().enumerate() {

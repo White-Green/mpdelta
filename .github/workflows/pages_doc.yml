@@ -35,7 +35,7 @@ jobs:
             target/
             target_for_shaders/
           key: ${{ runner.os }}-cargo-doc-${{ hashFiles('**/Cargo.lock') }}
-      - run: RUSTDOCFLAGS="--enable-index-page" cargo +${{ steps.main_toolchain.outputs.name }} doc --workspace --document-private-items --no-deps -Zrustdoc-map
+      - run: RUSTDOCFLAGS="--enable-index-page" cargo +${{ steps.main_toolchain.outputs.name }} doc --locked --workspace --document-private-items --no-deps -Zrustdoc-map
       - uses: actions/upload-pages-artifact@v2
         with:
           path: target/doc

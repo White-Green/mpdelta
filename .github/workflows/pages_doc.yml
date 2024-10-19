@@ -4,10 +4,6 @@ on:
 
 jobs:
   rustdoc:
-    permissions:
-      contents: read
-      pages: write
-      id-token: write
     name: rustdoc
     runs-on: ubuntu-latest
     steps:
@@ -43,6 +39,10 @@ jobs:
           path: target/doc
 
   deploy:
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

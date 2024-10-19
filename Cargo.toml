@@ -1,13 +1,8 @@
-[package]
-name = "mpdelta"
-version = { workspace = true }
-edition = { workspace = true }
-authors = { workspace = true }
-default-run = "mpdelta"
-
 [workspace]
+resolver = "2"
+
 members = [
-    ".",
+    "mpdelta",
     "mpdelta_audio_mixer",
     "mpdelta_build_utils/rust_gpu_builder",
     "mpdelta_build_utils/shader_builder",
@@ -36,7 +31,7 @@ members = [
     "mpdelta_video_renderer_vulkano/shaders/texture_drawing",
 ]
 default-members = [
-    ".",
+    "mpdelta",
     "mpdelta_audio_mixer",
     "mpdelta_build_utils/shader_builder",
     "mpdelta_common/mpdelta_async_runtime",
@@ -156,31 +151,6 @@ egui-wgpu = { git = "https://github.com/White-Green/egui", rev = "02784f706ea8db
 emath = { git = "https://github.com/White-Green/egui", rev = "02784f706ea8db6dc33126201ff69ea34fc71589" }
 epaint = { git = "https://github.com/White-Green/egui", rev = "02784f706ea8db6dc33126201ff69ea34fc71589" }
 ffmpeg-sys-next = { git = "https://github.com/White-Green/rust-ffmpeg-sys", branch = "ffmpeg7.1" }
-
-[dependencies]
-ash = { workspace = true }
-async-trait = { workspace = true }
-cpal = { workspace = true }
-futures = { workspace = true }
-mpdelta_async_runtime = { workspace = true, features = ["tokio"] }
-mpdelta_audio_mixer = { workspace = true }
-mpdelta_components = { workspace = true }
-mpdelta_core = { workspace = true }
-mpdelta_core_audio = { workspace = true }
-mpdelta_core_vulkano = { workspace = true }
-mpdelta_gui = { workspace = true }
-mpdelta_gui_audio_player_cpal = { workspace = true }
-mpdelta_gui_wgpu = { workspace = true }
-mpdelta_multimedia_encoder_ffmpeg = { workspace = true }
-mpdelta_project_serialize = { workspace = true }
-mpdelta_renderer = { workspace = true }
-mpdelta_rendering_controller = { workspace = true }
-mpdelta_services = { workspace = true }
-mpdelta_video_renderer_vulkano = { workspace = true }
-tokio = { workspace = true, features = ["rt-multi-thread"] }
-vulkano = { workspace = true }
-wgpu = { workspace = true }
-winit = { workspace = true }
 
 [profile.dev]
 opt-level = 3

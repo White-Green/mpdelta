@@ -2,10 +2,10 @@
 !/.github
 !/.gitattributes
 !/.gitignore
-!/src
 !/Cargo.lock
 !/Cargo.toml
 !/rustfmt.toml
+!/mpdelta
 !/mpdelta_audio_mixer
 !/mpdelta_build_utils
 !/mpdelta_common

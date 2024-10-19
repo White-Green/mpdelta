@@ -34,7 +34,7 @@ jobs:
             target/
             target_for_shaders/
           key: ${{ runner.os }}-cargo-doc-${{ hashFiles('**/Cargo.lock') }}
-      - run: cargo +${{ steps.main_toolchain.outputs.name }} doc --workspace --document-private-items -Zrustdoc-map
+      - run: cargo +${{ steps.main_toolchain.outputs.name }} doc --workspace --document-private-items --no-deps -Zrustdoc-map
       - uses: actions/upload-pages-artifact@v2
         with:
           path: target/doc

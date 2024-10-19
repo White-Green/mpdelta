@@ -1,6 +1,8 @@
 name: rustdoc pages
 on:
-  push
+  push:
+    branches:
+      - main
 
 jobs:
   rustdoc:

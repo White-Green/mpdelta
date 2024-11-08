@@ -22,6 +22,7 @@ members = [
     "mpdelta_gui_wgpu",
     "mpdelta_multimedia",
     "mpdelta_multimedia_encoder_ffmpeg",
+    "mpdelta_processor_cache_moka",
     "mpdelta_project_serialize",
     "mpdelta_renderer",
     "mpdelta_rendering_controller",
@@ -49,6 +50,7 @@ default-members = [
     "mpdelta_gui_wgpu",
     "mpdelta_multimedia",
     "mpdelta_multimedia_encoder_ffmpeg",
+    "mpdelta_processor_cache_moka",
     "mpdelta_project_serialize",
     "mpdelta_services",
     "mpdelta_renderer",
@@ -112,6 +114,7 @@ mpdelta_gui_wgpu = { path = "mpdelta_gui_wgpu" }
 mpdelta_message_router = { path = "mpdelta_common/mpdelta_message_router" }
 mpdelta_multimedia = { path = "mpdelta_multimedia" }
 mpdelta_multimedia_encoder_ffmpeg = { path = "mpdelta_multimedia_encoder_ffmpeg" }
+mpdelta_processor_cache_moka = { path = "mpdelta_processor_cache_moka" }
 mpdelta_project_serialize = { path = "mpdelta_project_serialize" }
 mpdelta_renderer = { path = "mpdelta_renderer" }
 mpdelta_rendering_controller = { path = "mpdelta_rendering_controller" }

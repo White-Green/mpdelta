@@ -176,7 +176,7 @@ where
             let class = class.read().await;
             let instance = class.instantiate(&root_component_class.clone().map(|weak| weak as _), &id).await;
             let instance_id = *instance.id();
-            match renderer.render_component(instance).await {
+            match renderer.render_component(Arc::new(instance)).await {
                 Ok(renderer) => {
                     let audio = match renderer.mix_audio(0, 0).await {
                         Ok(audio) => audio,

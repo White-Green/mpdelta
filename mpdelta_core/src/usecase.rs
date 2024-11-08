@@ -12,6 +12,7 @@ use std::error::Error;
 use std::future::Future;
 use std::ops::Deref;
 use std::path::Path;
+use std::sync::Arc;
 use tokio::sync::RwLock;
 
 #[async_trait]
@@ -199,7 +200,7 @@ where
 pub trait RealtimeRenderComponentUsecase<T: ParameterValueType>: Send + Sync {
     type Err: Error + Send + 'static;
     type Renderer: RealtimeComponentRenderer<T> + 'static;
-    async fn render_component(&self, component: ComponentInstance<T>) -> Result<Self::Renderer, Self::Err>;
+    async fn render_component(&self, component: Arc<ComponentInstance<T>>) -> Result<Self::Renderer, Self::Err>;
 }
 
 #[async_trait]
@@ -212,14 +213,14 @@ where
     type Err = <O::Target as RealtimeRenderComponentUsecase<T>>::Err;
     type Renderer = <O::Target as RealtimeRenderComponentUsecase<T>>::Renderer;
 
-    async fn render_component(&self, component: ComponentInstance<T>) -> Result<Self::Renderer, Self::Err> {
+    async fn render_component(&self, component: Arc<ComponentInstance<T>>) -> Result<Self::Renderer, Self::Err> {
         self.deref().render_component(component).await
     }
 }
 
 pub trait RenderWholeComponentUsecase<T: ParameterValueType, Encoder>: Send + Sync {
     type Err: Error + Send + 'static;
-    fn render_and_encode<'life0, 'async_trait>(&'life0 self, component: ComponentInstance<T>, encoder: Encoder) -> impl Future<Output = Result<(), Self::Err>> + Send + 'async_trait
+    fn render_and_encode<'life0, 'async_trait>(&'life0 self, component: Arc<ComponentInstance<T>>, encoder: Encoder) -> impl Future<Output = Result<(), Self::Err>> + Send + 'async_trait
     where
         'life0: 'async_trait;
 }
@@ -232,7 +233,7 @@ where
 {
     type Err = <O::Target as RenderWholeComponentUsecase<T, Encoder>>::Err;
 
-    fn render_and_encode<'life0, 'async_trait>(&'life0 self, component: ComponentInstance<T>, encoder: Encoder) -> impl Future<Output = Result<(), Self::Err>> + Send + 'async_trait
+    fn render_and_encode<'life0, 'async_trait>(&'life0 self, component: Arc<ComponentInstance<T>>, encoder: Encoder) -> impl Future<Output = Result<(), Self::Err>> + Send + 'async_trait
     where
         'life0: 'async_trait,
     {

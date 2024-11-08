@@ -3169,6 +3169,7 @@ dependencies = [
  "mpdelta_gui_audio_player_cpal",
  "mpdelta_gui_wgpu",
  "mpdelta_multimedia_encoder_ffmpeg",
+ "mpdelta_processor_cache_moka",
  "mpdelta_project_serialize",
  "mpdelta_renderer",
  "mpdelta_rendering_controller",
@@ -3197,6 +3198,7 @@ dependencies = [
  "mpdelta_dsp",
  "mpdelta_renderer",
  "smallvec",
+ "tokio",
 ]
 
 [[package]]
@@ -3402,6 +3404,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "mpdelta_processor_cache_moka"
+version = "0.1.0"
+dependencies = [
+ "moka",
+ "mpdelta_core",
+]
+
+[[package]]
 name = "mpdelta_project_serialize"
 version = "0.1.0"
 dependencies = [
@@ -3474,6 +3484,7 @@ name = "mpdelta_video_renderer_vulkano"
 version = "0.1.0"
 dependencies = [
  "cgmath",
+ "futures",
  "glam",
  "mpdelta_core",
  "mpdelta_core_vulkano",
@@ -3482,6 +3493,7 @@ dependencies = [
  "shader_composite_operation",
  "shader_texture_drawing",
  "smallvec",
+ "tokio",
  "vulkano",
  "vulkano-util",
 ]

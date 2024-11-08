@@ -535,6 +535,22 @@ mod tests {
         assert_eq!(value.binary_search_by(|time| time.cmp(&8)), Ok(6));
         assert_eq!(value.binary_search_by(|time| time.cmp(&9)), Err(7));
         assert_eq!(value.binary_search_by(|time| time.cmp(&10)), Err(7));
+
+        let value = time_split_value![1, (), 3];
+        assert_eq!(value.binary_search_by(|time| time.cmp(&0)), Err(0));
+        assert_eq!(value.binary_search_by(|time| time.cmp(&1)), Ok(0));
+        assert_eq!(value.binary_search_by(|time| time.cmp(&2)), Err(1));
+        assert_eq!(value.binary_search_by(|time| time.cmp(&3)), Ok(1));
+        assert_eq!(value.binary_search_by(|time| time.cmp(&4)), Err(2));
+
+        let value = time_split_value![1, (), 3, (), 5];
+        assert_eq!(value.binary_search_by(|time| time.cmp(&0)), Err(0));
+        assert_eq!(value.binary_search_by(|time| time.cmp(&1)), Ok(0));
+        assert_eq!(value.binary_search_by(|time| time.cmp(&2)), Err(1));
+        assert_eq!(value.binary_search_by(|time| time.cmp(&3)), Ok(1));
+        assert_eq!(value.binary_search_by(|time| time.cmp(&4)), Err(2));
+        assert_eq!(value.binary_search_by(|time| time.cmp(&5)), Ok(2));
+        assert_eq!(value.binary_search_by(|time| time.cmp(&6)), Err(3));
     }
 
     #[test]

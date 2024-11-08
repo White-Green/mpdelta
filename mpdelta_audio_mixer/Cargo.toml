@@ -13,3 +13,4 @@ smallvec = { workspace = true }
 
 [dev-dependencies]
 mpdelta_core_test_util = { workspace = true }
+tokio = { workspace = true, features = ["rt", "macros"] }

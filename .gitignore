@@ -21,6 +21,7 @@
 !/mpdelta_gui_wgpu
 !/mpdelta_multimedia
 !/mpdelta_multimedia_encoder_ffmpeg
+!/mpdelta_processor_cache_moka
 !/mpdelta_project_serialize
 !/mpdelta_services
 !/mpdelta_renderer

@@ -989,7 +989,7 @@ pub enum ImageRequiredParamsTransform {
     },
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct ImageRequiredParamsFixed {
     pub transform: ImageRequiredParamsTransformFixed,
     pub background_color: [u8; 4],
@@ -1014,6 +1014,19 @@ pub enum ImageRequiredParamsTransformFixed {
         left_bottom: Vector3<f64>,
         right_bottom: Vector3<f64>,
     },
+}
+
+impl Default for ImageRequiredParamsTransformFixed {
+    fn default() -> Self {
+        ImageRequiredParamsTransformFixed::Params {
+            size: Vector3::new(1., 1., 1.),
+            scale: Vector3::new(1., 1., 1.),
+            translate: Vector3::new(0., 0., 0.),
+            rotate: Quaternion::one(),
+            scale_center: Vector3::new(0., 0., 0.),
+            rotate_center: Vector3::new(0., 0., 0.),
+        }
+    }
 }
 
 pub type SingleChannelVolume = VariableParameterValue<PinSplitValue<Option<EasingValue<f64>>>>;

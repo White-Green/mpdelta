@@ -6,7 +6,7 @@ use crate::component::link::MarkerLink;
 use crate::component::marker_pin::{MarkerPin, MarkerPinId, MarkerTime};
 use crate::component::parameter::value::{DynEditableLerpEasingValue, EasingValue, LinearEasing};
 use crate::component::parameter::{AudioRequiredParams, ImageRequiredParams, ImageRequiredParamsTransform, ParameterType, ParameterValueRaw, ParameterValueType, VariableParameterValue};
-use crate::component::processor::{ComponentProcessor, ComponentProcessorComponent, ComponentProcessorWrapper, ComponentsLinksPair};
+use crate::component::processor::{ComponentProcessor, ComponentProcessorComponent, ComponentProcessorWrapper, ComponentsLinksPair, ImageSize};
 use crate::core::IdGenerator;
 use crate::ptr::{StaticPointer, StaticPointerCow, StaticPointerOwned};
 use crate::time::TimelineTime;
@@ -94,8 +94,9 @@ impl<T: ParameterValueType> Project<T> {
 pub struct RootComponentClassItem<T: ParameterValueType> {
     left: MarkerPin,
     right: MarkerPin,
-    components: HashTrieMapSync<ComponentInstanceId, ComponentInstance<T>>,
+    components: HashTrieMapSync<ComponentInstanceId, Arc<ComponentInstance<T>>>,
     components_sorted: VectorSync<ComponentInstanceId>,
+    interprocess_pins: VectorSync<MarkerPin>,
     links: HashTrieMapSync<[MarkerPinId; 2], MarkerLink>,
     links_sorted: VectorSync<[MarkerPinId; 2]>,
     link_map: HashTrieMapSync<MarkerPinId, HashTrieSetSync<MarkerPinId>>,
@@ -110,8 +111,9 @@ pub struct RootComponentClassItemViewBase<'a> {
 pub struct RootComponentClassItemViewStructure<'a, T: ParameterValueType> {
     left: &'a mut MarkerPin,
     right: &'a mut MarkerPin,
-    components: &'a mut HashTrieMapSync<ComponentInstanceId, ComponentInstance<T>>,
+    components: &'a mut HashTrieMapSync<ComponentInstanceId, Arc<ComponentInstance<T>>>,
     components_sorted: &'a mut VectorSync<ComponentInstanceId>,
+    interprocess_pins: &'a mut VectorSync<MarkerPin>,
     links: &'a mut HashTrieMapSync<[MarkerPinId; 2], MarkerLink>,
     links_sorted: &'a mut VectorSync<[MarkerPinId; 2]>,
     link_map: &'a mut HashTrieMapSync<MarkerPinId, HashTrieSetSync<MarkerPinId>>,
@@ -146,6 +148,7 @@ impl<T: ParameterValueType> Clone for RootComponentClassItem<T> {
             right,
             components,
             components_sorted,
+            interprocess_pins,
             links,
             links_sorted,
             link_map,
@@ -157,6 +160,7 @@ impl<T: ParameterValueType> Clone for RootComponentClassItem<T> {
             right: right.clone(),
             components: components.clone(),
             components_sorted: components_sorted.clone(),
+            interprocess_pins: interprocess_pins.clone(),
             links: links.clone(),
             links_sorted: links_sorted.clone(),
             link_map: link_map.clone(),
@@ -167,14 +171,22 @@ impl<T: ParameterValueType> Clone for RootComponentClassItem<T> {
 }
 
 impl<T: ParameterValueType> ComponentsLinksPair<T> for RootComponentClassItem<T> {
-    fn components(&self) -> impl DoubleEndedIterator<Item = &ComponentInstance<T>> + Send + Sync + '_
+    fn default_image_size(&self) -> ImageSize {
+        ImageSize { width: 1920, height: 1080 }
+    }
+
+    fn frames_per_second(&self) -> u32 {
+        60
+    }
+
+    fn components(&self) -> impl DoubleEndedIterator<Item = &Arc<ComponentInstance<T>>> + Send + Sync + '_
     where
         Self: Sized,
     {
         self.iter_components()
     }
 
-    fn components_dyn(&self) -> Box<dyn DoubleEndedIterator<Item = &ComponentInstance<T>> + Send + Sync + '_> {
+    fn components_dyn(&self) -> Box<dyn DoubleEndedIterator<Item = &Arc<ComponentInstance<T>>> + Send + Sync + '_> {
         Box::new(self.iter_components())
     }
 
@@ -209,6 +221,7 @@ impl<T: ParameterValueType> RootComponentClassItem<T> {
             right,
             components,
             components_sorted,
+            interprocess_pins,
             links,
             links_sorted,
             link_map,
@@ -222,6 +235,7 @@ impl<T: ParameterValueType> RootComponentClassItem<T> {
                 right,
                 components,
                 components_sorted,
+                interprocess_pins,
                 links,
                 links_sorted,
                 link_map,
@@ -241,13 +255,13 @@ impl<T: ParameterValueType> RootComponentClassItem<T> {
     pub fn right_mut(&mut self) -> &mut MarkerPin {
         &mut self.right
     }
-    pub fn iter_components(&self) -> impl DoubleEndedIterator<Item = &ComponentInstance<T>> {
+    pub fn iter_components(&self) -> impl DoubleEndedIterator<Item = &Arc<ComponentInstance<T>>> {
         self.components_sorted.iter().filter_map(|id| self.components.get(id))
     }
-    pub fn component(&self, id: &ComponentInstanceId) -> Option<&ComponentInstance<T>> {
+    pub fn component(&self, id: &ComponentInstanceId) -> Option<&Arc<ComponentInstance<T>>> {
         self.components.get(id)
     }
-    pub fn component_mut(&mut self, id: &ComponentInstanceId) -> Option<&mut ComponentInstance<T>> {
+    pub fn component_mut(&mut self, id: &ComponentInstanceId) -> Option<&mut Arc<ComponentInstance<T>>> {
         self.components.get_mut(id)
     }
     pub fn add_component(&mut self, component: ComponentInstance<T>) {
@@ -258,6 +272,12 @@ impl<T: ParameterValueType> RootComponentClassItem<T> {
     }
     pub fn remove_component(&mut self, id: &ComponentInstanceId) -> Result<(), NotFound> {
         self.view().1.remove_component(id)
+    }
+    pub fn interprocess_pins(&self) -> &VectorSync<MarkerPin> {
+        &self.interprocess_pins
+    }
+    pub fn interprocess_pins_mut(&mut self) -> &mut VectorSync<MarkerPin> {
+        &mut self.interprocess_pins
     }
     pub fn iter_links(&self) -> impl DoubleEndedIterator<Item = &MarkerLink> {
         self.links_sorted.iter().filter_map(|key| self.links.get(key))
@@ -317,18 +337,18 @@ where
     pub fn right_mut(&mut self) -> &mut MarkerPin {
         self.right
     }
-    pub fn iter_components(&self) -> impl DoubleEndedIterator<Item = &ComponentInstance<T>> {
+    pub fn iter_components(&self) -> impl DoubleEndedIterator<Item = &Arc<ComponentInstance<T>>> {
         self.components_sorted.iter().filter_map(|id| self.components.get(id))
     }
-    pub fn component(&self, id: &ComponentInstanceId) -> Option<&ComponentInstance<T>> {
+    pub fn component(&self, id: &ComponentInstanceId) -> Option<&Arc<ComponentInstance<T>>> {
         self.components.get(id)
     }
-    pub fn component_mut(&mut self, id: &ComponentInstanceId) -> Option<&mut ComponentInstance<T>> {
+    pub fn component_mut(&mut self, id: &ComponentInstanceId) -> Option<&mut Arc<ComponentInstance<T>>> {
         self.components.get_mut(id)
     }
     pub fn add_component(&mut self, component: ComponentInstance<T>) {
         self.components_sorted.push_back_mut(*component.id());
-        self.components.insert_mut(*component.id(), component);
+        self.components.insert_mut(*component.id(), Arc::new(component));
     }
     pub fn insert_component_within(&mut self, component: &ComponentInstanceId, index: usize) -> Result<(), NotFound> {
         if !self.components.contains_key(component) {
@@ -364,6 +384,12 @@ where
             *self.links_sorted = links_sorted;
         }
         Ok(())
+    }
+    pub fn interprocess_pins(&self) -> &VectorSync<MarkerPin> {
+        self.interprocess_pins
+    }
+    pub fn interprocess_pins_mut(&mut self) -> &mut VectorSync<MarkerPin> {
+        self.interprocess_pins
     }
     pub fn iter_links(&self) -> impl DoubleEndedIterator<Item = &MarkerLink> {
         self.links_sorted.iter().filter_map(|key| self.links.get(key))
@@ -558,11 +584,15 @@ impl<T: ParameterValueType> ComponentProcessor<T> for RootComponentClassItemWrap
     async fn update_variable_parameter(&self, _: &[ParameterValueRaw<T::Image, T::Audio>], variable_parameters: &mut Vec<(String, ParameterType)>) {
         variable_parameters.clear();
     }
+
+    async fn num_interprocess_pins(&self, _: &[ParameterValueRaw<T::Image, T::Audio>]) -> usize {
+        self.0.load().interprocess_pins.len()
+    }
 }
 
 #[async_trait]
 impl<T: ParameterValueType> ComponentProcessorComponent<T> for RootComponentClassItemWrapper<T> {
-    async fn natural_length(&self, _: &[ParameterValueRaw<T::Image, T::Audio>]) -> MarkerTime {
+    async fn natural_length(&self, _: &[ParameterValueRaw<T::Image, T::Audio>], _: &[MarkerPinId]) -> MarkerTime {
         let guard = self.0.load();
         guard.length
     }
@@ -571,10 +601,20 @@ impl<T: ParameterValueType> ComponentProcessorComponent<T> for RootComponentClas
         &self,
         _fixed_parameters: &[ParameterValueRaw<T::Image, T::Audio>],
         _fixed_parameters_component: &[StaticPointer<RwLock<dyn ComponentClass<T>>>],
+        interprocess_pins: &[MarkerPinId],
         _variable_parameters: &[StaticPointer<RwLock<dyn ComponentClass<T>>>],
         _variable_parameter_type: &[(String, ParameterType)],
     ) -> Arc<dyn ComponentsLinksPair<T>> {
-        self.0.load_full()
+        let mut items = self.0.load_full();
+        if items.interprocess_pins.is_empty() {
+            return items;
+        }
+        let items_ref = Arc::make_mut(&mut items);
+        let items_interprocess_pins = items_ref.interprocess_pins.clone();
+        for (p1, p2) in items_interprocess_pins.iter().zip(interprocess_pins) {
+            items_ref.add_link(MarkerLink::new(*p1.id(), *p2, TimelineTime::ZERO));
+        }
+        items
     }
 }
 
@@ -607,6 +647,7 @@ impl<T: ParameterValueType> RootComponentClass<T> {
                 right,
                 components: HashTrieMap::new_sync(),
                 components_sorted: Vector::new_sync(),
+                interprocess_pins: Vector::new_sync(),
                 links: HashTrieMap::new_sync(),
                 links_sorted: Vector::new_sync(),
                 link_map: HashTrieMap::new_sync(),

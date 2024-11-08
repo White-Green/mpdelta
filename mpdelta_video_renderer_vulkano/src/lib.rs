@@ -1,12 +1,14 @@
 use cgmath::{Matrix4, SquareMatrix, Vector3, Vector4};
+use futures::future::FutureExt;
 use glam::{Mat4, Vec4};
 use mpdelta_core::component::parameter::{ImageRequiredParamsFixed, ImageRequiredParamsTransformFixed};
 use mpdelta_core_vulkano::ImageType;
-use mpdelta_renderer::{Combiner, CombinerBuilder, ImageSizeRequest};
+use mpdelta_renderer::{Combiner, CombinerBuilder, ImageCombinerParam, ImageCombinerRequest, ImageSizeRequest};
 use shader_composite_operation::CompositeOperationConstant;
 use shader_texture_drawing::TextureDrawingConstant;
 use smallvec::smallvec;
 use std::cmp::Ordering;
+use std::future::Future;
 use std::sync::Arc;
 use vulkano::command_buffer::allocator::{StandardCommandBufferAllocator, StandardCommandBufferAllocatorCreateInfo};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, ClearColorImageInfo, CommandBufferUsage, PrimaryCommandBufferAbstract, RenderPassBeginInfo, SubpassBeginInfo, SubpassEndInfo};
@@ -161,14 +163,14 @@ impl ImageCombinerBuilder {
 }
 
 impl CombinerBuilder<ImageType> for ImageCombinerBuilder {
-    type Request = ImageSizeRequest;
-    type Param = ImageRequiredParamsFixed;
+    type Request = ImageCombinerRequest;
+    type Param = ImageCombinerParam;
     type Combiner = ImageCombiner;
 
     fn new_combiner(&self, request: Self::Request) -> Self::Combiner {
         ImageCombiner {
             shared: Arc::clone(&self.shared),
-            image_size_request: request,
+            image_size_request: request.size_request,
             buffer: Vec::new(),
         }
     }
@@ -181,13 +183,17 @@ pub struct ImageCombiner {
 }
 
 impl Combiner<ImageType> for ImageCombiner {
-    type Param = ImageRequiredParamsFixed;
+    type Param = ImageCombinerParam;
 
     fn add(&mut self, data: ImageType, param: Self::Param) {
         self.buffer.push((data, param))
     }
 
-    fn collect(self) -> ImageType {
+    fn collect<'async_trait>(self) -> impl Future<Output = ImageType> + Send + 'async_trait
+    where
+        Self: 'async_trait,
+        ImageType: 'async_trait,
+    {
         let ImageCombiner { shared: shared_resource, image_size_request, buffer } = self;
         let image_width = image_size_request.width.ceil() as u32;
         let image_height = image_size_request.height.ceil() as u32;
@@ -414,8 +420,7 @@ impl Combiner<ImageType> for ImageCombiner {
                 .unwrap();
             builder.dispatch([div_ceil(image_width, 32), div_ceil(image_height, 32), 1]).unwrap();
         }
-        builder.build().unwrap().execute(Arc::clone(&shared_resource.graphics_queue)).unwrap().then_signal_fence_and_flush().unwrap().wait(None).unwrap();
-        ImageType(result_image)
+        builder.build().unwrap().execute(Arc::clone(&shared_resource.graphics_queue)).unwrap().then_signal_fence_and_flush().unwrap().map(move |_| ImageType(result_image))
     }
 }
 
@@ -427,8 +432,8 @@ mod tests {
     use vulkano::Version;
     use vulkano_util::context::{VulkanoConfig, VulkanoContext};
 
-    #[test]
-    fn test_image_combiner() {
+    #[tokio::test]
+    async fn test_image_combiner() {
         let context = Arc::new(VulkanoContext::new(VulkanoConfig {
             instance_create_info: InstanceCreateInfo {
                 max_api_version: Some(Version::V1_2),
@@ -461,10 +466,10 @@ mod tests {
         };
 
         let image_combiner_builder = ImageCombinerBuilder::new(Arc::clone(context.device()), Arc::clone(context.graphics_queue()));
-        let image_combiner = image_combiner_builder.new_combiner(ImageSizeRequest { width: 24., height: 24. });
-        image_combiner.collect();
+        let image_combiner = image_combiner_builder.new_combiner(ImageCombinerRequest::from(ImageSizeRequest { width: 24., height: 24. }));
+        image_combiner.collect().await;
 
-        let mut image_combiner = image_combiner_builder.new_combiner(ImageSizeRequest { width: 24., height: 24. });
+        let mut image_combiner = image_combiner_builder.new_combiner(ImageCombinerRequest::from(ImageSizeRequest { width: 24., height: 24. }));
         image_combiner.add(
             ImageType(get_image([1., 0., 0., 1.])),
             ImageRequiredParamsFixed {
@@ -499,6 +504,6 @@ mod tests {
                 composite_operation: Default::default(),
             },
         );
-        image_combiner.collect();
+        image_combiner.collect().await;
     }
 }

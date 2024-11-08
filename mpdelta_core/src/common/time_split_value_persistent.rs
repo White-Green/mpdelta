@@ -11,10 +11,19 @@ use std::marker::PhantomData;
 use std::{future, mem};
 use thiserror::Error;
 
-#[derive(Clone, Eq, PartialEq)]
+#[derive(Eq, PartialEq)]
 pub struct TimeSplitValuePersistent<Time, Value> {
     data: VectorSync<(Time, Value)>,
     end: Time,
+}
+
+impl<Time, Value> Clone for TimeSplitValuePersistent<Time, Value>
+where
+    Time: Clone,
+{
+    fn clone(&self) -> Self {
+        TimeSplitValuePersistent { data: self.data.clone(), end: self.end.clone() }
+    }
 }
 
 #[cfg(any(feature = "proptest", test))]
@@ -320,28 +329,26 @@ impl<Time, Value> TimeSplitValuePersistent<Time, Value> {
     }
 
     pub fn binary_search_by(&self, compare: impl Fn(&Time) -> Ordering) -> Result<usize, usize> {
-        let mut left = 0;
-        let mut right = self.data.len();
-        while right - left > 1 {
-            let mid = left + (right - left) / 2;
+        let mut base = 0;
+        let mut size = self.data.len();
+        while size > 1 {
+            let mid = base + size / 2;
             match compare(&self.data[mid].0) {
-                Ordering::Less => left = mid,
+                Ordering::Less => base = mid,
                 Ordering::Equal => return Ok(mid),
-                Ordering::Greater => right = mid,
+                Ordering::Greater => {}
             }
+            size -= size / 2;
         }
-        if left == self.data.len() - 1 {
-            match compare(&self.end) {
+        match compare(&self.data[base].0) {
+            Ordering::Less if base == self.data.len() - 1 => match compare(&self.end) {
                 Ordering::Less => Err(self.data.len() + 1),
                 Ordering::Equal => Ok(self.data.len()),
                 Ordering::Greater => Err(self.data.len()),
-            }
-        } else {
-            match compare(&self.data[left].0) {
-                Ordering::Greater => Err(left),
-                Ordering::Equal => Ok(left),
-                Ordering::Less => Err(left + 1),
-            }
+            },
+            Ordering::Less => Err(base + 1),
+            Ordering::Equal => Ok(base),
+            Ordering::Greater => Err(base),
         }
     }
 }
@@ -556,6 +563,22 @@ mod tests {
         assert_eq!(value.binary_search_by(|time| time.cmp(&8)), Ok(6));
         assert_eq!(value.binary_search_by(|time| time.cmp(&9)), Err(7));
         assert_eq!(value.binary_search_by(|time| time.cmp(&10)), Err(7));
+
+        let value = time_split_value_persistent![1, (), 3];
+        assert_eq!(value.binary_search_by(|time| time.cmp(&0)), Err(0));
+        assert_eq!(value.binary_search_by(|time| time.cmp(&1)), Ok(0));
+        assert_eq!(value.binary_search_by(|time| time.cmp(&2)), Err(1));
+        assert_eq!(value.binary_search_by(|time| time.cmp(&3)), Ok(1));
+        assert_eq!(value.binary_search_by(|time| time.cmp(&4)), Err(2));
+
+        let value = time_split_value_persistent![1, (), 3, (), 5];
+        assert_eq!(value.binary_search_by(|time| time.cmp(&0)), Err(0));
+        assert_eq!(value.binary_search_by(|time| time.cmp(&1)), Ok(0));
+        assert_eq!(value.binary_search_by(|time| time.cmp(&2)), Err(1));
+        assert_eq!(value.binary_search_by(|time| time.cmp(&3)), Ok(1));
+        assert_eq!(value.binary_search_by(|time| time.cmp(&4)), Err(2));
+        assert_eq!(value.binary_search_by(|time| time.cmp(&5)), Ok(2));
+        assert_eq!(value.binary_search_by(|time| time.cmp(&6)), Err(3));
     }
 
     #[test]

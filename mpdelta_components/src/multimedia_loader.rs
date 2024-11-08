@@ -103,6 +103,10 @@ where
     async fn update_variable_parameter(&self, _: &[ParameterValueRaw<T::Image, T::Audio>], variable_parameters: &mut Vec<(String, ParameterType)>) {
         variable_parameters.clear();
     }
+
+    async fn num_interprocess_pins(&self, _: &[ParameterValueRaw<T::Image, T::Audio>]) -> usize {
+        0
+    }
 }
 
 #[async_trait]
@@ -115,7 +119,7 @@ where
     type FramedCacheKey = ();
     type FramedCacheValue = ();
 
-    fn whole_component_cache_key(&self, fixed_parameters: &[ParameterValueRaw<T::Image, T::Audio>]) -> Option<Self::WholeComponentCacheKey> {
+    fn whole_component_cache_key(&self, fixed_parameters: &[ParameterValueRaw<T::Image, T::Audio>], _: &[TimelineTime]) -> Option<Self::WholeComponentCacheKey> {
         let [Parameter::Binary(file)] = fixed_parameters else { panic!() };
         Some(file.identifier())
     }

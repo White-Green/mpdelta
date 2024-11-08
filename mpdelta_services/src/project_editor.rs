@@ -333,6 +333,7 @@ where
                 {
                     let mut item = root.get_mut().await;
                     let component = item.component_mut(target_ref).ok_or(ProjectEditError::ComponentInstanceNotFound)?;
+                    let component = Arc::make_mut(component);
                     let slot = component.fixed_parameters_mut();
                     if slot.len() != params.len() {
                         return Err(ProjectEditError::ParameterTypeMismatch);
@@ -355,6 +356,7 @@ where
                 {
                     let mut item = root.get_mut().await;
                     let component = item.component_mut(target_ref).ok_or(ProjectEditError::ComponentInstanceNotFound)?;
+                    let component = Arc::make_mut(component);
                     let pins = [component.marker_left(), component.marker_right()].into_iter().chain(component.markers()).map(MarkerPin::id).copied().collect::<HashSet<_>>();
                     let slot = component.variable_parameters_mut();
                     if slot.len() != params.len() {
@@ -409,6 +411,7 @@ where
                 {
                     let mut item = root.get_mut().await;
                     let component = item.component_mut(target_ref).ok_or(ProjectEditError::ComponentInstanceNotFound)?;
+                    let component = Arc::make_mut(component);
                     let pins = [component.marker_left(), component.marker_right()].into_iter().chain(component.markers()).map(MarkerPin::id).copied().collect::<HashSet<_>>();
                     fn all_valid_pins<T>(value: &PinSplitValue<T>, pins: &HashSet<MarkerPinId>) -> Result<(), ProjectEditError> {
                         if (0..value.len_time()).all(|i| pins.contains(value.get_time(i).unwrap().1)) {
@@ -574,6 +577,7 @@ where
                     }
                     if edit_list.is_empty() {
                         let target = item_structure.component_mut(target_ref).ok_or(ProjectEditError::ComponentInstanceNotFound)?;
+                        let target = Arc::make_mut(target);
                         let (left, right) = if target.marker_left().id() == &pin {
                             let mut pins_iter = target.markers().iter().chain(iter::once(target.marker_right())).filter_map(|pin| pin.locked_component_time().map(|locked| (locked, time_map.time_of_pin(pin.id()).unwrap())));
                             let left = pins_iter.next().expect("broken component structure");
@@ -635,6 +639,7 @@ where
                     let mut item = root.get_mut().await;
                     let (_, mut item_structure, time_map) = item.view();
                     let target = item_structure.component_mut(target_ref).ok_or(ProjectEditError::ComponentInstanceNotFound)?;
+                    let target = Arc::make_mut(target);
                     let Err(insert_index) = target.markers().binary_search_by_key(&at, |p| time_map.time_of_pin(p.id()).unwrap()) else {
                         return Err(ProjectEditError::InvalidMarkerPinAddPosition);
                     };
@@ -754,6 +759,7 @@ where
                     }
 
                     let target = item_structure.component_mut(target_ref).unwrap();
+                    let target = Arc::make_mut(target);
                     target.markers_mut().remove(remove_marker_index);
                     fn remove_pin<T>(value: &mut PinSplitValue<T>, pin: &MarkerPinId) {
                         'out: for i in 0.. {
@@ -921,6 +927,7 @@ where
                         let base = time_map.time_of_pin(left_next.id()).unwrap().value();
                         left_next.locked_component_time().unwrap().value() + (time.value() - base)
                     };
+                    let target = Arc::make_mut(target);
                     let target_pin = if target.marker_left().id() == &pin {
                         target.marker_left_mut()
                     } else if target.marker_right().id() == &pin {
@@ -960,7 +967,7 @@ where
                     }
                     'edit: {
                         if pin_union_find.get_root(pin) == pin_union_find.get_root(*item_structure.left().id()) {
-                            item_structure.component_mut(target_ref).unwrap().iter_all_markers_mut().find(|p| p.id() == &pin).unwrap().set_locked_component_time(None);
+                            Arc::make_mut(item_structure.component_mut(target_ref).unwrap()).iter_all_markers_mut().find(|p| p.id() == &pin).unwrap().set_locked_component_time(None);
                             break 'edit;
                         }
                         let mut locked_pins = target.iter_all_markers().filter(|p| p.locked_component_time().is_some());
@@ -970,7 +977,7 @@ where
                         };
                         let next_pin = *next_pin.id();
                         drop(locked_pins);
-                        item_structure.component_mut(target_ref).unwrap().iter_all_markers_mut().find(|p| p.id() == &pin).unwrap().set_locked_component_time(None);
+                        Arc::make_mut(item_structure.component_mut(target_ref).unwrap()).iter_all_markers_mut().find(|p| p.id() == &pin).unwrap().set_locked_component_time(None);
                         item_structure.add_link(MarkerLink::new(pin, next_pin, time_map.time_of_pin(&next_pin).unwrap() - time_map.time_of_pin(&pin).unwrap()));
                     }
 
@@ -1037,6 +1044,7 @@ where
                     }
 
                     let instance = root.component_mut(target_ref).ok_or(ProjectEditError::ComponentInstanceNotFound)?;
+                    let instance = Arc::make_mut(instance);
                     let image_required_params = instance.image_required_params_mut().map(|image_required_params| {
                         let &mut ImageRequiredParams {
                             ref mut transform,

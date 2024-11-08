@@ -93,7 +93,7 @@ glam = { version = "0.24.2", features = ["libm"], default-features = false }
 hound = "3.5.1"
 icu_properties = "1.5.1"
 icu_segmenter = "1.5.0"
-image = { version = "0.25.2", features = ["png"], default-features = false }
+image = { version = "0.25.5", features = ["png"], default-features = false }
 indexmap = "2.6.0"
 lyon_tessellation = { version = "1.0.15", default-features = false }
 memmap2 = "0.9.5"
@@ -120,27 +120,27 @@ mpdelta_renderer = { path = "mpdelta_renderer" }
 mpdelta_rendering_controller = { path = "mpdelta_rendering_controller" }
 mpdelta_services = { path = "mpdelta_services" }
 mpdelta_video_renderer_vulkano = { path = "mpdelta_video_renderer_vulkano" }
-nalgebra = { version = "0.33.0", features = ["sparse", "std"], default-features = false }
+nalgebra = { version = "0.33.2", features = ["sparse", "std"], default-features = false }
 num = { version = "0.4.3", default-features = false }
-ordered-float = { version = "4.3.0", default-features = false }
+ordered-float = { version = "4.5.0", default-features = false }
 phf = { version = "0.11.2", features = ["macros"], default-features = false }
 proptest = { version = "1.5.0", features = ["std"], default-features = false }
 proptest-derive = "0.5.0"
 rayon = "1.10.0"
-regex = "1.11.0"
+regex = "1.11.1"
 rfd = { version = "0.15.0", features = ["file-handle-inner", "gtk3"], default-features = false }
 rpds = { git = "https://github.com/White-Green/rpds", rev = "5d99c47f2a3ca2084ad85e66cbe37010191e853a", default-features = false }
-serde = { version = "1.0.210", default-features = false }
+serde = { version = "1.0.214", default-features = false }
 serde_repr = "0.1.19"
-serde_json = "1.0.128"
+serde_json = "1.0.132"
 shader_builder = { path = "mpdelta_build_utils/shader_builder" }
 smallvec = "1.13"
 spirv-builder = { version = "0.9.0", default-features = false, features = ["use-compiled-tools"] }
 spirv-std = "0.9.0"
 swash = { version = "0.1.19", features = ["scale"], default-features = false }
-thiserror = "1.0.64"
+thiserror = "2.0.0"
 time = "0.3.36"
-tokio = { version = "1.40.0", features = ["fs", "macros", "time"] }
+tokio = { version = "1.41.1", features = ["fs", "macros", "time"] }
 uuid = { version = "1.11.0", default-features = false }
 vulkano = { version = "0.34.1", default-features = false }
 vulkano-util = "0.34.1"

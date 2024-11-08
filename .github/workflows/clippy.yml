@@ -35,4 +35,4 @@ jobs:
             target/
             target_for_shaders/
           key: ${{ runner.os }}-cargo-clippy-${{ hashFiles('**/Cargo.lock') }}
-      - run: cargo +stable clippy --workspace --locked -- -D warnings
+      - run: cargo +stable clippy --workspace --tests --locked -- -D warnings

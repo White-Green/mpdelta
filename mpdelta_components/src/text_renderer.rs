@@ -250,6 +250,10 @@ where
     async fn update_variable_parameter(&self, _fixed_params: &[ParameterValueRaw<T::Image, T::Audio>], variable_parameters: &mut Vec<(String, ParameterType)>) {
         *variable_parameters = vec![("text".to_owned(), Parameter::String(()))];
     }
+
+    async fn num_interprocess_pins(&self, _: &[ParameterValueRaw<T::Image, T::Audio>]) -> usize {
+        0
+    }
 }
 
 macro_rules! get_or_create_buffer {
@@ -293,7 +297,7 @@ where
     type FramedCacheKey = ();
     type FramedCacheValue = ();
 
-    fn whole_component_cache_key(&self, _fixed_parameters: &[ParameterValueRaw<T::Image, T::Audio>]) -> Option<Self::WholeComponentCacheKey> {
+    fn whole_component_cache_key(&self, _fixed_parameters: &[ParameterValueRaw<T::Image, T::Audio>], _: &[TimelineTime]) -> Option<Self::WholeComponentCacheKey> {
         None
     }
 
@@ -875,6 +879,7 @@ mod tests {
             &renderer,
             NativeProcessorInput {
                 fixed_parameters: &[],
+                interprocess_pins: &[],
                 variable_parameters: &[Parameter::String("<size=150><font=Times New Roman/Yu Gothic UI><color=#252525><outline=white:10>あのイーハトーヴォのすきとおった<color=whitesmoke><outline=lightskyblue:10>Wind</color>、<color=yellow><outline=orange:10>Summer</color>でも底に冷たさをもつ青い<color=whitesmoke><outline=cyan:10>Sky</color>、うつくしい<color=peru><outline=green:10>Forest</color>で飾られたモリーオ市、郊外のぎらぎらひかる<color=whitesmoke><outline=lime:10>Grass</color>の波。</></></>".to_owned())],
                 variable_parameter_type: &[("text".to_owned(), Parameter::String(()))],
             },

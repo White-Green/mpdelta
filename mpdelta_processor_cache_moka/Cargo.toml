@@ -1,0 +1,9 @@
+[package]
+name = "mpdelta_processor_cache_moka"
+version = { workspace = true }
+edition = { workspace = true }
+authors = { workspace = true }
+
+[dependencies]
+moka = { workspace = true }
+mpdelta_core = { workspace = true }

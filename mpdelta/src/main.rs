@@ -19,6 +19,7 @@ use mpdelta_gui::viewmodel::ViewModelParamsImpl;
 use mpdelta_gui_audio_player_cpal::CpalAudioPlayer;
 use mpdelta_gui_wgpu::MPDeltaGUIWgpu;
 use mpdelta_multimedia_encoder_ffmpeg::{FfmpegEncodeSettings, FfmpegEncoderBuilder};
+use mpdelta_processor_cache_moka::MokaCache;
 use mpdelta_project_serialize::MPDeltaProjectSerializer;
 use mpdelta_renderer::MPDeltaRendererBuilder;
 use mpdelta_rendering_controller::LookaheadRenderingControllerBuilder;
@@ -149,10 +150,12 @@ fn main() {
     ));
     let easing_manager = Arc::new(InMemoryEasingLoader::from_iter([Arc::new(LinearEasing) as _]));
     let project_serializer = Arc::new(MPDeltaProjectSerializer::new(runtime.handle().clone(), Arc::clone(&id_generator), Arc::clone(&component_class_loader), value_managers, quaternion_manager, easing_manager));
+    let cache = MokaCache::new();
     let component_renderer_builder = Arc::new(MPDeltaRendererBuilder::new(
         Arc::new(ImageCombinerBuilder::new(Arc::clone(&vulkano_device), Arc::clone(&vulkano_queue))),
         Arc::new(LookaheadRenderingControllerBuilder::new()),
         Arc::new(MPDeltaAudioMixerBuilder::new()),
+        cache,
         runtime.handle().clone(),
     ));
     let editor = Arc::new(ProjectEditor::new(Arc::clone(&id_generator)));

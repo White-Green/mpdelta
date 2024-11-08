@@ -592,7 +592,7 @@ where
                                     return;
                                 };
                                 let instance = root_component_class_ref.read().await.instantiate(&RootComponentClassHandle::clone(root_component_class).map(|weak| weak as _), &id).await;
-                                if let Err(err) = encode.render_and_encode(instance, encoder).await {
+                                if let Err(err) = encode.render_and_encode(Arc::new(instance), encoder).await {
                                     eprintln!("failed to encode by {err}");
                                 }
                             }

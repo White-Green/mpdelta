@@ -94,6 +94,10 @@ impl<T: ParameterValueType<Image = ImageType>> ComponentProcessor<T> for Rectang
     async fn update_variable_parameter(&self, _: &[ParameterValueRaw<T::Image, T::Audio>], variable_parameters: &mut Vec<(String, ParameterType)>) {
         variable_parameters.clear();
     }
+
+    async fn num_interprocess_pins(&self, _: &[ParameterValueRaw<T::Image, T::Audio>]) -> usize {
+        0
+    }
 }
 
 #[async_trait]
@@ -103,7 +107,7 @@ impl<T: ParameterValueType<Image = ImageType>> ComponentProcessorNative<T> for R
     type FramedCacheKey = ();
     type FramedCacheValue = ();
 
-    fn whole_component_cache_key(&self, _fixed_parameters: &[ParameterValueRaw<T::Image, T::Audio>]) -> Option<Self::WholeComponentCacheKey> {
+    fn whole_component_cache_key(&self, _fixed_parameters: &[ParameterValueRaw<T::Image, T::Audio>], _: &[TimelineTime]) -> Option<Self::WholeComponentCacheKey> {
         None
     }
 

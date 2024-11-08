@@ -1,12 +1,14 @@
 use super::*;
 use mpdelta_core::common::mixed_fraction::MixedFraction;
 use mpdelta_core::component::class::ComponentClass;
-use mpdelta_core::component::parameter::{ParameterValueRaw, ParameterValueType};
-use mpdelta_core::component::processor::{ComponentProcessor, ComponentProcessorNative, ComponentProcessorNativeDyn, NativeProcessorInput, NativeProcessorRequest};
-use mpdelta_core::mfrac;
+use mpdelta_core::component::parameter::{ParameterNullableValue, ParameterValueRaw, ParameterValueType, VariableParameterValue};
+use mpdelta_core::component::processor::{CacheKey, ComponentProcessor, ComponentProcessorNative, ComponentProcessorNativeDyn, NativeProcessorInput, NativeProcessorRequest};
 use mpdelta_core::ptr::StaticPointerOwned;
 use mpdelta_core::time::TimelineTime;
+use mpdelta_core::{mfrac, time_split_value_persistent};
 use mpdelta_core_test_util::{root_component_class, TestIdGenerator};
+use std::any::Any;
+use std::future;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -33,6 +35,10 @@ impl ComponentProcessor<T> for Processor {
     }
 
     async fn update_variable_parameter(&self, _: &[ParameterValueRaw<<T as ParameterValueType>::Image, <T as ParameterValueType>::Audio>], _: &mut Vec<(String, ParameterType)>) {}
+
+    async fn num_interprocess_pins(&self, _: &[ParameterValueRaw<<T as ParameterValueType>::Image, <T as ParameterValueType>::Audio>]) -> usize {
+        0
+    }
 }
 
 #[async_trait]
@@ -42,7 +48,7 @@ impl ComponentProcessorNative<T> for Processor {
     type FramedCacheKey = ();
     type FramedCacheValue = ();
 
-    fn whole_component_cache_key(&self, _: &[ParameterValueRaw<<T as ParameterValueType>::Image, <T as ParameterValueType>::Audio>]) -> Option<Self::WholeComponentCacheKey> {
+    fn whole_component_cache_key(&self, _: &[ParameterValueRaw<<T as ParameterValueType>::Image, <T as ParameterValueType>::Audio>], _: &[TimelineTime]) -> Option<Self::WholeComponentCacheKey> {
         None
     }
 
@@ -62,10 +68,11 @@ impl ComponentProcessorNative<T> for Processor {
         &self,
         _: NativeProcessorInput<'_, T>,
         time: TimelineTime,
-        _: Parameter<NativeProcessorRequest>,
+        request: Parameter<NativeProcessorRequest>,
         _: &mut Option<Arc<Self::WholeComponentCacheValue>>,
         _: &mut Option<Arc<Self::FramedCacheValue>>,
     ) -> ParameterValueRaw<<T as ParameterValueType>::Image, <T as ParameterValueType>::Audio> {
+        assert!(request.equals_type(&Parameter::<ParameterSelect>::Image(())));
         Parameter::Image(vec![time.value()])
     }
 }
@@ -92,8 +99,12 @@ impl Combiner<Vec<MixedFraction>> for VecCombiner {
         self.data.extend(data);
     }
 
-    fn collect(self) -> Vec<MixedFraction> {
-        self.data
+    fn collect<'async_trait>(self) -> impl Future<Output = Vec<MixedFraction>> + Send + 'async_trait
+    where
+        Self: 'async_trait,
+        Vec<MixedFraction>: 'async_trait,
+    {
+        future::ready(self.data)
     }
 }
 
@@ -114,7 +125,13 @@ impl Combiner<()> for NoopAudioCombiner {
 
     fn add(&mut self, _: (), _: Self::Param) {}
 
-    fn collect(self) -> () {}
+    fn collect<'async_trait>(self) -> impl Future<Output = ()> + Send + 'async_trait
+    where
+        Self: 'async_trait,
+        (): 'async_trait,
+    {
+        future::ready(())
+    }
 }
 
 struct NoopRenderingControllerBuilder;
@@ -124,6 +141,27 @@ impl MPDeltaRenderingControllerBuilder for NoopRenderingControllerBuilder {
 
     fn create<F: Fn(RenderingControllerItem) + Send + Sync + 'static>(&self, f: F) -> Self::Controller<F> {
         NoopRenderingController(f)
+    }
+}
+
+#[derive(Clone)]
+struct NoopProcessorCache;
+
+impl ProcessorCache for NoopProcessorCache {
+    fn insert(&self, _: Arc<dyn CacheKey>, _: Arc<dyn Any + Send + Sync>) -> impl Future<Output = ()> + Send + '_ {
+        future::ready(())
+    }
+
+    fn get<'a>(&'a self, _: &'a Arc<dyn CacheKey>) -> impl Future<Output = Option<Arc<dyn Any + Send + Sync>>> + Send + 'a {
+        future::ready(None)
+    }
+
+    fn invalidate<'life0, 'life1, 'async_trait>(&'life0 self, _: &'life1 Arc<dyn CacheKey>) -> impl Future<Output = ()> + Send + 'async_trait
+    where
+        'life0: 'async_trait,
+        'life1: 'async_trait,
+    {
+        future::ready(())
     }
 }
 
@@ -149,8 +187,11 @@ async fn test_render() {
                 processor: processor.clone()
             },
             {
-                markers: [marker!(locked: 0) => l2, marker!(locked: 6) => r2],
-                processor: processor.clone()
+                markers: [marker!(locked: 0) => l2, marker!() => m1, marker!(locked: 6) => r2],
+                processor: processor.clone(),
+                variable_params: [
+                    "param1": ParameterType::Integer(()) => VariableParameterValue::new(ParameterNullableValue::Integer(time_split_value_persistent![l2, None, m1, None, r2])),
+                ]
             },
         ],
         links: [
@@ -158,6 +199,7 @@ async fn test_render() {
             l1 = 2 => r1,
             l1 = 0.5 => l2,
             l2 = 3 => r2,
+            l2 = 1 => m1,
             r1 = 1 => right,
         ],
     }
@@ -166,8 +208,18 @@ async fn test_render() {
     let audio_combiner_builder = Arc::new(NoopAudioCombiner);
     let rendering_controller_builder = Arc::new(NoopRenderingControllerBuilder);
     let runtime = Handle::current();
-    let renderer_builder = MPDeltaRendererBuilder::new(image_combiner_builder, rendering_controller_builder, audio_combiner_builder, runtime);
-    let renderer = renderer_builder.create_renderer(instance).await.unwrap();
+    let renderer_builder = MPDeltaRendererBuilder::new(image_combiner_builder, rendering_controller_builder, audio_combiner_builder, NoopProcessorCache, runtime);
+    let renderer = renderer_builder.create_renderer(Arc::new(instance)).await.unwrap();
+    'outer: {
+        for _ in 0..10 {
+            match renderer.mix_audio(0, 0).await {
+                Ok(_) => break 'outer,
+                Err(RenderError::Timeout) => tokio::time::sleep(Duration::from_millis(100)).await,
+                Err(e) => panic!("{e}"),
+            }
+        }
+        panic!("timeout");
+    }
     macro_rules! render_frame {
         ($frame:expr) => {{
             let frame = 'frame: {
@@ -192,6 +244,6 @@ async fn test_render() {
     assert_eq!(render_frame!(89), vec![mfrac!(29, 60)]);
     assert_eq!(render_frame!(90), vec![mfrac!(30, 60), mfrac!(0, 60)]);
     assert_eq!(render_frame!(179), vec![mfrac!(119, 60), mfrac!(178, 60)]);
-    // assert_eq!(render_frame!(180), vec![mfrac!(180, 60)]); // TODO: これは未規定
+    assert_eq!(render_frame!(180), vec![mfrac!(180, 60)]);
     assert_eq!(render_frame!(181), vec![mfrac!(182, 60)]);
 }

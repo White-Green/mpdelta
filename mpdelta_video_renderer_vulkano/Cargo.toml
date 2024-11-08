@@ -8,6 +8,7 @@ authors = { workspace = true }
 [dependencies]
 cgmath = { workspace = true }
 glam = { workspace = true }
+futures = { workspace = true }
 mpdelta_core = { workspace = true }
 mpdelta_core_vulkano = { workspace = true }
 mpdelta_renderer = { workspace = true }
@@ -20,4 +21,5 @@ vulkano = { workspace = true }
 shader_builder = { workspace = true }
 
 [dev-dependencies]
+tokio = { workspace = true, features = ["rt", "macros"] }
 vulkano-util = { workspace = true }

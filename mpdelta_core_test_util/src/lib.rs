@@ -70,6 +70,10 @@ where
     async fn update_variable_parameter(&self, _: &[ParameterValueRaw<T::Image, T::Audio>], _: &mut Vec<(String, ParameterType)>) {
         unimplemented!()
     }
+
+    async fn num_interprocess_pins(&self, _: &[ParameterValueRaw<T::Image, T::Audio>]) -> usize {
+        unimplemented!()
+    }
 }
 
 #[async_trait]
@@ -82,7 +86,7 @@ where
     type FramedCacheKey = ();
     type FramedCacheValue = ();
 
-    fn whole_component_cache_key(&self, _: &[ParameterValueRaw<T::Image, T::Audio>]) -> Option<Self::WholeComponentCacheKey> {
+    fn whole_component_cache_key(&self, _: &[ParameterValueRaw<T::Image, T::Audio>], _: &[TimelineTime]) -> Option<Self::WholeComponentCacheKey> {
         unimplemented!()
     }
 
@@ -211,6 +215,9 @@ macro_rules! root_component_class {
         components: [$({
             markers: [$($pin:expr$( => $pin_name:ident)?),*$(,)?]
             $(, processor: $processor:expr)?
+            $(, fixed_params: [$($fixed_param_name:literal : $fixed_param_type:expr => $fixed_param:expr),*$(,)?])?
+            $(, variable_params: [$($variable_param_name:literal : $variable_param_type:expr => $variable_param:expr),*$(,)?])?
+            $(,)?
         }$(;$component_name:ident)?),*$(,)?],
         links: [$($from:ident = $len:expr => $to:expr $(;$link_name:ident)?),*$(,)?]$(,)?
     ) => {
@@ -224,6 +231,8 @@ macro_rules! root_component_class {
             components: [$({
                 markers: [$($pin$( => $pin_name)?),*]
                 $(, processor: $processor)?
+                $(, fixed_params: [$($fixed_param_name : $fixed_param_type => $fixed_param),*])?
+                $(, variable_params: [$($variable_param_name : $variable_param_type => $variable_param),*])?
             }$(;$component_name)?),*],
             links: [$($from = $len => $to $(;$link_name)?),*],
         )
@@ -236,6 +245,9 @@ macro_rules! root_component_class {
         components: [$({
             markers: [$($pin:expr$( => $pin_name:ident)?),*$(,)?]
             $(, processor: $processor:expr)?
+            $(, fixed_params: [$($fixed_param_name:literal : $fixed_param_type:expr => $fixed_param:expr),*$(,)?])?
+            $(, variable_params: [$($variable_param_name:literal : $variable_param_type:expr => $variable_param:expr),*$(,)?])?
+            $(,)?
         }$(;$component_name:ident)?),*$(,)?],
         links: [$($from:ident = $len:expr => $to:expr $(;$link_name:ident)?),*$(,)?]$(,)?
     ) => {
@@ -249,6 +261,8 @@ macro_rules! root_component_class {
             components: [$({
                 markers: [$($pin$( => $pin_name)?),*]
                 $(, processor: $processor)?
+                $(, fixed_params: [$($fixed_param_name : $fixed_param_type => $fixed_param),*])?
+                $(, variable_params: [$($variable_param_name : $variable_param_type => $variable_param),*])?
             }$(;$component_name)?),*],
             links: [$($from = $len => $to $(;$link_name)?),*],
         )
@@ -263,6 +277,8 @@ macro_rules! root_component_class {
         components: [$({
             markers: [$($pin:expr$( => $pin_name:ident)?),*$(,)?]
             $(, processor: $processor:expr)?
+            $(, fixed_params: [$($fixed_param_name:literal : $fixed_param_type:expr => $fixed_param:expr),*$(,)?])?
+            $(, variable_params: [$($variable_param_name:literal : $variable_param_type:expr => $variable_param:expr),*$(,)?])?
         }$(;$component_name:ident)?),*$(,)?],
         links: [$($from:ident = $len:expr => $to:expr $(;$link_name:ident)?),*$(,)?]$(,)?
     ) => {
@@ -310,6 +326,22 @@ macro_rules! root_component_class {
                 markers,
                 ::mpdelta_core::component::processor::ComponentProcessorWrapper::from(processor),
             );
+            $(
+            let (fixed_parameter_types, fixed_parameters): (Vec<(String, ::mpdelta_core::component::parameter::Parameter<::mpdelta_core::component::parameter::Type>)>, Vec<::mpdelta_core::component::parameter::ParameterValueFixed<<$t as ::mpdelta_core::component::parameter::ParameterValueType>::Image, <$t as ::mpdelta_core::component::parameter::ParameterValueType>::Audio>>) = [
+                $(
+                    ((String::from($fixed_param_name), $fixed_param_type), $fixed_param),
+                )*
+            ].into_iter().unzip();
+            let builder = builder.fixed_parameters(fixed_parameter_types.into(), fixed_parameters.into());
+            )?
+            $(
+            let (variable_parameter_types, variable_parameters): (Vec<(String, ::mpdelta_core::component::parameter::Parameter<::mpdelta_core::component::parameter::Type>)>, _) = [
+                $(
+                    ((String::from($variable_param_name), $variable_param_type), $variable_param),
+                )*
+            ].into_iter().unzip();
+            let builder = builder.variable_parameters(variable_parameter_types, variable_parameters);
+            )?
             let component = builder.image_required_params(image_required_params)
                 .audio_required_params(audio_required_params)
                 .build(&$id);

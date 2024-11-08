@@ -1,10 +1,10 @@
 use crate::component::class::ComponentClass;
-use crate::component::marker_pin::MarkerPin;
+use crate::component::marker_pin::{MarkerPin, MarkerPinId};
 use crate::component::parameter::{AudioRequiredParams, ImageRequiredParams, Parameter, ParameterNullableValue, ParameterValueFixed, ParameterValueType, Type, VariableParameterValue};
 use crate::component::processor::ComponentProcessorWrapper;
 use crate::core::IdGenerator;
 use crate::ptr::StaticPointer;
-use rpds::{Vector, VectorSync};
+use rpds::{HashTrieSet, HashTrieSetSync, Vector, VectorSync};
 use std::borrow::Borrow;
 use std::fmt::{Debug, Formatter};
 use std::iter;
@@ -17,6 +17,7 @@ pub struct ComponentInstanceBuilder<T: ParameterValueType> {
     marker_left: MarkerPin,
     marker_right: MarkerPin,
     markers: Arc<Vec<MarkerPin>>,
+    interprocess_pins: HashTrieSetSync<MarkerPinId>,
     image_required_params: Option<Arc<ImageRequiredParams>>,
     audio_required_params: Option<Arc<AudioRequiredParams>>,
     fixed_parameters_type: Arc<[(String, Parameter<Type>)]>,
@@ -33,6 +34,7 @@ impl<T: ParameterValueType> ComponentInstanceBuilder<T> {
             marker_left,
             marker_right,
             markers: markers.into(),
+            interprocess_pins: HashTrieSet::new_sync(),
             image_required_params: None,
             audio_required_params: None,
             fixed_parameters_type: Arc::new([]),
@@ -71,6 +73,7 @@ impl<T: ParameterValueType> ComponentInstanceBuilder<T> {
             marker_left,
             marker_right,
             markers,
+            interprocess_pins,
             image_required_params,
             audio_required_params,
             fixed_parameters_type,
@@ -85,6 +88,7 @@ impl<T: ParameterValueType> ComponentInstanceBuilder<T> {
             marker_left,
             marker_right,
             markers,
+            interprocess_pins,
             image_required_params,
             audio_required_params,
             fixed_parameters_type,
@@ -117,6 +121,7 @@ pub struct ComponentInstance<T: ParameterValueType> {
     marker_left: MarkerPin,
     marker_right: MarkerPin,
     markers: Arc<Vec<MarkerPin>>,
+    interprocess_pins: HashTrieSetSync<MarkerPinId>,
     image_required_params: Option<Arc<ImageRequiredParams>>,
     audio_required_params: Option<Arc<AudioRequiredParams>>,
     fixed_parameters_type: Arc<[(String, Parameter<Type>)]>,
@@ -134,6 +139,7 @@ impl<T: ParameterValueType> Debug for ComponentInstance<T> {
             .field("marker_left", &self.marker_left)
             .field("marker_right", &self.marker_right)
             .field("markers", &self.markers)
+            .field("interprocess_pins", &self.interprocess_pins)
             .field("image_required_params", &self.image_required_params)
             .field("audio_required_params", &self.audio_required_params)
             .field("fixed_parameters_type", &self.fixed_parameters_type)
@@ -152,6 +158,7 @@ impl<T: ParameterValueType> Clone for ComponentInstance<T> {
             marker_left,
             marker_right,
             markers,
+            interprocess_pins,
             image_required_params,
             audio_required_params,
             fixed_parameters_type,
@@ -166,6 +173,7 @@ impl<T: ParameterValueType> Clone for ComponentInstance<T> {
             marker_left: marker_left.clone(),
             marker_right: marker_right.clone(),
             markers: markers.clone(),
+            interprocess_pins: interprocess_pins.clone(),
             image_required_params: image_required_params.clone(),
             audio_required_params: audio_required_params.clone(),
             fixed_parameters_type: fixed_parameters_type.clone(),
@@ -222,6 +230,12 @@ impl<T: ParameterValueType> ComponentInstance<T> {
     }
     pub fn iter_all_markers_mut(&mut self) -> impl Iterator<Item = &mut MarkerPin> + '_ {
         iter::once(&mut self.marker_left).chain(Arc::make_mut(&mut self.markers).iter_mut()).chain(iter::once(&mut self.marker_right))
+    }
+    pub fn interprocess_pins(&self) -> &HashTrieSetSync<MarkerPinId> {
+        &self.interprocess_pins
+    }
+    pub fn interprocess_pins_mut(&mut self) -> &mut HashTrieSetSync<MarkerPinId> {
+        &mut self.interprocess_pins
     }
     pub fn image_required_params(&self) -> Option<&ImageRequiredParams> {
         self.image_required_params.as_deref()

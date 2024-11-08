@@ -3,11 +3,12 @@ use mpdelta_core::time::TimelineTime;
 use mpdelta_core_audio::multi_channel_audio::{MultiChannelAudio, MultiChannelAudioMutOp, MultiChannelAudioOp, MultiChannelAudioSliceMut};
 use mpdelta_core_audio::{AudioProvider, AudioType};
 use mpdelta_dsp::Resample;
-use mpdelta_renderer::{Combiner, CombinerBuilder, TimeMap};
+use mpdelta_renderer::{AudioCombinerParam, AudioCombinerRequest, Combiner, CombinerBuilder, GlobalTime, LocalTime, TimeStretch};
 use smallvec::{smallvec, SmallVec};
 use std::cmp::Ordering;
-use std::iter;
+use std::future::Future;
 use std::sync::Arc;
+use std::{future, iter};
 
 #[derive(Default)]
 pub struct MPDeltaAudioMixerBuilder {}
@@ -19,12 +20,12 @@ impl MPDeltaAudioMixerBuilder {
 }
 
 impl CombinerBuilder<AudioType> for MPDeltaAudioMixerBuilder {
-    type Request = TimelineTime;
-    type Param = TimeMap;
+    type Request = AudioCombinerRequest;
+    type Param = AudioCombinerParam;
     type Combiner = MPDeltaAudioMixer;
 
     fn new_combiner(&self, request: Self::Request) -> Self::Combiner {
-        MPDeltaAudioMixer::new(request)
+        MPDeltaAudioMixer::new(request.length)
     }
 }
 
@@ -32,7 +33,7 @@ pub struct MPDeltaAudioMixer {
     length: TimelineTime,
     channels: usize,
     sample_rate: u32,
-    buffer: Vec<(AudioType, TimeMap)>,
+    buffer: Vec<(AudioType, Arc<TimeStretch<GlobalTime, LocalTime>>)>,
 }
 
 impl MPDeltaAudioMixer {
@@ -47,16 +48,20 @@ impl MPDeltaAudioMixer {
 }
 
 impl Combiner<AudioType> for MPDeltaAudioMixer {
-    type Param = TimeMap;
+    type Param = AudioCombinerParam;
 
     fn add(&mut self, data: AudioType, param: Self::Param) {
         self.channels = self.channels.max(data.channels());
         self.sample_rate = self.sample_rate.max(data.sample_rate());
-        self.buffer.push((data, param));
+        self.buffer.push((data, param.time_map));
     }
 
-    fn collect(self) -> AudioType {
-        AudioType::new(MixedAudio {
+    fn collect<'async_trait>(self) -> impl Future<Output = AudioType> + Send + 'async_trait
+    where
+        Self: 'async_trait,
+        AudioType: 'async_trait,
+    {
+        future::ready(AudioType::new(MixedAudio {
             length: self.length,
             sample_rate: self.sample_rate,
             inner: Arc::new(MixedAudioInner {
@@ -64,7 +69,7 @@ impl Combiner<AudioType> for MPDeltaAudioMixer {
                 buffer: MultiChannelAudio::new(self.channels),
                 single_audio_buffer: MultiChannelAudio::new(self.channels),
             }),
-        })
+        }))
     }
 }
 
@@ -77,7 +82,7 @@ struct MixedAudio {
 
 #[derive(Clone)]
 struct MixedAudioInner {
-    source: Vec<(AudioType, TimeMap)>,
+    source: Vec<(AudioType, Arc<TimeStretch<GlobalTime, LocalTime>>)>,
     buffer: MultiChannelAudio<f32>,
     single_audio_buffer: MultiChannelAudio<f32>,
 }
@@ -120,16 +125,16 @@ where
     buffer.resize(dst.len(), 0.);
     dst.fill(0.);
     for &mut (ref mut audio, ref param) in source.iter_mut() {
-        if param.right() <= begin || end <= param.left() {
+        if param.right().time() <= begin || end <= param.left().time() {
             continue;
         }
         let audio_sample_rate = audio.sample_rate();
-        let begin_pos = begin.max(param.left());
-        let end_pos = end.min(param.right());
-        for time_map in param.map_range_iter(begin_pos).take_while(|time_map| time_map.start() <= end_pos) {
-            let time_range = time_map.start().max(begin_pos).value()..time_map.end().min(end_pos).value();
+        let begin_pos = begin.max(param.left().time());
+        let end_pos = end.min(param.right().time());
+        for time_map in param.map_range_iter(begin_pos.into()).take_while(|time_map| time_map.start().time() <= end_pos) {
+            let time_range = time_map.start().max(begin_pos.into()).time().value()..time_map.end().min(end_pos.into()).time().value();
             let time_range = round_by_sample_rate(time_range.start)..round_by_sample_rate(time_range.end);
-            let audio_range = time_map.map(TimelineTime::new(time_range.start))..time_map.map(TimelineTime::new(time_range.end));
+            let audio_range = time_map.map(TimelineTime::new(time_range.start).into()).time()..time_map.map(TimelineTime::new(time_range.end).into()).time();
             let audio_compute_start = audio_range.start.min(audio_range.end).max(TimelineTime::ZERO);
             let audio_compute_end = audio_range.start.max(audio_range.end);
             let (audio_sample_rate_scaled, _) = (MixedFraction::from_integer(audio_sample_rate as i32) * time_map.scale().abs()).deconstruct_with_round(1);
@@ -169,7 +174,7 @@ where
                 resample.extend(iter::repeat(last).take(default_buffer_len));
             }
             let skip = {
-                let (i, n) = (time_map.map_inverse(audio_compute_start) - time_map.map_inverse(TimelineTime::new(compute_base_time))).value().deconstruct_with_round(sample_rate);
+                let (i, n) = (time_map.map_inverse(audio_compute_start.into()).time() - time_map.map_inverse(TimelineTime::new(compute_base_time).into()).into()).value().deconstruct_with_round(sample_rate);
                 i as usize * sample_rate as usize + n as usize
             };
             let mut resample = resample.iter_mut().map(|resample| resample.skip(skip)).collect::<SmallVec<[_; 6]>>();
@@ -213,6 +218,7 @@ mod tests {
     use mpdelta_core::core::IdGenerator;
     use mpdelta_core::mfrac;
     use mpdelta_core_test_util::TestIdGenerator;
+    use mpdelta_renderer::InvalidateRange;
     use std::collections::HashMap;
 
     #[derive(Clone)]
@@ -250,8 +256,8 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_audio_mix() {
+    #[tokio::test]
+    async fn test_audio_mix() {
         let id = TestIdGenerator::new();
         macro_rules! time_map {
             ($($markers:expr),+$(,)?) => {
@@ -274,14 +280,20 @@ mod tests {
                         };
                     }
                     let [left, markers @ .., right] = &[$($markers),+];
-                    TimeMap::new(left, markers, right, &time).unwrap()
+                    TimeStretch::new(left, markers, right, &time)
                 }
             }
         }
         let mut mixer = MPDeltaAudioMixer::new(TimelineTime::new(MixedFraction::from_integer(10)));
-        mixer.add(AudioType::new(ConstantAudio::new(1., 2, 24000, None)), time_map![marker!(mfrac!(1), mfrac!(0)), marker!(mfrac!(2))]);
-        mixer.add(AudioType::new(ConstantAudio::new(2., 2, 44100, None)), time_map![marker!(mfrac!(2), mfrac!(0)), marker!(mfrac!(3), mfrac!(2))]);
-        let mut audio = mixer.collect();
+        mixer.add(
+            AudioType::new(ConstantAudio::new(1., 2, 24000, None)),
+            AudioCombinerParam::new(Arc::new([]), Arc::new(time_map![marker!(mfrac!(1), mfrac!(0)), marker!(mfrac!(2))]), InvalidateRange::new()),
+        );
+        mixer.add(
+            AudioType::new(ConstantAudio::new(2., 2, 44100, None)),
+            AudioCombinerParam::new(Arc::new([]), Arc::new(time_map![marker!(mfrac!(2), mfrac!(0)), marker!(mfrac!(3), mfrac!(2))]), InvalidateRange::new()),
+        );
+        let mut audio = mixer.collect().await;
         assert_eq!(audio.sample_rate(), 44100);
         let mut buffer = MultiChannelAudio::new(2);
         buffer.resize(1024, 0.);
@@ -300,8 +312,8 @@ mod tests {
         assert!(signal.slice(44100 / 2 * 3 + 1..44100 / 2 * 5 - 1).unwrap().iter().flatten().all(|s| (s - 2.).abs() < 1. / 1024.));
     }
 
-    #[test]
-    fn test_audio_mix_reverse() {
+    #[tokio::test]
+    async fn test_audio_mix_reverse() {
         let id = TestIdGenerator::new();
         macro_rules! time_map {
             ($($markers:expr),+$(,)?) => {
@@ -324,14 +336,20 @@ mod tests {
                         };
                     }
                     let [left, markers @ .., right] = &[$($markers),+];
-                    TimeMap::new(left, markers, right, &time).unwrap()
+                    TimeStretch::new(left, markers, right, &time)
                 }
             }
         }
         let mut mixer = MPDeltaAudioMixer::new(TimelineTime::new(MixedFraction::from_integer(10)));
-        mixer.add(AudioType::new(ConstantAudio::new(1., 2, 24000, None)), time_map![marker!(mfrac!(1), mfrac!(0)), marker!(mfrac!(2))]);
-        mixer.add(AudioType::new(ConstantAudio::new(2., 2, 44100, None)), time_map![marker!(mfrac!(2), mfrac!(2)), marker!(mfrac!(3), mfrac!(0))]);
-        let mut audio = mixer.collect();
+        mixer.add(
+            AudioType::new(ConstantAudio::new(1., 2, 24000, None)),
+            AudioCombinerParam::new(Arc::new([]), Arc::new(time_map![marker!(mfrac!(1), mfrac!(0)), marker!(mfrac!(2))]), InvalidateRange::new()),
+        );
+        mixer.add(
+            AudioType::new(ConstantAudio::new(2., 2, 44100, None)),
+            AudioCombinerParam::new(Arc::new([]), Arc::new(time_map![marker!(mfrac!(2), mfrac!(2)), marker!(mfrac!(3), mfrac!(0))]), InvalidateRange::new()),
+        );
+        let mut audio = mixer.collect().await;
         assert_eq!(audio.sample_rate(), 44100);
         let mut buffer = MultiChannelAudio::new(2);
         buffer.resize(1024, 0.);
@@ -350,8 +368,8 @@ mod tests {
         assert!(signal.slice(44100 / 2 * 3 + 1..44100 / 2 * 5 - 1).unwrap().iter().flatten().all(|s| (s - 2.).abs() < 1. / 1024.));
     }
 
-    #[test]
-    fn test_audio_mix_stop() {
+    #[tokio::test]
+    async fn test_audio_mix_stop() {
         let id = TestIdGenerator::new();
         macro_rules! time_map {
             ($($markers:expr),+$(,)?) => {
@@ -374,14 +392,20 @@ mod tests {
                         };
                     }
                     let [left, markers @ .., right] = &[$($markers),+];
-                    TimeMap::new(left, markers, right, &time).unwrap()
+                    TimeStretch::new(left, markers, right, &time)
                 }
             }
         }
         let mut mixer = MPDeltaAudioMixer::new(TimelineTime::new(MixedFraction::from_integer(10)));
-        mixer.add(AudioType::new(ConstantAudio::new(1., 2, 24000, None)), time_map![marker!(mfrac!(1), mfrac!(0)), marker!(mfrac!(2))]);
-        mixer.add(AudioType::new(ConstantAudio::new(2., 2, 44100, None)), time_map![marker!(mfrac!(2), mfrac!(1)), marker!(mfrac!(3), mfrac!(1))]);
-        let mut audio = mixer.collect();
+        mixer.add(
+            AudioType::new(ConstantAudio::new(1., 2, 24000, None)),
+            AudioCombinerParam::new(Arc::new([]), Arc::new(time_map![marker!(mfrac!(1), mfrac!(0)), marker!(mfrac!(2))]), InvalidateRange::new()),
+        );
+        mixer.add(
+            AudioType::new(ConstantAudio::new(2., 2, 44100, None)),
+            AudioCombinerParam::new(Arc::new([]), Arc::new(time_map![marker!(mfrac!(2), mfrac!(1)), marker!(mfrac!(3), mfrac!(1))]), InvalidateRange::new()),
+        );
+        let mut audio = mixer.collect().await;
         assert_eq!(audio.sample_rate(), 44100);
         let mut buffer = MultiChannelAudio::new(2);
         buffer.resize(1024, 0.);

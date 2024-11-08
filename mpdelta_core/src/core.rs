@@ -394,27 +394,26 @@ where
 pub trait ComponentRendererBuilder<T: ParameterValueType>: Send + Sync {
     type Err: Error + Send + 'static;
     type Renderer: RealtimeComponentRenderer<T> + Send + Sync + 'static;
-    async fn create_renderer(&self, component: ComponentInstance<T>) -> Result<Self::Renderer, Self::Err>;
+    async fn create_renderer(&self, component: Arc<ComponentInstance<T>>) -> Result<Self::Renderer, Self::Err>;
 }
 
 #[async_trait]
 impl<T: ParameterValueType, T0, T1, T2, T3, T4, T5, T6, CR, T8, T9, T10> RealtimeRenderComponentUsecase<T> for MPDeltaCore<T0, T1, T2, T3, T4, T5, T6, CR, T8, T9, T10>
 where
     Self: Send + Sync,
-    ComponentInstance<T>: Sync,
     CR: ComponentRendererBuilder<T>,
 {
     type Err = CR::Err;
     type Renderer = CR::Renderer;
 
-    async fn render_component(&self, component: ComponentInstance<T>) -> Result<Self::Renderer, Self::Err> {
+    async fn render_component(&self, component: Arc<ComponentInstance<T>>) -> Result<Self::Renderer, Self::Err> {
         self.component_renderer_builder.create_renderer(component).await
     }
 }
 
 pub trait ComponentEncoder<T: ParameterValueType, Encoder>: Send + Sync {
     type Err: Error + Send + 'static;
-    fn render_and_encode<'life0, 'async_trait>(&'life0 self, component: ComponentInstance<T>, encoder: Encoder) -> impl Future<Output = Result<(), Self::Err>> + Send + 'async_trait
+    fn render_and_encode<'life0, 'async_trait>(&'life0 self, component: Arc<ComponentInstance<T>>, encoder: Encoder) -> impl Future<Output = Result<(), Self::Err>> + Send + 'async_trait
     where
         'life0: 'async_trait;
 }
@@ -426,7 +425,7 @@ where
 {
     type Err = VE::Err;
 
-    fn render_and_encode<'life0, 'async_trait>(&'life0 self, component: ComponentInstance<T>, encoder: Encoder) -> impl Future<Output = Result<(), Self::Err>> + Send + 'async_trait
+    fn render_and_encode<'life0, 'async_trait>(&'life0 self, component: Arc<ComponentInstance<T>>, encoder: Encoder) -> impl Future<Output = Result<(), Self::Err>> + Send + 'async_trait
     where
         'life0: 'async_trait,
     {

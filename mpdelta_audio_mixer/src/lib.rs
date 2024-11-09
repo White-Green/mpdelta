@@ -236,8 +236,10 @@ mod tests {
     use mpdelta_core::core::IdGenerator;
     use mpdelta_core::mfrac;
     use mpdelta_core_test_util::TestIdGenerator;
+    use mpdelta_dsp::test_util::FormalExpression;
     use mpdelta_renderer::InvalidateRange;
     use std::collections::HashMap;
+    use uuid::Uuid;
 
     #[derive(Clone)]
     struct ConstantAudio {
@@ -439,5 +441,46 @@ mod tests {
         }
         assert!(signal.slice(..44100 / 2 - 1).unwrap().iter().flatten().all(|s| s.abs() < 1. / 1024.));
         assert!(signal.slice(44100 / 2 + 1..44100 / 2 * 3 - 1).unwrap().iter().flatten().all(|s| (s - 1.).abs() < 1. / 1024.));
+    }
+
+    struct FormalAudioProvider;
+
+    impl AnyAudioProvider<FormalExpression> for FormalAudioProvider {
+        fn sample_rate_any(&self) -> u32 {
+            48_000
+        }
+
+        fn compute_audio_any(&mut self, begin: TimelineTime, mut dst: MultiChannelAudioSliceMut<FormalExpression>) -> usize {
+            let (i, n) = begin.value().deconstruct_with_round(48_000);
+            let begin = i as usize * 48000 + n as usize;
+            dst.iter_mut().zip(begin..).for_each(|(dst, i)| dst.fill(FormalExpression::value(i)));
+            dst.len()
+        }
+    }
+
+    #[test]
+    fn test_audio_mix_formal() {
+        let left = MarkerPin::new(Uuid::from_u128(0), MarkerTime::ZERO);
+        let right = MarkerPin::new_unlocked(Uuid::from_u128(1));
+        let mut mixed_audio_inner = MixedAudioInner::<FormalExpression, FormalAudioProvider> {
+            source: vec![(FormalAudioProvider, Arc::new(TimeStretch::new(&left, &[], &right, &HashMap::from([(*left.id(), TimelineTime::new(mfrac!(3, 100))), (*right.id(), TimelineTime::new(mfrac!(1)))]))))],
+            buffer: MultiChannelAudio::new(1),
+            single_audio_buffer: MultiChannelAudio::new(1),
+        };
+        let mut result = MultiChannelAudio::new(1);
+        result.resize(512, FormalExpression::default());
+        let expect = iter::repeat_n(FormalExpression::default(), 48_000 / 100 * 3).chain((0..).map(|i| FormalExpression::value(i) * FormalExpression::Window(0))).take(48_000).collect::<Vec<_>>();
+        for i in 0.. {
+            compute_audio_inner(&mut mixed_audio_inner, 48_000, TimelineTime::new(mfrac!(i * 512, 48_000)), TimelineTime::new(mfrac!((i + 1) * 512, 48_000)), result.slice_mut(..).unwrap(), |result, sig| {
+                result.clone_from_slice(sig)
+            });
+            let expect = &expect[i as usize * 512..];
+            let len = expect.len().min(512);
+            assert_eq!(&result.as_linear()[..len], &expect[..len]);
+            if expect.len() <= 512 {
+                assert!(result.as_linear()[len..].iter().all(|v| v == &FormalExpression::default()));
+                break;
+            }
+        }
     }
 }

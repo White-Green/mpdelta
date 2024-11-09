@@ -3301,6 +3301,7 @@ name = "mpdelta_dsp"
 version = "0.1.0"
 dependencies = [
  "num",
+ "proptest",
  "thiserror 2.0.0",
 ]
 

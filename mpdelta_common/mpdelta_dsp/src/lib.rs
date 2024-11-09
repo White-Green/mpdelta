@@ -5,6 +5,9 @@ use std::iter;
 use std::ops::{Add, Mul};
 use thiserror::Error;
 
+#[cfg(any(test, feature = "formal_test"))]
+pub mod test_util;
+
 pub trait WindowFunction: Sized {
     fn window(length: usize, target_sum: f64) -> Box<[Self]>;
 }
@@ -220,9 +223,108 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_util::FormalExpression;
+    use proptest::{prop_assert_eq, prop_assume, proptest};
 
     #[test]
     fn test_window_f32() {
         assert_eq!(*f32::window(1, 1.), [1.]);
+    }
+
+    #[test]
+    fn test_resample() {
+        let from_sample_rate = 24_000;
+        let to_sample_rate = 48_000;
+        let mut resample = Resample::builder(from_sample_rate, to_sample_rate).build::<FormalExpression>().unwrap();
+        let input_signal = (0..1024).map(FormalExpression::value).collect::<Vec<_>>();
+
+        let gcd = from_sample_rate.gcd(&to_sample_rate);
+        let from_sample_rate = from_sample_rate / gcd;
+        let to_sample_rate = to_sample_rate / gcd;
+        assert_eq!([from_sample_rate, to_sample_rate], [1, 2]);
+        let window_len_half = from_sample_rate.max(to_sample_rate) as usize * 10;
+        let window = FormalExpression::window(window_len_half * 2 + 1, 0.);
+        let upsampled = iter::repeat_n(FormalExpression::Zero, window_len_half)
+            .chain(input_signal.iter().cloned().flat_map(|s| {
+                let mut v = vec![FormalExpression::Zero; to_sample_rate as usize];
+                v[0] = s;
+                v
+            }))
+            .chain(iter::repeat_n(FormalExpression::Zero, window_len_half))
+            .collect::<Vec<_>>();
+        let filtered = upsampled.windows(window.len()).map(|w| w.iter().zip(window.iter()).map(|(s, w)| s.clone() * w.clone()).reduce(Add::add).unwrap()).collect::<Vec<_>>();
+        let expect_result = filtered.chunks(from_sample_rate as usize).map(|c| c[0].clone()).collect::<Vec<_>>();
+
+        resample.extend(input_signal.clone());
+        let result = resample.take_result();
+        assert_eq!(expect_result[0], result[0]);
+        assert_eq!(expect_result[..result.len()], result[..]);
+
+        let upsampled = input_signal
+            .iter()
+            .cloned()
+            .flat_map(|s| {
+                let mut v = vec![FormalExpression::Zero; to_sample_rate as usize];
+                v[0] = s;
+                v
+            })
+            .chain(iter::repeat_n(FormalExpression::Zero, window_len_half))
+            .collect::<Vec<_>>();
+        let filtered = upsampled.windows(window.len()).map(|w| w.iter().zip(window.iter()).map(|(s, w)| s.clone() * w.clone()).reduce(Add::add).unwrap()).collect::<Vec<_>>();
+        let expect_result = filtered.chunks(from_sample_rate as usize).map(|c| c[0].clone()).collect::<Vec<_>>();
+
+        resample.reset_buffer_with_default_buffer(input_signal[..resample.default_buffer_len()].iter().cloned());
+        resample.extend(input_signal[resample.default_buffer_len()..].iter().cloned());
+        let result = resample.take_result();
+        assert_eq!(expect_result[0], result[0]);
+        assert_eq!(expect_result[..result.len()], result[..]);
+    }
+
+    proptest! {
+        #[test]
+        fn test_resample_prop(from_sample_rate in 1u32..16, to_sample_rate in 1u32..16) {
+            prop_assume!(from_sample_rate != to_sample_rate);
+
+            let mut resample = Resample::builder(from_sample_rate, to_sample_rate).build::<FormalExpression>().unwrap();
+            let input_signal = (0..1024).map(FormalExpression::value).collect::<Vec<_>>();
+
+            let gcd = from_sample_rate.gcd(&to_sample_rate);
+            let from_sample_rate = from_sample_rate / gcd;
+            let to_sample_rate = to_sample_rate / gcd;
+
+            let window_len_half = from_sample_rate.max(to_sample_rate) as usize * 10;
+            let window = FormalExpression::window(window_len_half * 2 + 1, 0.);
+            let upsampled = iter::repeat_n(FormalExpression::Zero, window_len_half)
+                .chain(input_signal.iter().cloned().flat_map(|s| {
+                    let mut v = vec![FormalExpression::Zero; to_sample_rate as usize];
+                    v[0] = s;
+                    v
+                }))
+                .chain(iter::repeat_n(FormalExpression::Zero, window_len_half))
+                .collect::<Vec<_>>();
+            let filtered = upsampled.windows(window.len()).map(|w| w.iter().zip(window.iter()).map(|(s, w)| s.clone() * w.clone()).reduce(Add::add).unwrap()).collect::<Vec<_>>();
+            let expect_result = filtered.chunks(from_sample_rate as usize).map(|c| c[0].clone()).collect::<Vec<_>>();
+
+            resample.extend(input_signal.clone());
+            let result = resample.take_result();
+            prop_assert_eq!(&expect_result[0], &result[0]);
+            prop_assert_eq!(&expect_result[..result.len()], &result[..]);
+
+            let upsampled = input_signal.iter().cloned().flat_map(|s| {
+                    let mut v = vec![FormalExpression::Zero; to_sample_rate as usize];
+                    v[0] = s;
+                    v
+                })
+                .chain(iter::repeat_n(FormalExpression::Zero, window_len_half))
+                .collect::<Vec<_>>();
+            let filtered = upsampled.windows(window.len()).map(|w| w.iter().zip(window.iter()).map(|(s, w)| s.clone() * w.clone()).reduce(Add::add).unwrap()).collect::<Vec<_>>();
+            let expect_result = filtered.chunks(from_sample_rate as usize).map(|c| c[0].clone()).collect::<Vec<_>>();
+
+            resample.reset_buffer_with_default_buffer(input_signal[..resample.default_buffer_len()].iter().cloned());
+            resample.extend(input_signal[resample.default_buffer_len()..].iter().cloned());
+            let result = resample.take_result();
+            prop_assert_eq!(&expect_result[0], &result[0]);
+            prop_assert_eq!(&expect_result[..result.len()], &result[..]);
+        }
     }
 }

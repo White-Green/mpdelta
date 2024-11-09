@@ -7,3 +7,9 @@ authors = { workspace = true }
 [dependencies]
 num = { workspace = true }
 thiserror = { workspace = true }
+
+[features]
+formal_test = []
+
+[dev-dependencies]
+proptest = { workspace = true }

@@ -125,8 +125,10 @@ where
             });
         }
         const N: usize = 10;
-        let filter = T::window(pqmax * N * 2 + 1, target as f64);
-        assert_eq!(filter.len(), pqmax * N * 2 + 1);
+        let window_len_half = pqmax * N;
+        let window_len = window_len_half * 2 + 1;
+        let filter = T::window(window_len, target as f64);
+        assert_eq!(filter.len(), window_len);
 
         let default_buffer_length = filter.len() / 2 / target;
         let buffer = vec![T::default(); default_buffer_length].into();
@@ -139,8 +141,8 @@ where
                 (filter, step)
             })
             .collect::<Box<[_]>>();
-        // println!("{:?}", filter.iter().map(|(_, step)| *step).collect::<Vec<_>>());
-        let start_offset = filter.len() / 2 % target;
+
+        let start_offset = window_len_half % target;
         let (filter_index, _) = (0..target).map(|n| (target - n) * original % target).enumerate().find(|(_, offset)| *offset == start_offset).unwrap();
 
         Ok(Resample {
@@ -160,7 +162,7 @@ where
         self.buffer.clear();
         self.buffer.extend(default_buffer.into_iter().take(self.default_buffer_length));
         iter::repeat(T::default()).take(self.default_buffer_length - self.buffer.len()).for_each(|v| self.buffer.push_front(v));
-        self.filter_index = self.default_filter_index;
+        self.filter_index = 0;
     }
 
     pub fn reset_buffer(&mut self) {

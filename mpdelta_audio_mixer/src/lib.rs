@@ -2,11 +2,12 @@ use mpdelta_core::common::mixed_fraction::MixedFraction;
 use mpdelta_core::time::TimelineTime;
 use mpdelta_core_audio::multi_channel_audio::{MultiChannelAudio, MultiChannelAudioMutOp, MultiChannelAudioOp, MultiChannelAudioSliceMut};
 use mpdelta_core_audio::{AudioProvider, AudioType};
-use mpdelta_dsp::Resample;
+use mpdelta_dsp::{Resample, WindowFunction};
 use mpdelta_renderer::{AudioCombinerParam, AudioCombinerRequest, Combiner, CombinerBuilder, GlobalTime, LocalTime, TimeStretch};
 use smallvec::{smallvec, SmallVec};
 use std::cmp::Ordering;
 use std::future::Future;
+use std::ops::{Add, Mul};
 use std::sync::Arc;
 use std::{future, iter};
 
@@ -77,14 +78,14 @@ impl Combiner<AudioType> for MPDeltaAudioMixer {
 struct MixedAudio {
     length: TimelineTime,
     sample_rate: u32,
-    inner: Arc<MixedAudioInner>,
+    inner: Arc<MixedAudioInner<f32, AudioType>>,
 }
 
 #[derive(Clone)]
-struct MixedAudioInner {
-    source: Vec<(AudioType, Arc<TimeStretch<GlobalTime, LocalTime>>)>,
-    buffer: MultiChannelAudio<f32>,
-    single_audio_buffer: MultiChannelAudio<f32>,
+struct MixedAudioInner<T, A> {
+    source: Vec<(A, Arc<TimeStretch<GlobalTime, LocalTime>>)>,
+    buffer: MultiChannelAudio<T>,
+    single_audio_buffer: MultiChannelAudio<T>,
 }
 
 impl AudioProvider for MixedAudio {
@@ -111,9 +112,26 @@ impl AudioProvider for MixedAudio {
     }
 }
 
-fn compute_audio_inner<F>(mixed_audio: &mut MixedAudioInner, sample_rate: u32, begin: TimelineTime, end: TimelineTime, mut dst: MultiChannelAudioSliceMut<f32>, combiner: F)
+trait AnyAudioProvider<T> {
+    fn sample_rate_any(&self) -> u32;
+    fn compute_audio_any(&mut self, begin: TimelineTime, dst: MultiChannelAudioSliceMut<T>) -> usize;
+}
+
+impl AnyAudioProvider<f32> for AudioType {
+    fn sample_rate_any(&self) -> u32 {
+        <AudioType as AudioProvider>::sample_rate(self)
+    }
+
+    fn compute_audio_any(&mut self, begin: TimelineTime, dst: MultiChannelAudioSliceMut<f32>) -> usize {
+        <AudioType as AudioProvider>::compute_audio(self, begin, dst)
+    }
+}
+
+fn compute_audio_inner<T, A, F>(mixed_audio: &mut MixedAudioInner<T, A>, sample_rate: u32, begin: TimelineTime, end: TimelineTime, mut dst: MultiChannelAudioSliceMut<T>, combiner: F)
 where
-    F: Fn(&mut [f32], &[f32]),
+    T: WindowFunction + Clone + Default + Mul<Output = T> + Add<Output = T>,
+    A: AnyAudioProvider<T>,
+    F: Fn(&mut [T], &[T]),
 {
     let begin = TimelineTime::new(begin.value().round_to_denominator(sample_rate));
     let end = TimelineTime::new(end.value().round_to_denominator(sample_rate));
@@ -122,13 +140,13 @@ where
         MixedFraction::new(i, n, sample_rate)
     };
     let MixedAudioInner { source, buffer, single_audio_buffer } = mixed_audio;
-    buffer.resize(dst.len(), 0.);
-    dst.fill(0.);
+    buffer.resize(dst.len(), T::default());
+    dst.fill(T::default());
     for &mut (ref mut audio, ref param) in source.iter_mut() {
         if param.right().time() <= begin || end <= param.left().time() {
             continue;
         }
-        let audio_sample_rate = audio.sample_rate();
+        let audio_sample_rate = audio.sample_rate_any();
         let begin_pos = begin.max(param.left().time());
         let end_pos = end.min(param.right().time());
         for time_map in param.map_range_iter(begin_pos.into()).take_while(|time_map| time_map.start().time() <= end_pos) {
@@ -139,7 +157,7 @@ where
             let audio_compute_end = audio_range.start.max(audio_range.end);
             let (audio_sample_rate_scaled, _) = (MixedFraction::from_integer(audio_sample_rate as i32) * time_map.scale().abs()).deconstruct_with_round(1);
             let audio_sample_rate_scaled = audio_sample_rate_scaled as u32;
-            let Ok(resample) = Resample::builder(audio_sample_rate_scaled, sample_rate).build() else {
+            let Ok(resample) = Resample::builder(audio_sample_rate_scaled, sample_rate).build::<T>() else {
                 continue;
             };
             let mut resample: SmallVec<[_; 6]> = smallvec![resample; buffer.channels()];
@@ -158,9 +176,9 @@ where
                 let (i, n) = (end - request_begin).deconstruct_with_round(audio_sample_rate);
                 i as usize * audio_sample_rate as usize + n as usize + default_buffer_len
             };
-            single_audio_buffer.resize(buffer_len, 0.);
-            single_audio_buffer.fill(0.);
-            let computed_len = audio.compute_audio(TimelineTime::new(request_begin), single_audio_buffer.slice_mut(..).unwrap());
+            single_audio_buffer.resize(buffer_len, T::default());
+            single_audio_buffer.fill(T::default());
+            let computed_len = audio.compute_audio_any(TimelineTime::new(request_begin), single_audio_buffer.slice_mut(..).unwrap());
             let result = single_audio_buffer.slice(..computed_len).unwrap();
             let Some(default_value) = result.get(0) else {
                 continue;
@@ -168,9 +186,9 @@ where
             let leading = result.slice(..default_buffer_len - leading_zeros).unwrap();
             let body = result.slice(default_buffer_len - leading_zeros..).unwrap();
             for (i, resample) in resample.iter_mut().enumerate() {
-                resample.reset_buffer_with_default_buffer(iter::repeat(default_value).take(leading_zeros).chain(leading.iter()).map(|v| v[i]));
-                resample.extend(body.iter().map(|v| v[i]));
-                let last = body.get(body.len() - 1).unwrap()[i];
+                resample.reset_buffer_with_default_buffer(iter::repeat(default_value).take(leading_zeros).chain(leading.iter()).map(|v| v[i].clone()));
+                resample.extend(body.iter().map(|v| v[i].clone()));
+                let last = body.get(body.len() - 1).unwrap()[i].clone();
                 resample.extend(iter::repeat(last).take(default_buffer_len));
             }
             let skip = {
@@ -178,7 +196,7 @@ where
                 i as usize * sample_rate as usize + n as usize
             };
             let mut resample = resample.iter_mut().map(|resample| resample.skip(skip)).collect::<SmallVec<[_; 6]>>();
-            buffer.resize(0, 0.);
+            buffer.resize(0, T::default());
             let len = iter::from_fn(|| {
                 let sample = resample.iter_mut().map(|resample| resample.next()).collect::<Option<SmallVec<[_; 6]>>>()?;
                 buffer.push(&sample);

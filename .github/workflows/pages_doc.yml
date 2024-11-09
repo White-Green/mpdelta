@@ -1,5 +1,6 @@
 name: rustdoc pages
 on:
+  pull_request:
   push:
     branches:
       - main
@@ -41,6 +42,7 @@ jobs:
           path: target/doc
 
   deploy:
+    if: github.event_name == 'push'
     permissions:
       contents: read
       pages: write

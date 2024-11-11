@@ -2,7 +2,7 @@ use arrayvec::ArrayVec;
 use ffmpeg_next::format::{sample, Sample};
 use ffmpeg_next::frame::audio;
 use ffmpeg_next::media::Type;
-use ffmpeg_next::{codec, decoder, Rational};
+use ffmpeg_next::{codec, decoder, format, frame, Rational};
 use image::RgbaImage;
 use mpdelta_core::common::mixed_fraction::MixedFraction;
 use mpdelta_core::time::TimelineTime;
@@ -233,127 +233,6 @@ unsafe impl audio::Sample for SampleI64 {
     }
 }
 
-macro_rules! compute_audio {
-    (Packed: $s:expr, $pts:expr, $dst:expr, $decoder:expr, $t:ty, $cls:expr) => {{
-        let (time_base_integer, time_base_numerator, time_base_denominator) = $s.time_base.deconstruct();
-        assert!(time_base_integer >= 0);
-        assert_ne!(time_base_denominator, 0);
-
-        let mut decoded = ffmpeg_next::frame::Audio::empty();
-        let mut offset = 0;
-        'outer: {
-            let mut process_frame = |decoder: &mut decoder::Audio| {
-                while decoder.receive_frame(&mut decoded).is_ok() {
-                    assert_eq!(decoded.planes(), 1);
-                    assert_eq!(decoded.channels(), $s.channels);
-                    let plane_offset = ($pts - decoded.pts().unwrap()).max(0) as usize;
-                    let plane_offset = if plane_offset > 0 {
-                        let i = plane_offset * $s.sample_rate as usize;
-                        i.checked_mul(time_base_integer as usize).unwrap() + i.checked_mul(time_base_numerator as usize).unwrap() / time_base_denominator as usize
-                    } else {
-                        0
-                    };
-                    if plane_offset >= decoded.samples() / usize::from($s.channels) {
-                        continue;
-                    }
-                    let Some(mut dst) = $dst.slice_mut(offset..) else {
-                        return ControlFlow::Break(());
-                    };
-
-                    // decoded.plane(0)の計算にバグがあり、Packedの場合には全データを取得できない
-                    // そのため、その問題の発生しないdata(0)によりFrame内のデータを取得する
-                    // SAFETY: 数値型のみを対象とするtransmuteなので安全
-                    let ([], plane, []) = (unsafe { decoded.data(0).align_to::<$t>() }) else {
-                        panic!("Packet::data(0) is not aligned by {}", std::any::type_name::<$t>())
-                    };
-                    for (dst, values) in dst.iter_mut().zip(plane.chunks(usize::from($s.channels))) {
-                        match (dst.len(), values.len()) {
-                            (1, 2..) => dst[0] = ($cls(values[0]) + $cls(values[1])) / 2.,
-                            (2.., 1) => {
-                                let v = $cls(values[0]);
-                                dst[0] = v;
-                                dst[1] = v;
-                            }
-                            _ => {
-                                for (dst, value) in dst.iter_mut().zip(values) {
-                                    *dst = $cls(*value);
-                                }
-                            }
-                        }
-                    }
-                    offset += plane.len() / usize::from($s.channels) - plane_offset;
-                }
-                ControlFlow::Continue(())
-            };
-            for (_, packet) in $s.ictx.packets().filter(|(stream, _)| stream.index() == $s.stream_index) {
-                $decoder.send_packet(&packet).unwrap();
-                if let ControlFlow::Break(()) = process_frame(&mut $decoder) {
-                    break 'outer;
-                }
-            }
-            $decoder.send_eof().unwrap();
-            process_frame(&mut $decoder);
-        }
-        offset.min($dst.len())
-    }};
-    (Planar: $s:expr, $pts:expr, $dst:expr, $decoder:expr, $t:ty, $cls:expr) => {{
-        let (time_base_integer, time_base_numerator, time_base_denominator) = $s.time_base.deconstruct();
-        assert!(time_base_integer >= 0);
-        assert_ne!(time_base_denominator, 0);
-
-        let mut decoded = ffmpeg_next::frame::Audio::empty();
-        let mut offset = 0;
-        'outer: {
-            let mut process_frame = |decoder: &mut decoder::Audio| {
-                while decoder.receive_frame(&mut decoded).is_ok() {
-                    assert_eq!(decoded.planes(), usize::from($s.channels));
-                    assert_eq!(decoded.channels(), $s.channels);
-                    let plane_offset = ($pts - decoded.pts().unwrap()).max(0) as usize;
-                    let plane_offset = if plane_offset > 0 {
-                        let i = plane_offset * $s.sample_rate as usize;
-                        i.checked_mul(time_base_integer as usize).unwrap() + i.checked_mul(time_base_numerator as usize).unwrap() / time_base_denominator as usize
-                    } else {
-                        0
-                    };
-                    if plane_offset >= decoded.samples() {
-                        continue;
-                    }
-                    let Some(mut dst) = $dst.slice_mut(offset..) else {
-                        return ControlFlow::Break(());
-                    };
-                    let planes = (0..usize::from($s.channels)).map(|p| &decoded.plane::<$t>(p)[plane_offset..]).collect::<SmallVec<[_; 6]>>();
-                    for (i, dst) in dst.iter_mut().take(decoded.samples() - plane_offset).enumerate() {
-                        match (dst.len(), planes.len()) {
-                            (1, 2..) => dst[0] = ($cls(planes[0][i]) + $cls(planes[1][i])) / 2.,
-                            (2.., 1) => {
-                                let v = $cls(planes[0][i]);
-                                dst[0] = v;
-                                dst[1] = v;
-                            }
-                            _ => {
-                                for (value, plane) in dst.iter_mut().zip(planes.iter()) {
-                                    *value = $cls(plane[i]);
-                                }
-                            }
-                        }
-                    }
-                    offset += decoded.samples() - plane_offset;
-                }
-                ControlFlow::Continue(())
-            };
-            for (_, packet) in $s.ictx.packets().filter(|(stream, _)| stream.index() == $s.stream_index) {
-                $decoder.send_packet(&packet).unwrap();
-                if let ControlFlow::Break(()) = process_frame(&mut $decoder) {
-                    break 'outer;
-                }
-            }
-            $decoder.send_eof().unwrap();
-            process_frame(&mut $decoder);
-        }
-        offset.min($dst.len())
-    }};
-}
-
 impl<T> AudioProvider for AudioReaderInner<T>
 where
     T: Read + Seek,
@@ -369,27 +248,248 @@ where
     fn compute_audio(&mut self, begin: TimelineTime, mut dst: MultiChannelAudioSliceMut<f32>) -> usize {
         let begin = begin.value();
         let pts = begin.div_floor(self.time_base).unwrap();
-        self.ictx.seek_with_flag(Some(self.stream_index as i32), pts, ..pts, SeekFlag::FRAME).unwrap();
+        // 音声のstream_indexに合わせてシークすると音声が壊れる謎
+        self.ictx.seek_with_flag(None, pts, ..pts, SeekFlag::FRAME).unwrap();
         dst.fill(0.);
 
         let context_decoder = codec::context::Context::from_parameters(self.parameters.clone()).unwrap();
-        let mut decoder = context_decoder.decoder().audio().unwrap();
-        #[allow(clippy::redundant_closure_call)]
-        match decoder.format() {
+        let decoder = context_decoder.decoder().audio().unwrap();
+        let format = decoder.format();
+        let frame_provider = FfmpegFrameProvider::new(&mut self.ictx, decoder, self.stream_index);
+        let avg_f32 = |v1, v2| (v1 + v2) / 2.;
+        match format {
             Sample::None => 0,
-            Sample::U8(sample::Type::Packed) => compute_audio!(Packed: self, pts, dst, decoder, u8, |v: u8| (v as f32 - 127.) / 127.),
-            Sample::U8(sample::Type::Planar) => compute_audio!(Planar: self, pts, dst, decoder, u8, |v: u8| (v as f32 - 127.) / 127.),
-            Sample::I16(sample::Type::Packed) => compute_audio!(Packed: self, pts, dst, decoder, i16, |v: i16| v as f32 / i16::MAX as f32),
-            Sample::I16(sample::Type::Planar) => compute_audio!(Planar: self, pts, dst, decoder, i16, |v: i16| v as f32 / i16::MAX as f32),
-            Sample::I32(sample::Type::Packed) => compute_audio!(Packed: self, pts, dst, decoder, i32, |v: i32| v as f32 / i32::MAX as f32),
-            Sample::I32(sample::Type::Planar) => compute_audio!(Planar: self, pts, dst, decoder, i32, |v: i32| v as f32 / i32::MAX as f32),
-            Sample::I64(sample::Type::Packed) => compute_audio!(Packed: self, pts, dst, decoder, SampleI64, |SampleI64(v)| v as f32 / i64::MAX as f32),
-            Sample::I64(sample::Type::Planar) => compute_audio!(Planar: self, pts, dst, decoder, SampleI64, |SampleI64(v)| v as f32 / i64::MAX as f32),
-            Sample::F32(sample::Type::Packed) => compute_audio!(Packed: self, pts, dst, decoder, f32, |v: f32| v),
-            Sample::F32(sample::Type::Planar) => compute_audio!(Planar: self, pts, dst, decoder, f32, |v: f32| v),
-            Sample::F64(sample::Type::Packed) => compute_audio!(Packed: self, pts, dst, decoder, f64, |v: f64| v as f32),
-            Sample::F64(sample::Type::Planar) => compute_audio!(Planar: self, pts, dst, decoder, f64, |v: f64| v as f32),
+            Sample::U8(sample::Type::Packed) => compute_audio_packed(frame_provider, dst, self.sample_rate, pts, self.time_base, avg_f32, |v: u8| (v as f32 - 127.) / 127.),
+            Sample::U8(sample::Type::Planar) => compute_audio_planar(frame_provider, dst, self.sample_rate, pts, self.time_base, avg_f32, |v: u8| (v as f32 - 127.) / 127.),
+            Sample::I16(sample::Type::Packed) => compute_audio_packed(frame_provider, dst, self.sample_rate, pts, self.time_base, avg_f32, |v: i16| v as f32 / i16::MAX as f32),
+            Sample::I16(sample::Type::Planar) => compute_audio_planar(frame_provider, dst, self.sample_rate, pts, self.time_base, avg_f32, |v: i16| v as f32 / i16::MAX as f32),
+            Sample::I32(sample::Type::Packed) => compute_audio_packed(frame_provider, dst, self.sample_rate, pts, self.time_base, avg_f32, |v: i32| v as f32 / i32::MAX as f32),
+            Sample::I32(sample::Type::Planar) => compute_audio_planar(frame_provider, dst, self.sample_rate, pts, self.time_base, avg_f32, |v: i32| v as f32 / i32::MAX as f32),
+            Sample::I64(sample::Type::Packed) => compute_audio_packed(frame_provider, dst, self.sample_rate, pts, self.time_base, avg_f32, |v: SampleI64| v.0 as f32 / i64::MAX as f32),
+            Sample::I64(sample::Type::Planar) => compute_audio_planar(frame_provider, dst, self.sample_rate, pts, self.time_base, avg_f32, |v: SampleI64| v.0 as f32 / i64::MAX as f32),
+            Sample::F32(sample::Type::Packed) => compute_audio_packed(frame_provider, dst, self.sample_rate, pts, self.time_base, avg_f32, |v: f32| v),
+            Sample::F32(sample::Type::Planar) => compute_audio_planar(frame_provider, dst, self.sample_rate, pts, self.time_base, avg_f32, |v: f32| v),
+            Sample::F64(sample::Type::Packed) => compute_audio_packed(frame_provider, dst, self.sample_rate, pts, self.time_base, avg_f32, |v: f64| v as f32),
+            Sample::F64(sample::Type::Planar) => compute_audio_planar(frame_provider, dst, self.sample_rate, pts, self.time_base, avg_f32, |v: f64| v as f32),
         }
+    }
+}
+
+fn compute_audio_packed<F, Raw, Sample>(mut frame_provider: F, mut dst: MultiChannelAudioSliceMut<Sample>, sample_rate: u32, start_pts: i64, time_base: MixedFraction, avg: impl Fn(Sample, Sample) -> Sample, convert: impl Fn(Raw) -> Sample) -> usize
+where
+    F: PackedAudioFrameProvider<Raw>,
+    Raw: Clone,
+    Sample: Clone,
+{
+    let (time_base_integer, time_base_numerator, time_base_denominator) = time_base.deconstruct();
+    assert!(time_base_integer >= 0);
+    assert_ne!(time_base_denominator, 0);
+
+    let mut offset = 0;
+    while let Some(decoded) = frame_provider.next() {
+        let plane_offset = (start_pts - decoded.pts()).max(0) as usize;
+        let plane_offset = if plane_offset > 0 {
+            let i = plane_offset * sample_rate as usize;
+            i.checked_mul(time_base_integer as usize).unwrap() + i.checked_mul(time_base_numerator as usize).unwrap() / time_base_denominator as usize
+        } else {
+            0
+        };
+        let samples = decoded.samples();
+        if plane_offset >= samples.len() / decoded.channels() {
+            continue;
+        }
+        let Some(mut dst) = dst.slice_mut(offset..) else {
+            break;
+        };
+
+        for (dst, values) in dst.iter_mut().zip(samples.chunks(decoded.channels()).skip(plane_offset)) {
+            match (dst.len(), values.len()) {
+                (1, 2..) => dst[0] = avg(convert(values[0].clone()), convert(values[1].clone())),
+                (2.., 1) => {
+                    let v = convert(values[0].clone());
+                    dst[0] = v.clone();
+                    dst[1] = v;
+                }
+                _ => {
+                    for (dst, value) in dst.iter_mut().zip(values) {
+                        *dst = convert(value.clone());
+                    }
+                }
+            }
+        }
+        offset += samples.len() / decoded.channels() - plane_offset;
+    }
+    offset.min(dst.len())
+}
+
+fn compute_audio_planar<F, Raw, Sample>(mut frame_provider: F, mut dst: MultiChannelAudioSliceMut<Sample>, sample_rate: u32, start_pts: i64, time_base: MixedFraction, avg: impl Fn(Sample, Sample) -> Sample, convert: impl Fn(Raw) -> Sample) -> usize
+where
+    F: for<'a> PlanarAudioFrameProvider<Raw>,
+    Raw: Clone,
+    Sample: Clone,
+{
+    let (time_base_integer, time_base_numerator, time_base_denominator) = time_base.deconstruct();
+    assert!(time_base_integer >= 0);
+    assert_ne!(time_base_denominator, 0);
+
+    let mut offset = 0;
+    while let Some(decoded) = frame_provider.next() {
+        let plane_offset = (start_pts - decoded.pts()).max(0) as usize;
+        let plane_offset = if plane_offset > 0 {
+            let i = plane_offset * sample_rate as usize;
+            i.checked_mul(time_base_integer as usize).unwrap() + i.checked_mul(time_base_numerator as usize).unwrap() / time_base_denominator as usize
+        } else {
+            0
+        };
+        let samples = decoded.samples();
+        if plane_offset >= samples[0].len() {
+            continue;
+        }
+        let Some(mut dst) = dst.slice_mut(offset..) else {
+            break;
+        };
+
+        for (i, dst) in dst.iter_mut().take(samples[0].len() - plane_offset).enumerate() {
+            let i = i + plane_offset;
+            match (dst.len(), samples.len()) {
+                (1, 2..) => dst[0] = avg(convert(samples[0][i].clone()), convert(samples[1][i].clone())),
+                (2.., 1) => {
+                    let v = convert(samples[0][i].clone());
+                    dst[0] = v.clone();
+                    dst[1] = v;
+                }
+                _ => {
+                    for (dst, value) in dst.iter_mut().zip(samples.iter()) {
+                        *dst = convert(value[i].clone());
+                    }
+                }
+            }
+        }
+        offset += samples[0].len() - plane_offset;
+    }
+    offset.min(dst.len())
+}
+
+trait PackedAudioFrameProvider<T> {
+    type Frame<'a>: PackedAudioFrame<T>
+    where
+        Self: 'a;
+    fn next(&mut self) -> Option<Self::Frame<'_>>;
+}
+
+trait PlanarAudioFrameProvider<T> {
+    type Frame<'a>: PlanarAudioFrame<T>
+    where
+        Self: 'a;
+    fn next(&mut self) -> Option<Self::Frame<'_>>;
+}
+
+struct FfmpegFrameProvider<'a> {
+    packet_iter: format::context::input::PacketIter<'a>,
+    decoder: codec::decoder::audio::Audio,
+    stream_index: usize,
+    frame: frame::Audio,
+    eof: bool,
+}
+
+impl<'a> FfmpegFrameProvider<'a> {
+    fn new(ictx: &'a mut mpdelta_ffmpeg::io::Input<impl Read + Seek>, decoder: codec::decoder::audio::Audio, stream_index: usize) -> FfmpegFrameProvider<'a> {
+        FfmpegFrameProvider {
+            packet_iter: ictx.packets(),
+            decoder,
+            stream_index,
+            frame: frame::Audio::empty(),
+            eof: false,
+        }
+    }
+
+    // Generatorが来たら再実装したい
+    fn next_frame(&mut self) -> Option<&frame::Audio> {
+        loop {
+            if self.decoder.receive_frame(&mut self.frame).is_ok() {
+                return Some(&self.frame);
+            }
+            match self.packet_iter.by_ref().find(|(stream, _)| stream.index() == self.stream_index) {
+                Some((_, packet)) => {
+                    self.decoder.send_packet(&packet).unwrap();
+                }
+                None => {
+                    if self.eof {
+                        return None;
+                    } else {
+                        self.decoder.send_eof().unwrap();
+                        self.eof = true;
+                    }
+                }
+            }
+        }
+    }
+}
+
+impl<'a, T> PackedAudioFrameProvider<T> for FfmpegFrameProvider<'a>
+where
+    T: audio::Sample,
+{
+    type Frame<'b>
+        = &'b frame::Audio
+    where
+        Self: 'b;
+
+    fn next(&mut self) -> Option<Self::Frame<'_>> {
+        self.next_frame()
+    }
+}
+
+impl<'a, T> PlanarAudioFrameProvider<T> for FfmpegFrameProvider<'a>
+where
+    T: audio::Sample,
+{
+    type Frame<'b>
+        = &'b frame::Audio
+    where
+        Self: 'b;
+
+    fn next(&mut self) -> Option<Self::Frame<'_>> {
+        self.next_frame()
+    }
+}
+
+trait PackedAudioFrame<T> {
+    fn pts(&self) -> i64;
+    fn channels(&self) -> usize;
+    fn samples(&self) -> &[T];
+}
+
+trait PlanarAudioFrame<T> {
+    fn pts(&self) -> i64;
+    fn samples(&self) -> SmallVec<[&[T]; 6]>;
+}
+
+impl<'a, T: audio::Sample> PackedAudioFrame<T> for &'a frame::Audio {
+    fn pts(&self) -> i64 {
+        frame::Frame::pts(self).unwrap()
+    }
+
+    fn channels(&self) -> usize {
+        frame::Audio::channels(self) as usize
+    }
+
+    fn samples(&self) -> &[T] {
+        // Audio::plane()の計算にバグがあり、Packedの場合には全データを取得できない
+        // そのため、その問題の発生しないdata(0)によりFrame内のデータを取得する
+        // SAFETY: 数値型のみを対象とするtransmuteなので安全
+        let ([], plane, []) = (unsafe { self.data(0).align_to::<T>() }) else { panic!("Packet::data(0) is not aligned by {}", std::any::type_name::<T>()) };
+        plane
+    }
+}
+
+impl<'a, T: audio::Sample> PlanarAudioFrame<T> for &'a frame::Audio {
+    fn pts(&self) -> i64 {
+        frame::Frame::pts(self).unwrap()
+    }
+
+    fn samples(&self) -> SmallVec<[&[T]; 6]> {
+        (0..frame::Audio::channels(self)).map(|p| self.plane::<T>(p as usize)).collect()
     }
 }
 
@@ -398,9 +498,10 @@ mod tests {
     use super::*;
     use hound::{SampleFormat, WavSpec};
     use mpdelta_core_audio::multi_channel_audio::MultiChannelAudio;
+    use mpdelta_dsp::test_util::FormalExpression;
     use std::fs::OpenOptions;
     use std::path::Path;
-    use std::{fs, io};
+    use std::{fs, io, iter, mem};
 
     fn read_image_and_audio(name: &str, input: impl Read + Seek + Clone, contains_video: bool, contains_audio: bool) {
         ffmpeg_next::init().unwrap();
@@ -522,5 +623,97 @@ mod tests {
     fn test_load_gif() {
         const MEDIA: &[u8] = include_bytes!("./decode_test_gif.gif");
         read_image_and_audio("gif", io::Cursor::new(MEDIA), true, false);
+    }
+
+    #[test]
+    fn test_compute_audio_packed() {
+        struct TestFrameProvider {
+            pts: i64,
+            samples: Vec<FormalExpression>,
+        }
+        struct Frame<'a> {
+            pts: i64,
+            samples: &'a [FormalExpression],
+        }
+        impl PackedAudioFrameProvider<FormalExpression> for TestFrameProvider {
+            type Frame<'a> = Frame<'a>;
+            fn next(&mut self) -> Option<Self::Frame<'_>> {
+                let next_pts = self.pts + 32;
+                let samples = self.samples.get((self.pts * 2) as usize..)?;
+                Some(Frame {
+                    pts: mem::replace(&mut self.pts, next_pts),
+                    samples: &samples[..samples.len().min(64)],
+                })
+            }
+        }
+        impl<'a> PackedAudioFrame<FormalExpression> for Frame<'a> {
+            fn pts(&self) -> i64 {
+                self.pts
+            }
+            fn channels(&self) -> usize {
+                2
+            }
+            fn samples(&self) -> &[FormalExpression] {
+                self.samples
+            }
+        }
+
+        let f = TestFrameProvider {
+            pts: 0,
+            samples: (0..2048 + 24).map(FormalExpression::value).collect(),
+        };
+        let mut dst = MultiChannelAudio::new(2);
+        dst.resize(1024, FormalExpression::Zero);
+
+        let len = compute_audio_packed(f, dst.slice_mut(..).unwrap(), 48000, 24, MixedFraction::from_fraction(1, 48000), |_, _| unreachable!(), |v| v);
+        assert_eq!(len, 1012);
+        assert_eq!(dst.as_linear(), &(48..2048 + 24).map(FormalExpression::value).chain(iter::repeat(FormalExpression::Zero)).take(2048).collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn test_compute_audio_planar() {
+        struct TestFrameProvider {
+            pts: i64,
+            samples1: Vec<FormalExpression>,
+            samples2: Vec<FormalExpression>,
+        }
+        struct Frame<'a> {
+            pts: i64,
+            samples1: &'a [FormalExpression],
+            samples2: &'a [FormalExpression],
+        }
+        impl PlanarAudioFrameProvider<FormalExpression> for TestFrameProvider {
+            type Frame<'a> = Frame<'a>;
+            fn next(&mut self) -> Option<Self::Frame<'_>> {
+                let next_pts = self.pts + 32;
+                let samples1 = self.samples1.get(self.pts as usize..)?;
+                let samples2 = self.samples2.get(self.pts as usize..)?;
+                Some(Frame {
+                    pts: mem::replace(&mut self.pts, next_pts),
+                    samples1: &samples1[..samples1.len().min(32)],
+                    samples2: &samples2[..samples2.len().min(32)],
+                })
+            }
+        }
+        impl<'a> PlanarAudioFrame<FormalExpression> for Frame<'a> {
+            fn pts(&self) -> i64 {
+                self.pts
+            }
+            fn samples(&self) -> SmallVec<[&[FormalExpression]; 6]> {
+                [self.samples1, self.samples2].into_iter().collect()
+            }
+        }
+
+        let f = TestFrameProvider {
+            pts: 0,
+            samples1: (0..1024 + 12).map(|i| i * 2).map(FormalExpression::value).collect(),
+            samples2: (0..1024 + 12).map(|i| i * 2 + 1).map(FormalExpression::value).collect(),
+        };
+        let mut dst = MultiChannelAudio::new(2);
+        dst.resize(1024, FormalExpression::Zero);
+
+        let len = compute_audio_planar(f, dst.slice_mut(..).unwrap(), 48000, 24, MixedFraction::from_fraction(1, 48000), |_, _| unreachable!(), |v| v);
+        assert_eq!(len, 1012);
+        assert_eq!(dst.as_linear(), &(48..2048 + 24).map(FormalExpression::value).chain(iter::repeat(FormalExpression::Zero)).take(2048).collect::<Vec<_>>());
     }
 }

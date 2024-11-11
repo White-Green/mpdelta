@@ -3222,6 +3222,7 @@ dependencies = [
  "mpdelta_core",
  "mpdelta_core_audio",
  "mpdelta_core_vulkano",
+ "mpdelta_dsp",
  "mpdelta_ffmpeg",
  "num",
  "phf",

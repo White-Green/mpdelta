@@ -37,5 +37,6 @@ shader_builder = { workspace = true }
 
 [dev-dependencies]
 hound = { workspace = true }
+mpdelta_dsp = { workspace = true, features = ["formal_test"] }
 tokio = { workspace = true, features = ["rt-multi-thread"] }
 vulkano-util = { workspace = true }

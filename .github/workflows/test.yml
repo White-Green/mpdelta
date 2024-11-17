@@ -21,6 +21,8 @@ jobs:
         with:
           toolchain: nightly-2023-05-27
           components: "rust-src,rustc-dev,llvm-tools-preview"
+      - id: rust-stable-version
+        run: echo "version=$(rustc +stable --version)" >> $GITHUB_OUTPUT
       - uses: actions/cache@v4
         with:
           path: |
@@ -34,5 +36,7 @@ jobs:
           path: |
             target/
             target_for_shaders/
-          key: ${{ runner.os }}-cargo-test-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-${{ steps.rust-stable-version.outputs.version }}-test-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-${{ steps.rust-stable-version.outputs.version }}-test-
       - run: cargo +stable test --workspace --locked

@@ -22,6 +22,10 @@ jobs:
         with:
           toolchain: nightly-2023-05-27
           components: "rust-src,rustc-dev,llvm-tools-preview"
+      - id: get-month
+        run: |
+          echo "month=$(/bin/date -u "+%Y%m")" >> $GITHUB_OUTPUT
+        shell: bash
       - uses: actions/cache@v4
         with:
           path: |
@@ -29,13 +33,15 @@ jobs:
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
-          key: ${{ runner.os }}-cargo
+          key: ${{ runner.os }}-cargo-${{ steps.get-month.outputs.month }}
       - uses: actions/cache@v4
         with:
           path: |
             target/
             target_for_shaders/
-          key: ${{ runner.os }}-cargo-doc-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-${{ steps.main_toolchain.outputs.cachekey }}-doc-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-${{ steps.main_toolchain.outputs.cachekey }}-doc-
       - run: RUSTDOCFLAGS="--enable-index-page" cargo +${{ steps.main_toolchain.outputs.name }} doc --locked --workspace --document-private-items --no-deps -Zrustdoc-map
       - uses: actions/upload-pages-artifact@v3
         with:

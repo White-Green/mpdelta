@@ -22,8 +22,6 @@ jobs:
         with:
           toolchain: nightly-2023-05-27
           components: "rust-src,rustc-dev,llvm-tools-preview"
-      - id: rust-stable-version
-        run: echo "version=$(rustc +stable --version)" >> $GITHUB_OUTPUT
       - uses: actions/cache@v4
         with:
           path: |
@@ -37,9 +35,9 @@ jobs:
           path: |
             target/
             target_for_shaders/
-          key: ${{ runner.os }}-cargo-${{ steps.rust-stable-version.outputs.version }}-doc-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-${{ steps.main_toolchain.outputs.name }}-doc-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-cargo-${{ steps.rust-stable-version.outputs.version }}-doc-
+            ${{ runner.os }}-cargo-${{ steps.main_toolchain.outputs.name }}-doc-
       - run: RUSTDOCFLAGS="--enable-index-page" cargo +${{ steps.main_toolchain.outputs.name }} doc --locked --workspace --document-private-items --no-deps -Zrustdoc-map
       - uses: actions/upload-pages-artifact@v3
         with:

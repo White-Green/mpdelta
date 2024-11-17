@@ -29,13 +29,13 @@ jobs:
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
-          key: ${{ runner.os }}-cargo-${{ steps.main_toolchain.outputs.name }}
+          key: ${{ runner.os }}-cargo-${{ steps.main_toolchain.outputs.cachekey }}
       - uses: actions/cache@v4
         with:
           path: |
             target/
             target_for_shaders/
-          key: ${{ runner.os }}-cargo-${{ steps.main_toolchain.outputs.name }}-test-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-${{ steps.main_toolchain.outputs.cachekey }}-test-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-cargo-${{ steps.main_toolchain.outputs.name }}-test-
+            ${{ runner.os }}-cargo-${{ steps.main_toolchain.outputs.cachekey }}-test-
       - run: cargo +stable test --workspace --locked

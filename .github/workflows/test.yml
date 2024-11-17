@@ -22,6 +22,10 @@ jobs:
         with:
           toolchain: nightly-2023-05-27
           components: "rust-src,rustc-dev,llvm-tools-preview"
+      - id: get-month
+        run: |
+          echo "month=$(/bin/date -u "+%Y%m")" >> $GITHUB_OUTPUT
+        shell: bash
       - uses: actions/cache@v4
         with:
           path: |
@@ -29,7 +33,7 @@ jobs:
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
-          key: ${{ runner.os }}-cargo-${{ steps.main_toolchain.outputs.cachekey }}
+          key: ${{ runner.os }}-cargo-${{ steps.get-month.outputs.month }}
       - uses: actions/cache@v4
         with:
           path: |

@@ -539,7 +539,7 @@ mod tests {
 
     #[test]
     fn test_text_shaping() {
-        const TEST_OUTPUT_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../test_output/", env!("CARGO_PKG_NAME"));
+        const TEST_OUTPUT_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../test_output/", env!("CARGO_PKG_NAME"));
         let output_file_dir = Path::new(TEST_OUTPUT_DIR).join("text_shaping");
         fs::create_dir_all(&output_file_dir).unwrap();
 

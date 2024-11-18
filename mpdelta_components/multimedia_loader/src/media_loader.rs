@@ -505,7 +505,7 @@ mod tests {
 
     fn read_image_and_audio(name: &str, input: impl Read + Seek + Clone, contains_video: bool, contains_audio: bool) {
         ffmpeg_next::init().unwrap();
-        const TEST_OUTPUT_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../test_output/", env!("CARGO_PKG_NAME"));
+        const TEST_OUTPUT_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../test_output/", env!("CARGO_PKG_NAME"));
         let output_dir = Path::new(TEST_OUTPUT_DIR).join(name);
         let _ = fs::remove_dir_all(&output_dir);
         fs::create_dir_all(&output_dir).unwrap();

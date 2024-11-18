@@ -1,0 +1,12 @@
+[package]
+name = "mpdelta_component_parameters"
+version = { workspace = true }
+edition = { workspace = true }
+authors = { workspace = true }
+
+[dependencies]
+erased-serde = { workspace = true }
+memmap2 = { workspace = true }
+mpdelta_core = { workspace = true }
+serde = { workspace = true }
+uuid = { workspace = true, features = ["v3", "v5"] }

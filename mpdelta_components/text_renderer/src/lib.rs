@@ -1,6 +1,5 @@
-use crate::common::color;
-use crate::text_renderer::rich_text::{RichTextParser, RichTextToken};
-use crate::text_renderer::shaping::{GlyphData, ShapingBuilder, ShapingBuilderSegment};
+use crate::rich_text::{RichTextParser, RichTextToken};
+use crate::shaping::{GlyphData, ShapingBuilder, ShapingBuilderSegment};
 use async_trait::async_trait;
 use crossbeam_queue::SegQueue;
 use font_kit::family_name::FamilyName;
@@ -11,6 +10,7 @@ use glam::{Mat4, Vec4};
 use lyon_tessellation::math::Point as LyonPoint;
 use lyon_tessellation::path::{ControlPointId, EndpointId, IdEvent, PositionStore};
 use lyon_tessellation::{BuffersBuilder, FillOptions, FillTessellator, FillVertex, FillVertexConstructor, LineJoin, StrokeOptions, StrokeTessellator, StrokeVertex, StrokeVertexConstructor, VertexBuffers};
+use mpdelta_component_common::color;
 use mpdelta_core::component::class::{ComponentClass, ComponentClassIdentifier};
 use mpdelta_core::component::instance::ComponentInstance;
 use mpdelta_core::component::marker_pin::{MarkerPin, MarkerTime};
@@ -162,7 +162,7 @@ impl TextRenderer {
         )
         .unwrap();
         let subpass = Subpass::from(Arc::clone(&render_pass), 0).unwrap();
-        let font_triangle_shader = unsafe { ShaderModule::new(Arc::clone(device), ShaderModuleCreateInfo::new(&bytes_to_words(include_bytes!(concat!(env!("OUT_DIR"), "/font_rendering.spv"))).unwrap())).unwrap() };
+        let font_triangle_shader = unsafe { ShaderModule::new(Arc::clone(device), ShaderModuleCreateInfo::new(&bytes_to_words(include_bytes!(concat!(env!("OUT_DIR"), "/shader.spv"))).unwrap())).unwrap() };
         let vertex_shader = font_triangle_shader.entry_point("shader::main_vs").unwrap();
         let fragment_shader = font_triangle_shader.entry_point("shader::main_fs").unwrap();
         let vertex_input_state = VertexInputState::new()
@@ -863,7 +863,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_render_text() {
-        const TEST_OUTPUT_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../test_output/", env!("CARGO_PKG_NAME"));
+        const TEST_OUTPUT_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../test_output/", env!("CARGO_PKG_NAME"));
         let output_dir = Path::new(TEST_OUTPUT_DIR).join("text_renderer");
         tokio::fs::create_dir_all(&output_dir).await.unwrap();
         let context = VulkanoContext::new(VulkanoConfig {

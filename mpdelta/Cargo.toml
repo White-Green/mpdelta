@@ -11,7 +11,11 @@ cpal = { workspace = true }
 futures = { workspace = true }
 mpdelta_async_runtime = { workspace = true, features = ["tokio"] }
 mpdelta_audio_mixer = { workspace = true }
-mpdelta_components = { workspace = true }
+mpdelta_component_multimedia_loader = { workspace = true }
+mpdelta_component_parameters = { workspace = true }
+mpdelta_component_rectangle = { workspace = true }
+mpdelta_component_sine_audio = { workspace = true }
+mpdelta_component_text_renderer = { workspace = true }
 mpdelta_core = { workspace = true }
 mpdelta_core_audio = { workspace = true }
 mpdelta_core_vulkano = { workspace = true }

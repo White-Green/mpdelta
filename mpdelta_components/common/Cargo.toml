@@ -1,0 +1,8 @@
+[package]
+name = "mpdelta_component_common"
+version = { workspace = true }
+edition = { workspace = true }
+authors = { workspace = true }
+
+[dependencies]
+phf = { workspace = true }

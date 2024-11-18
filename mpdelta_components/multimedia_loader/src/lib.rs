@@ -1,7 +1,7 @@
-use crate::parameter::file_reader::FileReaderParam;
 use async_trait::async_trait;
 use crossbeam_queue::SegQueue;
 use media_loader::{AudioReader, VideoReader};
+use mpdelta_component_parameters::file_reader::FileReaderParam;
 use mpdelta_core::common::mixed_fraction::MixedFraction;
 use mpdelta_core::component::class::{ComponentClass, ComponentClassIdentifier};
 use mpdelta_core::component::instance::ComponentInstance;

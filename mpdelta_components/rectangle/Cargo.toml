@@ -1,0 +1,12 @@
+[package]
+name = "mpdelta_component_rectangle"
+version = { workspace = true }
+edition = { workspace = true }
+authors = { workspace = true }
+
+[dependencies]
+async-trait = { workspace = true }
+mpdelta_core = { workspace = true }
+mpdelta_core_vulkano = { workspace = true }
+tokio = { workspace = true }
+vulkano = { workspace = true }

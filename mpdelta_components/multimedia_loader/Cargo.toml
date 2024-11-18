@@ -1,0 +1,26 @@
+[package]
+name = "mpdelta_component_multimedia_loader"
+version = { workspace = true }
+edition = { workspace = true }
+authors = { workspace = true }
+
+[dependencies]
+arrayvec = { workspace = true }
+async-trait = { workspace = true }
+crossbeam-queue = { workspace = true }
+ffmpeg-next = { workspace = true }
+image = { workspace = true }
+mpdelta_component_parameters = { workspace = true }
+mpdelta_core = { workspace = true }
+mpdelta_core_audio = { workspace = true }
+mpdelta_core_vulkano = { workspace = true }
+mpdelta_ffmpeg = { workspace = true }
+num = { workspace = true }
+smallvec = { workspace = true }
+tokio = { workspace = true }
+uuid = { workspace = true }
+vulkano = { workspace = true }
+
+[dev-dependencies]
+hound = { workspace = true }
+mpdelta_dsp = { workspace = true, features = ["formal_test"] }

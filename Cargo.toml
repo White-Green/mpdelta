@@ -10,8 +10,13 @@ members = [
     "mpdelta_common/mpdelta_dsp",
     "mpdelta_common/mpdelta_ffmpeg",
     "mpdelta_common/mpdelta_message_router",
-    "mpdelta_components",
-    "mpdelta_components/shaders/font_rendering",
+    "mpdelta_components/common",
+    "mpdelta_components/multimedia_loader",
+    "mpdelta_components/parameters",
+    "mpdelta_components/rectangle",
+    "mpdelta_components/sine_audio",
+    "mpdelta_components/text_renderer",
+    "mpdelta_components/text_renderer/shader",
     "mpdelta_core",
     "mpdelta_core_audio",
     "mpdelta_core_test_util",
@@ -39,7 +44,12 @@ default-members = [
     "mpdelta_common/mpdelta_dsp",
     "mpdelta_common/mpdelta_ffmpeg",
     "mpdelta_common/mpdelta_message_router",
-    "mpdelta_components",
+    "mpdelta_components/common",
+    "mpdelta_components/multimedia_loader",
+    "mpdelta_components/parameters",
+    "mpdelta_components/rectangle",
+    "mpdelta_components/sine_audio",
+    "mpdelta_components/text_renderer",
     "mpdelta_core",
     "mpdelta_core_audio",
     "mpdelta_core_test_util",
@@ -100,7 +110,12 @@ memmap2 = "0.9.5"
 moka = { version = "0.12.8", features = ["future"], default-features = false }
 mpdelta_async_runtime = { path = "mpdelta_common/mpdelta_async_runtime" }
 mpdelta_audio_mixer = { path = "mpdelta_audio_mixer" }
-mpdelta_components = { path = "mpdelta_components" }
+mpdelta_component_common = { path = "mpdelta_components/common" }
+mpdelta_component_multimedia_loader = { path = "mpdelta_components/multimedia_loader" }
+mpdelta_component_parameters = { path = "mpdelta_components/parameters" }
+mpdelta_component_rectangle = { path = "mpdelta_components/rectangle" }
+mpdelta_component_sine_audio = { path = "mpdelta_components/sine_audio" }
+mpdelta_component_text_renderer = { path = "mpdelta_components/text_renderer" }
 mpdelta_core = { path = "mpdelta_core" }
 mpdelta_core_audio = { path = "mpdelta_core_audio" }
 mpdelta_core_test_util = { path = "mpdelta_core_test_util" }

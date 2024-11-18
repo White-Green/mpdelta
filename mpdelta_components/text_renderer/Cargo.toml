@@ -1,42 +1,31 @@
 [package]
-name = "mpdelta_components"
+name = "mpdelta_component_text_renderer"
 version = { workspace = true }
 edition = { workspace = true }
 authors = { workspace = true }
 
 [dependencies]
-arrayvec = { workspace = true }
 async-trait = { workspace = true }
 crossbeam-queue = { workspace = true }
-erased-serde = { workspace = true }
-ffmpeg-next = { workspace = true }
 font-kit = { workspace = true }
 glam = { workspace = true }
 icu_properties = { workspace = true }
 icu_segmenter = { workspace = true }
-image = { workspace = true }
 lyon_tessellation = { workspace = true }
-memmap2 = { workspace = true }
+mpdelta_component_common = { workspace = true }
 mpdelta_core = { workspace = true }
-mpdelta_core_audio = { workspace = true }
 mpdelta_core_vulkano = { workspace = true }
-mpdelta_ffmpeg = { workspace = true }
-num = { workspace = true }
-phf = { workspace = true }
 rpds = { workspace = true }
-serde = { workspace = true }
-shader_font_rendering = { path = "shaders/font_rendering", version = "*" }
+shader_font_rendering = { path = "shader" }
 smallvec = { workspace = true }
 swash = { workspace = true }
 tokio = { workspace = true }
-uuid = { workspace = true, features = ["v5"] }
 vulkano = { workspace = true }
 
 [build-dependencies]
 shader_builder = { workspace = true }
 
 [dev-dependencies]
-hound = { workspace = true }
-mpdelta_dsp = { workspace = true, features = ["formal_test"] }
+image = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread"] }
 vulkano-util = { workspace = true }

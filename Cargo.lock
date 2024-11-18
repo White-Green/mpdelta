@@ -3035,6 +3035,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "md-5"
+version = "0.10.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d89e7ee0cfbedfc4da3340218492196241d89eefb6dab27de5df917a6d2e78cf"
+dependencies = [
+ "cfg-if",
+ "digest",
+]
+
+[[package]]
 name = "memchr"
 version = "2.7.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3161,7 +3171,11 @@ dependencies = [
  "futures",
  "mpdelta_async_runtime",
  "mpdelta_audio_mixer",
- "mpdelta_components",
+ "mpdelta_component_multimedia_loader",
+ "mpdelta_component_parameters",
+ "mpdelta_component_rectangle",
+ "mpdelta_component_sine_audio",
+ "mpdelta_component_text_renderer",
  "mpdelta_core",
  "mpdelta_core_audio",
  "mpdelta_core_vulkano",
@@ -3203,37 +3217,88 @@ dependencies = [
 ]
 
 [[package]]
-name = "mpdelta_components"
+name = "mpdelta_component_common"
+version = "0.1.0"
+dependencies = [
+ "phf",
+]
+
+[[package]]
+name = "mpdelta_component_multimedia_loader"
 version = "0.1.0"
 dependencies = [
  "arrayvec",
  "async-trait",
  "crossbeam-queue",
- "erased-serde",
  "ffmpeg-next",
- "font-kit",
- "glam",
  "hound",
- "icu_properties",
- "icu_segmenter",
  "image",
- "lyon_tessellation",
- "memmap2 0.9.5",
+ "mpdelta_component_parameters",
  "mpdelta_core",
  "mpdelta_core_audio",
  "mpdelta_core_vulkano",
  "mpdelta_dsp",
  "mpdelta_ffmpeg",
  "num",
- "phf",
- "rpds",
+ "smallvec",
+ "tokio",
+ "uuid",
+ "vulkano",
+]
+
+[[package]]
+name = "mpdelta_component_parameters"
+version = "0.1.0"
+dependencies = [
+ "erased-serde",
+ "memmap2 0.9.5",
+ "mpdelta_core",
  "serde",
+ "uuid",
+]
+
+[[package]]
+name = "mpdelta_component_rectangle"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "mpdelta_core",
+ "mpdelta_core_vulkano",
+ "tokio",
+ "vulkano",
+]
+
+[[package]]
+name = "mpdelta_component_sine_audio"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "mpdelta_core",
+ "mpdelta_core_audio",
+ "tokio",
+]
+
+[[package]]
+name = "mpdelta_component_text_renderer"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "crossbeam-queue",
+ "font-kit",
+ "glam",
+ "icu_properties",
+ "icu_segmenter",
+ "image",
+ "lyon_tessellation",
+ "mpdelta_component_common",
+ "mpdelta_core",
+ "mpdelta_core_vulkano",
+ "rpds",
  "shader_builder",
  "shader_font_rendering",
  "smallvec",
  "swash",
  "tokio",
- "uuid",
  "vulkano",
  "vulkano-util",
 ]
@@ -5718,6 +5783,7 @@ checksum = "f8c5f0a0af699448548ad1a2fbf920fb4bee257eae39953ba95cb84891a0446a"
 dependencies = [
  "atomic",
  "getrandom",
+ "md-5",
  "serde",
  "sha1_smol",
 ]

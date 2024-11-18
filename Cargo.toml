@@ -143,17 +143,17 @@ proptest = { version = "1.5.0", features = ["std"], default-features = false }
 proptest-derive = "0.5.0"
 rayon = "1.10.0"
 regex = "1.11.1"
-rfd = { version = "0.15.0", features = ["file-handle-inner", "gtk3"], default-features = false }
+rfd = { version = "0.15.1", features = ["file-handle-inner", "gtk3"], default-features = false }
 rpds = { git = "https://github.com/White-Green/rpds", rev = "5d99c47f2a3ca2084ad85e66cbe37010191e853a", default-features = false }
-serde = { version = "1.0.214", default-features = false }
+serde = { version = "1.0.215", default-features = false }
 serde_repr = "0.1.19"
-serde_json = "1.0.132"
+serde_json = "1.0.133"
 shader_builder = { path = "mpdelta_build_utils/shader_builder" }
 smallvec = "1.13"
 spirv-builder = { version = "0.9.0", default-features = false, features = ["use-compiled-tools"] }
 spirv-std = "0.9.0"
 swash = { version = "0.1.19", features = ["scale"], default-features = false }
-thiserror = "2.0.0"
+thiserror = "2.0.3"
 time = "0.3.36"
 tokio = { version = "1.41.1", features = ["fs", "macros", "time"] }
 uuid = { version = "1.11.0", default-features = false }

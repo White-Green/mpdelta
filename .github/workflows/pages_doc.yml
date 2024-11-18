@@ -18,6 +18,8 @@ jobs:
         id: main_toolchain
         with:
           components: clippy
+      - id: main_toolchain_version
+        run: echo "rustc_version=$(rustc --version | sed -e s/\(.*\)//g)" >> $GITHUB_OUTPUT
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: nightly-2023-05-27
@@ -39,9 +41,9 @@ jobs:
           path: |
             target/
             target_for_shaders/
-          key: ${{ runner.os }}-cargo-${{ steps.main_toolchain.outputs.cachekey }}-doc-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-${{ steps.main_toolchain_version.outputs.rustc_version }}-doc-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-cargo-${{ steps.main_toolchain.outputs.cachekey }}-doc-
+            ${{ runner.os }}-cargo-${{ steps.main_toolchain_version.outputs.rustc_version }}-doc-
       - run: RUSTDOCFLAGS="--enable-index-page" cargo +${{ steps.main_toolchain.outputs.name }} doc --locked --workspace --document-private-items --no-deps -Zrustdoc-map
       - uses: actions/upload-pages-artifact@v3
         with:

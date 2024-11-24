@@ -752,12 +752,12 @@ mod tests {
         ) {
             let fraction = MixedFraction::new(integer, numerator, denominator);
             let (i, n, d) = fraction.deconstruct();
-            assert_eq!(i, integer);
-            assert_eq!(n as u64 * denominator as u64, d as u64 * numerator as u64);
+            prop_assert_eq!(i, integer);
+            prop_assert_eq!(n as u64 * denominator as u64, d as u64 * numerator as u64);
             let fraction = MixedFraction::new_checked(integer, numerator, denominator).unwrap();
             let (i, n, d) = fraction.deconstruct();
-            assert_eq!(i, integer);
-            assert_eq!(n as u64 * denominator as u64, d as u64 * numerator as u64);
+            prop_assert_eq!(i, integer);
+            prop_assert_eq!(n as u64 * denominator as u64, d as u64 * numerator as u64);
         }
 
         #[test]
@@ -773,11 +773,11 @@ mod tests {
             let result_diff = (numerator * target_denominator).abs_diff(result * denominator);
             if let Some(left) = result.checked_sub(1) {
                 let left_diff = (numerator * target_denominator).abs_diff(left * denominator);
-                assert!(left_diff > result_diff || left_diff == result_diff && result_is_even);
+                prop_assert!(left_diff > result_diff || left_diff == result_diff && result_is_even);
             }
             let right = result + 1;
             let right_diff = (numerator * target_denominator).abs_diff(right * denominator);
-            assert!(right_diff > result_diff || right_diff == result_diff && !result_is_even);
+            prop_assert!(right_diff > result_diff || right_diff == result_diff && !result_is_even);
         }
 
         #[test]
@@ -825,7 +825,7 @@ mod tests {
             v in any::<MixedFraction>(),
             d in 1u32..0x4_0000,
         ) {
-            assert!(v.floor_to_denominator(d) <= v);
+            prop_assert!(v.floor_to_denominator(d) <= v);
         }
 
         #[test]
@@ -833,14 +833,14 @@ mod tests {
             v in any::<MixedFraction>(),
             d in 1u32..0x4_0000,
         ) {
-            assert!(v.ceil_to_denominator(d) >= v);
+            prop_assert!(v.ceil_to_denominator(d) >= v);
         }
 
         #[test]
         fn test_mixed_fraction_serde(value in any::<MixedFraction>()) {
             let serialized = serde_json::to_string(&value).unwrap();
             let deserialized = serde_json::from_str(&serialized).unwrap();
-            assert_eq!(value, deserialized);
+            prop_assert_eq!(value, deserialized);
         }
     }
 }

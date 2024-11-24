@@ -211,7 +211,7 @@ mod tests {
         Ser, SerDeSelect, UnDeserialized, VariableParameterValueForSerialize, Vector3ParamsForSerialize,
     };
     use mpdelta_core::component::parameter::value::{DynEditableEasingValueMarker, DynEditableSingleValue, DynEditableSingleValueMarker};
-    use proptest::proptest;
+    use proptest::{prop_assert_eq, proptest};
 
     fn vector3_params_into(params: Vector3ParamsForSerialize<Ser>) -> Vector3ParamsForSerialize<De> {
         params.map(|VariableParameterValueForSerialize { params, components, priority }| VariableParameterValueForSerialize {
@@ -401,7 +401,7 @@ mod tests {
             let mut data = Vec::new();
             write_project::<T>(&project, &mut data).unwrap();
             let project_deserialized = read_project::<T>(data.as_slice()).unwrap();
-            assert_eq!(project_into(project), project_deserialized);
+            prop_assert_eq!(project_into(project), project_deserialized);
         }
     }
 }

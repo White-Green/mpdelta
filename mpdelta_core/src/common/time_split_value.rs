@@ -456,7 +456,7 @@ where
 mod tests {
     use super::*;
     use proptest::prelude::any;
-    use proptest::proptest;
+    use proptest::{prop_assert_eq, proptest};
 
     #[test]
     fn test_time_split_value() {
@@ -567,7 +567,7 @@ mod tests {
         fn test_time_split_value_serde_prop(value in any::<TimeSplitValue<String, usize>>()) {
             let serialized = serde_json::to_string(&value).unwrap();
             let deserialized:TimeSplitValue<String, usize> = serde_json::from_str(&serialized).unwrap();
-            assert_eq!(deserialized, value);
+            prop_assert_eq!(deserialized, value);
         }
     }
 }

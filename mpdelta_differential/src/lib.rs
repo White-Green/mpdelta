@@ -728,5 +728,47 @@ mod tests {
         let root = expect.read().await;
         RootComponentClassItemWrite::commit_changes(root.get_mut().await, expect_timeline_time);
         assert_eq_root_component_class(&target, &expect).await;
+
+        root_component_class! {
+            custom_differential: collect_cached_time;
+            target; <T>; id;
+            left: left,
+            right: right,
+            components: [
+                { markers: [marker!(locked: 0) => l1, marker!(locked:2) => m1, marker!(locked: 4) => m2, marker!(locked: 6) => r1] },
+            ],
+            links: [
+                left = 1 => l1,
+                l1 = 2 => m1,
+                l1 = 3 => m2,
+                r1 = 1 => right,
+            ],
+        }
+        root_component_class! {
+            custom_differential: |_| Ok::<_, ()>(HashMap::new());
+            expect; <T>; id;
+            left: left,
+            right: right,
+            components: [
+                { markers: [marker!(locked: 0) => l1, marker!(locked:2) => m1, marker!(locked: 4) => m2, marker!(locked: 6) => r1] },
+            ],
+            links: [
+                left = 1 => l1,
+                l1 = 2 => m1,
+                l1 = 3 => m2,
+                r1 = 1 => right,
+            ],
+        }
+        let expect_timeline_time = HashMap::from([
+            (left, TimelineTime::new(mfrac!(0))),
+            (l1, TimelineTime::new(mfrac!(1))),
+            (m1, TimelineTime::new(mfrac!(3))),
+            (m2, TimelineTime::new(mfrac!(4))),
+            (r1, TimelineTime::new(mfrac!(5))),
+            (right, TimelineTime::new(mfrac!(6))),
+        ]);
+        let root = expect.read().await;
+        RootComponentClassItemWrite::commit_changes(root.get_mut().await, expect_timeline_time);
+        assert_eq_root_component_class(&target, &expect).await;
     }
 }

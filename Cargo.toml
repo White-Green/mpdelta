@@ -80,7 +80,7 @@ ash = { version = "0.37.3", features = ["linked"] }
 assert_matches = "1.5.0"
 async-trait = "0.1.83"
 bitflags = "2.6.0"
-bytemuck = "1.19.0"
+bytemuck = "1.20.0"
 bytemuck_derive = "1.8.0"
 cgmath = { version = "0.18.0", features = ["serde"] }
 ciborium = "0.2.2"
@@ -159,7 +159,6 @@ tokio = { version = "1.41.1", features = ["fs", "macros", "time"] }
 uuid = { version = "1.11.0", default-features = false }
 vulkano = { version = "0.34.1", default-features = false }
 vulkano-util = "0.34.1"
-vulkano-win = "0.34.0"
 wgpu = { version = "0.20.1", default-features = false, features = ["vulkan-portability", "wgc"] }
 winit = { version = "0.29.15", default-features = false }
 

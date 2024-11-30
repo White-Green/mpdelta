@@ -38,7 +38,7 @@ const _: () = {
     }
 };
 
-impl<'a> ComponentClassIdentifier<'a> {
+impl ComponentClassIdentifier<'_> {
     pub fn into_static(self) -> ComponentClassIdentifier<'static> {
         ComponentClassIdentifier {
             namespace: Cow::Owned(self.namespace.into_owned()),

@@ -92,7 +92,7 @@ where
         match &mut *lock {
             (Some(running_task), _) if !running_task.is_finished() => drop(lock),
             (running_task, message_receiver_return) => {
-                if !running_task.as_ref().is_some_and(|handle| !handle.is_finished()) {
+                if running_task.as_ref().is_none_or(|handle| handle.is_finished()) {
                     let future = (self.f)(MessageReceiver::new(message_receiver_return.recv().unwrap(), self.receiver_return.clone()));
                     *running_task = Some(runtime.spawn(future.into_future()));
                 }

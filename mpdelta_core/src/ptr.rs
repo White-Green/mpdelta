@@ -89,7 +89,7 @@ impl<T: ?Sized> StaticPointer<T> {
     }
 }
 
-impl<'a, T: ?Sized> StaticPointerStrongRef<'a, tokio::sync::RwLock<T>> {
+impl<T: ?Sized> StaticPointerStrongRef<'_, tokio::sync::RwLock<T>> {
     pub fn read_owned(this: Self) -> impl Future<Output = tokio::sync::OwnedRwLockReadGuard<T>> {
         this.0.read_owned()
     }
@@ -111,7 +111,7 @@ impl<T: ?Sized> Debug for StaticPointer<T> {
     }
 }
 
-impl<'a, T: ?Sized + Debug> Debug for StaticPointerStrongRef<'a, T> {
+impl<T: ?Sized + Debug> Debug for StaticPointerStrongRef<'_, T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_tuple(&format!("StaticPointerStrongRef: {:p}", self.0)).field(&&self.0).finish()
     }
@@ -143,7 +143,7 @@ impl<T: ?Sized> Deref for StaticPointerOwned<T> {
     }
 }
 
-impl<'a, T: ?Sized> Deref for StaticPointerStrongRef<'a, T> {
+impl<T: ?Sized> Deref for StaticPointerStrongRef<'_, T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -163,7 +163,7 @@ impl<T: ?Sized> PartialEq for StaticPointer<T> {
     }
 }
 
-impl<'a, 'b, T: ?Sized + PartialEq> PartialEq<StaticPointerStrongRef<'b, T>> for StaticPointerStrongRef<'a, T> {
+impl<'b, T: ?Sized + PartialEq> PartialEq<StaticPointerStrongRef<'b, T>> for StaticPointerStrongRef<'_, T> {
     fn eq(&self, other: &StaticPointerStrongRef<'b, T>) -> bool {
         <T as PartialEq>::eq(&self.0, &other.0)
     }
@@ -175,7 +175,7 @@ impl<'a, T: ?Sized + PartialEq> PartialEq<StaticPointerStrongRef<'a, T>> for Sta
     }
 }
 
-impl<'a, T: ?Sized + PartialEq> PartialEq<StaticPointerOwned<T>> for StaticPointerStrongRef<'a, T> {
+impl<T: ?Sized + PartialEq> PartialEq<StaticPointerOwned<T>> for StaticPointerStrongRef<'_, T> {
     fn eq(&self, other: &StaticPointerOwned<T>) -> bool {
         <T as PartialEq>::eq(&self.0, &other.0)
     }
@@ -199,7 +199,7 @@ impl<'a, T: ?Sized> PartialEq<StaticPointerStrongRef<'a, T>> for StaticPointer<T
     }
 }
 
-impl<'a, T: ?Sized> PartialEq<StaticPointer<T>> for StaticPointerStrongRef<'a, T> {
+impl<T: ?Sized> PartialEq<StaticPointer<T>> for StaticPointerStrongRef<'_, T> {
     fn eq(&self, other: &StaticPointer<T>) -> bool {
         ptr::eq(Arc::as_ptr(&self.0), Weak::as_ptr(&other.0))
     }
@@ -209,7 +209,7 @@ impl<T: ?Sized + Eq> Eq for StaticPointerOwned<T> {}
 
 impl<T: ?Sized> Eq for StaticPointer<T> {}
 
-impl<'a, T: ?Sized + Eq> Eq for StaticPointerStrongRef<'a, T> {}
+impl<T: ?Sized + Eq> Eq for StaticPointerStrongRef<'_, T> {}
 
 impl<T: ?Sized + Hash> Hash for StaticPointerOwned<T> {
     fn hash<H: Hasher>(&self, state: &mut H) {

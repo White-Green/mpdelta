@@ -91,7 +91,7 @@ impl<Time: Debug, Value: Debug> Debug for TimeSplitValuePersistent<Time, Value> 
     }
 }
 
-impl<'a, Time: Debug, Value> Debug for DebugTime<'a, Time, Value> {
+impl<Time: Debug, Value> Debug for DebugTime<'_, Time, Value> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_list().entries(self.0.data.iter().map(|(time, _)| time as &dyn Debug)).entry(&self.0.end).finish()
     }
@@ -359,7 +359,7 @@ impl<Time: Debug, Value> TimeSplitValuePersistent<Time, Value> {
     }
 }
 
-impl<'a, Time: Debug, Value: Debug, TimeMutability, ValueMutability> Debug for TimeSplitValueViewPersistent<'a, Time, Value, TimeMutability, ValueMutability> {
+impl<Time: Debug, Value: Debug, TimeMutability, ValueMutability> Debug for TimeSplitValueViewPersistent<'_, Time, Value, TimeMutability, ValueMutability> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         Debug::fmt(&self.value, f)
     }
@@ -371,7 +371,7 @@ impl<'a, Time, Value, TimeMutability, ValueMutability> From<&'a mut TimeSplitVal
     }
 }
 
-impl<'a, Time, Value, TimeMutability, ValueMutability> TimeSplitValueViewPersistent<'a, Time, Value, TimeMutability, ValueMutability> {
+impl<Time, Value, TimeMutability, ValueMutability> TimeSplitValueViewPersistent<'_, Time, Value, TimeMutability, ValueMutability> {
     pub fn new(value: &mut TimeSplitValuePersistent<Time, Value>) -> TimeSplitValueViewPersistent<Time, Value, TimeMutability, ValueMutability> {
         TimeSplitValueViewPersistent { value, phantom: Default::default() }
     }
@@ -393,7 +393,7 @@ impl<'a, Time, Value, TimeMutability, ValueMutability> TimeSplitValueViewPersist
     }
 }
 
-impl<'a, Time, Value, TimeMutability> TimeSplitValueViewPersistent<'a, Time, Value, TimeMutability, Mutable>
+impl<Time, Value, TimeMutability> TimeSplitValueViewPersistent<'_, Time, Value, TimeMutability, Mutable>
 where
     Time: Clone,
     Value: Clone,
@@ -403,7 +403,7 @@ where
     }
 }
 
-impl<'a, Time, Value, ValueMutability> TimeSplitValueViewPersistent<'a, Time, Value, Mutable, ValueMutability>
+impl<Time, Value, ValueMutability> TimeSplitValueViewPersistent<'_, Time, Value, Mutable, ValueMutability>
 where
     Time: Clone,
     Value: Clone,

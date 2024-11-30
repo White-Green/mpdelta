@@ -45,7 +45,7 @@ impl Borrow<MarkerPinId> for MarkerPin {
     }
 }
 
-impl<'a> Borrow<MarkerPinId> for &'a MarkerPin {
+impl Borrow<MarkerPinId> for &MarkerPin {
     fn borrow(&self) -> &MarkerPinId {
         self.id()
     }

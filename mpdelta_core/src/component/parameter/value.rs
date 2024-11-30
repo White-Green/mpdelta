@@ -75,7 +75,7 @@ const _: () = {
     }
 };
 
-impl<'a> EasingIdentifier<'a> {
+impl EasingIdentifier<'_> {
     pub fn into_static(self) -> EasingIdentifier<'static> {
         EasingIdentifier {
             namespace: Cow::Owned(self.namespace.into_owned()),
@@ -155,7 +155,7 @@ const _: () = {
     }
 };
 
-impl<'a> DynEditableSingleValueIdentifier<'a> {
+impl DynEditableSingleValueIdentifier<'_> {
     pub fn into_static(self) -> DynEditableSingleValueIdentifier<'static> {
         DynEditableSingleValueIdentifier {
             namespace: Cow::Owned(self.namespace.into_owned()),
@@ -344,7 +344,7 @@ const _: () = {
     }
 };
 
-impl<'a> DynEditableEasingValueIdentifier<'a> {
+impl DynEditableEasingValueIdentifier<'_> {
     pub fn into_static(self) -> DynEditableEasingValueIdentifier<'static> {
         DynEditableEasingValueIdentifier {
             namespace: Cow::Owned(self.namespace.into_owned()),

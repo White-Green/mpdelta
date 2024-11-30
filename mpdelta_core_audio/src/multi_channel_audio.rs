@@ -124,7 +124,7 @@ impl<T> MultiChannelAudioMutOp<T> for MultiChannelAudio<T> {
     }
 }
 
-impl<'a, T> MultiChannelAudioOp<T> for MultiChannelAudioSlice<'a, T> {
+impl<T> MultiChannelAudioOp<T> for MultiChannelAudioSlice<'_, T> {
     fn channels(&self) -> usize {
         self.channels
     }
@@ -151,7 +151,7 @@ impl<'a, T> MultiChannelAudioOp<T> for MultiChannelAudioSlice<'a, T> {
     }
 }
 
-impl<'a, T> MultiChannelAudioOp<T> for MultiChannelAudioSliceMut<'a, T> {
+impl<T> MultiChannelAudioOp<T> for MultiChannelAudioSliceMut<'_, T> {
     fn channels(&self) -> usize {
         self.channels
     }
@@ -178,7 +178,7 @@ impl<'a, T> MultiChannelAudioOp<T> for MultiChannelAudioSliceMut<'a, T> {
     }
 }
 
-impl<'a, T> MultiChannelAudioMutOp<T> for MultiChannelAudioSliceMut<'a, T> {
+impl<T> MultiChannelAudioMutOp<T> for MultiChannelAudioSliceMut<'_, T> {
     fn get_mut(&mut self, i: usize) -> Option<&mut [T]> {
         self.data.get_mut(i * self.channels..(i + 1) * self.channels)
     }

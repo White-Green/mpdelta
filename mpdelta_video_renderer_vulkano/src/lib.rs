@@ -131,7 +131,7 @@ impl SharedResource {
 }
 
 fn div_ceil(a: u32, b: u32) -> u32 {
-    (a + b - 1) / b
+    a.div_ceil(b)
 }
 
 fn move_mat(pos: Vector3<f64>) -> Matrix4<f64> {

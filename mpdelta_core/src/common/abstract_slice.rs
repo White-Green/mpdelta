@@ -28,7 +28,7 @@ impl<T> AbstractSliceMut<T> for [T] {
     }
 }
 
-impl<'a, T> AbstractSlice<T> for [&'a T] {
+impl<T> AbstractSlice<T> for [&T] {
     fn get(&self, index: usize) -> Option<&T> {
         self.get(index).copied()
     }
@@ -38,7 +38,7 @@ impl<'a, T> AbstractSlice<T> for [&'a T] {
     }
 }
 
-impl<'a, T> AbstractSlice<T> for [&'a mut T] {
+impl<T> AbstractSlice<T> for [&mut T] {
     fn get(&self, index: usize) -> Option<&T> {
         self.get(index).map(|v| &**v)
     }
@@ -48,7 +48,7 @@ impl<'a, T> AbstractSlice<T> for [&'a mut T] {
     }
 }
 
-impl<'a, T> AbstractSliceMut<T> for [&'a mut T] {
+impl<T> AbstractSliceMut<T> for [&mut T] {
     fn get_mut(&mut self, index: usize) -> Option<&mut T> {
         self.get_mut(index).map(|v| &mut **v)
     }
@@ -58,7 +58,7 @@ impl<'a, T> AbstractSliceMut<T> for [&'a mut T] {
     }
 }
 
-impl<'a, T, S: ?Sized + AbstractSlice<T>> AbstractSlice<T> for &'a S {
+impl<T, S: ?Sized + AbstractSlice<T>> AbstractSlice<T> for &S {
     fn get(&self, index: usize) -> Option<&T> {
         <S as AbstractSlice<T>>::get(self, index)
     }
@@ -68,7 +68,7 @@ impl<'a, T, S: ?Sized + AbstractSlice<T>> AbstractSlice<T> for &'a S {
     }
 }
 
-impl<'a, T, S: ?Sized + AbstractSlice<T>> AbstractSlice<T> for &'a mut S {
+impl<T, S: ?Sized + AbstractSlice<T>> AbstractSlice<T> for &mut S {
     fn get(&self, index: usize) -> Option<&T> {
         <S as AbstractSlice<T>>::get(self, index)
     }
@@ -78,7 +78,7 @@ impl<'a, T, S: ?Sized + AbstractSlice<T>> AbstractSlice<T> for &'a mut S {
     }
 }
 
-impl<'a, T, S: ?Sized + AbstractSliceMut<T>> AbstractSliceMut<T> for &'a mut S {
+impl<T, S: ?Sized + AbstractSliceMut<T>> AbstractSliceMut<T> for &mut S {
     fn get_mut(&mut self, index: usize) -> Option<&mut T> {
         <S as AbstractSliceMut<T>>::get_mut(self, index)
     }

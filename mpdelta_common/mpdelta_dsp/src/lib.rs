@@ -136,7 +136,7 @@ where
         let filter = (0..target)
             .map(|n| {
                 let filter_offset = (target - n) * original % target;
-                let step = ((n + 1) * original + target - 1) / target - (n * original + target - 1) / target;
+                let step = ((n + 1) * original).div_ceil(target) - (n * original).div_ceil(target);
                 let filter = iter::successors(Some(filter_offset), |n| Some(*n + target)).map_while(|n| filter.get(n)).cloned().collect::<Box<[_]>>();
                 (filter, step)
             })

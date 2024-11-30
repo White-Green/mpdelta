@@ -964,7 +964,7 @@ impl<T: ParameterValueType> RootComponentClassForSerialize<T, De> {
             .into_iter()
             .map(|link| {
                 let MarkerLinkForSerialize { from, to, length } = link;
-                let link = MarkerLink::new(pins_map.get(&from).cloned().ok_or_else(|| DeserializeError::UnknownPin(from))?, pins_map.get(&to).cloned().ok_or_else(|| DeserializeError::UnknownPin(to))?, length);
+                let link = MarkerLink::new(pins_map.get(&from).cloned().ok_or(DeserializeError::UnknownPin(from))?, pins_map.get(&to).cloned().ok_or(DeserializeError::UnknownPin(to))?, length);
                 Ok(link)
             })
             .collect::<Result<Vec<_>, DeserializeError>>()?;

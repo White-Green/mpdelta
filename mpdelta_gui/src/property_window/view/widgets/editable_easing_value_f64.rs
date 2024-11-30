@@ -85,7 +85,7 @@ impl UpdateStatus {
     }
 }
 
-impl<'a, P, H> EasingValueEditorF64<'a, P, H>
+impl<P, H> EasingValueEditorF64<'_, P, H>
 where
     P: TimelineTimeOfPin,
     H: Hash,

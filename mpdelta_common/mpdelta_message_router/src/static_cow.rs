@@ -12,7 +12,7 @@ pub trait StaticCow<T> {
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Reference<'a, T>(pub &'a T);
 
-impl<'a, T: Clone> StaticCow<T> for Reference<'a, T> {
+impl<T: Clone> StaticCow<T> for Reference<'_, T> {
     type Cloned<'b>
         = Reference<'b, T>
     where
@@ -53,7 +53,7 @@ impl<T: Clone> StaticCow<T> for Owned<T> {
     }
 }
 
-impl<'a, T: Clone> StaticCow<T> for Cow<'a, T> {
+impl<T: Clone> StaticCow<T> for Cow<'_, T> {
     type Cloned<'b>
         = Reference<'b, T>
     where

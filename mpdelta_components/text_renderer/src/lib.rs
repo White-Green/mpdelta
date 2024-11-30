@@ -567,7 +567,7 @@ impl<'a> Points<'a> {
     }
 }
 
-impl<'a> PositionStore for Points<'a> {
+impl PositionStore for Points<'_> {
     fn get_endpoint(&self, EndpointId(id): EndpointId) -> LyonPoint {
         let ZenoPoint { x, y } = self.points[id as usize];
         LyonPoint::new(x, y)
@@ -597,7 +597,7 @@ impl<'a> IdEventIter<'a> {
     }
 }
 
-impl<'a> Iterator for IdEventIter<'a> {
+impl Iterator for IdEventIter<'_> {
     type Item = IdEvent;
 
     fn next(&mut self) -> Option<Self::Item> {

@@ -191,7 +191,7 @@ impl<T: ParameterValueType> Borrow<ComponentInstanceId> for ComponentInstance<T>
     }
 }
 
-impl<'a, T: ParameterValueType> Borrow<ComponentInstanceId> for &'a ComponentInstance<T> {
+impl<T: ParameterValueType> Borrow<ComponentInstanceId> for &ComponentInstance<T> {
     fn borrow(&self) -> &ComponentInstanceId {
         &self.id
     }

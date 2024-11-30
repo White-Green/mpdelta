@@ -426,7 +426,7 @@ impl<'a> FfmpegFrameProvider<'a> {
     }
 }
 
-impl<'a, T> PackedAudioFrameProvider<T> for FfmpegFrameProvider<'a>
+impl<T> PackedAudioFrameProvider<T> for FfmpegFrameProvider<'_>
 where
     T: audio::Sample,
 {
@@ -440,7 +440,7 @@ where
     }
 }
 
-impl<'a, T> PlanarAudioFrameProvider<T> for FfmpegFrameProvider<'a>
+impl<T> PlanarAudioFrameProvider<T> for FfmpegFrameProvider<'_>
 where
     T: audio::Sample,
 {
@@ -465,7 +465,7 @@ trait PlanarAudioFrame<T> {
     fn samples(&self) -> SmallVec<[&[T]; 6]>;
 }
 
-impl<'a, T: audio::Sample> PackedAudioFrame<T> for &'a frame::Audio {
+impl<T: audio::Sample> PackedAudioFrame<T> for &frame::Audio {
     fn pts(&self) -> i64 {
         frame::Frame::pts(self).unwrap()
     }
@@ -483,7 +483,7 @@ impl<'a, T: audio::Sample> PackedAudioFrame<T> for &'a frame::Audio {
     }
 }
 
-impl<'a, T: audio::Sample> PlanarAudioFrame<T> for &'a frame::Audio {
+impl<T: audio::Sample> PlanarAudioFrame<T> for &frame::Audio {
     fn pts(&self) -> i64 {
         frame::Frame::pts(self).unwrap()
     }
@@ -646,7 +646,7 @@ mod tests {
                 })
             }
         }
-        impl<'a> PackedAudioFrame<FormalExpression> for Frame<'a> {
+        impl PackedAudioFrame<FormalExpression> for Frame<'_> {
             fn pts(&self) -> i64 {
                 self.pts
             }
@@ -695,7 +695,7 @@ mod tests {
                 })
             }
         }
-        impl<'a> PlanarAudioFrame<FormalExpression> for Frame<'a> {
+        impl PlanarAudioFrame<FormalExpression> for Frame<'_> {
             fn pts(&self) -> i64 {
                 self.pts
             }

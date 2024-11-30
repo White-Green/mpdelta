@@ -128,7 +128,7 @@ pub trait ProjectMemory<T: ParameterValueType>: Send + Sync {
     }
     async fn insert_new_project(&self, path: Option<&Path>, project: ProjectHandleOwned<T>);
     async fn get_loaded_project(&self, path: &Path) -> Option<ProjectHandle<T>>;
-    async fn all_loaded_projects(&self) -> Cow<[ProjectHandle<T>]>;
+    async fn all_loaded_projects(&self) -> Cow<'_, [ProjectHandle<T>]>;
 }
 
 #[derive(Debug, Error)]
@@ -216,9 +216,9 @@ where
 pub trait RootComponentClassMemory<T: ParameterValueType>: Send + Sync {
     async fn insert_new_root_component_class(&self, parent: Option<&ProjectHandle<T>>, root_component_class: RootComponentClassHandleOwned<T>);
     async fn set_parent(&self, root_component_class: &RootComponentClassHandle<T>, parent: Option<&ProjectHandle<T>>);
-    async fn search_by_parent(&self, parent: &ProjectHandle<T>) -> Cow<[RootComponentClassHandle<T>]>;
+    async fn search_by_parent(&self, parent: &ProjectHandle<T>) -> Cow<'_, [RootComponentClassHandle<T>]>;
     async fn get_parent_project(&self, path: &RootComponentClassHandle<T>) -> Option<ProjectHandle<T>>;
-    async fn all_loaded_root_component_classes(&self) -> Cow<[RootComponentClassHandle<T>]>;
+    async fn all_loaded_root_component_classes(&self) -> Cow<'_, [RootComponentClassHandle<T>]>;
 }
 
 #[async_trait]
@@ -256,7 +256,7 @@ where
     Self: Send + Sync,
     PM: ProjectMemory<T>,
 {
-    async fn get_loaded_projects(&self) -> Cow<[ProjectHandle<T>]> {
+    async fn get_loaded_projects(&self) -> Cow<'_, [ProjectHandle<T>]> {
         self.project_memory.all_loaded_projects().await
     }
 }
@@ -267,14 +267,14 @@ where
     Self: Send + Sync,
     RM: RootComponentClassMemory<T>,
 {
-    async fn get_root_component_classes(&self, project: &ProjectHandle<T>) -> Cow<[RootComponentClassHandle<T>]> {
+    async fn get_root_component_classes(&self, project: &ProjectHandle<T>) -> Cow<'_, [RootComponentClassHandle<T>]> {
         self.root_component_class_memory.search_by_parent(project).await
     }
 }
 
 #[async_trait]
 pub trait ComponentClassLoader<T: ParameterValueType>: Send + Sync {
-    async fn get_available_component_classes(&self) -> Cow<[StaticPointer<RwLock<dyn ComponentClass<T>>>]>;
+    async fn get_available_component_classes(&self) -> Cow<'_, [StaticPointer<RwLock<dyn ComponentClass<T>>>]>;
     async fn component_class_by_identifier(&self, identifier: ComponentClassIdentifier<'_>) -> Option<StaticPointer<RwLock<dyn ComponentClass<T>>>>;
 }
 
@@ -284,7 +284,7 @@ where
     O: Deref + Send + Sync,
     O::Target: ComponentClassLoader<T>,
 {
-    fn get_available_component_classes<'life0, 'async_trait>(&'life0 self) -> Pin<Box<dyn Future<Output = Cow<[StaticPointer<RwLock<dyn ComponentClass<T>>>]>> + Send + 'async_trait>>
+    fn get_available_component_classes<'life0, 'async_trait>(&'life0 self) -> Pin<Box<dyn Future<Output = Cow<'life0, [StaticPointer<RwLock<dyn ComponentClass<T>>>]>> + Send + 'async_trait>>
     where
         Self: 'async_trait,
         'life0: 'async_trait,
@@ -304,9 +304,9 @@ where
 
 #[async_trait]
 pub trait ValueManagerLoader<T>: Send + Sync {
-    async fn get_available_single_value(&self) -> Cow<[Arc<dyn DynEditableSingleValueManager<T>>]>;
+    async fn get_available_single_value(&self) -> Cow<'_, [Arc<dyn DynEditableSingleValueManager<T>>]>;
     async fn single_value_by_identifier(&self, identifier: DynEditableSingleValueIdentifier<'_>) -> Option<Arc<dyn DynEditableSingleValueManager<T>>>;
-    async fn get_available_easing_value(&self) -> Cow<[Arc<dyn DynEditableEasingValueManager<T>>]>;
+    async fn get_available_easing_value(&self) -> Cow<'_, [Arc<dyn DynEditableEasingValueManager<T>>]>;
     async fn easing_value_by_identifier(&self, identifier: DynEditableEasingValueIdentifier<'_>) -> Option<Arc<dyn DynEditableEasingValueManager<T>>>;
 }
 
@@ -315,7 +315,7 @@ where
     O: Deref + Send + Sync,
     O::Target: ValueManagerLoader<T>,
 {
-    fn get_available_single_value<'life0, 'async_trait>(&'life0 self) -> Pin<Box<dyn Future<Output = Cow<[Arc<dyn DynEditableSingleValueManager<T>>]>> + Send + 'async_trait>>
+    fn get_available_single_value<'life0, 'async_trait>(&'life0 self) -> Pin<Box<dyn Future<Output = Cow<'life0, [Arc<dyn DynEditableSingleValueManager<T>>]>> + Send + 'async_trait>>
     where
         Self: 'async_trait,
         'life0: 'async_trait,
@@ -332,7 +332,7 @@ where
         self.deref().single_value_by_identifier(identifier)
     }
 
-    fn get_available_easing_value<'life0, 'async_trait>(&'life0 self) -> Pin<Box<dyn Future<Output = Cow<[Arc<dyn DynEditableEasingValueManager<T>>]>> + Send + 'async_trait>>
+    fn get_available_easing_value<'life0, 'async_trait>(&'life0 self) -> Pin<Box<dyn Future<Output = Cow<'life0, [Arc<dyn DynEditableEasingValueManager<T>>]>> + Send + 'async_trait>>
     where
         Self: 'async_trait,
         'life0: 'async_trait,
@@ -352,7 +352,7 @@ where
 
 #[async_trait]
 pub trait EasingLoader: Send + Sync {
-    async fn get_available_easing(&self) -> Cow<[Arc<dyn Easing>]>;
+    async fn get_available_easing(&self) -> Cow<'_, [Arc<dyn Easing>]>;
     async fn easing_by_identifier(&self, identifier: EasingIdentifier<'_>) -> Option<Arc<dyn Easing>>;
 }
 
@@ -361,7 +361,7 @@ where
     O: Deref + Send + Sync,
     O::Target: EasingLoader,
 {
-    fn get_available_easing<'life0, 'async_trait>(&'life0 self) -> Pin<Box<dyn Future<Output = Cow<[Arc<dyn Easing>]>> + Send + 'async_trait>>
+    fn get_available_easing<'life0, 'async_trait>(&'life0 self) -> Pin<Box<dyn Future<Output = Cow<'life0, [Arc<dyn Easing>]>> + Send + 'async_trait>>
     where
         Self: 'async_trait,
         'life0: 'async_trait,
@@ -385,7 +385,7 @@ where
     Self: Send + Sync,
     CL: ComponentClassLoader<T>,
 {
-    async fn get_available_component_classes(&self) -> Cow<[StaticPointer<RwLock<dyn ComponentClass<T>>>]> {
+    async fn get_available_component_classes(&self) -> Cow<'_, [StaticPointer<RwLock<dyn ComponentClass<T>>>]> {
         self.component_class_loader.get_available_component_classes().await
     }
 }

@@ -437,6 +437,7 @@ impl<T: ParameterValueType> MainWindowViewModelImpl<T, (), (), ()>
 where
     T: ParameterValueType,
 {
+    #[allow(clippy::type_complexity)]
     pub fn new<S: GlobalUIState<T>, P: ViewModelParams<T>>(global_ui_state: &Arc<S>, params: &P) -> Arc<MainWindowViewModelImpl<T, S, impl MessageHandler<Message<T>, P::AsyncRuntime>, P::AsyncRuntime>> {
         let projects = Arc::new(RwLock::new(ProjectDataList { list: Vec::new(), selected: 0 }));
         let root_component_classes = Arc::new(RwLock::new(RootComponentClassDataList { list: Vec::new(), selected: 0 }));

@@ -50,7 +50,7 @@ where
     }
 
     pub fn validity(&self, at: &T) -> bool {
-        !self.invalid_ranges.range(..=at).next_back().is_some_and(|(_, end)| at < end)
+        self.invalid_ranges.range(..=at).next_back().is_none_or(|(_, end)| at >= end)
     }
 
     pub fn validity_range(&self, range: Range<&T>) -> ValidityRange {

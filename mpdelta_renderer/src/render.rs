@@ -240,6 +240,7 @@ where
     AudioCombinerBuilder: CombinerBuilder<T::Audio, Request = AudioCombinerRequest, Param = AudioCombinerParam> + 'static,
     Cache: ProcessorCache + 'static,
 {
+    #[allow(clippy::type_complexity)]
     fn make_render_task_generator(self: &Arc<Self>, ty: ParameterType, at: GlobalTime) -> impl for<'a> Fn((&'a ComponentInstanceId, &'a Arc<ComponentInvalidateRange>)) -> JoinHandle<RenderResult<Parameter<RenderOutput<T::Image, T::Audio>>>> + '_ {
         move |(component, invalidate_range)| self.render_ctx.runtime.spawn(Arc::clone(&self.components[component]).render(Arc::clone(self), Arc::clone(invalidate_range), at, ty.clone()))
     }

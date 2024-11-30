@@ -43,7 +43,7 @@ impl<'a> OutputBuilder<'a> {
     }
 }
 
-impl<'a> Default for OutputBuilder<'a> {
+impl Default for OutputBuilder<'_> {
     fn default() -> Self {
         OutputBuilder {
             buffer_size: 4096,
@@ -54,7 +54,7 @@ impl<'a> Default for OutputBuilder<'a> {
     }
 }
 
-impl<'a> OutputBuilder<'a> {
+impl OutputBuilder<'_> {
     pub fn build<T>(self, output: T) -> Result<Output<T>, FfmpegIoError>
     where
         T: Write + Seek,

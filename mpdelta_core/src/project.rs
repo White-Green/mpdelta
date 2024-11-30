@@ -312,7 +312,7 @@ impl<T: ParameterValueType> RootComponentClassItem<T> {
     }
 }
 
-impl<'a> RootComponentClassItemViewBase<'a> {
+impl RootComponentClassItemViewBase<'_> {
     pub fn length(&self) -> &MarkerTime {
         self.length
     }
@@ -321,7 +321,7 @@ impl<'a> RootComponentClassItemViewBase<'a> {
     }
 }
 
-impl<'a, T> RootComponentClassItemViewStructure<'a, T>
+impl<T> RootComponentClassItemViewStructure<'_, T>
 where
     T: ParameterValueType,
 {
@@ -438,7 +438,7 @@ where
     }
 }
 
-impl<'a> RootComponentClassItemViewTimeMap<'a> {
+impl RootComponentClassItemViewTimeMap<'_> {
     pub fn time_of_pin(&self, pin: &MarkerPinId) -> Option<TimelineTime> {
         self.pin_time_map.get(pin).copied()
     }
@@ -454,7 +454,7 @@ impl<T: ParameterValueType> TimelineTimeOfPin for RootComponentClassItem<T> {
     }
 }
 
-impl<'a> TimelineTimeOfPin for RootComponentClassItemViewTimeMap<'a> {
+impl TimelineTimeOfPin for RootComponentClassItemViewTimeMap<'_> {
     fn time_of_pin(&self, pin: &MarkerPinId) -> Option<TimelineTime> {
         self.pin_time_map.get(pin).copied()
     }
@@ -490,7 +490,7 @@ pub struct RootComponentClassItemWrite<'a, T: ParameterValueType> {
     item: Arc<RootComponentClassItem<T>>,
 }
 
-impl<'a, T> RootComponentClassItemWrite<'a, T>
+impl<T> RootComponentClassItemWrite<'_, T>
 where
     T: ParameterValueType,
 {
@@ -500,7 +500,7 @@ where
     }
 }
 
-impl<'a, T: ParameterValueType> Deref for RootComponentClassItemWrite<'a, T> {
+impl<T: ParameterValueType> Deref for RootComponentClassItemWrite<'_, T> {
     type Target = RootComponentClassItem<T>;
 
     fn deref(&self) -> &Self::Target {
@@ -508,7 +508,7 @@ impl<'a, T: ParameterValueType> Deref for RootComponentClassItemWrite<'a, T> {
     }
 }
 
-impl<'a, T: ParameterValueType> DerefMut for RootComponentClassItemWrite<'a, T> {
+impl<T: ParameterValueType> DerefMut for RootComponentClassItemWrite<'_, T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         Arc::make_mut(&mut self.item)
     }

@@ -427,7 +427,7 @@ impl MixedFraction {
         if d == denominator {
             (i, n)
         } else {
-            let n = (n as u64 * denominator as u64 + d as u64 - 1) / d as u64;
+            let n = (n as u64 * denominator as u64).div_ceil(d as u64);
             let n = n as u32;
             if n == denominator {
                 (i + 1, 0)

@@ -51,7 +51,7 @@ impl<'a> SupportedFramerateIterator<'a> {
     }
 }
 
-impl<'a> Iterator for SupportedFramerateIterator<'a> {
+impl Iterator for SupportedFramerateIterator<'_> {
     type Item = Rational;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -86,7 +86,7 @@ impl<'a> PixelFormatIterator<'a> {
     }
 }
 
-impl<'a> Iterator for PixelFormatIterator<'a> {
+impl Iterator for PixelFormatIterator<'_> {
     type Item = Pixel;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -121,7 +121,7 @@ impl<'a> SupportedSampleRateIterator<'a> {
     }
 }
 
-impl<'a> Iterator for SupportedSampleRateIterator<'a> {
+impl Iterator for SupportedSampleRateIterator<'_> {
     type Item = i32;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -156,7 +156,7 @@ impl<'a> SampleFormatIterator<'a> {
     }
 }
 
-impl<'a> Iterator for SampleFormatIterator<'a> {
+impl Iterator for SampleFormatIterator<'_> {
     type Item = Sample;
 
     fn next(&mut self) -> Option<Self::Item> {

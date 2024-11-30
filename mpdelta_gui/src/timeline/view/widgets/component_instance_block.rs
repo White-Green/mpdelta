@@ -20,7 +20,7 @@ pub enum ComponentInstanceEditEvent<'a, PinHandle> {
     SplitComponentAtPin(&'a PinHandle),
 }
 
-impl<'a, PinHandle> Debug for ComponentInstanceEditEvent<'a, PinHandle> {
+impl<PinHandle> Debug for ComponentInstanceEditEvent<'_, PinHandle> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             ComponentInstanceEditEvent::Click => write!(f, "Click"),

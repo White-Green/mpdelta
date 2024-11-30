@@ -11,7 +11,7 @@ pub struct MappedSliceMut<'a, S, T, U> {
     phantom: PhantomData<(T, U)>,
 }
 
-impl<'a, S, T> MappedSlice<'a, S, T> {
+impl<S, T> MappedSlice<'_, S, T> {
     pub fn new(slice: &[S]) -> MappedSlice<'_, S, T> {
         MappedSlice { slice, phantom: Default::default() }
     }
@@ -25,7 +25,7 @@ impl<'a, S, T> MappedSlice<'a, S, T> {
     }
 }
 
-impl<'a, S, T, U> MappedSliceMut<'a, S, T, U> {
+impl<S, T, U> MappedSliceMut<'_, S, T, U> {
     pub fn new(slice: &mut [S]) -> MappedSliceMut<'_, S, T, U> {
         MappedSliceMut { slice, phantom: Default::default() }
     }

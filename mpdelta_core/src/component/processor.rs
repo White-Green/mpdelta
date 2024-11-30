@@ -246,7 +246,7 @@ pub struct NativeProcessorInput<'a, T: ParameterValueType> {
     pub variable_parameter_type: &'a [(String, ParameterType)],
 }
 
-impl<'a, T> Clone for NativeProcessorInput<'a, T>
+impl<T> Clone for NativeProcessorInput<'_, T>
 where
     T: ParameterValueType,
 {
@@ -255,7 +255,7 @@ where
     }
 }
 
-impl<'a, T> Copy for NativeProcessorInput<'a, T> where T: ParameterValueType {}
+impl<T> Copy for NativeProcessorInput<'_, T> where T: ParameterValueType {}
 
 pub trait GatherNativeParameter<T> {
     type Err: Error + Send + Sync + 'static;
@@ -362,7 +362,7 @@ pub struct NativeGatherProcessorInput<'a, T: ParameterValueType> {
     pub variable_parameter_type: &'a [(String, ParameterType)],
 }
 
-impl<'a, T> Clone for NativeGatherProcessorInput<'a, T>
+impl<T> Clone for NativeGatherProcessorInput<'_, T>
 where
     T: ParameterValueType,
 {
@@ -371,7 +371,7 @@ where
     }
 }
 
-impl<'a, T> Copy for NativeGatherProcessorInput<'a, T> where T: ParameterValueType {}
+impl<T> Copy for NativeGatherProcessorInput<'_, T> where T: ParameterValueType {}
 
 pub struct NativeProcessorRequest;
 

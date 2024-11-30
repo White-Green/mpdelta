@@ -82,7 +82,7 @@ impl<Time: Debug, Value: Debug> Debug for TimeSplitValue<Time, Value> {
     }
 }
 
-impl<'a, Time: Debug, Value> Debug for DebugTime<'a, Time, Value> {
+impl<Time: Debug, Value> Debug for DebugTime<'_, Time, Value> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_list().entries(self.0.data.iter().map(|(time, _)| time as &dyn Debug)).entry(&self.0.end).finish()
     }
@@ -344,7 +344,7 @@ impl<Time: Debug, Value> TimeSplitValue<Time, Value> {
     }
 }
 
-impl<'a, Time: Debug, Value: Debug, TimeMutability, ValueMutability> Debug for TimeSplitValueView<'a, Time, Value, TimeMutability, ValueMutability> {
+impl<Time: Debug, Value: Debug, TimeMutability, ValueMutability> Debug for TimeSplitValueView<'_, Time, Value, TimeMutability, ValueMutability> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         Debug::fmt(&self.value, f)
     }
@@ -356,7 +356,7 @@ impl<'a, Time, Value, TimeMutability, ValueMutability> From<&'a mut TimeSplitVal
     }
 }
 
-impl<'a, Time, Value, TimeMutability, ValueMutability> TimeSplitValueView<'a, Time, Value, TimeMutability, ValueMutability> {
+impl<Time, Value, TimeMutability, ValueMutability> TimeSplitValueView<'_, Time, Value, TimeMutability, ValueMutability> {
     pub fn new(value: &mut TimeSplitValue<Time, Value>) -> TimeSplitValueView<Time, Value, TimeMutability, ValueMutability> {
         TimeSplitValueView { value, phantom: Default::default() }
     }
@@ -378,13 +378,13 @@ impl<'a, Time, Value, TimeMutability, ValueMutability> TimeSplitValueView<'a, Ti
     }
 }
 
-impl<'a, Time, Value, TimeMutability> TimeSplitValueView<'a, Time, Value, TimeMutability, Mutable> {
+impl<Time, Value, TimeMutability> TimeSplitValueView<'_, Time, Value, TimeMutability, Mutable> {
     pub fn get_value_mut(&mut self, index: usize) -> Option<(&Time, &mut Value, &Time)> {
         self.value.get_value_mut(index)
     }
 }
 
-impl<'a, Time, Value, ValueMutability> TimeSplitValueView<'a, Time, Value, Mutable, ValueMutability> {
+impl<Time, Value, ValueMutability> TimeSplitValueView<'_, Time, Value, Mutable, ValueMutability> {
     pub fn get_time_mut(&mut self, index: usize) -> Option<(Option<&Value>, &mut Time, Option<&Value>)> {
         self.value.get_time_mut(index)
     }

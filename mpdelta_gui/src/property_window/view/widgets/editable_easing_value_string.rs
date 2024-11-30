@@ -75,7 +75,7 @@ impl UpdateStatus {
     }
 }
 
-impl<'a, P, H> EasingValueEditorString<'a, P, H>
+impl<P, H> EasingValueEditorString<'_, P, H>
 where
     P: TimelineTimeOfPin,
     H: Hash,

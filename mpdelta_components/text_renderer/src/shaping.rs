@@ -325,7 +325,7 @@ where
     }
 }
 
-impl<'a, T> Drop for ShapingBuilderSegment<'a, T>
+impl<T> Drop for ShapingBuilderSegment<'_, T>
 where
     T: Clone,
 {
@@ -450,7 +450,7 @@ impl<'a, T> Iterator for ShapeResultGlyphsIter<'a, T> {
     }
 }
 
-impl<'a, T> ExactSizeIterator for ShapeResultGlyphsIter<'a, T> {}
+impl<T> ExactSizeIterator for ShapeResultGlyphsIter<'_, T> {}
 
 impl<'a, T> Iterator for ShapeResultLinesIter<'a, T> {
     type Item = ShapeResultLine<'a, T>;
@@ -475,7 +475,7 @@ impl<'a, T> Iterator for ShapeResultLinesIter<'a, T> {
     }
 }
 
-impl<'a, T> ExactSizeIterator for ShapeResultLinesIter<'a, T> {}
+impl<T> ExactSizeIterator for ShapeResultLinesIter<'_, T> {}
 
 impl<'a, T> ShapeResultLine<'a, T> {
     pub fn width(&self) -> f32 {
@@ -520,7 +520,7 @@ impl<'a, T> Iterator for ShapeResultLineIter<'a, T> {
     }
 }
 
-impl<'a, T> ExactSizeIterator for ShapeResultLineIter<'a, T> {}
+impl<T> ExactSizeIterator for ShapeResultLineIter<'_, T> {}
 
 #[cfg(test)]
 mod tests {

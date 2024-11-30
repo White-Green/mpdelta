@@ -18,7 +18,7 @@ pub trait ImageRegister<T> {
     fn unregister_image(&mut self, id: TextureId);
 }
 
-impl<'a, I, T> ImageRegister<T> for &'a mut I
+impl<I, T> ImageRegister<T> for &mut I
 where
     I: ImageRegister<T> + ?Sized,
 {

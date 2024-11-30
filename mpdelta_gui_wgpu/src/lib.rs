@@ -79,7 +79,7 @@ impl<'a> WgpuImageRegister<'a> {
     }
 }
 
-impl<'a> ImageRegister<ImageType> for WgpuImageRegister<'a> {
+impl ImageRegister<ImageType> for WgpuImageRegister<'_> {
     fn register_image(&mut self, texture: ImageType) -> TextureId {
         let size = Extent3d {
             width: texture.0.extent()[0],

@@ -336,7 +336,7 @@ mod tests {
             (right, TimelineTime::new(mfrac!(10))),
         ]);
         struct CompactDebug<'a, K, V>(&'a BTreeMap<K, V>);
-        impl<'a, K, V> Debug for CompactDebug<'a, K, V>
+        impl<K, V> Debug for CompactDebug<'_, K, V>
         where
             K: Debug,
             V: Debug,

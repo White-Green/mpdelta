@@ -130,10 +130,6 @@ impl SharedResource {
     }
 }
 
-fn div_ceil(a: u32, b: u32) -> u32 {
-    a.div_ceil(b)
-}
-
 fn move_mat(pos: Vector3<f64>) -> Matrix4<f64> {
     Matrix4::from_cols(Vector4::unit_x(), Vector4::unit_y(), Vector4::unit_z(), pos.extend(1.))
 }
@@ -418,7 +414,7 @@ impl Combiner<ImageType> for ImageCombiner {
                     },
                 )
                 .unwrap();
-            builder.dispatch([div_ceil(image_width, 32), div_ceil(image_height, 32), 1]).unwrap();
+            builder.dispatch([image_width.div_ceil(32), image_height.div_ceil(32), 1]).unwrap();
         }
         builder.build().unwrap().execute(Arc::clone(&shared_resource.graphics_queue)).unwrap().then_signal_fence_and_flush().unwrap().map(move |_| ImageType(result_image))
     }

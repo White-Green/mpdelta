@@ -33,7 +33,7 @@ use tokio::sync::{OwnedRwLockReadGuard, RwLock};
 use uuid::Uuid;
 
 #[cfg(test)]
-pub mod proptest;
+pub mod proptest_arbitrary;
 
 pub const FORMAT_VERSION: u32 = 0;
 

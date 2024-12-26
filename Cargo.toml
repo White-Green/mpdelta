@@ -84,6 +84,7 @@ bytemuck = "1.21.0"
 bytemuck_derive = "1.8.1"
 cgmath = { version = "0.18.0", features = ["serde"] }
 ciborium = "0.2.2"
+clap = { version = "4.5.23", default-features = false, features = ["derive", "std"] }
 cpal = "0.15.3"
 crossbeam-queue = { version = "0.3.12" }
 crossbeam-utils = { version = "0.8.21", default-features = false }
@@ -99,7 +100,7 @@ ffmpeg-next = { version = "7.1.0", default-features = false, features = ["format
 ffmpeg-sys-next = { version = "7.1.0", default-features = false, features = ["static"] }
 font-kit = "0.14.2"
 futures = { version = "0.3.31", default-features = false }
-glam = { version = "0.24.2", features = ["libm"], default-features = false }
+glam = { version = "0.29.2", features = ["libm"], default-features = false }
 hound = "3.5.1"
 icu_properties = "1.5.1"
 icu_segmenter = "1.5.0"
@@ -168,6 +169,8 @@ egui-wgpu = { git = "https://github.com/White-Green/egui", rev = "02784f706ea8db
 emath = { git = "https://github.com/White-Green/egui", rev = "02784f706ea8db6dc33126201ff69ea34fc71589" }
 epaint = { git = "https://github.com/White-Green/egui", rev = "02784f706ea8db6dc33126201ff69ea34fc71589" }
 ffmpeg-sys-next = { git = "https://github.com/White-Green/rust-ffmpeg-sys", branch = "ffmpeg7.1" }
+spirv-builder = { git = "https://github.com/Rust-GPU/rust-gpu", rev = "bfa63c15a921357b38aa78986670c15f36df76dc" }
+spirv-std = { git = "https://github.com/Rust-GPU/rust-gpu", rev = "bfa63c15a921357b38aa78986670c15f36df76dc" }
 
 [profile.dev]
 opt-level = 3

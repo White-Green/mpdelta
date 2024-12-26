@@ -38,6 +38,8 @@ pub mod shader {
     use spirv_std::glam::{vec4, Vec4};
     use spirv_std::spirv;
 
+    // see: https://github.com/Rust-GPU/rust-gpu/issues/185
+    #[inline(never)]
     #[spirv(fragment)]
     pub fn main_fs(color: Vec4, output: &mut Vec4) {
         *output = color;

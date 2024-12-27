@@ -397,7 +397,7 @@ mod tests {
 
     proptest! {
         #[test]
-        fn test_serialize_deserialize_project(project in serde_v0::proptest::project::<T>()) {
+        fn test_serialize_deserialize_project(project in serde_v0::proptest_arbitrary::project::<T>()) {
             let mut data = Vec::new();
             write_project::<T>(&project, &mut data).unwrap();
             let project_deserialized = read_project::<T>(data.as_slice()).unwrap();

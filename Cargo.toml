@@ -171,6 +171,8 @@ epaint = { git = "https://github.com/White-Green/egui", rev = "02784f706ea8db6dc
 ffmpeg-sys-next = { git = "https://github.com/White-Green/rust-ffmpeg-sys", branch = "ffmpeg7.1" }
 spirv-builder = { git = "https://github.com/Rust-GPU/rust-gpu", rev = "bfa63c15a921357b38aa78986670c15f36df76dc" }
 spirv-std = { git = "https://github.com/Rust-GPU/rust-gpu", rev = "bfa63c15a921357b38aa78986670c15f36df76dc" }
+vulkano = { git = "https://github.com/White-Green/vulkano", branch = "0.34.X" }
+vulkano-util = { git = "https://github.com/White-Green/vulkano", branch = "0.34.X" }
 
 [profile.dev]
 opt-level = 3

@@ -5846,8 +5846,7 @@ dependencies = [
 [[package]]
 name = "vulkano"
 version = "0.34.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "70f4278f76307b3c388679234b397b4f90de29cdba53873c26b624ed82653d75"
+source = "git+https://github.com/White-Green/vulkano?branch=0.34.X#1cfef0b8e6fc78bbd90bf13fc68d1a73fc14c226"
 dependencies = [
  "ahash",
  "ash",
@@ -5875,8 +5874,7 @@ dependencies = [
 [[package]]
 name = "vulkano-util"
 version = "0.34.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ff1f96a4055a8362c8fa77a17c01da184c6412961cd9572110533ff89e6669a7"
+source = "git+https://github.com/White-Green/vulkano?branch=0.34.X#1cfef0b8e6fc78bbd90bf13fc68d1a73fc14c226"
 dependencies = [
  "ahash",
  "vulkano",

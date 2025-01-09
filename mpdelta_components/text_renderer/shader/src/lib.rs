@@ -54,7 +54,12 @@ pub mod shader {
         #[inline(always)]
         fn inner(vertex: FontVertex, glyph_data: &[GlyphStyle], constant: &Constant) -> VSOut {
             let glyph_data = glyph_data[vertex.glyph as usize];
-            let color = Vec4::new((glyph_data.color >> 24 & 0xFF) as f32 / 255., (glyph_data.color >> 16 & 0xFF) as f32 / 255., (glyph_data.color >> 8 & 0xFF) as f32 / 255., (glyph_data.color & 0xFF) as f32 / 255.);
+            let color = Vec4::new(
+                ((glyph_data.color >> 24) & 0xFF) as f32 / 255.,
+                ((glyph_data.color >> 16) & 0xFF) as f32 / 255.,
+                ((glyph_data.color >> 8) & 0xFF) as f32 / 255.,
+                (glyph_data.color & 0xFF) as f32 / 255.,
+            );
             VSOut {
                 position: constant.transform * vec4(vertex.x * glyph_data.scale + glyph_data.offset_x, -vertex.y * glyph_data.scale + glyph_data.offset_y, 0., 1.),
                 color,

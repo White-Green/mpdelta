@@ -43,7 +43,7 @@ where
     fn right(&self) -> &MarkerPin;
 }
 
-impl<'a, T, C> ComponentsLinksPair<T> for &'a C
+impl<T, C> ComponentsLinksPair<T> for &C
 where
     T: ParameterValueType,
     C: ComponentsLinksPair<T>,
@@ -87,7 +87,7 @@ where
     }
 }
 
-impl<'a, T> ComponentsLinksPair<T> for &'a dyn ComponentsLinksPair<T>
+impl<T> ComponentsLinksPair<T> for &dyn ComponentsLinksPair<T>
 where
     T: ParameterValueType,
 {

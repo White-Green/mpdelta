@@ -11,25 +11,25 @@ pub fn parse_color(s: &str) -> Option<[u8; 4]> {
             let Ok(c) = u16::from_str_radix(s, 16) else {
                 return None;
             };
-            let c = (c << 4 | 0xf) as u32;
-            let c = (c << 8 | c) & 0x00ff00ff;
-            let c = (c << 4 | c) & 0x0f0f0f0f;
-            Some((c << 4 | c).to_be_bytes())
+            let c = ((c << 4) | 0xf) as u32;
+            let c = ((c << 8) | c) & 0x00ff00ff;
+            let c = ((c << 4) | c) & 0x0f0f0f0f;
+            Some(((c << 4) | c).to_be_bytes())
         }
         4 => {
             let Ok(c) = u16::from_str_radix(s, 16) else {
                 return None;
             };
             let c = c as u32;
-            let c = (c << 8 | c) & 0x00ff00ff;
-            let c = (c << 4 | c) & 0x0f0f0f0f;
-            Some((c << 4 | c).to_be_bytes())
+            let c = ((c << 8) | c) & 0x00ff00ff;
+            let c = ((c << 4) | c) & 0x0f0f0f0f;
+            Some(((c << 4) | c).to_be_bytes())
         }
         6 => {
             let Ok(c) = u32::from_str_radix(s, 16) else {
                 return None;
             };
-            Some((c << 8 | 0xff).to_be_bytes())
+            Some(((c << 8) | 0xff).to_be_bytes())
         }
         8 => {
             let Ok(c) = u32::from_str_radix(s, 16) else {

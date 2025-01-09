@@ -120,7 +120,7 @@ impl MixedFraction {
     pub const MAX: MixedFraction = MixedFraction::new_inner(INTEGER_MAX, FRAC_VALUE_MASK - 1, FRAC_VALUE_MASK);
 
     const fn new_inner(integer: i32, numerator: u32, denominator: u32) -> MixedFraction {
-        MixedFraction((integer as i64) << 36 | (numerator as i64) << 18 | (denominator as i64))
+        MixedFraction(((integer as i64) << 36) | ((numerator as i64) << 18) | (denominator as i64))
     }
 
     /// Create new MixedFraction(I + N / D) from I, N, and D

@@ -2,7 +2,9 @@
 // 面倒なので消す
 #![allow(unused)]
 
-use icu_properties::{maps, LineBreak};
+use icu_properties::props::LineBreak;
+use icu_properties::CodePointMapData;
+use icu_segmenter::options::LineBreakOptions;
 use std::cmp::Ordering;
 use std::iter::{Enumerate, Peekable};
 use std::ops::{RangeFrom, RangeTo};
@@ -103,7 +105,7 @@ where
         let mut settings = settings.into_iter().peekable();
         let mut shape_context = ShapeContext::new();
         let mut cluster = CharCluster::new();
-        let segmenter = icu_segmenter::LineSegmenter::new_auto();
+        let segmenter = icu_segmenter::LineSegmenter::new_auto(LineBreakOptions::default());
         struct ForceClone<T>(T);
         impl<T> Clone for ForceClone<T> {
             fn clone(&self) -> Self {
@@ -124,7 +126,7 @@ where
             Script::Latin,
             ForceClone(string_buffer.char_indices().map(|(i, ch)| {
                 let break_state = if segment.next_if_eq(&(i + ch.len_utf8())).is_some() {
-                    let mandatory_break = matches!(maps::line_break().get(ch), LineBreak::MandatoryBreak | LineBreak::CarriageReturn | LineBreak::LineFeed | LineBreak::NextLine);
+                    let mandatory_break = matches!(CodePointMapData::<LineBreak>::new().get(ch), LineBreak::MandatoryBreak | LineBreak::CarriageReturn | LineBreak::LineFeed | LineBreak::NextLine);
                     if mandatory_break {
                         Boundary::Mandatory
                     } else {
@@ -525,10 +527,6 @@ impl<T> ExactSizeIterator for ShapeResultLineIter<'_, T> {}
 #[cfg(test)]
 mod tests {
     use super::*;
-    use font_kit::family_name::FamilyName;
-    use font_kit::handle::Handle;
-    use font_kit::properties::Properties;
-    use font_kit::source::SystemSource;
     use std::fs;
     use std::fs::OpenOptions;
     use std::io::Write;

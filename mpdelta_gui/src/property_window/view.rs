@@ -4,7 +4,7 @@ use crate::property_window::viewmodel::{ParametersEditSet, PropertyWindowViewMod
 use cgmath::Vector3;
 use egui::scroll_area::ScrollBarVisibility;
 use egui::style::ScrollStyle;
-use egui::{ScrollArea, Sense, Ui, Vec2};
+use egui::{ScrollArea, Sense, Ui, UiBuilder, Vec2};
 use mpdelta_core::component::parameter::value::SingleValueEdit;
 use mpdelta_core::component::parameter::{ImageRequiredParamsTransform, Parameter, ParameterValueFixed, ParameterValueType, VariableParameterValue};
 use std::marker::PhantomData;
@@ -32,7 +32,7 @@ impl<T: ParameterValueType, VM: PropertyWindowViewModel<T>> PropertyWindow<T, VM
         let instance_length = (instance_range.end - instance_range.start) as f32;
         let point_per_second = 320.;
         let (rect, _) = ui.allocate_at_least(ui.available_size(), Sense::click());
-        ui.allocate_ui_at_rect(rect, |ui| {
+        ui.allocate_new_ui(UiBuilder::new().max_rect(rect), |ui| {
             self.view_model.parameters(|parameters| {
                 if let Some(ParametersEditSet {
                     all_pins,
@@ -245,7 +245,7 @@ impl<T: ParameterValueType, VM: PropertyWindowViewModel<T>> PropertyWindow<T, VM
                     let old_scroll_style = mem::replace(&mut ui.style_mut().spacing.scroll, ScrollStyle::solid());
                     let scroll_output = ScrollArea::horizontal()
                         .horizontal_scroll_offset(self.scroll_offset)
-                        .id_source(id.with("scroll_bar"))
+                        .id_salt(id.with("scroll_bar"))
                         .scroll_bar_visibility(ScrollBarVisibility::VisibleWhenNeeded)
                         .show(ui, |ui| ui.allocate_space(Vec2::new(instance_length * point_per_second as f32, 0.)));
                     self.scroll_offset = scroll_output.state.offset.x;

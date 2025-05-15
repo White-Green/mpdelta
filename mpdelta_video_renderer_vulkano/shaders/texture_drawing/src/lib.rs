@@ -29,7 +29,7 @@ pub mod shader {
     }
 
     #[spirv(vertex)]
-    pub fn main_vs(#[spirv(vertex_index)] vert_id: u32, #[spirv(push_constant)] constant: &TextureDrawingConstant, #[spirv(position, invariant)] out_pos: &mut Vec4, #[spirv(invariant)] out_uv: &mut Vec2) {
+    pub fn main_vs(#[spirv(vertex_index)] vert_id: u32, #[spirv(push_constant)] constant: &TextureDrawingConstant, #[spirv(position, invariant)] out_pos: &mut Vec4, out_uv: &mut Vec2) {
         struct VSOut {
             position: Vec4,
             uv: Vec2,

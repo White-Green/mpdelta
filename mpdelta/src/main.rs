@@ -39,12 +39,13 @@ use std::os::raw::c_char;
 use std::sync::Arc;
 use tokio::runtime::Runtime;
 use tokio::sync::RwLock;
-use vulkano::command_buffer::allocator::{StandardCommandBufferAllocator, StandardCommandBufferAllocatorCreateInfo};
+use vulkano::command_buffer::allocator::{CommandBufferAllocator, StandardCommandBufferAllocator, StandardCommandBufferAllocatorCreateInfo};
 use vulkano::device::physical::PhysicalDeviceType;
-use vulkano::device::{Device, DeviceCreateInfo, DeviceExtensions, Features, QueueCreateInfo, QueueFlags};
+use vulkano::device::{Device, DeviceCreateInfo, DeviceExtensions, DeviceFeatures, QueueCreateInfo, QueueFlags};
 use vulkano::instance::InstanceExtensions;
 use vulkano::memory::allocator::StandardMemoryAllocator;
 use vulkano::{VulkanLibrary, VulkanObject};
+use wgpu::MemoryHints;
 
 struct ValueType;
 
@@ -124,9 +125,9 @@ fn main() {
     let project_memory = Arc::new(InMemoryProjectStore::<ValueType>::new());
     let mut component_class_loader = ComponentClassList::new();
     let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(Arc::clone(&vulkano_device), StandardCommandBufferAllocatorCreateInfo::default()));
-    component_class_loader.add(RectangleClass::new(Arc::clone(&vulkano_queue), &vulkano_memory_allocator, &command_buffer_allocator));
+    component_class_loader.add(RectangleClass::new(Arc::clone(&vulkano_queue), &vulkano_memory_allocator, Arc::clone(&command_buffer_allocator) as Arc<dyn CommandBufferAllocator>));
     component_class_loader.add(SineAudio::new());
-    component_class_loader.add(FfmpegMultimediaLoaderClass::new(&vulkano_queue, &vulkano_memory_allocator, &command_buffer_allocator));
+    component_class_loader.add(FfmpegMultimediaLoaderClass::new(&vulkano_queue, &vulkano_memory_allocator, Arc::clone(&command_buffer_allocator) as Arc<dyn CommandBufferAllocator>));
     component_class_loader.add(TextRendererClass::new(&vulkano_device, &vulkano_queue, &vulkano_memory_allocator));
     let component_class_loader = Arc::new(component_class_loader);
     let value_managers = ParameterAllValues::<ValueManagerLoaderTypes> {
@@ -206,7 +207,7 @@ fn main() {
         encode: Arc::clone(&core),
     };
     let gui = mpdelta_gui::new_gui(params);
-    let gui = MPDeltaGUIWgpu::new(Arc::new(wgpu_instance), Arc::new(wgpu_adapter), Arc::new(wgpu_device), Arc::new(wgpu_queue), gui);
+    let gui = MPDeltaGUIWgpu::new(wgpu_instance, wgpu_adapter, wgpu_device, wgpu_queue, gui);
     gui.main();
     drop(core);
     drop(runtime);
@@ -278,7 +279,7 @@ fn initialize_gpu() -> GpuHandle {
             DeviceCreateInfo {
                 queue_create_infos,
                 enabled_extensions: DeviceExtensions { khr_swapchain: true, ..DeviceExtensions::empty() },
-                enabled_features: Features::empty(),
+                enabled_features: DeviceFeatures::empty(),
                 ..Default::default()
             },
         )
@@ -294,7 +295,25 @@ fn initialize_gpu() -> GpuHandle {
     let queue_family_index = vulkano_physical_device.queue_family_properties().iter().position(|q| q.queue_flags.contains(QueueFlags::GRAPHICS | QueueFlags::COMPUTE)).unwrap();
     let extensions = wgpu_hal_adapter.adapter.required_device_extensions(wgpu_hal_adapter.features);
     let ash_device = unsafe { ash::Device::load(wgpu_hal_instance.shared_instance().raw_instance().fp_v1_0(), vulkano_device.handle()) };
-    let wgpu_hal_device = unsafe { wgpu_hal_adapter.adapter.device_from_raw(ash_device, false, &extensions, wgpu_hal_adapter.features, queue_family_index as u32, 1).unwrap() };
+    let wgpu_hal_device = unsafe {
+        wgpu_hal_adapter
+            .adapter
+            .device_from_raw(
+                ash_device,
+                Some({
+                    let vulkano_device = Arc::clone(&vulkano_device);
+                    Box::new(move || {
+                        let _ = vulkano_device;
+                    })
+                }),
+                &extensions,
+                wgpu_hal_adapter.features,
+                &MemoryHints::default(),
+                queue_family_index as u32,
+                1,
+            )
+            .unwrap()
+    };
 
     let wgpu_instance;
     let wgpu_adapter;
@@ -310,6 +329,7 @@ fn initialize_gpu() -> GpuHandle {
                     label: None,
                     required_features: Default::default(),
                     required_limits: Default::default(),
+                    memory_hints: Default::default(),
                 },
                 None,
             )

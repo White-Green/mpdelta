@@ -58,7 +58,7 @@ where
         let mut fonts = egui::FontDefinitions::default();
 
         let font_name = "BIZUDPGothic".to_owned();
-        fonts.font_data.insert(font_name.clone(), egui::FontData::from_static(include_bytes!("../fonts/BIZ_UDPGothic/BIZUDPGothic-Regular.ttf")));
+        fonts.font_data.insert(font_name.clone(), Arc::new(egui::FontData::from_static(include_bytes!("../fonts/BIZ_UDPGothic/BIZUDPGothic-Regular.ttf"))));
         fonts.families.entry(egui::FontFamily::Proportional).or_default().insert(0, font_name);
 
         ctx.set_fonts(fonts);

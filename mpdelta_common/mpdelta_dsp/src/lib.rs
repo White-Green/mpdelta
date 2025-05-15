@@ -161,7 +161,7 @@ where
     pub fn reset_buffer_with_default_buffer(&mut self, default_buffer: impl IntoIterator<Item = T>) {
         self.buffer.clear();
         self.buffer.extend(default_buffer.into_iter().take(self.default_buffer_length));
-        iter::repeat(T::default()).take(self.default_buffer_length - self.buffer.len()).for_each(|v| self.buffer.push_front(v));
+        std::iter::repeat_n(T::default(), self.default_buffer_length - self.buffer.len()).for_each(|v| self.buffer.push_front(v));
         self.filter_index = 0;
     }
 
@@ -172,7 +172,7 @@ where
     }
 
     pub fn fill_tail_by_zero(&mut self) {
-        self.buffer.extend(iter::repeat(T::default()).take(self.default_buffer_length));
+        self.buffer.extend(std::iter::repeat_n(T::default(), self.default_buffer_length));
     }
 
     pub fn buffer_len(&self) -> usize {

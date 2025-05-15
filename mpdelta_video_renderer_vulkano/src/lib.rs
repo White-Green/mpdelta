@@ -10,10 +10,10 @@ use smallvec::smallvec;
 use std::cmp::Ordering;
 use std::future::Future;
 use std::sync::Arc;
-use vulkano::command_buffer::allocator::{StandardCommandBufferAllocator, StandardCommandBufferAllocatorCreateInfo};
+use vulkano::command_buffer::allocator::{CommandBufferAllocator, StandardCommandBufferAllocator, StandardCommandBufferAllocatorCreateInfo};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, ClearColorImageInfo, CommandBufferUsage, PrimaryCommandBufferAbstract, RenderPassBeginInfo, SubpassBeginInfo, SubpassEndInfo};
-use vulkano::descriptor_set::allocator::{StandardDescriptorSetAllocator, StandardDescriptorSetAllocatorCreateInfo};
-use vulkano::descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet};
+use vulkano::descriptor_set::allocator::{DescriptorSetAllocator, StandardDescriptorSetAllocator, StandardDescriptorSetAllocatorCreateInfo};
+use vulkano::descriptor_set::{DescriptorSet, WriteDescriptorSet};
 use vulkano::device::{Device, Queue};
 use vulkano::format::{ClearColorValue, ClearValue, Format};
 use vulkano::image::sampler::{Sampler, SamplerCreateInfo};
@@ -44,8 +44,8 @@ struct SharedResource {
     texture_drawing_pipeline: Arc<GraphicsPipeline>,
     composite_operation_pipeline: Arc<ComputePipeline>,
     memory_allocator: Arc<GenericMemoryAllocator<FreeListAllocator>>,
-    command_buffer_allocator: StandardCommandBufferAllocator,
-    descriptor_set_allocator: StandardDescriptorSetAllocator,
+    command_buffer_allocator: Arc<dyn CommandBufferAllocator>,
+    descriptor_set_allocator: Arc<dyn DescriptorSetAllocator>,
 }
 
 impl SharedResource {
@@ -124,8 +124,8 @@ impl SharedResource {
             texture_drawing_pipeline,
             composite_operation_pipeline,
             memory_allocator: Arc::new(efficient_allocator),
-            command_buffer_allocator,
-            descriptor_set_allocator,
+            command_buffer_allocator: Arc::new(command_buffer_allocator) as Arc<dyn CommandBufferAllocator>,
+            descriptor_set_allocator: Arc::new(descriptor_set_allocator) as Arc<dyn DescriptorSetAllocator>,
         }
     }
 }
@@ -218,7 +218,7 @@ impl Combiner<ImageType> for ImageCombiner {
             },
         )
         .unwrap();
-        let mut builder = AutoCommandBufferBuilder::primary(&shared_resource.command_buffer_allocator, shared_resource.graphics_queue.queue_family_index(), CommandBufferUsage::OneTimeSubmit).unwrap();
+        let mut builder = AutoCommandBufferBuilder::primary(Arc::clone(&shared_resource.command_buffer_allocator), shared_resource.graphics_queue.queue_family_index(), CommandBufferUsage::OneTimeSubmit).unwrap();
         builder
             .clear_color_image(ClearColorImageInfo {
                 clear_value: ClearColorValue::Float([0., 0., 0., 0.]),
@@ -357,8 +357,8 @@ impl Combiner<ImageType> for ImageCombiner {
                     PipelineBindPoint::Graphics,
                     Arc::clone(shared_resource.texture_drawing_pipeline.layout()),
                     0,
-                    PersistentDescriptorSet::new(
-                        &shared_resource.descriptor_set_allocator,
+                    DescriptorSet::new(
+                        Arc::clone(&shared_resource.descriptor_set_allocator),
                         Arc::clone(&shared_resource.texture_drawing_pipeline.layout().set_layouts()[0]),
                         [
                             WriteDescriptorSet::image_view(0, image_view),
@@ -370,7 +370,10 @@ impl Combiner<ImageType> for ImageCombiner {
                 )
                 .unwrap();
             //StencilとTopologyはパイプラインで設定
-            builder.draw(4, 1, 0, 0).unwrap();
+            // vulkano内で検査できない安全性要件があるのでunsafeになっている
+            unsafe {
+                builder.draw(4, 1, 0, 0).unwrap();
+            }
             builder.end_render_pass(SubpassEndInfo::default()).unwrap();
 
             builder.bind_pipeline_compute(Arc::clone(&shared_resource.composite_operation_pipeline)).unwrap();
@@ -379,8 +382,8 @@ impl Combiner<ImageType> for ImageCombiner {
                     PipelineBindPoint::Compute,
                     Arc::clone(shared_resource.composite_operation_pipeline.layout()),
                     0,
-                    PersistentDescriptorSet::new(
-                        &shared_resource.descriptor_set_allocator,
+                    DescriptorSet::new(
+                        Arc::clone(&shared_resource.descriptor_set_allocator),
                         Arc::clone(&shared_resource.composite_operation_pipeline.layout().set_layouts()[0]),
                         [WriteDescriptorSet::image_view(0, Arc::clone(&result_image_view) as Arc<_>)],
                         [],
@@ -393,8 +396,8 @@ impl Combiner<ImageType> for ImageCombiner {
                     PipelineBindPoint::Compute,
                     Arc::clone(shared_resource.composite_operation_pipeline.layout()),
                     1,
-                    PersistentDescriptorSet::new(
-                        &shared_resource.descriptor_set_allocator,
+                    DescriptorSet::new(
+                        Arc::clone(&shared_resource.descriptor_set_allocator),
                         Arc::clone(&shared_resource.composite_operation_pipeline.layout().set_layouts()[1]),
                         [WriteDescriptorSet::image_view(0, Arc::clone(&buffer_image_view) as Arc<_>), WriteDescriptorSet::image_view(1, Arc::clone(&depth_view) as Arc<_>)],
                         [],
@@ -414,7 +417,10 @@ impl Combiner<ImageType> for ImageCombiner {
                     },
                 )
                 .unwrap();
-            builder.dispatch([image_width.div_ceil(32), image_height.div_ceil(32), 1]).unwrap();
+            // vulkano内で検査できない安全性要件があるのでunsafeになっている
+            unsafe {
+                builder.dispatch([image_width.div_ceil(32), image_height.div_ceil(32), 1]).unwrap();
+            }
         }
         builder.build().unwrap().execute(Arc::clone(&shared_resource.graphics_queue)).unwrap().then_signal_fence_and_flush().unwrap().map(move |_| ImageType(result_image))
     }
@@ -437,7 +443,7 @@ mod tests {
             },
             ..VulkanoConfig::default()
         }));
-        let command_buffer_allocator = StandardCommandBufferAllocator::new(Arc::clone(context.device()), StandardCommandBufferAllocatorCreateInfo::default());
+        let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(Arc::clone(context.device()), StandardCommandBufferAllocatorCreateInfo::default()));
         let get_image = |color: [f32; 4]| {
             let image = Image::new(
                 Arc::clone(context.memory_allocator()) as Arc<dyn MemoryAllocator>,
@@ -450,7 +456,7 @@ mod tests {
                 AllocationCreateInfo::default(),
             )
             .unwrap();
-            let mut builder = AutoCommandBufferBuilder::primary(&command_buffer_allocator, context.graphics_queue().queue_family_index(), CommandBufferUsage::OneTimeSubmit).unwrap();
+            let mut builder = AutoCommandBufferBuilder::primary(Arc::clone(&command_buffer_allocator) as Arc<dyn CommandBufferAllocator>, context.graphics_queue().queue_family_index(), CommandBufferUsage::OneTimeSubmit).unwrap();
             builder
                 .clear_color_image(ClearColorImageInfo {
                     clear_value: ClearColorValue::Float(color),

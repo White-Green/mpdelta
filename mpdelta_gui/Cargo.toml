@@ -9,6 +9,7 @@ arc-swap = { workspace = true }
 cgmath = { workspace = true }
 crossbeam-utils = { workspace = true }
 egui = { workspace = true }
+emath = { workspace = true }
 futures = { workspace = true }
 glam = { workspace = true }
 mpdelta_async_runtime = { workspace = true }

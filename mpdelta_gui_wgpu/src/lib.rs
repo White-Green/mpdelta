@@ -1,11 +1,10 @@
 use eframe::epaint::TextureId;
 use eframe::Frame;
 use egui::{Context, ViewportId};
-use egui_wgpu::RendererCreation;
+use egui_wgpu::{WgpuSetup, WgpuSetupExisting};
 use mpdelta_core_vulkano::ImageType;
 use mpdelta_gui::view::Gui;
 use mpdelta_gui::ImageRegister;
-use std::sync::Arc;
 use std::time::Instant;
 use vulkano::image::ImageUsage as VulkanoImageUsage;
 use vulkano::VulkanObject;
@@ -28,15 +27,15 @@ pub enum EventResult {
 }
 
 pub struct MPDeltaGUIWgpu<T> {
-    instance: Arc<WgpuInstance>,
-    adapter: Arc<WgpuAdapter>,
-    device: Arc<WgpuDevice>,
-    queue: Arc<WgpuQueue>,
+    instance: WgpuInstance,
+    adapter: WgpuAdapter,
+    device: WgpuDevice,
+    queue: WgpuQueue,
     gui: T,
 }
 
 impl<T: Gui<ImageType> + 'static> MPDeltaGUIWgpu<T> {
-    pub fn new(instance: Arc<WgpuInstance>, adapter: Arc<WgpuAdapter>, device: Arc<WgpuDevice>, queue: Arc<WgpuQueue>, gui: T) -> MPDeltaGUIWgpu<T> {
+    pub fn new(instance: WgpuInstance, adapter: WgpuAdapter, device: WgpuDevice, queue: WgpuQueue, gui: T) -> MPDeltaGUIWgpu<T> {
         MPDeltaGUIWgpu { instance, adapter, device, queue, gui }
     }
 
@@ -45,7 +44,7 @@ impl<T: Gui<ImageType> + 'static> MPDeltaGUIWgpu<T> {
 
         let native_options = eframe::NativeOptions {
             wgpu_options: egui_wgpu::WgpuConfiguration {
-                renderer: Some(RendererCreation { instance, adapter, device, queue }),
+                wgpu_setup: WgpuSetup::from(WgpuSetupExisting { instance, adapter, device, queue }),
                 ..egui_wgpu::WgpuConfiguration::default()
             },
             ..eframe::NativeOptions::default()
@@ -95,7 +94,7 @@ impl ImageRegister<ImageType> for WgpuImageRegister<'_> {
             mip_level_count,
             sample_count,
             dimension,
-            format: wgpu::TextureFormat::Rgba8UnormSrgb,
+            format: wgpu::TextureFormat::Rgba8Unorm,
             usage: vulkano_usage_into_wgpu_hal_usage(texture.0.usage()),
             memory_flags: vulkano_usage_into_wgpu_memory_flags(texture.0.usage()),
             view_formats: vec![wgpu::TextureFormat::Rgba8UnormSrgb],
@@ -106,12 +105,18 @@ impl ImageRegister<ImageType> for WgpuImageRegister<'_> {
             mip_level_count,
             sample_count,
             dimension,
-            format: wgpu::TextureFormat::Rgba8UnormSrgb,
+            format: wgpu::TextureFormat::Rgba8Unorm,
             usage: vulkano_usage_into_wgpu_usage(texture.0.usage()),
             view_formats: &[wgpu::TextureFormat::Rgba8UnormSrgb],
         };
         let texture = unsafe {
-            let texture = wgpu::hal::vulkan::Device::texture_from_raw(texture.0.handle(), &hal_descriptor, Some(Box::new(texture)));
+            let texture = wgpu::hal::vulkan::Device::texture_from_raw(
+                texture.0.handle(),
+                &hal_descriptor,
+                Some(Box::new(move || {
+                    let _ = texture;
+                })),
+            );
             self.device.create_texture_from_hal::<wgpu::hal::vulkan::Api>(texture, &descriptor)
         };
         let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
@@ -141,7 +146,7 @@ fn vulkano_usage_into_wgpu_hal_usage(usage: VulkanoImageUsage) -> WgpuHalTexture
         (VulkanoImageUsage::TRANSFER_SRC, WgpuHalTextureUses::COPY_SRC),
         (VulkanoImageUsage::TRANSFER_DST, WgpuHalTextureUses::COPY_DST),
         (VulkanoImageUsage::SAMPLED, WgpuHalTextureUses::RESOURCE),
-        (VulkanoImageUsage::STORAGE, WgpuHalTextureUses::STORAGE_READ),
+        (VulkanoImageUsage::STORAGE, WgpuHalTextureUses::STORAGE_READ_ONLY),
         (VulkanoImageUsage::COLOR_ATTACHMENT, WgpuHalTextureUses::COLOR_TARGET),
     ]
     .into_iter()

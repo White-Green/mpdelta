@@ -12,7 +12,7 @@ use mpdelta_core_vulkano::ImageType;
 use std::borrow::Cow;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use vulkano::command_buffer::allocator::StandardCommandBufferAllocator;
+use vulkano::command_buffer::allocator::CommandBufferAllocator;
 use vulkano::command_buffer::{AutoCommandBufferBuilder, ClearColorImageInfo, CommandBufferUsage, PrimaryCommandBufferAbstract};
 use vulkano::device::Queue;
 use vulkano::format::{ClearColorValue, Format};
@@ -27,13 +27,13 @@ pub struct RectangleClass(Arc<Rectangle>);
 pub struct Rectangle(Arc<Image>);
 
 impl RectangleClass {
-    pub fn new(queue: Arc<Queue>, allocator: &Arc<GenericMemoryAllocator<FreeListAllocator>>, command_buffer_allocator: &StandardCommandBufferAllocator) -> RectangleClass {
+    pub fn new(queue: Arc<Queue>, allocator: &Arc<GenericMemoryAllocator<FreeListAllocator>>, command_buffer_allocator: Arc<dyn CommandBufferAllocator>) -> RectangleClass {
         RectangleClass(Arc::new(Rectangle::new(queue, allocator, command_buffer_allocator)))
     }
 }
 
 impl Rectangle {
-    pub fn new(queue: Arc<Queue>, allocator: &Arc<GenericMemoryAllocator<FreeListAllocator>>, command_buffer_allocator: &StandardCommandBufferAllocator) -> Rectangle {
+    pub fn new(queue: Arc<Queue>, allocator: &Arc<GenericMemoryAllocator<FreeListAllocator>>, command_buffer_allocator: Arc<dyn CommandBufferAllocator>) -> Rectangle {
         let image = Image::new(
             Arc::clone(allocator) as Arc<dyn MemoryAllocator>,
             ImageCreateInfo {

@@ -29,7 +29,7 @@ use std::sync::{mpsc, Arc, LazyLock};
 use std::thread::JoinHandle;
 use thiserror::Error;
 use vulkano::buffer::{BufferCreateInfo, BufferUsage};
-use vulkano::command_buffer::allocator::{StandardCommandBufferAllocator, StandardCommandBufferAllocatorCreateInfo};
+use vulkano::command_buffer::allocator::{CommandBufferAllocator, StandardCommandBufferAllocator, StandardCommandBufferAllocatorCreateInfo};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, CopyImageToBufferInfo, PrimaryCommandBufferAbstract};
 use vulkano::device::{Device, Queue};
 use vulkano::memory::allocator::{AllocationCreateInfo, MemoryAllocator, MemoryTypeFilter, StandardMemoryAllocator};
@@ -276,7 +276,7 @@ fn encode_thread<T: Write + Seek + Send + Sync + 'static>(
                 options.width() as u64 * options.height() as u64,
             )
             .unwrap();
-            let command_buffer_allocator = StandardCommandBufferAllocator::new(Arc::clone(&gpu_context.device), StandardCommandBufferAllocatorCreateInfo::default());
+            let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(Arc::clone(&gpu_context.device), StandardCommandBufferAllocatorCreateInfo::default())) as Arc<dyn CommandBufferAllocator>;
             let mut timestamp = 0;
             let mut image_receiver = Some(image_receiver);
             let stream_time_base = output.stream(id).unwrap().time_base();
@@ -293,7 +293,7 @@ fn encode_thread<T: Write + Seek + Send + Sync + 'static>(
                     match image_receiver_ref.recv().unwrap() {
                         EncoderMessage::Push(ImageType(image)) => {
                             let [width, height, _] = image.extent();
-                            let mut builder = AutoCommandBufferBuilder::primary(&command_buffer_allocator, 0, CommandBufferUsage::OneTimeSubmit).unwrap();
+                            let mut builder = AutoCommandBufferBuilder::primary(Arc::clone(&command_buffer_allocator), 0, CommandBufferUsage::OneTimeSubmit).unwrap();
                             builder.copy_image_to_buffer(CopyImageToBufferInfo::image_buffer(image, buffer.clone())).unwrap();
                             builder.build().unwrap().execute(Arc::clone(&gpu_context.queue)).unwrap().then_signal_fence_and_flush().unwrap().wait(None).unwrap();
                             rgba_frame.set_width(width);
@@ -581,7 +581,7 @@ mod tests {
         assert!(encoder.requires_audio());
         assert!(encoder.requires_image());
         encoder.set_audio(AudioType::new(TestAudio));
-        let command_buffer_allocator = StandardCommandBufferAllocator::new(Arc::clone(vulkano_context.device()), StandardCommandBufferAllocatorCreateInfo::default());
+        let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(Arc::clone(vulkano_context.device()), StandardCommandBufferAllocatorCreateInfo::default())) as Arc<dyn CommandBufferAllocator>;
         let images = (0..8)
             .map(|i| {
                 let image = Image::new(
@@ -595,7 +595,7 @@ mod tests {
                     AllocationCreateInfo::default(),
                 )
                 .unwrap();
-                let mut builder = AutoCommandBufferBuilder::primary(&command_buffer_allocator, 0, CommandBufferUsage::OneTimeSubmit).unwrap();
+                let mut builder = AutoCommandBufferBuilder::primary(Arc::clone(&command_buffer_allocator), 0, CommandBufferUsage::OneTimeSubmit).unwrap();
                 builder
                     .clear_color_image(ClearColorImageInfo {
                         clear_value: ClearColorValue::Float([((i >> 2) & 1) as f32, ((i >> 1) & 1) as f32, (i & 1) as f32, 1.0]),

@@ -37,10 +37,10 @@ use swash::zeno::{Point as ZenoPoint, Verb};
 use swash::FontRef;
 use tokio::sync::RwLock;
 use vulkano::buffer::{Buffer, BufferCreateInfo, BufferUsage, Subbuffer};
-use vulkano::command_buffer::allocator::{StandardCommandBufferAllocator, StandardCommandBufferAllocatorCreateInfo};
+use vulkano::command_buffer::allocator::{CommandBufferAllocator, StandardCommandBufferAllocator, StandardCommandBufferAllocatorCreateInfo};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, PrimaryCommandBufferAbstract, RenderPassBeginInfo, SubpassBeginInfo, SubpassEndInfo};
-use vulkano::descriptor_set::allocator::{StandardDescriptorSetAllocator, StandardDescriptorSetAllocatorCreateInfo};
-use vulkano::descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet};
+use vulkano::descriptor_set::allocator::{DescriptorSetAllocator, StandardDescriptorSetAllocator, StandardDescriptorSetAllocatorCreateInfo};
+use vulkano::descriptor_set::{DescriptorSet, WriteDescriptorSet};
 use vulkano::device::{Device, Queue};
 use vulkano::format::{ClearValue, Format};
 use vulkano::image::view::{ImageView, ImageViewCreateInfo};
@@ -127,8 +127,8 @@ struct TextRenderer {
     render_pass: Arc<RenderPass>,
     pipeline: Arc<GraphicsPipeline>,
     memory_allocator: Arc<StandardMemoryAllocator>,
-    command_buffer_allocator: StandardCommandBufferAllocator,
-    descriptor_set_allocator: StandardDescriptorSetAllocator,
+    command_buffer_allocator: Arc<dyn CommandBufferAllocator>,
+    descriptor_set_allocator: Arc<dyn DescriptorSetAllocator>,
     vertex_buffer_queue: SegQueue<Subbuffer<[FontVertex]>>,
     index_buffer_queue: SegQueue<Subbuffer<[u32]>>,
     glyph_style_buffer_queue: SegQueue<Subbuffer<[GlyphStyle]>>,
@@ -171,6 +171,7 @@ impl TextRenderer {
                 VertexInputBindingDescription {
                     stride: mem::size_of::<FontVertex>() as u32,
                     input_rate: VertexInputRate::Vertex,
+                    ..VertexInputBindingDescription::default()
                 },
             )
             .attributes([
@@ -180,6 +181,7 @@ impl TextRenderer {
                         binding: 0,
                         format: Format::R32_SFLOAT,
                         offset: offset_of!(FontVertex, x) as u32,
+                        ..VertexInputAttributeDescription::default()
                     },
                 ),
                 (
@@ -188,6 +190,7 @@ impl TextRenderer {
                         binding: 0,
                         format: Format::R32_SFLOAT,
                         offset: offset_of!(FontVertex, y) as u32,
+                        ..VertexInputAttributeDescription::default()
                     },
                 ),
                 (
@@ -196,6 +199,7 @@ impl TextRenderer {
                         binding: 0,
                         format: Format::R32_UINT,
                         offset: offset_of!(FontVertex, glyph) as u32,
+                        ..VertexInputAttributeDescription::default()
                     },
                 ),
             ]);
@@ -229,8 +233,8 @@ impl TextRenderer {
             render_pass,
             pipeline,
             memory_allocator: Arc::clone(memory_allocator),
-            command_buffer_allocator,
-            descriptor_set_allocator,
+            command_buffer_allocator: Arc::new(command_buffer_allocator) as Arc<dyn CommandBufferAllocator>,
+            descriptor_set_allocator: Arc::new(descriptor_set_allocator) as Arc<dyn DescriptorSetAllocator>,
             vertex_buffer_queue: SegQueue::new(),
             index_buffer_queue: SegQueue::new(),
             glyph_style_buffer_queue: SegQueue::new(),
@@ -449,7 +453,7 @@ where
         drop(glyph_style_buffer_lock);
 
         let command_buffer = {
-            let mut builder = AutoCommandBufferBuilder::primary(&self.command_buffer_allocator, self.queue.queue_family_index(), CommandBufferUsage::OneTimeSubmit).unwrap();
+            let mut builder = AutoCommandBufferBuilder::primary(Arc::clone(&self.command_buffer_allocator), self.queue.queue_family_index(), CommandBufferUsage::OneTimeSubmit).unwrap();
             let color_image_view = ImageView::new(
                 Arc::clone(&color_image),
                 ImageViewCreateInfo {
@@ -505,8 +509,8 @@ where
                     }],
                 )
                 .unwrap();
-            let set = PersistentDescriptorSet::new(
-                &self.descriptor_set_allocator,
+            let set = DescriptorSet::new(
+                Arc::clone(&self.descriptor_set_allocator),
                 Arc::clone(&self.pipeline.layout().set_layouts()[1]),
                 [WriteDescriptorSet::buffer(0, glyph_style_buffer.clone().slice(..glyph_style.len() as u64))],
                 [],
@@ -518,7 +522,10 @@ where
             let transform = Mat4::from_cols(Vec4::new(2. / width as f32, 0., 0., 0.), Vec4::new(0., 2. / height as f32, 0., 0.), Vec4::new(0., 0., 1., 0.), Vec4::new(-1., -1., 0., 1.));
             builder.push_constants(Arc::clone(self.pipeline.layout()), 0, Constant { transform }).unwrap();
             for (index_range, vertex_offset) in index_range.into_iter().rev() {
-                builder.draw_indexed(index_range.end - index_range.start, 1, index_range.start, vertex_offset as i32, 0).unwrap();
+                // vulkano内で検査できない安全性要件があるためunsafeになっている
+                unsafe {
+                    builder.draw_indexed(index_range.end - index_range.start, 1, index_range.start, vertex_offset as i32, 0).unwrap();
+                }
             }
             builder.end_render_pass(SubpassEndInfo::default()).unwrap();
             builder.build().unwrap()
@@ -843,7 +850,7 @@ mod tests {
     use image::RgbaImage;
     use std::path::Path;
     use vulkano::command_buffer::CopyImageToBufferInfo;
-    use vulkano::device::Features;
+    use vulkano::device::DeviceFeatures;
     use vulkano_util::context::{VulkanoConfig, VulkanoContext};
 
     struct T;
@@ -867,10 +874,10 @@ mod tests {
         let output_dir = Path::new(TEST_OUTPUT_DIR).join("text_renderer");
         tokio::fs::create_dir_all(&output_dir).await.unwrap();
         let context = VulkanoContext::new(VulkanoConfig {
-            device_features: Features {
+            device_features: DeviceFeatures {
                 occlusion_query_precise: true,
                 pipeline_statistics_query: true,
-                ..Features::default()
+                ..DeviceFeatures::empty()
             },
             ..VulkanoConfig::default()
         });
@@ -907,7 +914,7 @@ mod tests {
         .unwrap();
         let command_buffer_allocator = StandardCommandBufferAllocator::new(Arc::clone(context.device()), StandardCommandBufferAllocatorCreateInfo::default());
         let command_buffer = {
-            let mut builder = AutoCommandBufferBuilder::primary(&command_buffer_allocator, context.graphics_queue().queue_family_index(), CommandBufferUsage::OneTimeSubmit).unwrap();
+            let mut builder = AutoCommandBufferBuilder::primary(Arc::new(command_buffer_allocator) as Arc<dyn CommandBufferAllocator>, context.graphics_queue().queue_family_index(), CommandBufferUsage::OneTimeSubmit).unwrap();
             builder.copy_image_to_buffer(CopyImageToBufferInfo::image_buffer(image, buffer.clone())).unwrap();
             builder.build().unwrap()
         };

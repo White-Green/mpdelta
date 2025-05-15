@@ -49,7 +49,7 @@ impl<T: ParameterValueType, VM: TimelineViewModel<T>> Timeline<T, VM> {
         let mut next_timeline_rect = Rect::from_x_y_ranges(0.0..=0.0, 0.0..=30.0);
         let mut now_dragging = false;
         ui.style_mut().spacing.scroll = ScrollStyle::solid();
-        let output = ScrollArea::horizontal().id_source("Timeline").show(ui, |ui| {
+        let output = ScrollArea::horizontal().id_salt("Timeline").show(ui, |ui| {
             let time_to_point = |time: f64| time as f32 * 100. - self.scroll_offset.x - self.timeline_rect.left();
             let point_to_time = |point: f32| (point + self.scroll_offset.x + self.timeline_rect.left()) as f64 / 100.;
             let available_size = ui.available_size();
@@ -63,7 +63,7 @@ impl<T: ParameterValueType, VM: TimelineViewModel<T>> Timeline<T, VM> {
             let length = self.view_model.component_length().map_or(10., |time| time.value().into_f64());
             painter.vline(time_to_point(length), response.rect.y_range(), Stroke::new(1., Color32::LIGHT_BLUE));
             next_timeline_rect.extend_with_x(time_to_point(length) + self.scroll_offset.x + self.timeline_rect.left());
-            let output = ScrollArea::vertical().id_source("Timeline-Vertical").show(ui, |ui| {
+            let output = ScrollArea::vertical().id_salt("Timeline-Vertical").show(ui, |ui| {
                 let available_size = ui.available_size();
                 let response = ui.allocate_response(Vec2::new(self.timeline_rect.width().max(available_size.x), self.timeline_rect.height().max(available_size.y)), Sense::click_and_drag());
                 if response.clicked_by(PointerButton::Primary) || response.dragged_by(PointerButton::Primary) {

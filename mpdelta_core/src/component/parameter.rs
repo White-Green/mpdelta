@@ -15,7 +15,7 @@ use std::io::{IoSliceMut, Read, Seek, SeekFrom};
 use std::marker::PhantomData;
 use std::ops::Range;
 use std::sync::Arc;
-use std::{io, iter, mem};
+use std::{io, mem};
 use uuid::Uuid;
 
 pub mod placeholder;
@@ -1041,7 +1041,7 @@ impl AudioRequiredParams {
         let one = TimeSplitValuePersistent::new(*left, Some(EasingValue::new(DynEditableLerpEasingValue((1., 1.)), Arc::new(LinearEasing))), *right);
         let one_value = VariableParameterValue::new(one);
         AudioRequiredParams {
-            volume: iter::repeat(one_value).take(channels).collect(),
+            volume: std::iter::repeat_n(one_value, channels).collect(),
         }
     }
 }

@@ -76,7 +76,7 @@ authors = ["White-Green"]
 [workspace.dependencies]
 arc-swap = "1.7.1"
 arrayvec = { version = "0.7.6", default-features = false }
-ash = { version = "0.37.3", features = ["linked"] }
+ash = { version = "0.38.0", features = ["linked"] }
 assert_matches = "1.5.0"
 async-trait = "0.1.86"
 bitflags = "2.8.0"
@@ -91,19 +91,20 @@ crossbeam-utils = { version = "0.8.21", default-features = false }
 dashmap = "6.1.0"
 dyn-eq = { version = "0.1.3", default-features = false }
 dyn-hash = "0.2.1"
-eframe = { version = "0.28.1", features = ["wgpu"] }
-egui = { version = "0.28.1", default-features = false }
-egui_image_renderer = { git = "https://github.com/White-Green/egui_image_renderer", rev = "0b9297ac24fccd58cbedcd2863e06f2fa4a2f880" }
-egui-wgpu = { version = "0.28.1" }
+eframe = { version = "0.31.1", features = ["wgpu"] }
+egui = { version = "0.31.1", default-features = false }
+egui_image_renderer = { git = "https://github.com/White-Green/egui_image_renderer", rev = "affa8a16e06240e92e86ef131989f01dffca38e9" }
+egui-wgpu = { version = "0.31.1" }
+emath = "0.31.1"
 erased-serde = { version = "0.4.5", features = ["alloc"], default-features = false }
 ffmpeg-next = { version = "7.1.0", default-features = false, features = ["format", "software-resampling", "software-scaling"] }
 ffmpeg-sys-next = { version = "7.1.0", default-features = false, features = ["static"] }
 font-kit = "0.14.2"
 futures = { version = "0.3.31", default-features = false }
-glam = { version = "0.29.2", features = ["libm"], default-features = false }
+glam = { version = "0.30.3", features = ["libm"], default-features = false }
 hound = "3.5.1"
-icu_properties = "1.5.1"
-icu_segmenter = "1.5.0"
+icu_properties = "2.0.0"
+icu_segmenter = "2.0.0"
 image = { version = "0.25.5", features = ["png"], default-features = false }
 indexmap = "2.7.1"
 lyon_tessellation = { version = "1.0.15", default-features = false }
@@ -158,21 +159,15 @@ thiserror = "2.0.11"
 time = "0.3.37"
 tokio = { version = "1.43.0", features = ["fs", "macros", "time"] }
 uuid = { version = "1.14.0", default-features = false }
-vulkano = { version = "0.34.1", default-features = false }
-vulkano-util = "0.34.1"
-wgpu = { version = "0.20.1", default-features = false, features = ["vulkan-portability", "wgc"] }
-winit = { version = "0.29.15", default-features = false }
+vulkano = { version = "0.35.1", default-features = false }
+vulkano-util = "0.35.0"
+wgpu = { version = "24.0.3", default-features = false, features = ["vulkan-portability"] }
+winit = { version = "0.30.10", default-features = false }
 
 [patch.crates-io]
-egui = { git = "https://github.com/White-Green/egui", rev = "02784f706ea8db6dc33126201ff69ea34fc71589" }
-egui-wgpu = { git = "https://github.com/White-Green/egui", rev = "02784f706ea8db6dc33126201ff69ea34fc71589" }
-emath = { git = "https://github.com/White-Green/egui", rev = "02784f706ea8db6dc33126201ff69ea34fc71589" }
-epaint = { git = "https://github.com/White-Green/egui", rev = "02784f706ea8db6dc33126201ff69ea34fc71589" }
 ffmpeg-sys-next = { git = "https://github.com/White-Green/rust-ffmpeg-sys", branch = "ffmpeg7.1" }
-spirv-builder = { git = "https://github.com/Rust-GPU/rust-gpu", rev = "bfa63c15a921357b38aa78986670c15f36df76dc" }
-spirv-std = { git = "https://github.com/Rust-GPU/rust-gpu", rev = "bfa63c15a921357b38aa78986670c15f36df76dc" }
-vulkano = { git = "https://github.com/White-Green/vulkano", branch = "0.34.X" }
-vulkano-util = { git = "https://github.com/White-Green/vulkano", branch = "0.34.X" }
+spirv-builder = { git = "https://github.com/Rust-GPU/rust-gpu", rev = "6d7c1cd6c0920500a3fa8c01c23e7b74302c15c4" }
+spirv-std = { git = "https://github.com/Rust-GPU/rust-gpu", rev = "6d7c1cd6c0920500a3fa8c01c23e7b74302c15c4" }
 
 [profile.dev]
 opt-level = 3

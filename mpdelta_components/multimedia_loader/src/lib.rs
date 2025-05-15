@@ -20,7 +20,7 @@ use std::sync::Arc;
 use tokio::sync::{Mutex as TokioMutex, RwLock};
 use uuid::Uuid;
 use vulkano::buffer::{Buffer, BufferCreateInfo, BufferUsage, Subbuffer};
-use vulkano::command_buffer::allocator::StandardCommandBufferAllocator;
+use vulkano::command_buffer::allocator::CommandBufferAllocator;
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, CopyBufferToImageInfo, PrimaryCommandBufferAbstract};
 use vulkano::device::Queue;
 use vulkano::format::Format;
@@ -38,18 +38,18 @@ struct FfmpegMultimediaLoader {
     parameter_type: Arc<[(String, ParameterType)]>,
     queue: Arc<Queue>,
     gpu_memory_allocator: Arc<GenericMemoryAllocator<FreeListAllocator>>,
-    command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
+    command_buffer_allocator: Arc<dyn CommandBufferAllocator>,
     image_buffer_queue: SegQueue<Subbuffer<[u8]>>,
 }
 
 impl FfmpegMultimediaLoaderClass {
-    pub fn new(queue: &Arc<Queue>, gpu_memory_allocator: &Arc<GenericMemoryAllocator<FreeListAllocator>>, command_buffer_allocator: &Arc<StandardCommandBufferAllocator>) -> FfmpegMultimediaLoaderClass {
+    pub fn new(queue: &Arc<Queue>, gpu_memory_allocator: &Arc<GenericMemoryAllocator<FreeListAllocator>>, command_buffer_allocator: Arc<dyn CommandBufferAllocator>) -> FfmpegMultimediaLoaderClass {
         FfmpegMultimediaLoaderClass {
             processor: Arc::new(FfmpegMultimediaLoader {
                 parameter_type: Arc::new([("media_file".to_owned(), ParameterType::Binary(()))]),
                 queue: Arc::clone(queue),
                 gpu_memory_allocator: Arc::clone(gpu_memory_allocator) as Arc<_>,
-                command_buffer_allocator: Arc::clone(command_buffer_allocator),
+                command_buffer_allocator,
                 image_buffer_queue: SegQueue::new(),
             }),
         }
@@ -211,7 +211,7 @@ where
                 )
                 .unwrap();
                 let command_buffer = {
-                    let mut builder = AutoCommandBufferBuilder::primary(&self.command_buffer_allocator, self.queue.queue_family_index(), CommandBufferUsage::OneTimeSubmit).unwrap();
+                    let mut builder = AutoCommandBufferBuilder::primary(Arc::clone(&self.command_buffer_allocator), self.queue.queue_family_index(), CommandBufferUsage::OneTimeSubmit).unwrap();
                     builder.copy_buffer_to_image(CopyBufferToImageInfo::buffer_image(buffer.slice(..buffer_len), Arc::clone(&gpu_image))).unwrap();
                     builder.build().unwrap()
                 };

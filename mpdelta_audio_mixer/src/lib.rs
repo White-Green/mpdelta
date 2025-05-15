@@ -186,10 +186,10 @@ where
             let leading = result.slice(..default_buffer_len - leading_zeros).unwrap();
             let body = result.slice(default_buffer_len - leading_zeros..).unwrap();
             for (i, resample) in resample.iter_mut().enumerate() {
-                resample.reset_buffer_with_default_buffer(iter::repeat(default_value).take(leading_zeros).chain(leading.iter()).map(|v| v[i].clone()));
+                resample.reset_buffer_with_default_buffer(std::iter::repeat_n(default_value, leading_zeros).chain(leading.iter()).map(|v| v[i].clone()));
                 resample.extend(body.iter().map(|v| v[i].clone()));
                 let last = body.get(body.len() - 1).unwrap()[i].clone();
-                resample.extend(iter::repeat(last).take(default_buffer_len));
+                resample.extend(std::iter::repeat_n(last, default_buffer_len));
             }
             let skip = {
                 let (i, n) = (time_map.map_inverse(audio_compute_start.into()).time() - time_map.map_inverse(TimelineTime::new(compute_base_time).into()).into()).value().deconstruct_with_round(sample_rate);

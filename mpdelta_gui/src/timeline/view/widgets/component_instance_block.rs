@@ -1,5 +1,5 @@
 use crate::timeline::viewmodel::{ComponentInstanceData, MarkerPinData};
-use egui::{Id, PointerButton, Pos2, Rect, Sense, Shape, TextStyle, Ui, Vec2};
+use egui::{Id, PointerButton, Pos2, Rect, Sense, Shape, StrokeKind, TextStyle, Ui, Vec2};
 use std::fmt::{Debug, Formatter};
 use std::hash::Hash;
 
@@ -92,7 +92,7 @@ where
         let block_showing_rect = Rect::from_x_y_ranges(clip_rect.x_range(), clip_rect.top()..=clip_rect.top() + block_height);
         let block_rect = Rect::from_x_y_ranges(clip_rect.x_range(), clip_rect.top() + pin_head_size..=clip_rect.top() + pin_head_size + block_height);
         let widget_visuals = if selected { &ui.style().visuals.widgets.active } else { &ui.style().visuals.widgets.inactive };
-        painter.rect(block_rect, 0., widget_visuals.bg_fill, widget_visuals.fg_stroke);
+        painter.rect(block_rect, 0., widget_visuals.bg_fill, widget_visuals.fg_stroke, StrokeKind::Inside);
         left_pin.render_location.store(Pos2::new(left + pin_head_size / 4., block_rect.top() - pin_head_size * 2. / 3.));
         right_pin.render_location.store(Pos2::new(right - pin_head_size / 4., block_rect.top() - pin_head_size * 2. / 3.));
         let shapes = [

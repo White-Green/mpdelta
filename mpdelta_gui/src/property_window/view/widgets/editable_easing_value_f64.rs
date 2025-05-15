@@ -1,6 +1,7 @@
 use egui::epaint::{PathShape, PathStroke, RectShape};
 use egui::scroll_area::ScrollBarVisibility;
-use egui::{Color32, CursorIcon, Id, PointerButton, Pos2, Rect, ScrollArea, Sense, Shape, Ui, Vec2};
+use egui::{Color32, CursorIcon, Id, PointerButton, Pos2, Rect, ScrollArea, Sense, Shape, StrokeKind, Ui, UiBuilder, Vec2};
+use emath::GuiRounding;
 use mpdelta_core::component::marker_pin::MarkerPin;
 use mpdelta_core::component::parameter::value::{EasingValue, EasingValueEdit};
 use mpdelta_core::component::parameter::PinSplitValue;
@@ -90,21 +91,21 @@ where
     P: TimelineTimeOfPin,
     H: Hash,
 {
-    pub fn show(self, ui: &mut Ui) -> UpdateStatus {
-        let EasingValueEditorF64 {
-            id,
+    pub fn show(&mut self, ui: &mut Ui) -> UpdateStatus {
+        let &mut EasingValueEditorF64 {
+            ref id,
             reset,
-            time_range,
+            ref time_range,
             all_pins,
             times,
-            value,
-            value_range,
+            ref mut value,
+            ref value_range,
             point_per_second,
-            scroll_offset,
+            ref mut scroll_offset,
         } = self;
         let mut updated = UpdateStatus::NotUpdated;
         let id = Id::new(id);
-        let scroll_area_output = ScrollArea::horizontal().id_source(id).scroll_offset(Vec2::new(*scroll_offset, 0.)).scroll_bar_visibility(ScrollBarVisibility::AlwaysHidden).show(ui, |ui| {
+        let scroll_area_output = ScrollArea::horizontal().id_salt(id).scroll_offset(Vec2::new(**scroll_offset, 0.)).scroll_bar_visibility(ScrollBarVisibility::AlwaysHidden).show(ui, |ui| {
             let id = ui.make_persistent_id(id);
             let mut state: InnerStateEdit = ui.data(|data| data.get_temp::<InnerState>(id).unwrap_or_default().into());
             let width = ((time_range.end - time_range.start) * point_per_second) as f32;
@@ -113,7 +114,7 @@ where
             painter.set_clip_rect(painter.clip_rect().intersect(whole_rect));
 
             let widget_visuals = ui.visuals().widgets.inactive;
-            let slider_width = painter.round_to_pixel(ui.spacing().interact_size.y / 6.);
+            let slider_width = GuiRounding::round_to_pixels(ui.spacing().interact_size.y / 6., painter.pixels_per_point());
             let text_box_height = 8.;
             let plot_area_rect = whole_rect.with_min_y(whole_rect.top() + slider_width * 3.).with_max_y(whole_rect.bottom() - slider_width - text_box_height);
             let time_map = glam::Mat2::from_cols(glam::Vec2::new(time_range.start as f32, time_range.end as f32), glam::Vec2::new(1., 1.)).inverse() * glam::Vec2::new(plot_area_rect.left(), plot_area_rect.right());
@@ -400,7 +401,7 @@ where
             });
             let shapes = iter::empty()
                 .chain(background_pin)
-                .chain(iter::once(Shape::Rect(RectShape::new(plot_area_rect, 0., widget_visuals.weak_bg_fill, widget_visuals.bg_stroke))))
+                .chain(iter::once(Shape::Rect(RectShape::new(plot_area_rect, 0., widget_visuals.weak_bg_fill, widget_visuals.bg_stroke, StrokeKind::Inside))))
                 .chain(segment_lines)
                 .chain(foreground_pin);
             painter.extend(shapes);
@@ -433,33 +434,39 @@ where
                     let right_pixel = glam::Vec2::new(right_time as f32, 1.).dot(time_map);
                     let [left_buffer, right_buffer] = buffer else { unreachable!() };
                     let text_box_width = 32.;
-                    ui.allocate_ui_at_rect(Rect::from_min_max(Pos2::new(left_pixel, plot_area_rect.bottom() + slider_width), Pos2::new(left_pixel + text_box_width, plot_area_rect.bottom() + text_box_height)), |ui| {
-                        if ui.text_edit_singleline(left_buffer).changed() {
-                            let Ok(update_value) = left_buffer.parse() else {
-                                return;
+                    ui.allocate_new_ui(
+                        UiBuilder::new().max_rect(Rect::from_min_max(Pos2::new(left_pixel, plot_area_rect.bottom() + slider_width), Pos2::new(left_pixel + text_box_width, plot_area_rect.bottom() + text_box_height))),
+                        |ui| {
+                            if ui.text_edit_singleline(left_buffer).changed() {
+                                let Ok(update_value) = left_buffer.parse() else {
+                                    return;
+                                };
+                                if let Some(easing_value) = value.get_value_mut(value_index).unwrap() {
+                                    easing_value.value.edit_value::<(f64, f64), _>(|(left, _)| *left = update_value).expect("downcast error");
+                                    updated = UpdateStatus::Updated;
+                                }
                             };
-                            if let Some(easing_value) = value.get_value_mut(value_index).unwrap() {
-                                easing_value.value.edit_value::<(f64, f64), _>(|(left, _)| *left = update_value).expect("downcast error");
-                                updated = UpdateStatus::Updated;
+                        },
+                    );
+                    ui.allocate_new_ui(
+                        UiBuilder::new().max_rect(Rect::from_min_max(Pos2::new(right_pixel - text_box_width, plot_area_rect.bottom() + slider_width), Pos2::new(right_pixel, plot_area_rect.bottom() + text_box_height))),
+                        |ui| {
+                            if ui.text_edit_singleline(right_buffer).changed() {
+                                let Ok(update_value) = right_buffer.parse() else {
+                                    return;
+                                };
+                                if let Some(easing_value) = value.get_value_mut(value_index).unwrap() {
+                                    easing_value.value.edit_value::<(f64, f64), _>(|(_, right)| *right = update_value).expect("downcast error");
+                                    updated = UpdateStatus::Updated;
+                                }
                             }
-                        };
-                    });
-                    ui.allocate_ui_at_rect(Rect::from_min_max(Pos2::new(right_pixel - text_box_width, plot_area_rect.bottom() + slider_width), Pos2::new(right_pixel, plot_area_rect.bottom() + text_box_height)), |ui| {
-                        if ui.text_edit_singleline(right_buffer).changed() {
-                            let Ok(update_value) = right_buffer.parse() else {
-                                return;
-                            };
-                            if let Some(easing_value) = value.get_value_mut(value_index).unwrap() {
-                                easing_value.value.edit_value::<(f64, f64), _>(|(_, right)| *right = update_value).expect("downcast error");
-                                updated = UpdateStatus::Updated;
-                            }
-                        }
-                    });
+                        },
+                    );
                 }
             }
             ui.data_mut(|data| data.insert_temp::<Arc<Mutex<Box<[String]>>>>(value_string_buffer_id, value_string_buffer));
         });
-        *scroll_offset = scroll_area_output.state.offset.x;
+        **scroll_offset = scroll_area_output.state.offset.x;
         updated
     }
 }
@@ -547,7 +554,7 @@ mod tests {
                     *all_pins[4].id(),
                 );
                 let mut scroll_offset = 0.;
-                let $editor = EasingValueEditorF64 {
+                let mut $editor = EasingValueEditorF64 {
                     id: "editor",
                     reset: false,
                     time_range: 1.0..5.0,

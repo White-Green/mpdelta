@@ -94,7 +94,7 @@ impl ImageRegister<ImageType> for WgpuImageRegister<'_> {
             mip_level_count,
             sample_count,
             dimension,
-            format: wgpu::TextureFormat::Rgba8UnormSrgb,
+            format: wgpu::TextureFormat::Rgba8Unorm,
             usage: vulkano_usage_into_wgpu_hal_usage(texture.0.usage()),
             memory_flags: vulkano_usage_into_wgpu_memory_flags(texture.0.usage()),
             view_formats: vec![wgpu::TextureFormat::Rgba8UnormSrgb],
@@ -105,7 +105,7 @@ impl ImageRegister<ImageType> for WgpuImageRegister<'_> {
             mip_level_count,
             sample_count,
             dimension,
-            format: wgpu::TextureFormat::Rgba8UnormSrgb,
+            format: wgpu::TextureFormat::Rgba8Unorm,
             usage: vulkano_usage_into_wgpu_usage(texture.0.usage()),
             view_formats: &[wgpu::TextureFormat::Rgba8UnormSrgb],
         };

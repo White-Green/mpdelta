@@ -30,7 +30,7 @@ impl<T: ParameterValueType<Audio = AudioType>> ComponentClass<T> for SineAudio {
         "SineAudio"
     }
 
-    fn identifier(&self) -> ComponentClassIdentifier {
+    fn identifier(&self) -> ComponentClassIdentifier<'_> {
         ComponentClassIdentifier {
             namespace: Cow::Borrowed("mpdelta"),
             name: Cow::Borrowed("SineAudio"),

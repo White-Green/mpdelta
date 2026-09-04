@@ -164,7 +164,7 @@ macro_rules! impl_easing_value {
         }
 
         impl<T: Clone + Send + Sync + 'static> DynEditableEasingValueManager<T> for $manager<T> {
-            fn identifier(&self) -> DynEditableEasingValueIdentifier {
+            fn identifier(&self) -> DynEditableEasingValueIdentifier<'_> {
                 DynEditableEasingValueIdentifier {
                     namespace: Cow::Borrowed("mpdelta::test"),
                     name: Cow::Borrowed(concat!(stringify!($value), "::Easing")),
@@ -178,7 +178,7 @@ macro_rules! impl_easing_value {
         }
 
         impl<T: Clone + Send + Sync + 'static> DynEditableSingleValueManager<T> for $manager<T> {
-            fn identifier(&self) -> DynEditableSingleValueIdentifier {
+            fn identifier(&self) -> DynEditableSingleValueIdentifier<'_> {
                 DynEditableSingleValueIdentifier {
                     namespace: Cow::Borrowed("mpdelta::test"),
                     name: Cow::Borrowed(concat!(stringify!($value), "::Single")),

@@ -69,31 +69,31 @@ where
         self
     }
 
-    pub fn font_size(&mut self, font_size: f32) -> ShapingBuilderSegment<T> {
+    pub fn font_size(&mut self, font_size: f32) -> ShapingBuilderSegment<'_, T> {
         let ShapingBuilder { string_buffer, settings, current_settings } = self;
         let current_edit = ShapingSettingsEdit::FontSize(mem::replace(&mut current_settings.font_size, font_size));
         ShapingBuilderSegment::new(string_buffer, settings, current_settings, current_edit)
     }
 
-    pub fn font(&mut self, font: Vec<usize>) -> ShapingBuilderSegment<T> {
+    pub fn font(&mut self, font: Vec<usize>) -> ShapingBuilderSegment<'_, T> {
         let ShapingBuilder { string_buffer, settings, current_settings } = self;
         let current_edit = ShapingSettingsEdit::Font(mem::replace(&mut current_settings.font, font));
         ShapingBuilderSegment::new(string_buffer, settings, current_settings, current_edit)
     }
 
-    pub fn feature(&mut self, feature: impl Into<Setting<u16>>) -> ShapingBuilderSegment<T> {
+    pub fn feature(&mut self, feature: impl Into<Setting<u16>>) -> ShapingBuilderSegment<'_, T> {
         let ShapingBuilder { string_buffer, settings, current_settings } = self;
         current_settings.features.push(feature.into());
         ShapingBuilderSegment::new(string_buffer, settings, current_settings, ShapingSettingsEdit::PushFeature)
     }
 
-    pub fn variation(&mut self, variation: impl Into<Setting<f32>>) -> ShapingBuilderSegment<T> {
+    pub fn variation(&mut self, variation: impl Into<Setting<f32>>) -> ShapingBuilderSegment<'_, T> {
         let ShapingBuilder { string_buffer, settings, current_settings } = self;
         current_settings.variations.push(variation.into());
         ShapingBuilderSegment::new(string_buffer, settings, current_settings, ShapingSettingsEdit::PushVariation)
     }
 
-    pub fn update_user_data(&mut self, user_data_update: impl FnOnce(&T) -> T) -> ShapingBuilderSegment<T> {
+    pub fn update_user_data(&mut self, user_data_update: impl FnOnce(&T) -> T) -> ShapingBuilderSegment<'_, T> {
         let ShapingBuilder { string_buffer, settings, current_settings } = self;
         let user_data = user_data_update(&current_settings.user_data);
         let current_edit = ShapingSettingsEdit::UserData(mem::replace(&mut current_settings.user_data, user_data));
@@ -418,14 +418,14 @@ impl<T> ShapeResult<T> {
         self.height
     }
 
-    pub fn glyphs(&self) -> ShapeResultGlyphsIter<T> {
+    pub fn glyphs(&self) -> ShapeResultGlyphsIter<'_, T> {
         ShapeResultGlyphsIter {
             glyphs: self.glyphs.iter().enumerate(),
             user_data: self.user_data.iter().peekable(),
         }
     }
 
-    pub fn lines(&self) -> ShapeResultLinesIter<T> {
+    pub fn lines(&self) -> ShapeResultLinesIter<'_, T> {
         ShapeResultLinesIter {
             glyph_offset: 0,
             user_data_offset: 0,

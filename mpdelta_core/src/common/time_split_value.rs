@@ -357,7 +357,7 @@ impl<'a, Time, Value, TimeMutability, ValueMutability> From<&'a mut TimeSplitVal
 }
 
 impl<Time, Value, TimeMutability, ValueMutability> TimeSplitValueView<'_, Time, Value, TimeMutability, ValueMutability> {
-    pub fn new(value: &mut TimeSplitValue<Time, Value>) -> TimeSplitValueView<Time, Value, TimeMutability, ValueMutability> {
+    pub fn new(value: &mut TimeSplitValue<Time, Value>) -> TimeSplitValueView<'_, Time, Value, TimeMutability, ValueMutability> {
         TimeSplitValueView { value, phantom: Default::default() }
     }
 

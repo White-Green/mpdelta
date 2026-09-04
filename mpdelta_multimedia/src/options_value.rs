@@ -92,7 +92,7 @@ pub enum OptionValuesRefMut<'a> {
 }
 
 impl OptionValue {
-    pub fn as_ref(&mut self) -> OptionValuesRefMut {
+    pub fn as_ref(&mut self) -> OptionValuesRefMut<'_> {
         match self {
             OptionValue::Bool { value } => OptionValuesRefMut::Bool { value },
             OptionValue::Int { value, ty } => OptionValuesRefMut::Int { value, ty },

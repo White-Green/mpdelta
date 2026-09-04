@@ -44,7 +44,7 @@ impl DynEditableSingleValueMarker for FileReaderParam {
 pub struct FileReaderParamManager;
 
 impl DynEditableSingleValueManager<AbstractFile> for FileReaderParamManager {
-    fn identifier(&self) -> DynEditableSingleValueIdentifier {
+    fn identifier(&self) -> DynEditableSingleValueIdentifier<'_> {
         DynEditableSingleValueIdentifier {
             namespace: Cow::Borrowed("mpdelta"),
             name: Cow::Borrowed("FileReaderParam"),

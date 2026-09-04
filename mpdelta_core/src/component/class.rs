@@ -47,7 +47,7 @@ impl ComponentClassIdentifier<'_> {
         }
     }
 
-    pub fn as_ref(&self) -> ComponentClassIdentifier {
+    pub fn as_ref(&self) -> ComponentClassIdentifier<'_> {
         ComponentClassIdentifier {
             namespace: Cow::Borrowed(&self.namespace),
             name: Cow::Borrowed(&self.name),
@@ -59,7 +59,7 @@ impl ComponentClassIdentifier<'_> {
 #[async_trait]
 pub trait ComponentClass<T: ParameterValueType>: Send + Sync {
     fn human_readable_identifier(&self) -> &str;
-    fn identifier(&self) -> ComponentClassIdentifier;
+    fn identifier(&self) -> ComponentClassIdentifier<'_>;
     fn processor(&self) -> ComponentProcessorWrapper<T>;
     async fn instantiate(&self, this: &StaticPointer<RwLock<dyn ComponentClass<T>>>, id: &dyn IdGenerator) -> ComponentInstance<T>;
 }

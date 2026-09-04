@@ -63,7 +63,7 @@ impl<T: ParameterValueType<Image = ImageType>> ComponentClass<T> for RectangleCl
         "Rectangle"
     }
 
-    fn identifier(&self) -> ComponentClassIdentifier {
+    fn identifier(&self) -> ComponentClassIdentifier<'_> {
         ComponentClassIdentifier {
             namespace: Cow::Borrowed("mpdelta"),
             name: Cow::Borrowed("Rectangle"),

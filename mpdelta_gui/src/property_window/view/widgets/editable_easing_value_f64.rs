@@ -516,7 +516,7 @@ mod tests {
 
         struct Easing1;
         impl Easing for Easing1 {
-            fn identifier(&self) -> EasingIdentifier {
+            fn identifier(&self) -> EasingIdentifier<'_> {
                 todo!()
             }
             fn easing(&self, from: EasingInput) -> f64 {
@@ -526,7 +526,7 @@ mod tests {
         }
         struct Easing2;
         impl Easing for Easing2 {
-            fn identifier(&self) -> EasingIdentifier {
+            fn identifier(&self) -> EasingIdentifier<'_> {
                 todo!()
             }
             fn easing(&self, from: EasingInput) -> f64 {

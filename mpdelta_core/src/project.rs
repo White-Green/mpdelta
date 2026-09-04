@@ -215,7 +215,7 @@ impl<T: ParameterValueType> ComponentsLinksPair<T> for RootComponentClassItem<T>
 pub struct NotFound;
 
 impl<T: ParameterValueType> RootComponentClassItem<T> {
-    pub fn view(&mut self) -> (RootComponentClassItemViewBase, RootComponentClassItemViewStructure<T>, RootComponentClassItemViewTimeMap) {
+    pub fn view(&mut self) -> (RootComponentClassItemViewBase<'_>, RootComponentClassItemViewStructure<'_, T>, RootComponentClassItemViewTimeMap<'_>) {
         let RootComponentClassItem {
             left,
             right,
@@ -525,7 +525,7 @@ impl<T: ParameterValueType + 'static> ComponentClass<T> for RootComponentClass<T
         "RootComponentClass"
     }
 
-    fn identifier(&self) -> ComponentClassIdentifier {
+    fn identifier(&self) -> ComponentClassIdentifier<'_> {
         ComponentClassIdentifier {
             namespace: Cow::Borrowed("mpdelta"),
             name: Cow::Borrowed("RootComponentClass"),
@@ -665,7 +665,7 @@ impl<T: ParameterValueType> RootComponentClass<T> {
         self.item.0.load()
     }
 
-    pub async fn get_mut(&self) -> RootComponentClassItemWrite<T> {
+    pub async fn get_mut(&self) -> RootComponentClassItemWrite<'_, T> {
         let _guard = self.item_write_lock.lock().await;
         let item = self.item.0.load_full();
         RootComponentClassItemWrite { _guard, slot: &self.item, item }

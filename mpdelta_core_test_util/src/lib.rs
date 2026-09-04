@@ -43,7 +43,7 @@ where
         "Noop"
     }
 
-    fn identifier(&self) -> ComponentClassIdentifier {
+    fn identifier(&self) -> ComponentClassIdentifier<'_> {
         unimplemented!()
     }
 

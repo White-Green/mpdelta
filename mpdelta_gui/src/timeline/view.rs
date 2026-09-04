@@ -61,7 +61,7 @@ impl<T: ParameterValueType, VM: TimelineViewModel<T>> Timeline<T, VM> {
                 self.view_model.edit_component_length(MarkerTime::new(MixedFraction::from_f64(time.max(0.))).unwrap());
             }
             let length = self.view_model.component_length().map_or(10., |time| time.value().into_f64());
-            painter.vline(time_to_point(length), response.rect.y_range(), Stroke::new(1., Color32::LIGHT_BLUE));
+            painter.vline(time_to_point(length), response.rect.y_range(), Stroke::new(1f32, Color32::LIGHT_BLUE));
             next_timeline_rect.extend_with_x(time_to_point(length) + self.scroll_offset.x + self.timeline_rect.left());
             let output = ScrollArea::vertical().id_salt("Timeline-Vertical").show(ui, |ui| {
                 let available_size = ui.available_size();
@@ -95,13 +95,13 @@ impl<T: ParameterValueType, VM: TimelineViewModel<T>> Timeline<T, VM> {
                                 if (*to - pull_link_pointer).length_sq() < EPS_SQUARED {
                                     pull_link_target_pin = Some(link.to_pin.clone());
                                 }
-                                ui.painter().line_segment([*from, *to], egui::Stroke::new(1., ui.visuals().text_color()));
+                                ui.painter().line_segment([*from, *to], egui::Stroke::new(1f32, ui.visuals().text_color()));
                             }
                         });
                     });
                     if let Some((pin, pointer)) = &self.pulling_pin {
                         let from = pin_position_map.get(pin).unwrap();
-                        ui.painter().line_segment([*from, *pointer], egui::Stroke::new(1., Color32::GREEN));
+                        ui.painter().line_segment([*from, *pointer], egui::Stroke::new(1f32, Color32::GREEN));
                     }
 
                     self.component_top_buf.clear();
@@ -163,7 +163,7 @@ impl<T: ParameterValueType, VM: TimelineViewModel<T>> Timeline<T, VM> {
                 });
                 let seek = self.view_model.seek();
                 let seek_line_position = time_to_point(seek.value().into_f64());
-                ui.painter().vline(seek_line_position, response.rect.y_range(), Stroke::new(1., egui::Color32::RED));
+                ui.painter().vline(seek_line_position, response.rect.y_range(), Stroke::new(1f32, egui::Color32::RED));
                 next_timeline_rect.extend_with_x(seek_line_position + self.scroll_offset.x + self.timeline_rect.left());
                 let pointer_pos = response.interact_pointer_pos();
                 response.context_menu(|ui| {

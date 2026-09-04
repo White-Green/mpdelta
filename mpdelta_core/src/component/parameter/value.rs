@@ -83,7 +83,7 @@ impl EasingIdentifier<'_> {
         }
     }
 
-    pub fn as_ref(&self) -> EasingIdentifier {
+    pub fn as_ref(&self) -> EasingIdentifier<'_> {
         EasingIdentifier {
             namespace: Cow::Borrowed(&self.namespace),
             name: Cow::Borrowed(&self.name),
@@ -92,14 +92,14 @@ impl EasingIdentifier<'_> {
 }
 
 pub trait Easing: Send + Sync {
-    fn identifier(&self) -> EasingIdentifier;
+    fn identifier(&self) -> EasingIdentifier<'_>;
     fn easing(&self, from: EasingInput) -> f64;
 }
 
 pub struct LinearEasing;
 
 impl Easing for LinearEasing {
-    fn identifier(&self) -> EasingIdentifier {
+    fn identifier(&self) -> EasingIdentifier<'_> {
         EasingIdentifier {
             namespace: Cow::Borrowed("mpdelta"),
             name: Cow::Borrowed("Linear"),
@@ -163,7 +163,7 @@ impl DynEditableSingleValueIdentifier<'_> {
         }
     }
 
-    pub fn as_ref(&self) -> DynEditableSingleValueIdentifier {
+    pub fn as_ref(&self) -> DynEditableSingleValueIdentifier<'_> {
         DynEditableSingleValueIdentifier {
             namespace: Cow::Borrowed(&self.namespace),
             name: Cow::Borrowed(&self.name),
@@ -172,7 +172,7 @@ impl DynEditableSingleValueIdentifier<'_> {
 }
 
 pub trait DynEditableSingleValueManager<T>: Send + Sync {
-    fn identifier(&self) -> DynEditableSingleValueIdentifier;
+    fn identifier(&self) -> DynEditableSingleValueIdentifier<'_>;
     fn deserialize(&self, deserializer: &mut dyn erased_serde::Deserializer) -> Result<DynEditableSingleValue<T>, erased_serde::Error>;
 }
 
@@ -197,7 +197,7 @@ where
     Self: Send + Sync,
     DynEditableSelfValue<T>: Send + Sync + DynEditableSingleValueMarkerCloneable<Out = T> + DeserializeOwned + 'static,
 {
-    fn identifier(&self) -> DynEditableSingleValueIdentifier {
+    fn identifier(&self) -> DynEditableSingleValueIdentifier<'_> {
         DynEditableSingleValueIdentifier {
             namespace: Cow::Borrowed("mpdelta"),
             name: Cow::Borrowed("SelfValue"),
@@ -352,7 +352,7 @@ impl DynEditableEasingValueIdentifier<'_> {
         }
     }
 
-    pub fn as_ref(&self) -> DynEditableEasingValueIdentifier {
+    pub fn as_ref(&self) -> DynEditableEasingValueIdentifier<'_> {
         DynEditableEasingValueIdentifier {
             namespace: Cow::Borrowed(&self.namespace),
             name: Cow::Borrowed(&self.name),
@@ -361,7 +361,7 @@ impl DynEditableEasingValueIdentifier<'_> {
 }
 
 pub trait DynEditableEasingValueManager<T>: Send + Sync {
-    fn identifier(&self) -> DynEditableEasingValueIdentifier;
+    fn identifier(&self) -> DynEditableEasingValueIdentifier<'_>;
     fn deserialize(&self, deserializer: &mut dyn erased_serde::Deserializer) -> Result<DynEditableEasingValue<T>, erased_serde::Error>;
 }
 
@@ -396,7 +396,7 @@ where
     Self: Send + Sync,
     DynEditableSelfValue<T>: Send + Sync + DynEditableEasingValueMarkerCloneable<Out = T> + DeserializeOwned + 'static,
 {
-    fn identifier(&self) -> DynEditableEasingValueIdentifier {
+    fn identifier(&self) -> DynEditableEasingValueIdentifier<'_> {
         DynEditableEasingValueIdentifier {
             namespace: Cow::Borrowed("mpdelta"),
             name: Cow::Borrowed("SingleEasingValue"),
@@ -442,7 +442,7 @@ where
     Self: Send + Sync,
     DynEditableLerpEasingValue<T>: Send + Sync + DynEditableEasingValueMarkerCloneable<Out = T> + DeserializeOwned + 'static,
 {
-    fn identifier(&self) -> DynEditableEasingValueIdentifier {
+    fn identifier(&self) -> DynEditableEasingValueIdentifier<'_> {
         DynEditableEasingValueIdentifier {
             namespace: Cow::Borrowed("mpdelta"),
             name: Cow::Borrowed("LerpEasingValue"),

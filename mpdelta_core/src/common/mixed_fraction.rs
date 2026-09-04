@@ -769,7 +769,7 @@ mod tests {
             let numerator = numerator as u64;
             let denominator = denominator as u64;
             let target_denominator = target_denominator as u64;
-            let result_is_even = result % 2 == 0;
+            let result_is_even = result.is_multiple_of(2);
             let result_diff = (numerator * target_denominator).abs_diff(result * denominator);
             if let Some(left) = result.checked_sub(1) {
                 let left_diff = (numerator * target_denominator).abs_diff(left * denominator);

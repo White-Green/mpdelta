@@ -12,7 +12,7 @@ pub enum RichTextToken<'a> {
     TagClose { raw: &'a str, tag_name: Option<&'a str> },
 }
 
-pub fn parse(text: &str) -> RichTextParser {
+pub fn parse(text: &str) -> RichTextParser<'_> {
     RichTextParser { text }
 }
 

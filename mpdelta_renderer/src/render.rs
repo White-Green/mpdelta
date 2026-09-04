@@ -191,7 +191,7 @@ where
         "Parameter Placeholder"
     }
 
-    fn identifier(&self) -> ComponentClassIdentifier {
+    fn identifier(&self) -> ComponentClassIdentifier<'_> {
         ComponentClassIdentifier {
             namespace: Cow::Borrowed("mpdelta-internal"),
             name: Cow::Borrowed("ParameterPlaceholder"),

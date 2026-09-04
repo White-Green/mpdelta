@@ -153,7 +153,7 @@ impl<Codec: HasOption> CodecOptions<Codec> {
         &self.options
     }
 
-    pub fn options_mut(&mut self) -> impl Iterator<Item = (&str, OptionValuesRefMut)> {
+    pub fn options_mut(&mut self) -> impl Iterator<Item = (&str, OptionValuesRefMut<'_>)> {
         self.options.iter_mut().map(|(k, v)| (k.as_ref(), v.as_ref()))
     }
 }

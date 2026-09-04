@@ -89,7 +89,7 @@ where
         "Text"
     }
 
-    fn identifier(&self) -> ComponentClassIdentifier {
+    fn identifier(&self) -> ComponentClassIdentifier<'_> {
         ComponentClassIdentifier {
             namespace: Cow::Borrowed("mpdelta"),
             name: Cow::Borrowed("TextRenderer"),

@@ -125,7 +125,7 @@ where
                 }
             }
             decoder.send_eof().unwrap();
-            process_frame(&mut decoder);
+            let _ = process_frame(&mut decoder);
         }
         let start_pts = start_pts.unwrap();
         let range = match end_pts {
@@ -324,7 +324,7 @@ where
 
 fn compute_audio_planar<F, Raw, Sample>(mut frame_provider: F, mut dst: MultiChannelAudioSliceMut<Sample>, sample_rate: u32, start_pts: i64, time_base: MixedFraction, avg: impl Fn(Sample, Sample) -> Sample, convert: impl Fn(Raw) -> Sample) -> usize
 where
-    F: for<'a> PlanarAudioFrameProvider<Raw>,
+    F: PlanarAudioFrameProvider<Raw>,
     Raw: Clone,
     Sample: Clone,
 {

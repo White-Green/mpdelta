@@ -1056,7 +1056,7 @@ impl<T: ParameterValueType> ProjectForSerialize<T, De> {
             easing_manager,
         );
         let class = Arc::new(class);
-        stream::iter(components.into_iter().zip(components_slot_read.into_iter()))
+        stream::iter(components.into_iter().zip(components_slot_read))
             .map(|(component, slot)| runtime.spawn(component.into_core(Arc::clone(&class), slot, id_generator.clone(), runtime.clone())))
             .buffered(16)
             .map(Result::unwrap)

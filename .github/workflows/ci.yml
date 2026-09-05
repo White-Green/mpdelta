@@ -57,7 +57,7 @@ jobs:
 
       - run: cargo +"$TOOLCHAIN_NAME" test --workspace --locked
         env:
-          TOOLCHAIN_NAME: ${{ steps.main_toolchain_version.outputs.name }}
+          TOOLCHAIN_NAME: ${{ steps.main_toolchain_version.outputs.rustc_version }}
 
   clippy:
     name: clippy
@@ -113,7 +113,7 @@ jobs:
 
       - run: cargo +"$TOOLCHAIN_NAME" clippy --workspace --tests --locked -- -D warnings
         env:
-          TOOLCHAIN_NAME: ${{ steps.main_toolchain_version.outputs.name }}
+          TOOLCHAIN_NAME: ${{ steps.main_toolchain_version.outputs.rustc_version }}
 
   rustfmt:
     name: rustfmt

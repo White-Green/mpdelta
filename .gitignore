@@ -6,6 +6,7 @@
 !/Cargo.lock
 !/Cargo.toml
 !/rustfmt.toml
+!/taplo.toml
 !/mpdelta
 !/mpdelta_audio_mixer
 !/mpdelta_build_utils

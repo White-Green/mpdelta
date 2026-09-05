@@ -73,6 +73,9 @@ version = "0.1.0"
 edition = "2021"
 authors = ["White-Green"]
 
+[workspace.metadata.cargo-binaries]
+taplo-cli = "0.10.0"
+
 [workspace.dependencies]
 arc-swap = "1.7.1"
 arrayvec = { version = "0.7.6", default-features = false }

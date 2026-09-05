@@ -1,0 +1,223 @@
+name: CI
+
+on: push
+
+jobs:
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - run: |
+          sudo apt update
+          sudo apt install yasm libgtk-3-dev libasound2-dev libopenh264-dev mesa-vulkan-drivers libvulkan-dev -y
+
+      - id: rust-toolchain
+        shell: bash
+        run: |
+          channel="$(yq -p toml -o yaml -er '.toolchain.channel' rust-toolchain.toml)"
+          printf 'channel=%s\n' "$channel" >> "$GITHUB_OUTPUT"
+
+      - uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c
+        with:
+          toolchain: ${{ steps.rust-toolchain.outputs.channel }}
+          components: clippy
+
+      - uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c
+        with:
+          toolchain: nightly-2024-11-22
+          components: "rust-src,rustc-dev,llvm-tools-preview"
+
+      - id: get-month
+        run: |
+          echo "month=$(/bin/date -u '+%Y%m')" >> "$GITHUB_OUTPUT"
+        shell: bash
+
+      - uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+          key: ${{ runner.os }}-cargo-${{ steps.get-month.outputs.month }}
+
+      - run: cargo +"$TOOLCHAIN_NAME" fetch
+        env:
+          TOOLCHAIN_NAME: ${{ steps.rust-toolchain.outputs.channel }}
+
+      - uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
+        with:
+          path: |
+            target/
+            target_for_shaders/
+          key: ${{ runner.os }}-cargo-${{ steps.rust-toolchain.outputs.channel }}-test-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-${{ steps.rust-toolchain.outputs.channel }}-test-
+
+      - run: cargo +"$TOOLCHAIN_NAME" test --workspace --locked
+        env:
+          TOOLCHAIN_NAME: ${{ steps.rust-toolchain.outputs.channel }}
+
+  clippy:
+    name: clippy
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - run: |
+          sudo apt update
+          sudo apt install yasm libgtk-3-dev libasound2-dev libopenh264-dev -y
+
+      - id: rust-toolchain
+        shell: bash
+        run: |
+          channel="$(yq -p toml -o yaml -er '.toolchain.channel' rust-toolchain.toml)"
+          printf 'channel=%s\n' "$channel" >> "$GITHUB_OUTPUT"
+
+      - uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c
+        with:
+          toolchain: ${{ steps.rust-toolchain.outputs.channel }}
+          components: clippy
+
+      - uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c
+        with:
+          toolchain: nightly-2024-11-22
+          components: "rust-src,rustc-dev,llvm-tools-preview"
+
+      - id: get-month
+        run: |
+          echo "month=$(/bin/date -u '+%Y%m')" >> "$GITHUB_OUTPUT"
+        shell: bash
+
+      - uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+          key: ${{ runner.os }}-cargo-${{ steps.get-month.outputs.month }}
+
+      - run: cargo +"$TOOLCHAIN_NAME" fetch
+        env:
+          TOOLCHAIN_NAME: ${{ steps.rust-toolchain.outputs.channel }}
+
+      - uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
+        with:
+          path: |
+            target/
+            target_for_shaders/
+          key: ${{ runner.os }}-cargo-${{ steps.rust-toolchain.outputs.channel }}-clippy-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-${{ steps.rust-toolchain.outputs.channel }}-clippy-
+
+      - run: cargo +"$TOOLCHAIN_NAME" clippy --workspace --tests --locked -- -D warnings
+        env:
+          TOOLCHAIN_NAME: ${{ steps.rust-toolchain.outputs.channel }}
+
+  rustfmt:
+    name: rustfmt
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c
+        with:
+          toolchain: nightly
+          components: rustfmt
+
+      - run: cargo +nightly fmt --all --check
+
+  taplo:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c
+        with:
+          toolchain: stable
+
+      - id: taplo-version
+        run: |
+          set -euo pipefail
+          version="$(cargo metadata --no-deps --format-version 1 | jq -er '.metadata["cargo-binaries"]["taplo-cli"]')"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "taplo-cli ${version}"
+
+      - id: cache-taplo
+        uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
+        with:
+          path: |
+            ~/.cargo/bin/taplo
+          key: ${{ runner.os }}-taplo-${{ steps.taplo-version.outputs.version }}
+
+      - if: steps.cache-taplo.outputs.cache-hit != 'true'
+        run: cargo install taplo-cli --version "$TAPLO_CLI_VERSION" --locked
+        env:
+          TAPLO_CLI_VERSION: ${{ steps.taplo-version.outputs.version }}
+
+      - run: taplo fmt --check
+
+  github-actions-lint:
+    name: GitHub Actions Lint
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    timeout-minutes: 10
+    env:
+      GHALINT_VERSION: v1.5.6
+      ACTIONLINT_VERSION: v1.7.12
+
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.27.1"
+          cache: false
+
+      - run: |
+          go install "github.com/suzuki-shunsuke/ghalint/cmd/ghalint@${GHALINT_VERSION}"
+          go install "github.com/rhysd/actionlint/cmd/actionlint@${ACTIONLINT_VERSION}"
+
+      - run: actionlint -color
+
+      - if: ${{ !cancelled() }}
+        uses: zizmorcore/zizmor-action@70fb788f84895a7701f5643d103d587e460b5c99 # v0.6.3
+        with:
+          advanced-security: false
+          version: 1.25.2
+
+      - if: ${{ !cancelled() }}
+        run: ghalint run
+        env:
+          GHALINT_LOG_COLOR: always
+          GITHUB_TOKEN: ${{ github.token }}

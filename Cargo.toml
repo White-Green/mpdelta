@@ -1,115 +1,129 @@
 [workspace]
 resolver = "2"
 
-members = [
-    "mpdelta",
-    "mpdelta_audio_mixer",
-    "mpdelta_build_utils/rust_gpu_builder",
-    "mpdelta_build_utils/shader_builder",
-    "mpdelta_common/mpdelta_async_runtime",
-    "mpdelta_common/mpdelta_dsp",
-    "mpdelta_common/mpdelta_ffmpeg",
-    "mpdelta_common/mpdelta_message_router",
-    "mpdelta_components/common",
-    "mpdelta_components/multimedia_loader",
-    "mpdelta_components/parameters",
-    "mpdelta_components/rectangle",
-    "mpdelta_components/sine_audio",
-    "mpdelta_components/text_renderer",
-    "mpdelta_components/text_renderer/shader",
-    "mpdelta_core",
-    "mpdelta_core_audio",
-    "mpdelta_core_test_util",
-    "mpdelta_core_vulkano",
-    "mpdelta_differential",
-    "mpdelta_gui",
-    "mpdelta_gui_audio_player_cpal",
-    "mpdelta_gui_wgpu",
-    "mpdelta_multimedia",
-    "mpdelta_multimedia_encoder_ffmpeg",
-    "mpdelta_processor_cache_moka",
-    "mpdelta_project_serialize",
-    "mpdelta_renderer",
-    "mpdelta_rendering_controller",
-    "mpdelta_services",
-    "mpdelta_video_renderer_vulkano",
-    "mpdelta_video_renderer_vulkano/shaders/composite_operation",
-    "mpdelta_video_renderer_vulkano/shaders/texture_drawing",
-]
 default-members = [
-    "mpdelta",
-    "mpdelta_audio_mixer",
-    "mpdelta_build_utils/shader_builder",
-    "mpdelta_common/mpdelta_async_runtime",
-    "mpdelta_common/mpdelta_dsp",
-    "mpdelta_common/mpdelta_ffmpeg",
-    "mpdelta_common/mpdelta_message_router",
-    "mpdelta_components/common",
-    "mpdelta_components/multimedia_loader",
-    "mpdelta_components/parameters",
-    "mpdelta_components/rectangle",
-    "mpdelta_components/sine_audio",
-    "mpdelta_components/text_renderer",
-    "mpdelta_core",
-    "mpdelta_core_audio",
-    "mpdelta_core_test_util",
-    "mpdelta_core_vulkano",
-    "mpdelta_differential",
-    "mpdelta_gui",
-    "mpdelta_gui_audio_player_cpal",
-    "mpdelta_gui_wgpu",
-    "mpdelta_multimedia",
-    "mpdelta_multimedia_encoder_ffmpeg",
-    "mpdelta_processor_cache_moka",
-    "mpdelta_project_serialize",
-    "mpdelta_services",
-    "mpdelta_renderer",
-    "mpdelta_rendering_controller",
-    "mpdelta_video_renderer_vulkano",
+  "mpdelta",
+  "mpdelta_audio_mixer",
+  "mpdelta_build_utils/shader_builder",
+  "mpdelta_common/mpdelta_async_runtime",
+  "mpdelta_common/mpdelta_dsp",
+  "mpdelta_common/mpdelta_ffmpeg",
+  "mpdelta_common/mpdelta_message_router",
+  "mpdelta_components/common",
+  "mpdelta_components/multimedia_loader",
+  "mpdelta_components/parameters",
+  "mpdelta_components/rectangle",
+  "mpdelta_components/sine_audio",
+  "mpdelta_components/text_renderer",
+  "mpdelta_core",
+  "mpdelta_core_audio",
+  "mpdelta_core_test_util",
+  "mpdelta_core_vulkano",
+  "mpdelta_differential",
+  "mpdelta_gui",
+  "mpdelta_gui_audio_player_cpal",
+  "mpdelta_gui_wgpu",
+  "mpdelta_multimedia",
+  "mpdelta_multimedia_encoder_ffmpeg",
+  "mpdelta_processor_cache_moka",
+  "mpdelta_project_serialize",
+  "mpdelta_renderer",
+  "mpdelta_rendering_controller",
+  "mpdelta_services",
+  "mpdelta_video_renderer_vulkano",
+]
+members = [
+  "mpdelta",
+  "mpdelta_audio_mixer",
+  "mpdelta_build_utils/rust_gpu_builder",
+  "mpdelta_build_utils/shader_builder",
+  "mpdelta_common/mpdelta_async_runtime",
+  "mpdelta_common/mpdelta_dsp",
+  "mpdelta_common/mpdelta_ffmpeg",
+  "mpdelta_common/mpdelta_message_router",
+  "mpdelta_components/common",
+  "mpdelta_components/multimedia_loader",
+  "mpdelta_components/parameters",
+  "mpdelta_components/rectangle",
+  "mpdelta_components/sine_audio",
+  "mpdelta_components/text_renderer",
+  "mpdelta_components/text_renderer/shader",
+  "mpdelta_core",
+  "mpdelta_core_audio",
+  "mpdelta_core_test_util",
+  "mpdelta_core_vulkano",
+  "mpdelta_differential",
+  "mpdelta_gui",
+  "mpdelta_gui_audio_player_cpal",
+  "mpdelta_gui_wgpu",
+  "mpdelta_multimedia",
+  "mpdelta_multimedia_encoder_ffmpeg",
+  "mpdelta_processor_cache_moka",
+  "mpdelta_project_serialize",
+  "mpdelta_renderer",
+  "mpdelta_rendering_controller",
+  "mpdelta_services",
+  "mpdelta_video_renderer_vulkano",
+  "mpdelta_video_renderer_vulkano/shaders/composite_operation",
+  "mpdelta_video_renderer_vulkano/shaders/texture_drawing",
 ]
 
 [workspace.package]
-version = "0.1.0"
-edition = "2021"
 authors = ["White-Green"]
+edition = "2021"
+version = "0.1.0"
+
+[workspace.metadata.cargo-binaries]
+taplo-cli = "0.10.0"
 
 [workspace.dependencies]
 arc-swap = "1.7.1"
-arrayvec = { version = "0.7.6", default-features = false }
-ash = { version = "0.38.0", features = ["linked"] }
+arrayvec = { default-features = false, version = "0.7.6" }
+ash = { features = ["linked"], version = "0.38.0" }
 assert_matches = "1.5.0"
 async-trait = "0.1.86"
 bitflags = "2.8.0"
 bytemuck = "1.21.0"
 bytemuck_derive = "1.8.1"
-cgmath = { version = "0.18.0", features = ["serde"] }
+cgmath = { features = ["serde"], version = "0.18.0" }
 ciborium = "0.2.2"
-clap = { version = "4.5.30", default-features = false, features = ["derive", "std"] }
+clap = { default-features = false, features = [
+  "derive",
+  "std",
+], version = "4.5.30" }
 cpal = "0.15.3"
 crossbeam-queue = { version = "0.3.12" }
-crossbeam-utils = { version = "0.8.21", default-features = false }
+crossbeam-utils = { default-features = false, version = "0.8.21" }
 dashmap = "6.1.0"
-dyn-eq = { version = "0.1.3", default-features = false }
+dyn-eq = { default-features = false, version = "0.1.3" }
 dyn-hash = "0.2.1"
-eframe = { version = "0.31.1", features = ["wgpu"] }
-egui = { version = "0.31.1", default-features = false }
-egui_image_renderer = { git = "https://github.com/White-Green/egui_image_renderer", rev = "affa8a16e06240e92e86ef131989f01dffca38e9" }
+eframe = { features = ["wgpu"], version = "0.31.1" }
+egui = { default-features = false, version = "0.31.1" }
 egui-wgpu = { version = "0.31.1" }
+egui_image_renderer = { git = "https://github.com/White-Green/egui_image_renderer", rev = "affa8a16e06240e92e86ef131989f01dffca38e9" }
 emath = "0.31.1"
-erased-serde = { version = "0.4.5", features = ["alloc"], default-features = false }
-ffmpeg-next = { version = "7.1.0", default-features = false, features = ["format", "software-resampling", "software-scaling"] }
-ffmpeg-sys-next = { version = "7.1.0", default-features = false, features = ["static"] }
+erased-serde = { default-features = false, features = [
+  "alloc",
+], version = "0.4.5" }
+ffmpeg-next = { default-features = false, features = [
+  "format",
+  "software-resampling",
+  "software-scaling",
+], version = "7.1.0" }
+ffmpeg-sys-next = { default-features = false, features = [
+  "static",
+], version = "7.1.0" }
 font-kit = "0.14.2"
-futures = { version = "0.3.31", default-features = false }
-glam = { version = "0.30.3", features = ["libm"], default-features = false }
+futures = { default-features = false, version = "0.3.31" }
+glam = { default-features = false, features = ["libm"], version = "0.30.3" }
 hound = "3.5.1"
 icu_properties = "2.0.0"
 icu_segmenter = "2.0.0"
-image = { version = "0.25.5", features = ["png"], default-features = false }
+image = { default-features = false, features = ["png"], version = "0.25.5" }
 indexmap = "2.7.1"
-lyon_tessellation = { version = "1.0.15", default-features = false }
+lyon_tessellation = { default-features = false, version = "1.0.15" }
 memmap2 = "0.9.5"
-moka = { version = "0.12.10", features = ["future"], default-features = false }
+moka = { default-features = false, features = ["future"], version = "0.12.10" }
 mpdelta_async_runtime = { path = "mpdelta_common/mpdelta_async_runtime" }
 mpdelta_audio_mixer = { path = "mpdelta_audio_mixer" }
 mpdelta_component_common = { path = "mpdelta_components/common" }
@@ -137,41 +151,54 @@ mpdelta_renderer = { path = "mpdelta_renderer" }
 mpdelta_rendering_controller = { path = "mpdelta_rendering_controller" }
 mpdelta_services = { path = "mpdelta_services" }
 mpdelta_video_renderer_vulkano = { path = "mpdelta_video_renderer_vulkano" }
-nalgebra = { version = "0.33.2", features = ["sparse", "std"], default-features = false }
-num = { version = "0.4.3", default-features = false }
-ordered-float = { version = "5.0.0", default-features = false }
-phf = { version = "0.11.3", features = ["macros"], default-features = false }
-proptest = { version = "1.6.0", features = ["std"], default-features = false }
+nalgebra = { default-features = false, features = [
+  "sparse",
+  "std",
+], version = "0.33.2" }
+num = { default-features = false, version = "0.4.3" }
+ordered-float = { default-features = false, version = "5.0.0" }
+phf = { default-features = false, features = ["macros"], version = "0.11.3" }
+proptest = { default-features = false, features = ["std"], version = "1.6.0" }
 proptest-derive = "0.5.1"
 rayon = "1.10.0"
 regex = "1.11.1"
-rfd = { version = "0.15.2", features = ["file-handle-inner", "gtk3"], default-features = false }
-rpds = { git = "https://github.com/White-Green/rpds", rev = "5d99c47f2a3ca2084ad85e66cbe37010191e853a", default-features = false }
-serde = { version = "1.0.218", default-features = false }
-serde_repr = "0.1.19"
+rfd = { default-features = false, features = [
+  "file-handle-inner",
+  "gtk3",
+], version = "0.15.2" }
+rpds = { default-features = false, git = "https://github.com/White-Green/rpds", rev = "5d99c47f2a3ca2084ad85e66cbe37010191e853a" }
+serde = { default-features = false, version = "1.0.218" }
 serde_json = "1.0.139"
+serde_repr = "0.1.19"
 shader_builder = { path = "mpdelta_build_utils/shader_builder" }
 smallvec = "1.14"
-spirv-builder = { version = "0.9.0", default-features = false, features = ["use-compiled-tools"] }
+spirv-builder = { default-features = false, features = [
+  "use-compiled-tools",
+], version = "0.9.0" }
 spirv-std = "0.9.0"
-swash = { version = "0.2.0", features = ["scale", "std"], default-features = false }
+swash = { default-features = false, features = [
+  "scale",
+  "std",
+], version = "0.2.0" }
 thiserror = "2.0.11"
 time = "0.3.37"
-tokio = { version = "1.43.0", features = ["fs", "macros", "time"] }
-uuid = { version = "1.14.0", default-features = false }
-vulkano = { version = "0.35.1", default-features = false }
+tokio = { features = ["fs", "macros", "time"], version = "1.43.0" }
+uuid = { default-features = false, version = "1.14.0" }
+vulkano = { default-features = false, version = "0.35.1" }
 vulkano-util = "0.35.0"
-wgpu = { version = "24.0.3", default-features = false, features = ["vulkan-portability"] }
-winit = { version = "0.30.10", default-features = false }
+wgpu = { default-features = false, features = [
+  "vulkan-portability",
+], version = "24.0.3" }
+winit = { default-features = false, version = "0.30.10" }
 
 [patch.crates-io]
-ffmpeg-sys-next = { git = "https://github.com/White-Green/rust-ffmpeg-sys", branch = "ffmpeg7.1" }
+ffmpeg-sys-next = { branch = "ffmpeg7.1", git = "https://github.com/White-Green/rust-ffmpeg-sys" }
 spirv-builder = { git = "https://github.com/Rust-GPU/rust-gpu", rev = "6d7c1cd6c0920500a3fa8c01c23e7b74302c15c4" }
 spirv-std = { git = "https://github.com/Rust-GPU/rust-gpu", rev = "6d7c1cd6c0920500a3fa8c01c23e7b74302c15c4" }
 
 [profile.dev]
-opt-level = 3
 incremental = false
+opt-level = 3
 
 [profile.release]
 incremental = false

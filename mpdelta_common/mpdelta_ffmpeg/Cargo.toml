@@ -1,8 +1,8 @@
 [package]
+authors = { workspace = true }
+edition = { workspace = true }
 name = "mpdelta_ffmpeg"
 version = { workspace = true }
-edition = { workspace = true }
-authors = { workspace = true }
 
 [dependencies]
 bitflags = { workspace = true }
@@ -12,4 +12,8 @@ mpdelta_multimedia = { workspace = true }
 thiserror = { workspace = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
-ffmpeg-sys-next = { workspace = true, features = ["build", "build-zlib", "build-lib-openh264"] }
+ffmpeg-sys-next = { features = [
+  "build",
+  "build-lib-openh264",
+  "build-zlib",
+], workspace = true }

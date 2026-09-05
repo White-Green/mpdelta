@@ -1,8 +1,8 @@
 [package]
+authors = { workspace = true }
+edition = { workspace = true }
 name = "mpdelta_component_multimedia_loader"
 version = { workspace = true }
-edition = { workspace = true }
-authors = { workspace = true }
 
 [dependencies]
 arrayvec = { workspace = true }
@@ -23,4 +23,4 @@ vulkano = { workspace = true }
 
 [dev-dependencies]
 hound = { workspace = true }
-mpdelta_dsp = { workspace = true, features = ["formal_test"] }
+mpdelta_dsp = { features = ["formal_test"], workspace = true }

@@ -1,8 +1,8 @@
 [package]
+authors = { workspace = true }
+edition = { workspace = true }
 name = "mpdelta_renderer"
 version = { workspace = true }
-edition = { workspace = true }
-authors = { workspace = true }
 
 [dependencies]
 arc-swap = { workspace = true }
@@ -17,9 +17,9 @@ rayon = { workspace = true }
 rpds = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }
-tokio = { workspace = true, features = ["rt", "macros"] }
+tokio = { features = ["macros", "rt"], workspace = true }
 
 [dev-dependencies]
 assert_matches = { workspace = true }
 mpdelta_core_test_util = { workspace = true }
-tokio = { workspace = true, features = ["rt-multi-thread"] }
+tokio = { features = ["rt-multi-thread"], workspace = true }

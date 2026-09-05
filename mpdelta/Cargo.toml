@@ -1,15 +1,15 @@
 [package]
+authors = { workspace = true }
+edition = { workspace = true }
 name = "mpdelta"
 version = { workspace = true }
-edition = { workspace = true }
-authors = { workspace = true }
 
 [dependencies]
 ash = { workspace = true }
 async-trait = { workspace = true }
 cpal = { workspace = true }
 futures = { workspace = true }
-mpdelta_async_runtime = { workspace = true, features = ["tokio"] }
+mpdelta_async_runtime = { features = ["tokio"], workspace = true }
 mpdelta_audio_mixer = { workspace = true }
 mpdelta_component_multimedia_loader = { workspace = true }
 mpdelta_component_parameters = { workspace = true }
@@ -29,7 +29,7 @@ mpdelta_renderer = { workspace = true }
 mpdelta_rendering_controller = { workspace = true }
 mpdelta_services = { workspace = true }
 mpdelta_video_renderer_vulkano = { workspace = true }
-tokio = { workspace = true, features = ["rt-multi-thread"] }
+tokio = { features = ["rt-multi-thread"], workspace = true }
 vulkano = { workspace = true }
 wgpu = { workspace = true }
 winit = { workspace = true }

@@ -1,8 +1,8 @@
 [package]
+authors = { workspace = true }
+edition = { workspace = true }
 name = "mpdelta_project_serialize"
 version = { workspace = true }
-edition = { workspace = true }
-authors = { workspace = true }
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -11,7 +11,7 @@ async-trait = { workspace = true }
 cgmath = { workspace = true }
 ciborium = { workspace = true }
 erased-serde = { workspace = true }
-futures = { workspace = true, features = ["alloc"] }
+futures = { features = ["alloc"], workspace = true }
 mpdelta_core = { workspace = true }
 mpdelta_differential = { workspace = true }
 rayon = { workspace = true }
@@ -19,10 +19,10 @@ rpds = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
-tokio = { workspace = true, features = ["rt"] }
-uuid = { workspace = true, features = ["serde"] }
+tokio = { features = ["rt"], workspace = true }
+uuid = { features = ["serde"], workspace = true }
 
 [dev-dependencies]
-mpdelta_core = { workspace = true, features = ["proptest"] }
+mpdelta_core = { features = ["proptest"], workspace = true }
 proptest = { workspace = true }
 proptest-derive = { workspace = true }

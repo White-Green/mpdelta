@@ -1,23 +1,25 @@
 [package]
+authors = { workspace = true }
+edition = { workspace = true }
 name = "shader_font_rendering"
 version = { workspace = true }
-edition = { workspace = true }
-authors = { workspace = true }
 
 [lib]
-crate-type = ["rlib", "dylib"]
+crate-type = ["dylib", "rlib"]
 
 [dependencies]
 bytemuck = { workspace = true }
 bytemuck_derive = { workspace = true }
-glam = { workspace = true, features = ["bytemuck"] }
-spirv-std = { workspace = true, optional = true }
-vulkano = { workspace = true, optional = true }
+glam = { features = ["bytemuck"], workspace = true }
+spirv-std = { optional = true, workspace = true }
+vulkano = { optional = true, workspace = true }
 
 [features]
+default = ["shader"]
 shader = ["dep:spirv-std"]
 vulkano = ["dep:vulkano"]
-default = ["shader"]
 
 [lints.rust]
-unexpected_cfgs = { level = "deny", check-cfg = ['cfg(target_arch, values("spirv"))'] }
+unexpected_cfgs = { check-cfg = [
+  'cfg(target_arch, values("spirv"))',
+], level = "deny" }

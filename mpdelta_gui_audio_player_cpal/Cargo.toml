@@ -1,8 +1,8 @@
 [package]
+authors = { workspace = true }
+edition = { workspace = true }
 name = "mpdelta_gui_audio_player_cpal"
 version = { workspace = true }
-edition = { workspace = true }
-authors = { workspace = true }
 
 [dependencies]
 cpal = { workspace = true }
@@ -13,10 +13,10 @@ mpdelta_core_audio = { workspace = true }
 mpdelta_dsp = { workspace = true }
 mpdelta_gui = { workspace = true }
 thiserror = { workspace = true }
-tokio = { workspace = true, features = ["rt"] }
+tokio = { features = ["rt"], workspace = true }
 
 [target.'cfg(loom)'.dependencies]
 loom = "0.7.2"
 
 [lints.rust]
-unexpected_cfgs = { level = "deny", check-cfg = ['cfg(loom)'] }
+unexpected_cfgs = { check-cfg = ['cfg(loom)'], level = "deny" }

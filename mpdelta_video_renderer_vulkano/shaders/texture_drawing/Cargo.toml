@@ -1,19 +1,21 @@
 [package]
+authors = { workspace = true }
+edition = { workspace = true }
 name = "shader_texture_drawing"
 version = { workspace = true }
-edition = { workspace = true }
-authors = { workspace = true }
 
 [lib]
-crate-type = ["rlib", "dylib"]
+crate-type = ["dylib", "rlib"]
 
 [dependencies]
 bytemuck = { workspace = true }
-spirv-std = { workspace = true, optional = true }
+spirv-std = { optional = true, workspace = true }
 
 [features]
-shader = ["spirv-std"]
 default = ["shader"]
+shader = ["spirv-std"]
 
 [lints.rust]
-unexpected_cfgs = { level = "deny", check-cfg = ['cfg(target_arch, values("spirv"))'] }
+unexpected_cfgs = { check-cfg = [
+  'cfg(target_arch, values("spirv"))',
+], level = "deny" }

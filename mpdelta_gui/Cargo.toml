@@ -1,8 +1,8 @@
 [package]
+authors = { workspace = true }
+edition = { workspace = true }
 name = "mpdelta_gui"
 version = { workspace = true }
-edition = { workspace = true }
-authors = { workspace = true }
 
 [dependencies]
 arc-swap = { workspace = true }
@@ -24,6 +24,6 @@ tokio = { workspace = true }
 
 [dev-dependencies]
 egui_image_renderer = { workspace = true }
-mpdelta_async_runtime = { workspace = true, features = ["tokio"] }
+mpdelta_async_runtime = { features = ["tokio"], workspace = true }
 mpdelta_core_test_util = { workspace = true }
-tokio = { workspace = true, features = ["rt-multi-thread"] }
+tokio = { features = ["rt-multi-thread"], workspace = true }

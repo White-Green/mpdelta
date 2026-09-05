@@ -9,26 +9,39 @@ jobs:
   rustdoc:
     name: rustdoc
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    timeout-minutes: 30
+
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
       - run: |
           sudo apt update
           sudo apt install yasm libgtk-3-dev libasound2-dev libopenh264-dev -y
-      - uses: dtolnay/rust-toolchain@nightly
+
+      - uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c
         id: main_toolchain
         with:
+          toolchain: nightly
           components: clippy
+
       - id: main_toolchain_version
-        run: echo "rustc_version=$(rustc --version | sed -e s/\(.*\)//g)" >> $GITHUB_OUTPUT
-      - uses: dtolnay/rust-toolchain@master
+        run: echo "rustc_version=$(rustc --version | sed -e 's/(.*)//g')" >> "$GITHUB_OUTPUT"
+
+      - uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c
         with:
           toolchain: nightly-2024-11-22
           components: "rust-src,rustc-dev,llvm-tools-preview"
+
       - id: get-month
         run: |
-          echo "month=$(/bin/date -u "+%Y%m")" >> $GITHUB_OUTPUT
+          echo "month=$(/bin/date -u '+%Y%m')" >> "$GITHUB_OUTPUT"
         shell: bash
-      - uses: actions/cache@v4
+
+      - uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
         with:
           path: |
             ~/.cargo/bin/
@@ -36,7 +49,10 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
           key: ${{ runner.os }}-cargo-${{ steps.get-month.outputs.month }}
-      - uses: actions/cache@v4
+
+      - run: cargo +nightly fetch
+
+      - uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
         with:
           path: |
             target/
@@ -44,8 +60,10 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ steps.main_toolchain_version.outputs.rustc_version }}-doc-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-${{ steps.main_toolchain_version.outputs.rustc_version }}-doc-
-      - run: RUSTDOCFLAGS="--enable-index-page" cargo +${{ steps.main_toolchain.outputs.name }} doc --locked --workspace --document-private-items --no-deps -Zrustdoc-map
-      - uses: actions/upload-pages-artifact@v3
+
+      - run: RUSTDOCFLAGS="--enable-index-page" cargo +nightly doc --locked --workspace --document-private-items --no-deps -Zrustdoc-map
+
+      - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3.0.1
         with:
           path: target/doc
 
@@ -59,8 +77,9 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: rustdoc
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4.0.5

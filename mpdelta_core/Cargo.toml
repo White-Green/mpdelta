@@ -1,8 +1,8 @@
 [package]
+authors = { workspace = true }
+edition = { workspace = true }
 name = "mpdelta_core"
 version = { workspace = true }
-edition = { workspace = true }
-authors = { workspace = true }
 
 [dependencies]
 arc-swap = { workspace = true }
@@ -13,14 +13,14 @@ dyn-hash = { workspace = true }
 erased-serde = { workspace = true }
 futures = { workspace = true }
 num = { workspace = true }
-proptest = { workspace = true, optional = true }
-proptest-derive = { workspace = true, optional = true }
+proptest = { optional = true, workspace = true }
+proptest-derive = { optional = true, workspace = true }
 rpds = { workspace = true }
 serde = { workspace = true }
 serde_repr = { workspace = true }
 thiserror = { workspace = true }
-tokio = { workspace = true, features = ["sync"] }
-uuid = { workspace = true, features = ["serde"] }
+tokio = { features = ["sync"], workspace = true }
+uuid = { features = ["serde"], workspace = true }
 
 [dev-dependencies]
 proptest = { workspace = true }

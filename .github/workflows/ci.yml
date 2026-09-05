@@ -71,21 +71,24 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-${{ steps.rust-toolchain.outputs.channel }}-test-
 
-      - id: cargo-vcpkg-version
+      - name: Get cargo-vcpkg version
+        id: cargo-vcpkg-version
         run: |
           set -euo pipefail
           version="$(cargo metadata --no-deps --format-version 1 | jq -er '.metadata["cargo-binaries"]["cargo-vcpkg"]')"
           echo "version=${version}" >> "$GITHUB_OUTPUT"
           echo "cargo-vcpkg ${version}"
 
-      - id: cache-cargo-vcpkg
+      - name: Cache cargo-vcpkg
+        id: cache-cargo-vcpkg
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/.cargo/bin/cargo-vcpkg
           key: ${{ runner.os }}-cargo-vcpkg-${{ steps.cargo-vcpkg-version.outputs.version }}
 
-      - if: steps.cache-cargo-vcpkg.outputs.cache-hit != 'true'
+      - name: Install cargo-vcpkg if cache miss
+        if: steps.cache-cargo-vcpkg.outputs.cache-hit != 'true'
         run: cargo install cargo-vcpkg --version "$CARGO_VCPKG_VERSION" --locked
         env:
           CARGO_VCPKG_VERSION: ${{ steps.cargo-vcpkg-version.outputs.version }}
@@ -178,21 +181,24 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-${{ steps.rust-toolchain.outputs.channel }}-clippy-
 
-      - id: cargo-vcpkg-version
+      - name: Get cargo-vcpkg version
+        id: cargo-vcpkg-version
         run: |
           set -euo pipefail
           version="$(cargo metadata --no-deps --format-version 1 | jq -er '.metadata["cargo-binaries"]["cargo-vcpkg"]')"
           echo "version=${version}" >> "$GITHUB_OUTPUT"
           echo "cargo-vcpkg ${version}"
 
-      - id: cache-cargo-vcpkg
+      - name: Cache cargo-vcpkg
+        id: cache-cargo-vcpkg
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/.cargo/bin/cargo-vcpkg
           key: ${{ runner.os }}-cargo-vcpkg-${{ steps.cargo-vcpkg-version.outputs.version }}
 
-      - if: steps.cache-cargo-vcpkg.outputs.cache-hit != 'true'
+      - name: Install cargo-vcpkg if cache miss
+        if: steps.cache-cargo-vcpkg.outputs.cache-hit != 'true'
         run: cargo install cargo-vcpkg --version "$CARGO_VCPKG_VERSION" --locked
         env:
           CARGO_VCPKG_VERSION: ${{ steps.cargo-vcpkg-version.outputs.version }}

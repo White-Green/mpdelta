@@ -14,34 +14,41 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - run: |
+      - name: Install dependencies
+        run: |
           sudo apt update
           sudo apt install yasm libgtk-3-dev libasound2-dev libopenh264-dev -y
 
-      - uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c
         id: main_toolchain
         with:
           toolchain: nightly
           components: clippy
 
-      - id: main_toolchain_version
+      - name: Get rustc version
+        id: main_toolchain_version
         run: echo "rustc_version=$(rustc --version | sed -e 's/(.*)//g')" >> "$GITHUB_OUTPUT"
 
-      - uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c
+      - name: Install Rust toolchain for Rust-GPU shader build
+        uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c
         with:
           toolchain: nightly-2024-11-22
           components: "rust-src,rustc-dev,llvm-tools-preview"
 
-      - id: get-month
+      - name: Get current month
+        id: get-month
         run: |
           echo "month=$(/bin/date -u '+%Y%m')" >> "$GITHUB_OUTPUT"
         shell: bash
 
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      - name: Cache cargo registry and index
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/.cargo/bin/
@@ -50,9 +57,11 @@ jobs:
             ~/.cargo/git/db/
           key: ${{ runner.os }}-cargo-${{ steps.get-month.outputs.month }}
 
-      - run: cargo +nightly fetch
+      - name: Cargo fetch
+        run: cargo +nightly fetch
 
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      - name: Cache target
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             target/
@@ -61,9 +70,11 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-${{ steps.main_toolchain_version.outputs.rustc_version }}-doc-
 
-      - run: RUSTDOCFLAGS="--enable-index-page" cargo +nightly doc --locked --workspace --document-private-items --no-deps -Zrustdoc-map
+      - name: Build documentation
+        run: RUSTDOCFLAGS="--enable-index-page" cargo +nightly doc --locked --workspace --document-private-items --no-deps -Zrustdoc-map
 
-      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
           path: target/doc
 

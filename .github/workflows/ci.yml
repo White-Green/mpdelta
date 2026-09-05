@@ -11,36 +11,43 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - run: |
+      - name: Install dependencies
+        run: |
           sudo apt update
           sudo apt install yasm libgtk-3-dev libasound2-dev libopenh264-dev mesa-vulkan-drivers libvulkan-dev -y
 
-      - id: rust-toolchain
+      - name: Read Rust toolchain channel
+        id: rust-toolchain
         shell: bash
         run: |
           channel="$(yq -p toml -o yaml -er '.toolchain.channel' rust-toolchain.toml)"
           printf 'channel=%s\n' "$channel" >> "$GITHUB_OUTPUT"
 
-      - uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c
         with:
           toolchain: ${{ steps.rust-toolchain.outputs.channel }}
           components: clippy
 
-      - uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c
+      - name: Install Rust toolchain for Rust-GPU shader build
+        uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c
         with:
           toolchain: nightly-2024-11-22
           components: "rust-src,rustc-dev,llvm-tools-preview"
 
-      - id: get-month
+      - name: Get current month
+        id: get-month
         run: |
           echo "month=$(/bin/date -u '+%Y%m')" >> "$GITHUB_OUTPUT"
         shell: bash
 
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      - name: Cache cargo registry and index
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/.cargo/bin/
@@ -49,11 +56,13 @@ jobs:
             ~/.cargo/git/db/
           key: ${{ runner.os }}-cargo-${{ steps.get-month.outputs.month }}
 
-      - run: cargo +"$TOOLCHAIN_NAME" fetch
+      - name: Cargo fetch
+        run: cargo +"$TOOLCHAIN_NAME" fetch
         env:
           TOOLCHAIN_NAME: ${{ steps.rust-toolchain.outputs.channel }}
 
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      - name: Cache target
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             target/
@@ -62,7 +71,8 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-${{ steps.rust-toolchain.outputs.channel }}-test-
 
-      - run: cargo +"$TOOLCHAIN_NAME" test --workspace --locked
+      - name: Run tests
+        run: cargo +"$TOOLCHAIN_NAME" test --workspace --locked
         env:
           TOOLCHAIN_NAME: ${{ steps.rust-toolchain.outputs.channel }}
 
@@ -74,36 +84,43 @@ jobs:
     timeout-minutes: 20
 
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - run: |
+      - name: Install dependencies
+        run: |
           sudo apt update
           sudo apt install yasm libgtk-3-dev libasound2-dev libopenh264-dev -y
 
-      - id: rust-toolchain
+      - name: Read Rust toolchain channel
+        id: rust-toolchain
         shell: bash
         run: |
           channel="$(yq -p toml -o yaml -er '.toolchain.channel' rust-toolchain.toml)"
           printf 'channel=%s\n' "$channel" >> "$GITHUB_OUTPUT"
 
-      - uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c
         with:
           toolchain: ${{ steps.rust-toolchain.outputs.channel }}
           components: clippy
 
-      - uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c
+      - name: Install Rust toolchain for Rust-GPU shader build
+        uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c
         with:
           toolchain: nightly-2024-11-22
           components: "rust-src,rustc-dev,llvm-tools-preview"
 
-      - id: get-month
+      - name: Get current month
+        id: get-month
         run: |
           echo "month=$(/bin/date -u '+%Y%m')" >> "$GITHUB_OUTPUT"
         shell: bash
 
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      - name: Cache cargo registry and index
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/.cargo/bin/
@@ -112,11 +129,13 @@ jobs:
             ~/.cargo/git/db/
           key: ${{ runner.os }}-cargo-${{ steps.get-month.outputs.month }}
 
-      - run: cargo +"$TOOLCHAIN_NAME" fetch
+      - name: Cargo fetch
+        run: cargo +"$TOOLCHAIN_NAME" fetch
         env:
           TOOLCHAIN_NAME: ${{ steps.rust-toolchain.outputs.channel }}
 
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      - name: Cache target
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             target/
@@ -125,7 +144,8 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-${{ steps.rust-toolchain.outputs.channel }}-clippy-
 
-      - run: cargo +"$TOOLCHAIN_NAME" clippy --workspace --tests --locked -- -D warnings
+      - name: Run clippy
+        run: cargo +"$TOOLCHAIN_NAME" clippy --workspace --tests --locked -- -D warnings
         env:
           TOOLCHAIN_NAME: ${{ steps.rust-toolchain.outputs.channel }}
 
@@ -137,16 +157,19 @@ jobs:
     timeout-minutes: 10
 
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c
         with:
           toolchain: nightly
           components: rustfmt
 
-      - run: cargo +nightly fmt --all --check
+      - name: Run rustfmt
+        run: cargo +nightly fmt --all --check
 
   taplo:
     runs-on: ubuntu-latest
@@ -155,34 +178,40 @@ jobs:
     timeout-minutes: 10
 
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c
         with:
           toolchain: stable
 
-      - id: taplo-version
+      - name: Get taplo-cli version
+        id: taplo-version
         run: |
           set -euo pipefail
           version="$(cargo metadata --no-deps --format-version 1 | jq -er '.metadata["cargo-binaries"]["taplo-cli"]')"
           echo "version=${version}" >> "$GITHUB_OUTPUT"
           echo "taplo-cli ${version}"
 
-      - id: cache-taplo
+      - name: Cache taplo-cli
+        id: cache-taplo
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/.cargo/bin/taplo
           key: ${{ runner.os }}-taplo-${{ steps.taplo-version.outputs.version }}
 
-      - if: steps.cache-taplo.outputs.cache-hit != 'true'
+      - name: Install taplo-cli
+        if: steps.cache-taplo.outputs.cache-hit != 'true'
         run: cargo install taplo-cli --version "$TAPLO_CLI_VERSION" --locked
         env:
           TAPLO_CLI_VERSION: ${{ steps.taplo-version.outputs.version }}
 
-      - run: taplo fmt --check
+      - name: Run taplo fmt
+        run: taplo fmt --check
 
   github-actions-lint:
     name: GitHub Actions Lint
@@ -195,28 +224,34 @@ jobs:
       ACTIONLINT_VERSION: v1.7.12
 
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - name: Setup Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: "1.27.1"
           cache: false
 
-      - run: |
+      - name: Install ghalint and actionlint
+        run: |
           go install "github.com/suzuki-shunsuke/ghalint/cmd/ghalint@${GHALINT_VERSION}"
           go install "github.com/rhysd/actionlint/cmd/actionlint@${ACTIONLINT_VERSION}"
 
-      - run: actionlint -color
+      - name: Run actionlint
+        run: actionlint -color
 
-      - if: ${{ !cancelled() }}
+      - name: Run zizmor
+        if: ${{ !cancelled() }}
         uses: zizmorcore/zizmor-action@70fb788f84895a7701f5643d103d587e460b5c99 # v0.6.3
         with:
           advanced-security: false
           version: 1.25.2
 
-      - if: ${{ !cancelled() }}
+      - name: Run ghalint
+        if: ${{ !cancelled() }}
         run: ghalint run
         env:
           GHALINT_LOG_COLOR: always

@@ -59,9 +59,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-${{ steps.main_toolchain_version.outputs.rustc_version }}-doc-
 
-      - run: RUSTDOCFLAGS="--enable-index-page" cargo +"$TOOLCHAIN_NAME" doc --locked --workspace --document-private-items --no-deps -Zrustdoc-map
-        env:
-          TOOLCHAIN_NAME: ${{ steps.main_toolchain.outputs.name }}
+      - run: RUSTDOCFLAGS="--enable-index-page" cargo +nightly doc --locked --workspace --document-private-items --no-deps -Zrustdoc-map
 
       - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3.0.1
         with:

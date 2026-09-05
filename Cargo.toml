@@ -166,7 +166,7 @@ regex = "1.11.1"
 rfd = { default-features = false, features = [
   "file-handle-inner",
   "gtk3",
-], version = "0.15.2" }
+], version = "0.17.0" }
 rpds = { default-features = false, git = "https://github.com/White-Green/rpds", rev = "5d99c47f2a3ca2084ad85e66cbe37010191e853a" }
 serde = { default-features = false, version = "1.0.218" }
 serde_json = "1.0.139"

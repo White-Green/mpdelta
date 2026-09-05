@@ -12,6 +12,6 @@ mpdelta_multimedia = { workspace = true }
 thiserror = { workspace = true }
 
 [package.metadata.vcpkg]
-dependencies = ["ffmpeg[openh264]"]
+dependencies = ["ffmpeg[avcodec,swresample,swscale,openh264]"]
 git = "https://github.com/microsoft/vcpkg"
 rev = "6070d5cb2f818921c10ccdf6f35f3415a2503369"

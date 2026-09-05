@@ -158,7 +158,7 @@ nalgebra = { default-features = false, features = [
 ], version = "0.33.2" }
 num = { default-features = false, version = "0.4.3" }
 ordered-float = { default-features = false, version = "5.0.0" }
-phf = { default-features = false, features = ["macros"], version = "0.11.3" }
+phf = { default-features = false, features = ["macros"], version = "0.14.0" }
 proptest = { default-features = false, features = ["std"], version = "1.6.0" }
 proptest-derive = "0.5.1"
 rayon = "1.10.0"

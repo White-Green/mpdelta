@@ -155,7 +155,7 @@ mpdelta_video_renderer_vulkano = { path = "mpdelta_video_renderer_vulkano" }
 nalgebra = { default-features = false, features = [
   "sparse",
   "std",
-], version = "0.33.2" }
+], version = "0.35.0" }
 num = { default-features = false, version = "0.4.3" }
 ordered-float = { default-features = false, version = "5.0.0" }
 phf = { default-features = false, features = ["macros"], version = "0.14.0" }

@@ -5,6 +5,7 @@
 !/.gitignore
 !/Cargo.lock
 !/Cargo.toml
+!/renovate.json5
 !/rust-toolchain.toml
 !/rustfmt.toml
 !/taplo.toml

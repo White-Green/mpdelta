@@ -160,7 +160,7 @@ num = { default-features = false, version = "0.4.3" }
 ordered-float = { default-features = false, version = "5.0.0" }
 phf = { default-features = false, features = ["macros"], version = "0.14.0" }
 proptest = { default-features = false, features = ["std"], version = "1.6.0" }
-proptest-derive = "0.5.1"
+proptest-derive = "0.8.0"
 rayon = "1.10.0"
 regex = "1.11.1"
 rfd = { default-features = false, features = [

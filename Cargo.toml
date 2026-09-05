@@ -113,7 +113,7 @@ ffmpeg-next = { default-features = false, features = [
 ], version = "7.1.0" }
 ffmpeg-sys-next = { default-features = false, features = [
   "static",
-], version = "7.1.0" }
+], version = "9.0.0" }
 font-kit = "0.14.2"
 futures = { default-features = false, version = "0.3.31" }
 glam = { default-features = false, features = ["libm"], version = "0.30.3" }

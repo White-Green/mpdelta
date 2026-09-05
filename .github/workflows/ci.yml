@@ -49,7 +49,7 @@ jobs:
             ~/.cargo/git/db/
           key: ${{ runner.os }}-cargo-${{ steps.get-month.outputs.month }}
 
-      - run: cargo +"TOOLCHAIN_NAME" fetch
+      - run: cargo +"$TOOLCHAIN_NAME" fetch
         env:
           TOOLCHAIN_NAME: ${{ steps.rust-toolchain.outputs.channel }}
 
@@ -112,7 +112,7 @@ jobs:
             ~/.cargo/git/db/
           key: ${{ runner.os }}-cargo-${{ steps.get-month.outputs.month }}
 
-      - run: cargo +"TOOLCHAIN_NAME" fetch
+      - run: cargo +"$TOOLCHAIN_NAME" fetch
         env:
           TOOLCHAIN_NAME: ${{ steps.rust-toolchain.outputs.channel }}
 

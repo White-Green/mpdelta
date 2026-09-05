@@ -1,8 +1,8 @@
 [package]
+authors = { workspace = true }
+edition = { workspace = true }
 name = "mpdelta_services"
 version = { workspace = true }
-edition = { workspace = true }
-authors = { workspace = true }
 
 [dependencies]
 async-trait = { workspace = true }
@@ -15,8 +15,8 @@ rpds = { workspace = true }
 thiserror = { workspace = true }
 time = { workspace = true }
 tokio = { workspace = true }
-uuid = { workspace = true, features = ["v1", "rng"] }
+uuid = { features = ["rng", "v1"], workspace = true }
 
 [dev-dependencies]
 mpdelta_core_test_util = { workspace = true }
-tokio = { workspace = true, features = ["rt-multi-thread"] }
+tokio = { features = ["rt-multi-thread"], workspace = true }

@@ -1,8 +1,8 @@
 [package]
+authors = { workspace = true }
+edition = { workspace = true }
 name = "mpdelta_component_text_renderer"
 version = { workspace = true }
-edition = { workspace = true }
-authors = { workspace = true }
 
 [dependencies]
 async-trait = { workspace = true }
@@ -27,5 +27,5 @@ shader_builder = { workspace = true }
 
 [dev-dependencies]
 image = { workspace = true }
-tokio = { workspace = true, features = ["rt-multi-thread"] }
+tokio = { features = ["rt-multi-thread"], workspace = true }
 vulkano-util = { workspace = true }

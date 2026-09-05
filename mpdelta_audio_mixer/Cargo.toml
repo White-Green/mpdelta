@@ -1,8 +1,8 @@
 [package]
+authors = { workspace = true }
+edition = { workspace = true }
 name = "mpdelta_audio_mixer"
 version = { workspace = true }
-edition = { workspace = true }
-authors = { workspace = true }
 
 [dependencies]
 mpdelta_core = { workspace = true }
@@ -13,6 +13,6 @@ smallvec = { workspace = true }
 
 [dev-dependencies]
 mpdelta_core_test_util = { workspace = true }
-mpdelta_dsp = { workspace = true, features = ["formal_test"] }
-tokio = { workspace = true, features = ["rt", "macros"] }
+mpdelta_dsp = { features = ["formal_test"], workspace = true }
+tokio = { features = ["macros", "rt"], workspace = true }
 uuid = { workspace = true }

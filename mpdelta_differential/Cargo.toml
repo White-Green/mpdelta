@@ -1,8 +1,8 @@
 [package]
+authors = { workspace = true }
+edition = { workspace = true }
 name = "mpdelta_differential"
 version = { workspace = true }
-edition = { workspace = true }
-authors = { workspace = true }
 
 [dependencies]
 mpdelta_core = { workspace = true }
@@ -11,5 +11,5 @@ thiserror = { workspace = true }
 
 [dev-dependencies]
 mpdelta_core_test_util = { workspace = true }
-tokio = { workspace = true, features = ["rt-multi-thread"] }
+tokio = { features = ["rt-multi-thread"], workspace = true }
 uuid = { workspace = true }

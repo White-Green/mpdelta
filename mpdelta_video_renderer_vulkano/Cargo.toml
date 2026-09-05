@@ -1,19 +1,21 @@
 [package]
+authors = { workspace = true }
+edition = { workspace = true }
 name = "mpdelta_video_renderer_vulkano"
 version = { workspace = true }
-edition = { workspace = true }
-authors = { workspace = true }
 
 
 [dependencies]
 cgmath = { workspace = true }
-glam = { workspace = true }
 futures = { workspace = true }
+glam = { workspace = true }
 mpdelta_core = { workspace = true }
 mpdelta_core_vulkano = { workspace = true }
 mpdelta_renderer = { workspace = true }
-shader_composite_operation = { path = "shaders/composite_operation" , version = "*", default-features = false }
-shader_texture_drawing = { path = "shaders/texture_drawing" , version = "*", features = ["spirv-std"], default-features = false }
+shader_composite_operation = { default-features = false, path = "shaders/composite_operation", version = "*" }
+shader_texture_drawing = { default-features = false, features = [
+  "spirv-std",
+], path = "shaders/texture_drawing", version = "*" }
 smallvec = { workspace = true }
 vulkano = { workspace = true }
 
@@ -21,5 +23,5 @@ vulkano = { workspace = true }
 shader_builder = { workspace = true }
 
 [dev-dependencies]
-tokio = { workspace = true, features = ["rt", "macros"] }
+tokio = { features = ["macros", "rt"], workspace = true }
 vulkano-util = { workspace = true }

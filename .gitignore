@@ -5,6 +5,7 @@
 !/.gitignore
 !/Cargo.lock
 !/Cargo.toml
+!/rust-toolchain.toml
 !/rustfmt.toml
 !/taplo.toml
 !/mpdelta

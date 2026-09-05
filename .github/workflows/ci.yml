@@ -19,13 +19,16 @@ jobs:
           sudo apt update
           sudo apt install yasm libgtk-3-dev libasound2-dev libopenh264-dev mesa-vulkan-drivers libvulkan-dev -y
 
+      - id: rust-toolchain
+        shell: bash
+        run: |
+          channel="$(yq -p toml -o yaml -er '.toolchain.channel' rust-toolchain.toml)"
+          printf 'channel=%s\n' "$channel" >> "$GITHUB_OUTPUT"
+
       - uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c
         with:
-          toolchain: stable
+          toolchain: ${{ steps.rust-toolchain.outputs.channel }}
           components: clippy
-
-      - id: main_toolchain_version
-        run: echo "rustc_version=$(rustc --version | sed -e 's/(.*)//g')" >> "$GITHUB_OUTPUT"
 
       - uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c
         with:
@@ -51,13 +54,13 @@ jobs:
           path: |
             target/
             target_for_shaders/
-          key: ${{ runner.os }}-cargo-${{ steps.main_toolchain_version.outputs.rustc_version }}-test-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-${{ steps.rust-toolchain.outputs.channel }}-test-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-cargo-${{ steps.main_toolchain_version.outputs.rustc_version }}-test-
+            ${{ runner.os }}-cargo-${{ steps.rust-toolchain.outputs.channel }}-test-
 
       - run: cargo +"$TOOLCHAIN_NAME" test --workspace --locked
         env:
-          TOOLCHAIN_NAME: ${{ steps.main_toolchain_version.outputs.rustc_version }}
+          TOOLCHAIN_NAME: ${{ steps.rust-toolchain.outputs.channel }}
 
   clippy:
     name: clippy
@@ -75,13 +78,16 @@ jobs:
           sudo apt update
           sudo apt install yasm libgtk-3-dev libasound2-dev libopenh264-dev -y
 
+      - id: rust-toolchain
+        shell: bash
+        run: |
+          channel="$(yq -p toml -o yaml -er '.toolchain.channel' rust-toolchain.toml)"
+          printf 'channel=%s\n' "$channel" >> "$GITHUB_OUTPUT"
+
       - uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c
         with:
-          toolchain: stable
+          toolchain: ${{ steps.rust-toolchain.outputs.channel }}
           components: clippy
-
-      - id: main_toolchain_version
-        run: echo "rustc_version=$(rustc --version | sed -e 's/(.*)//g')" >> "$GITHUB_OUTPUT"
 
       - uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c
         with:
@@ -107,13 +113,13 @@ jobs:
           path: |
             target/
             target_for_shaders/
-          key: ${{ runner.os }}-cargo-${{ steps.main_toolchain_version.outputs.rustc_version }}-clippy-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-${{ steps.rust-toolchain.outputs.channel }}-clippy-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-cargo-${{ steps.main_toolchain_version.outputs.rustc_version }}-clippy-
+            ${{ runner.os }}-cargo-${{ steps.rust-toolchain.outputs.channel }}-clippy-
 
       - run: cargo +"$TOOLCHAIN_NAME" clippy --workspace --tests --locked -- -D warnings
         env:
-          TOOLCHAIN_NAME: ${{ steps.main_toolchain_version.outputs.rustc_version }}
+          TOOLCHAIN_NAME: ${{ steps.rust-toolchain.outputs.channel }}
 
   rustfmt:
     name: rustfmt

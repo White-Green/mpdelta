@@ -112,6 +112,7 @@ jobs:
         run: cargo +"$TOOLCHAIN_NAME" test --workspace --locked
         env:
           TOOLCHAIN_NAME: ${{ steps.rust-toolchain.outputs.channel }}
+          RUST_BACKTRACE: full
 
   clippy:
     name: clippy

@@ -110,7 +110,7 @@ ffmpeg-next = { default-features = false, features = [
   "format",
   "software-resampling",
   "software-scaling",
-], version = "7.1.0" }
+], version = "9.0.0" }
 ffmpeg-sys-next = { default-features = false, features = [
   "static",
 ], version = "7.1.0" }

@@ -55,7 +55,9 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-${{ steps.main_toolchain_version.outputs.rustc_version }}-test-
 
-      - run: cargo +stable test --workspace --locked
+      - run: cargo +"$TOOLCHAIN_NAME" test --workspace --locked
+        env:
+          TOOLCHAIN_NAME: ${{ steps.main_toolchain.outputs.name }}
 
   clippy:
     name: clippy
@@ -109,7 +111,9 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-${{ steps.main_toolchain_version.outputs.rustc_version }}-clippy-
 
-      - run: cargo +stable clippy --workspace --tests --locked -- -D warnings
+      - run: cargo +"$TOOLCHAIN_NAME" clippy --workspace --tests --locked -- -D warnings
+        env:
+          TOOLCHAIN_NAME: ${{ steps.main_toolchain.outputs.name }}
 
   rustfmt:
     name: rustfmt

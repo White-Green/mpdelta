@@ -11,9 +11,7 @@ ffmpeg-sys-next = { workspace = true }
 mpdelta_multimedia = { workspace = true }
 thiserror = { workspace = true }
 
-[target.'cfg(target_os = "linux")'.dependencies]
-ffmpeg-sys-next = { features = [
-  "build",
-  "build-lib-openh264",
-  "build-zlib",
-], workspace = true }
+[package.metadata.vcpkg]
+dependencies = ["ffmpeg[openh264]"]
+git = "https://github.com/microsoft/vcpkg"
+rev = "6070d5cb2f818921c10ccdf6f35f3415a2503369"

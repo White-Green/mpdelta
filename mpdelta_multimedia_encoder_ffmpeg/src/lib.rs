@@ -313,6 +313,7 @@ fn encode_thread<T: Write + Seek + Send + Sync + 'static>(
                 }
             }
         });
+        let audio_receiver = &audio_receiver;
         let mut audio_stream = audio_stream.map(|(id, mut encoder, options, variable_frame_size)| {
             let frame_size = if variable_frame_size { encoder.rate() / 20 } else { encoder.frame_size() };
             let mut f32_frame = frame::Audio::new(Sample::F32(Type::Planar), frame_size as usize, ChannelLayout::STEREO);

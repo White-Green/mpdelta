@@ -1,9 +1,0 @@
-[package]
-authors = { workspace = true }
-edition = { workspace = true }
-name = "rust_gpu_builder"
-version = { workspace = true }
-
-[dependencies]
-clap = { workspace = true }
-spirv-builder = { optional = true, workspace = true }

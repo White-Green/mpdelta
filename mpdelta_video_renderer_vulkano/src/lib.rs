@@ -73,7 +73,7 @@ impl SharedResource {
         )
         .unwrap();
         let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
-        let texture_drawing_shader = unsafe { ShaderModule::new(Arc::clone(&device), ShaderModuleCreateInfo::new(&bytes_to_words(include_bytes!(concat!(env!("OUT_DIR"), "/texture_drawing.spv"))).unwrap())).unwrap() };
+        let texture_drawing_shader = unsafe { ShaderModule::new(Arc::clone(&device), ShaderModuleCreateInfo::new(&bytes_to_words(include_bytes!(env!("SHADER_PATH_TEXTURE_DRAWING"))).unwrap())).unwrap() };
         let vertex_shader = texture_drawing_shader.entry_point("shader::main_vs").unwrap();
         let fragment_shader = texture_drawing_shader.entry_point("shader::main_fs").unwrap();
         let shader_stages = smallvec![PipelineShaderStageCreateInfo::new(vertex_shader), PipelineShaderStageCreateInfo::new(fragment_shader)];
@@ -99,7 +99,7 @@ impl SharedResource {
             },
         )
         .unwrap();
-        let composite_operation_shader = unsafe { ShaderModule::new(Arc::clone(&device), ShaderModuleCreateInfo::new(&bytes_to_words(include_bytes!(concat!(env!("OUT_DIR"), "/composite_operation.spv"))).unwrap())).unwrap() };
+        let composite_operation_shader = unsafe { ShaderModule::new(Arc::clone(&device), ShaderModuleCreateInfo::new(&bytes_to_words(include_bytes!(env!("SHADER_PATH_COMPOSITE_OPERATION"))).unwrap())).unwrap() };
         let compute_shader = composite_operation_shader.entry_point("shader::main").unwrap();
         let composite_operation_pipeline = ComputePipeline::new(
             Arc::clone(&device),

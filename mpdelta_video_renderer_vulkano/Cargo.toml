@@ -20,7 +20,7 @@ smallvec = { workspace = true }
 vulkano = { workspace = true }
 
 [build-dependencies]
-shader_builder = { workspace = true }
+cargo-gpu-install = { workspace = true }
 
 [dev-dependencies]
 tokio = { features = ["macros", "rt"], workspace = true }

@@ -162,7 +162,7 @@ impl TextRenderer {
         )
         .unwrap();
         let subpass = Subpass::from(Arc::clone(&render_pass), 0).unwrap();
-        let font_triangle_shader = unsafe { ShaderModule::new(Arc::clone(device), ShaderModuleCreateInfo::new(&bytes_to_words(include_bytes!(concat!(env!("OUT_DIR"), "/shader.spv"))).unwrap())).unwrap() };
+        let font_triangle_shader = unsafe { ShaderModule::new(Arc::clone(device), ShaderModuleCreateInfo::new(&bytes_to_words(include_bytes!(env!("SHADER_PATH"))).unwrap())).unwrap() };
         let vertex_shader = font_triangle_shader.entry_point("shader::main_vs").unwrap();
         let fragment_shader = font_triangle_shader.entry_point("shader::main_fs").unwrap();
         let vertex_input_state = VertexInputState::new()

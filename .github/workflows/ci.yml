@@ -103,8 +103,30 @@ jobs:
           VCPKG_ROOT: ${{ runner.temp }}/vcpkg
           VCPKG_DEFAULT_BINARY_CACHE: ${{ runner.temp }}/vcpkg-binary-cache
 
+      - name: Get cargo-nextest version
+        id: cargo-nextest-version
+        run: |
+          set -euo pipefail
+          version="$(cargo metadata --no-deps --format-version 1 | jq -er '.metadata["cargo-binaries"]["cargo-nextest"]')"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "cargo-nextest ${version}"
+
+      - name: Cache cargo-nextest
+        id: cache-cargo-nextest
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/bin/cargo-nextest
+          key: ${{ runner.os }}-cargo-nextest-${{ steps.cargo-nextest-version.outputs.version }}
+
+      - name: Install cargo-nextest if cache miss
+        if: steps.cache-cargo-nextest.outputs.cache-hit != 'true'
+        run: cargo install cargo-nextest --version "$CARGO_NEXTEST_VERSION" --locked
+        env:
+          CARGO_NEXTEST_VERSION: ${{ steps.cargo-nextest-version.outputs.version }}
+
       - name: Run tests
-        run: cargo +"$TOOLCHAIN_NAME" test --workspace --locked
+        run: cargo +"$TOOLCHAIN_NAME" nextest run --workspace --locked
         env:
           TOOLCHAIN_NAME: ${{ steps.rust-toolchain.outputs.channel }}
           RUST_BACKTRACE: full

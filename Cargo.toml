@@ -71,6 +71,7 @@ edition = "2021"
 version = "0.1.0"
 
 [workspace.metadata.cargo-binaries]
+cargo-nextest = "0.9.143"
 cargo-vcpkg = "0.1.7"
 taplo-cli = "0.10.0"
 

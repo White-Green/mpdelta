@@ -4,7 +4,6 @@ resolver = "2"
 default-members = [
   "mpdelta",
   "mpdelta_audio_mixer",
-  "mpdelta_build_utils/shader_builder",
   "mpdelta_common/mpdelta_async_runtime",
   "mpdelta_common/mpdelta_dsp",
   "mpdelta_common/mpdelta_ffmpeg",
@@ -35,8 +34,6 @@ default-members = [
 members = [
   "mpdelta",
   "mpdelta_audio_mixer",
-  "mpdelta_build_utils/rust_gpu_builder",
-  "mpdelta_build_utils/shader_builder",
   "mpdelta_common/mpdelta_async_runtime",
   "mpdelta_common/mpdelta_dsp",
   "mpdelta_common/mpdelta_ffmpeg",
@@ -86,6 +83,7 @@ async-trait = "0.1.86"
 bitflags = "2.8.0"
 bytemuck = "1.21.0"
 bytemuck_derive = "1.8.1"
+cargo-gpu-install = { git = "https://github.com/Rust-GPU/rust-gpu", rev = "7fa56ad6e862cfde7938295fd6daccc2cd89a7fc" }
 cgmath = { features = ["serde"], version = "0.18.0" }
 ciborium = "0.2.2"
 clap = { default-features = false, features = [
@@ -110,13 +108,13 @@ ffmpeg-next = { default-features = false, features = [
   "format",
   "software-resampling",
   "software-scaling",
-], version = "7.1.0" }
+], version = "9.0.0" }
 ffmpeg-sys-next = { default-features = false, features = [
   "static",
-], version = "7.1.0" }
+], version = "9.0.0" }
 font-kit = "0.14.2"
 futures = { default-features = false, version = "0.3.31" }
-glam = { default-features = false, features = ["libm"], version = "0.30.3" }
+glam = { default-features = false, features = ["libm"], version = "0.33.6" }
 hound = "3.5.1"
 icu_properties = "2.0.0"
 icu_segmenter = "2.0.0"
@@ -171,12 +169,8 @@ rpds = { default-features = false, git = "https://github.com/White-Green/rpds", 
 serde = { default-features = false, version = "1.0.218" }
 serde_json = "1.0.139"
 serde_repr = "0.1.19"
-shader_builder = { path = "mpdelta_build_utils/shader_builder" }
 smallvec = "1.14"
-spirv-builder = { default-features = false, features = [
-  "use-compiled-tools",
-], version = "0.9.0" }
-spirv-std = "0.9.0"
+spirv-std = { git = "https://github.com/Rust-GPU/rust-gpu", rev = "7fa56ad6e862cfde7938295fd6daccc2cd89a7fc" }
 swash = { default-features = false, features = [
   "scale",
   "std",
@@ -193,9 +187,7 @@ wgpu = { default-features = false, features = [
 winit = { default-features = false, version = "0.30.10" }
 
 [patch.crates-io]
-ffmpeg-sys-next = { branch = "ffmpeg7.1", git = "https://github.com/White-Green/rust-ffmpeg-sys" }
-spirv-builder = { git = "https://github.com/Rust-GPU/rust-gpu", rev = "6d7c1cd6c0920500a3fa8c01c23e7b74302c15c4" }
-spirv-std = { git = "https://github.com/Rust-GPU/rust-gpu", rev = "6d7c1cd6c0920500a3fa8c01c23e7b74302c15c4" }
+ffmpeg-sys-next = { branch = "ffmpeg9", git = "https://github.com/White-Green/rust-ffmpeg-sys" }
 
 [profile.dev]
 incremental = false

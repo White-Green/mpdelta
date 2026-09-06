@@ -23,7 +23,7 @@ tokio = { workspace = true }
 vulkano = { workspace = true }
 
 [build-dependencies]
-shader_builder = { workspace = true }
+cargo-gpu-install = { workspace = true }
 
 [dev-dependencies]
 image = { workspace = true }

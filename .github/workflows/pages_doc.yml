@@ -35,12 +35,6 @@ jobs:
         id: main_toolchain_version
         run: echo "rustc_version=$(rustc --version | sed -e 's/(.*)//g')" >> "$GITHUB_OUTPUT"
 
-      - name: Install Rust toolchain for Rust-GPU shader build
-        uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c
-        with:
-          toolchain: nightly-2024-11-22
-          components: "rust-src,rustc-dev,llvm-tools-preview"
-
       - name: Get current month
         id: get-month
         run: |
@@ -64,9 +58,7 @@ jobs:
       - name: Cache target
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: |
-            target/
-            target_for_shaders/
+          path: target/
           key: ${{ runner.os }}-cargo-${{ steps.main_toolchain_version.outputs.rustc_version }}-doc-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-${{ steps.main_toolchain_version.outputs.rustc_version }}-doc-

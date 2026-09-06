@@ -1,8 +1,0 @@
-[package]
-authors = { workspace = true }
-edition = { workspace = true }
-name = "shader_builder"
-version = { workspace = true }
-
-[dependencies]
-thiserror = { workspace = true }

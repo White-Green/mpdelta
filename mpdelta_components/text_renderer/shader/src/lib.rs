@@ -1,4 +1,4 @@
-#![cfg_attr(target_arch = "spirv", no_std, feature(asm_experimental_arch))]
+#![cfg_attr(target_arch = "spirv", no_std)]
 // HACK(eddyb) can't easily see warnings otherwise from `spirv-builder` builds.
 #![deny(warnings)]
 
@@ -39,7 +39,6 @@ pub mod shader {
     use spirv_std::spirv;
 
     // see: https://github.com/Rust-GPU/rust-gpu/issues/185
-    #[inline(never)]
     #[spirv(fragment)]
     pub fn main_fs(color: Vec4, output: &mut Vec4) {
         *output = color;

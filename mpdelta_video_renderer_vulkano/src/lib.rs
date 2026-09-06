@@ -73,7 +73,7 @@ impl SharedResource {
         )
         .unwrap();
         let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
-        let texture_drawing_shader = unsafe { ShaderModule::new(Arc::clone(&device), ShaderModuleCreateInfo::new(&bytes_to_words(include_bytes!(concat!(env!("OUT_DIR"), "/texture_drawing.spv"))).unwrap())).unwrap() };
+        let texture_drawing_shader = unsafe { ShaderModule::new(Arc::clone(&device), ShaderModuleCreateInfo::new(&bytes_to_words(include_bytes!(env!("SHADER_PATH_TEXTURE_DRAWING"))).unwrap())).unwrap() };
         let vertex_shader = texture_drawing_shader.entry_point("shader::main_vs").unwrap();
         let fragment_shader = texture_drawing_shader.entry_point("shader::main_fs").unwrap();
         let shader_stages = smallvec![PipelineShaderStageCreateInfo::new(vertex_shader), PipelineShaderStageCreateInfo::new(fragment_shader)];
@@ -99,7 +99,7 @@ impl SharedResource {
             },
         )
         .unwrap();
-        let composite_operation_shader = unsafe { ShaderModule::new(Arc::clone(&device), ShaderModuleCreateInfo::new(&bytes_to_words(include_bytes!(concat!(env!("OUT_DIR"), "/composite_operation.spv"))).unwrap())).unwrap() };
+        let composite_operation_shader = unsafe { ShaderModule::new(Arc::clone(&device), ShaderModuleCreateInfo::new(&bytes_to_words(include_bytes!(env!("SHADER_PATH_COMPOSITE_OPERATION"))).unwrap())).unwrap() };
         let compute_shader = composite_operation_shader.entry_point("shader::main").unwrap();
         let composite_operation_pipeline = ComputePipeline::new(
             Arc::clone(&device),
@@ -430,6 +430,7 @@ impl Combiner<ImageType> for ImageCombiner {
 mod tests {
     use super::*;
     use cgmath::{Quaternion, Zero};
+    use vulkano::device::DeviceFeatures;
     use vulkano::instance::InstanceCreateInfo;
     use vulkano::Version;
     use vulkano_util::context::{VulkanoConfig, VulkanoContext};
@@ -438,9 +439,10 @@ mod tests {
     async fn test_image_combiner() {
         let context = Arc::new(VulkanoContext::new(VulkanoConfig {
             instance_create_info: InstanceCreateInfo {
-                max_api_version: Some(Version::V1_2),
+                max_api_version: Some(Version::V1_3),
                 ..InstanceCreateInfo::default()
             },
+            device_features: DeviceFeatures { vulkan_memory_model: true, ..DeviceFeatures::empty() },
             ..VulkanoConfig::default()
         }));
         let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(Arc::clone(context.device()), StandardCommandBufferAllocatorCreateInfo::default()));

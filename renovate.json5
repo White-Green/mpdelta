@@ -11,6 +11,15 @@
 
   packageRules: [
     {
+      description: "Group Cargo package patch/minor updates into one PR.",
+      matchManagers: ["cargo"],
+      matchPackageNames: ["!ffmpeg-next", "!ffmpeg-sys-next"],
+      matchUpdateTypes: ["patch", "minor"],
+      matchJsonata: ["isBreaking != true"],
+      groupName: "Cargo package patch/minor updates",
+      groupSlug: "cargo-package-patch-minor",
+    },
+    {
       description: "Update ffmpeg-next and ffmpeg-sys-next together, waiting until both have updates.",
       matchManagers: ["cargo"],
       matchPackageNames: ["ffmpeg-next", "ffmpeg-sys-next"],

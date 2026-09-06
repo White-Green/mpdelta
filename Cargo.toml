@@ -187,7 +187,7 @@ wgpu = { default-features = false, features = [
 winit = { default-features = false, version = "0.30.10" }
 
 [patch.crates-io]
-ffmpeg-sys-next = { branch = "ffmpeg7.1", git = "https://github.com/White-Green/rust-ffmpeg-sys" }
+ffmpeg-sys-next = { branch = "ffmpeg9", git = "https://github.com/White-Green/rust-ffmpeg-sys" }
 
 [profile.dev]
 incremental = false

@@ -76,25 +76,25 @@ cargo-vcpkg = "0.1.7"
 taplo-cli = "0.10.0"
 
 [workspace.dependencies]
-arc-swap = "1.7.1"
-arrayvec = { default-features = false, version = "0.7.6" }
+arc-swap = "1.9.2"
+arrayvec = { default-features = false, version = "0.7.8" }
 ash = { features = ["linked"], version = "0.38.0" }
 assert_matches = "1.5.0"
-async-trait = "0.1.86"
-bitflags = "2.8.0"
-bytemuck = "1.21.0"
-bytemuck_derive = "1.8.1"
+async-trait = "0.1.92"
+bitflags = "2.13.1"
+bytemuck = "1.25.2"
+bytemuck_derive = "1.12.0"
 cargo-gpu-install = { git = "https://github.com/Rust-GPU/rust-gpu", rev = "7fa56ad6e862cfde7938295fd6daccc2cd89a7fc" }
 cgmath = { features = ["serde"], version = "0.18.0" }
 ciborium = "0.2.2"
 clap = { default-features = false, features = [
   "derive",
   "std",
-], version = "4.5.30" }
+], version = "4.6.6" }
 cpal = "0.15.3"
-crossbeam-queue = { version = "0.3.12" }
-crossbeam-utils = { default-features = false, version = "0.8.21" }
-dashmap = "6.1.0"
+crossbeam-queue = { version = "0.3.14" }
+crossbeam-utils = { default-features = false, version = "0.8.23" }
+dashmap = "6.2.1"
 dyn-eq = { default-features = false, version = "0.1.3" }
 dyn-hash = "1.0.0"
 eframe = { features = ["wgpu"], version = "0.31.1" }
@@ -104,7 +104,7 @@ egui_image_renderer = { git = "https://github.com/White-Green/egui_image_rendere
 emath = "0.31.1"
 erased-serde = { default-features = false, features = [
   "alloc",
-], version = "0.4.5" }
+], version = "0.4.10" }
 ffmpeg-next = { default-features = false, features = [
   "format",
   "software-resampling",
@@ -113,17 +113,17 @@ ffmpeg-next = { default-features = false, features = [
 ffmpeg-sys-next = { default-features = false, features = [
   "static",
 ], version = "9.0.0" }
-font-kit = "0.14.2"
-futures = { default-features = false, version = "0.3.31" }
+font-kit = "0.14.3"
+futures = { default-features = false, version = "0.3.34" }
 glam = { default-features = false, features = ["libm"], version = "0.33.6" }
 hound = "3.5.1"
-icu_properties = "2.0.0"
-icu_segmenter = "2.0.0"
-image = { default-features = false, features = ["png"], version = "0.25.5" }
-indexmap = "2.7.1"
-lyon_tessellation = { default-features = false, version = "1.0.15" }
-memmap2 = "0.9.5"
-moka = { default-features = false, features = ["future"], version = "0.12.10" }
+icu_properties = "2.3.0"
+icu_segmenter = "2.3.0"
+image = { default-features = false, features = ["png"], version = "0.25.10" }
+indexmap = "2.14.2"
+lyon_tessellation = { default-features = false, version = "1.0.21" }
+memmap2 = "0.9.11"
+moka = { default-features = false, features = ["future"], version = "0.12.16" }
 mpdelta_async_runtime = { path = "mpdelta_common/mpdelta_async_runtime" }
 mpdelta_audio_mixer = { path = "mpdelta_audio_mixer" }
 mpdelta_component_common = { path = "mpdelta_components/common" }
@@ -156,36 +156,36 @@ nalgebra = { default-features = false, features = [
   "std",
 ], version = "0.35.0" }
 num = { default-features = false, version = "0.4.3" }
-ordered-float = { default-features = false, version = "5.0.0" }
+ordered-float = { default-features = false, version = "5.5.0" }
 phf = { default-features = false, features = ["macros"], version = "0.14.0" }
-proptest = { default-features = false, features = ["std"], version = "1.6.0" }
+proptest = { default-features = false, features = ["std"], version = "1.11.0" }
 proptest-derive = "0.8.0"
-rayon = "1.10.0"
-regex = "1.11.1"
+rayon = "1.12.0"
+regex = "1.13.1"
 rfd = { default-features = false, features = [
   "file-handle-inner",
   "gtk3",
-], version = "0.17.0" }
+], version = "0.17.2" }
 rpds = { default-features = false, git = "https://github.com/White-Green/rpds", rev = "5d99c47f2a3ca2084ad85e66cbe37010191e853a" }
-serde = { default-features = false, version = "1.0.218" }
-serde_json = "1.0.139"
-serde_repr = "0.1.19"
-smallvec = "1.14"
+serde = { default-features = false, version = "1.0.229" }
+serde_json = "1.0.151"
+serde_repr = "0.1.21"
+smallvec = "1.16"
 spirv-std = { git = "https://github.com/Rust-GPU/rust-gpu", rev = "7fa56ad6e862cfde7938295fd6daccc2cd89a7fc" }
 swash = { default-features = false, features = [
   "scale",
   "std",
-], version = "0.2.0" }
-thiserror = "2.0.11"
-time = "0.3.37"
-tokio = { features = ["fs", "macros", "time"], version = "1.43.0" }
-uuid = { default-features = false, version = "1.14.0" }
-vulkano = { default-features = false, version = "0.35.1" }
+], version = "0.2.10" }
+thiserror = "2.0.20"
+time = "0.3.55"
+tokio = { features = ["fs", "macros", "time"], version = "1.53.1" }
+uuid = { default-features = false, version = "1.26.0" }
+vulkano = { default-features = false, version = "0.35.2" }
 vulkano-util = "0.35.0"
 wgpu = { default-features = false, features = [
   "vulkan-portability",
-], version = "24.0.3" }
-winit = { default-features = false, version = "0.30.10" }
+], version = "24.0.5" }
+winit = { default-features = false, version = "0.30.13" }
 
 [patch.crates-io]
 ffmpeg-sys-next = { branch = "ffmpeg9", git = "https://github.com/White-Green/rust-ffmpeg-sys" }

@@ -420,6 +420,11 @@ fn encode_thread<T: Write + Seek + Send + Sync + 'static>(
             }
         }
         output.write_trailer().unwrap();
+        if audio_stream.is_some() {
+            let EncoderMessage::Finish = audio_receiver.recv().unwrap() else {
+                panic!();
+            };
+        }
     }
 }
 

@@ -460,8 +460,12 @@ impl VideoEncoder<ImageType, AudioType> for FfmpegEncoder {
     }
 
     fn finish(&mut self) {
-        self.image_sender.send(EncoderMessage::Finish).unwrap();
-        self.audio_sender.send(EncoderMessage::Finish).unwrap();
+        if self.requires_image {
+            self.image_sender.send(EncoderMessage::Finish).unwrap();
+        }
+        if self.requires_audio {
+            self.audio_sender.send(EncoderMessage::Finish).unwrap();
+        }
         self.handle.take().unwrap().join().unwrap();
     }
 }

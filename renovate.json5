@@ -33,6 +33,12 @@
       groupName: "{{{depName}}}",
       groupSlug: "binary-{{{depName}}}",
     },
+    {
+      description: "Skip Rust changelog fetching to avoid Renovate job timeouts.",
+      matchDatasources: ["rust-version"],
+      matchPackageNames: ["rust"],
+      fetchChangeLogs: "off",
+    },
   ],
 
   customManagers: [

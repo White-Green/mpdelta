@@ -26,7 +26,6 @@
       groupName: "FFmpeg crates",
       groupSlug: "ffmpeg-crates",
       separateMajorMinor: false,
-      minimumGroupSize: 2,
     },
     {
       description: "Group binary version pins by binary name, without grouping different binaries together.",

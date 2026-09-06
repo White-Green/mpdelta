@@ -55,7 +55,8 @@ jobs:
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
-          key: ${{ runner.os }}-cargo-${{ steps.get-month.outputs.month }}
+          key: ${{ runner.os }}-cargo-${{ steps.get-month.outputs.month }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-${{ steps.get-month.outputs.month }}-
 
       - name: Cargo fetch
         run: cargo +nightly fetch

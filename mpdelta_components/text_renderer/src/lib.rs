@@ -877,6 +877,7 @@ mod tests {
             device_features: DeviceFeatures {
                 occlusion_query_precise: true,
                 pipeline_statistics_query: true,
+                vulkan_memory_model: true,
                 ..DeviceFeatures::empty()
             },
             ..VulkanoConfig::default()

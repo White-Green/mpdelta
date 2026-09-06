@@ -430,6 +430,7 @@ impl Combiner<ImageType> for ImageCombiner {
 mod tests {
     use super::*;
     use cgmath::{Quaternion, Zero};
+    use vulkano::device::DeviceFeatures;
     use vulkano::instance::InstanceCreateInfo;
     use vulkano::Version;
     use vulkano_util::context::{VulkanoConfig, VulkanoContext};
@@ -438,9 +439,10 @@ mod tests {
     async fn test_image_combiner() {
         let context = Arc::new(VulkanoContext::new(VulkanoConfig {
             instance_create_info: InstanceCreateInfo {
-                max_api_version: Some(Version::V1_2),
+                max_api_version: Some(Version::V1_3),
                 ..InstanceCreateInfo::default()
             },
+            device_features: DeviceFeatures { vulkan_memory_model: true, ..DeviceFeatures::empty() },
             ..VulkanoConfig::default()
         }));
         let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(Arc::clone(context.device()), StandardCommandBufferAllocatorCreateInfo::default()));

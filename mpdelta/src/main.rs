@@ -279,7 +279,7 @@ fn initialize_gpu() -> GpuHandle {
             DeviceCreateInfo {
                 queue_create_infos,
                 enabled_extensions: DeviceExtensions { khr_swapchain: true, ..DeviceExtensions::empty() },
-                enabled_features: DeviceFeatures::empty(),
+                enabled_features: DeviceFeatures { vulkan_memory_model: true, ..DeviceFeatures::empty() },
                 ..Default::default()
             },
         )

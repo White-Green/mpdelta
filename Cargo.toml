@@ -100,7 +100,7 @@ eframe = { features = ["wgpu"], version = "0.31.1" }
 egui = { default-features = false, version = "0.31.1" }
 egui-wgpu = { version = "0.31.1" }
 egui_image_renderer = { git = "https://github.com/White-Green/egui_image_renderer", rev = "affa8a16e06240e92e86ef131989f01dffca38e9" }
-emath = "0.31.1"
+emath = "0.36.0"
 erased-serde = { default-features = false, features = [
   "alloc",
 ], version = "0.4.5" }

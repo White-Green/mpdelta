@@ -25,7 +25,7 @@ jobs:
           sudo apt install autoconf automake libtool pkg-config nasm libgtk-3-dev libasound2-dev -y
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c
+        uses: dtolnay/rust-toolchain@d1031067263f94b142dd6c0ce24c5eb9d02d52a0
         id: main_toolchain
         with:
           toolchain: nightly

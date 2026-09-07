@@ -6,14 +6,14 @@ use uuid::Uuid;
 
 #[derive(Debug)]
 pub struct UniqueIdGenerator {
-    context: uuid::v1::Context,
+    context: uuid::timestamp::context::ContextV1,
     counter: AtomicU64,
 }
 
 impl UniqueIdGenerator {
     pub fn new() -> UniqueIdGenerator {
         UniqueIdGenerator {
-            context: uuid::v1::Context::new_random(),
+            context: uuid::timestamp::context::ContextV1::new_random(),
             counter: AtomicU64::new(0),
         }
     }

@@ -41,7 +41,19 @@ jobs:
           echo "month=$(/bin/date -u '+%Y%m')" >> "$GITHUB_OUTPUT"
         shell: bash
 
+      - name: Restore cache cargo registry and index
+        if: ${{ github.ref_name != github.event.repository.default_branch }}
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+          key: ${{ runner.os }}-cargo-${{ steps.get-month.outputs.month }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-${{ steps.get-month.outputs.month }}-
+
       - name: Cache cargo registry and index
+        if: ${{ github.ref_name == github.event.repository.default_branch }}
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
@@ -54,15 +66,24 @@ jobs:
       - name: Cargo fetch
         run: cargo +nightly fetch
 
+      - name: Restore cache target
+        if: ${{ github.ref_name != github.event.repository.default_branch }}
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            target/
+            ~/.cache/rust-gpu/
+          key: ${{ runner.os }}-cargo-${{ steps.main_toolchain_version.outputs.rustc_version }}-doc-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-${{ steps.main_toolchain_version.outputs.rustc_version }}-doc-
+
       - name: Cache target
+        if: ${{ github.ref_name == github.event.repository.default_branch }}
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             target/
             ~/.cache/rust-gpu/
           key: ${{ runner.os }}-cargo-${{ steps.main_toolchain_version.outputs.rustc_version }}-doc-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-${{ steps.main_toolchain_version.outputs.rustc_version }}-doc-
 
       - name: Get cargo-vcpkg version
         id: cargo-vcpkg-version
@@ -86,7 +107,16 @@ jobs:
         env:
           CARGO_VCPKG_VERSION: ${{ steps.cargo-vcpkg-version.outputs.version }}
 
+      - name: Restore cache vcpkg binaries
+        if: ${{ github.ref_name != github.event.repository.default_branch }}
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/vcpkg-binary-cache
+          key: ${{ runner.os }}-${{ runner.arch }}-vcpkg-${{ hashFiles('mpdelta_common/mpdelta_ffmpeg/Cargo.toml') }}
+          restore-keys: ${{ runner.os }}-${{ runner.arch }}-vcpkg-
+
       - name: Cache vcpkg binaries
+        if: ${{ github.ref_name == github.event.repository.default_branch }}
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.temp }}/vcpkg-binary-cache

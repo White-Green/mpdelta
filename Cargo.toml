@@ -117,8 +117,8 @@ font-kit = "0.14.2"
 futures = { default-features = false, version = "0.3.31" }
 glam = { default-features = false, features = ["libm"], version = "0.33.6" }
 hound = "3.5.1"
-icu_properties = "2.0.0"
-icu_segmenter = "2.0.0"
+icu_properties = "2.3.0"
+icu_segmenter = "2.3.0"
 image = { default-features = false, features = ["png"], version = "0.25.5" }
 indexmap = "2.7.1"
 lyon_tessellation = { default-features = false, version = "1.0.15" }

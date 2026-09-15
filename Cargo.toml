@@ -184,7 +184,7 @@ vulkano = { default-features = false, version = "0.35.1" }
 vulkano-util = "0.35.0"
 wgpu = { default-features = false, features = [
   "vulkan-portability",
-], version = "24.0.3" }
+], version = "30.0.0" }
 winit = { default-features = false, version = "0.30.10" }
 
 [patch.crates-io]

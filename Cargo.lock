@@ -2098,9 +2098,9 @@ checksum = "f70749695b063ecbf6b62949ccccde2e733ec3ecbbd71d467dca4e5c6c97cca0"
 
 [[package]]
 name = "glam"
-version = "0.33.7"
+version = "0.33.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e762b9b188634fc508d4ec54b62ea3d352c43fd431d18d05d46f559f217f4725"
+checksum = "a0990707078259d76f65619a692e87c82645be66cbee224173cd1af151e54ba2"
 dependencies = [
  "bytemuck",
  "libm",
@@ -3069,7 +3069,7 @@ dependencies = [
  "cargo-gpu-install",
  "crossbeam-queue",
  "font-kit",
- "glam 0.33.7",
+ "glam 0.33.8",
  "icu_properties",
  "icu_segmenter",
  "image",
@@ -3177,7 +3177,7 @@ dependencies = [
  "egui_image_renderer",
  "emath",
  "futures",
- "glam 0.33.7",
+ "glam 0.33.8",
  "mpdelta_async_runtime",
  "mpdelta_core",
  "mpdelta_core_test_util",
@@ -3338,7 +3338,7 @@ dependencies = [
  "cargo-gpu-install",
  "cgmath",
  "futures",
- "glam 0.33.7",
+ "glam 0.33.8",
  "mpdelta_core",
  "mpdelta_core_vulkano",
  "mpdelta_renderer",
@@ -3382,7 +3382,7 @@ dependencies = [
  "glam 0.30.10",
  "glam 0.31.1",
  "glam 0.32.1",
- "glam 0.33.7",
+ "glam 0.33.8",
  "matrixmultiply",
  "num-complex",
  "num-rational",
@@ -4960,7 +4960,7 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "bytemuck_derive",
- "glam 0.33.7",
+ "glam 0.33.8",
  "spirv-std",
  "vulkano",
 ]
@@ -5162,7 +5162,7 @@ version = "0.10.0-alpha.1"
 source = "git+https://github.com/Rust-GPU/rust-gpu?rev=7fa56ad6e862cfde7938295fd6daccc2cd89a7fc#7fa56ad6e862cfde7938295fd6daccc2cd89a7fc"
 dependencies = [
  "bitflags 2.13.2",
- "glam 0.33.7",
+ "glam 0.33.8",
  "libm",
  "num-traits",
  "spirv-std-macros",

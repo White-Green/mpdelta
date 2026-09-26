@@ -584,7 +584,7 @@ dependencies = [
  "num-traits",
  "pastey",
  "rayon",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "v_frame",
  "y4m",
 ]
@@ -866,7 +866,7 @@ dependencies = [
  "serde",
  "serde-untagged",
  "serde-value",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "toml",
  "unicode-xid",
  "url",
@@ -884,7 +884,7 @@ dependencies = [
  "semver",
  "serde",
  "serde_json",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -1515,7 +1515,7 @@ dependencies = [
  "egui-wgpu",
  "futures",
  "image",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tokio",
 ]
 
@@ -2098,9 +2098,9 @@ checksum = "f70749695b063ecbf6b62949ccccde2e733ec3ecbbd71d467dca4e5c6c97cca0"
 
 [[package]]
 name = "glam"
-version = "0.33.8"
+version = "0.33.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a0990707078259d76f65619a692e87c82645be66cbee224173cd1af151e54ba2"
+checksum = "35accb17301a4874ea893c685ca86bc1e25f92499382adc17eec9a91f7803cfb"
 dependencies = [
  "bytemuck",
  "libm",
@@ -3069,7 +3069,7 @@ dependencies = [
  "cargo-gpu-install",
  "crossbeam-queue",
  "font-kit",
- "glam 0.33.8",
+ "glam 0.33.9",
  "icu_properties",
  "icu_segmenter",
  "image",
@@ -3105,7 +3105,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_repr",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tokio",
  "uuid",
 ]
@@ -3141,7 +3141,7 @@ dependencies = [
  "mpdelta_core",
  "mpdelta_core_test_util",
  "nalgebra",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tokio",
  "uuid",
 ]
@@ -3152,7 +3152,7 @@ version = "0.1.0"
 dependencies = [
  "num",
  "proptest",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -3163,7 +3163,7 @@ dependencies = [
  "ffmpeg-next",
  "ffmpeg-sys-next",
  "mpdelta_multimedia",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -3177,7 +3177,7 @@ dependencies = [
  "egui_image_renderer",
  "emath",
  "futures",
- "glam 0.33.8",
+ "glam 0.33.9",
  "mpdelta_async_runtime",
  "mpdelta_core",
  "mpdelta_core_test_util",
@@ -3202,7 +3202,7 @@ dependencies = [
  "mpdelta_core_audio",
  "mpdelta_dsp",
  "mpdelta_gui",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tokio",
 ]
 
@@ -3250,7 +3250,7 @@ dependencies = [
  "mpdelta_ffmpeg",
  "mpdelta_multimedia",
  "mpdelta_renderer",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "vulkano",
  "vulkano-util",
 ]
@@ -3280,7 +3280,7 @@ dependencies = [
  "rpds",
  "serde",
  "serde_json",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tokio",
  "uuid",
 ]
@@ -3302,7 +3302,7 @@ dependencies = [
  "rayon",
  "rpds",
  "serde",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tokio",
 ]
 
@@ -3325,7 +3325,7 @@ dependencies = [
  "mpdelta_core_test_util",
  "mpdelta_differential",
  "rpds",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "time",
  "tokio",
  "uuid",
@@ -3338,7 +3338,7 @@ dependencies = [
  "cargo-gpu-install",
  "cgmath",
  "futures",
- "glam 0.33.8",
+ "glam 0.33.9",
  "mpdelta_core",
  "mpdelta_core_vulkano",
  "mpdelta_renderer",
@@ -3368,7 +3368,7 @@ dependencies = [
  "spirv 0.3.0+sdk-1.3.268.0",
  "strum",
  "termcolor",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "unicode-xid",
 ]
 
@@ -3382,7 +3382,7 @@ dependencies = [
  "glam 0.30.10",
  "glam 0.31.1",
  "glam 0.32.1",
- "glam 0.33.8",
+ "glam 0.33.9",
  "matrixmultiply",
  "num-complex",
  "num-rational",
@@ -4501,7 +4501,7 @@ dependencies = [
  "rand 0.9.5",
  "rand_chacha 0.9.0",
  "simd_helpers",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "v_frame",
  "wasm-bindgen",
 ]
@@ -4622,7 +4622,7 @@ checksum = "a4e608c6638b9c18977b00b475ac1f28d14e84b27d8d42f70e0bf1e3dec127ac"
 dependencies = [
  "getrandom 0.2.16",
  "libredox",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -4747,7 +4747,7 @@ dependencies = [
  "serde",
  "serde_json",
  "spirv 0.4.0+sdk-1.4.341.0",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -4960,7 +4960,7 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "bytemuck_derive",
- "glam 0.33.8",
+ "glam 0.33.9",
  "spirv-std",
  "vulkano",
 ]
@@ -5153,7 +5153,7 @@ dependencies = [
  "semver",
  "serde",
  "serde_json",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -5162,7 +5162,7 @@ version = "0.10.0-alpha.1"
 source = "git+https://github.com/Rust-GPU/rust-gpu?rev=7fa56ad6e862cfde7938295fd6daccc2cd89a7fc#7fa56ad6e862cfde7938295fd6daccc2cd89a7fc"
 dependencies = [
  "bitflags 2.13.2",
- "glam 0.33.8",
+ "glam 0.33.9",
  "libm",
  "num-traits",
  "spirv-std-macros",
@@ -5327,11 +5327,11 @@ dependencies = [
 
 [[package]]
 name = "thiserror"
-version = "2.0.20"
+version = "2.0.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ec86235f5fcc2a73650310756d2ac5b138a5780bbbdfae3eeccec992c435ba4f"
+checksum = "09e52cb86a36cede5cb101bf8908837b3e4c6e5e59fe7fd85c23fb56200d189e"
 dependencies = [
- "thiserror-impl 2.0.20",
+ "thiserror-impl 2.0.21",
 ]
 
 [[package]]
@@ -5347,9 +5347,9 @@ dependencies = [
 
 [[package]]
 name = "thiserror-impl"
-version = "2.0.20"
+version = "2.0.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bc04cd3e1236dd4a98afca4569f2deb3f120e5422a4023be2cb683f8486292af"
+checksum = "fe5197923287db20a58125f0bc85c062f7f2c892de97b18c356f9efb14b28524"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -6042,7 +6042,7 @@ dependencies = [
  "raw-window-handle",
  "rustc-hash 1.1.0",
  "smallvec",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "wgpu-hal",
  "wgpu-types",
 ]
@@ -6082,7 +6082,7 @@ dependencies = [
  "renderdoc-sys",
  "rustc-hash 1.1.0",
  "smallvec",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "wasm-bindgen",
  "web-sys",
  "wgpu-types",

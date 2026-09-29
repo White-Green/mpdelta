@@ -39,6 +39,13 @@
       matchPackageNames: ["rust"],
       fetchChangeLogs: "off",
     },
+    {
+      description: "Skip Go changelogs in dependency update PRs.",
+      matchManagers: ["github-actions"],
+      matchDepTypes: ["uses-with"],
+      matchDepNames: ["go"],
+      fetchChangeLogs: "off",
+    },
   ],
 
   customManagers: [

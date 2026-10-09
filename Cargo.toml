@@ -91,7 +91,7 @@ clap = { default-features = false, features = [
   "derive",
   "std",
 ], version = "4.5.30" }
-cpal = "0.15.3"
+cpal = "0.18.0"
 crossbeam-queue = { version = "0.3.12" }
 crossbeam-utils = { default-features = false, version = "0.8.21" }
 dashmap = "6.1.0"

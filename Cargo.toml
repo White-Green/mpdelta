@@ -115,7 +115,7 @@ ffmpeg-sys-next = { default-features = false, features = [
 ], version = "9.0.0" }
 font-kit = "0.14.2"
 futures = { default-features = false, version = "0.3.31" }
-glam = { default-features = false, features = ["libm"], version = "0.33.6" }
+glam = { default-features = false, features = ["libm"], version = "0.34.0" }
 hound = "3.5.1"
 icu_properties = "2.3.0"
 icu_segmenter = "2.3.0"

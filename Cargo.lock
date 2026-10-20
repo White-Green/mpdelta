@@ -1417,7 +1417,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bc4feb366740ded31a004a0e4452fbf84e80ef432ecf8314c485210229672fd1"
 dependencies = [
  "bytemuck",
- "emath",
+ "emath 0.31.1",
 ]
 
 [[package]]
@@ -1467,7 +1467,7 @@ dependencies = [
  "accesskit",
  "ahash",
  "bitflags 2.13.2",
- "emath",
+ "emath 0.31.1",
  "epaint",
  "log",
  "nohash-hasher",
@@ -1561,6 +1561,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "emath"
+version = "0.37.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e73ce90f54750be8672c02be0743fe47530e6f251e066f0ee2869b59eb297af5"
+
+[[package]]
 name = "endi"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1597,7 +1603,7 @@ dependencies = [
  "ahash",
  "bytemuck",
  "ecolor",
- "emath",
+ "emath 0.31.1",
  "epaint_default_fonts",
  "log",
  "nohash-hasher",
@@ -3202,7 +3208,7 @@ dependencies = [
  "crossbeam-utils",
  "egui",
  "egui_image_renderer",
- "emath",
+ "emath 0.37.0",
  "futures",
  "glam 0.33.12",
  "mpdelta_async_runtime",

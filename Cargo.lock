@@ -2114,6 +2114,15 @@ version = "0.33.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "37bfe73dc8ec21f54d181e5a60554327ec3f1c600c455a75ccbfc65d2106a6c4"
 dependencies = [
+ "libm",
+]
+
+[[package]]
+name = "glam"
+version = "0.34.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "627003914c6057c9c8f0832ee4f870b5a4f599d0cfa83f4072675114860cd0ff"
+dependencies = [
  "bytemuck",
  "libm",
 ]
@@ -3132,7 +3141,7 @@ dependencies = [
  "cargo-gpu-install",
  "crossbeam-queue",
  "font-kit",
- "glam 0.33.12",
+ "glam 0.34.3",
  "icu_properties",
  "icu_segmenter",
  "image",
@@ -3240,7 +3249,7 @@ dependencies = [
  "egui_image_renderer",
  "emath",
  "futures",
- "glam 0.33.12",
+ "glam 0.34.3",
  "mpdelta_async_runtime",
  "mpdelta_core",
  "mpdelta_core_test_util",
@@ -3401,7 +3410,7 @@ dependencies = [
  "cargo-gpu-install",
  "cgmath",
  "futures",
- "glam 0.33.12",
+ "glam 0.34.3",
  "mpdelta_core",
  "mpdelta_core_vulkano",
  "mpdelta_renderer",
@@ -5047,7 +5056,7 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "bytemuck_derive",
- "glam 0.33.12",
+ "glam 0.34.3",
  "spirv-std",
  "vulkano",
 ]
